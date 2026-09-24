@@ -3,7 +3,61 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { config } from "../src/config.js";
 import { Models } from "../src/models.js";
-import type { Usage } from "../src/types.js";
+import type { Json, Usage } from "../src/types.js";
+
+test("final retrieval submission uses the provider's named tool choice", async () => {
+  let payload: Json = {};
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk);
+    payload = JSON.parse(Buffer.concat(chunks).toString());
+    res.setHeader("Content-Type", "application/json");
+    res.end(
+      JSON.stringify({
+        choices: [
+          {
+            finish_reason: "tool_calls",
+            message: {
+              tool_calls: [
+                {
+                  id: "done",
+                  function: {
+                    name: "submit_evidence",
+                    arguments: '{"ids":[]}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 5 },
+      }),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const provider = new Models({
+      ...config(),
+      deepseekKey: "test",
+      deepseekUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`,
+    });
+    await provider.chat(
+      [{ role: "user", content: "Select evidence" }],
+      [{ type: "function", function: { name: "submit_evidence" } }],
+      AbortSignal.timeout(1000),
+      () => {},
+      "submit_evidence",
+    );
+    assert.deepEqual(payload.tool_choice, {
+      type: "function",
+      function: { name: "submit_evidence" },
+    });
+    assert.equal(payload.thinking.type, "disabled");
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
 
 test("reranker indices map to original candidate order and rate limits are not retried", async () => {
   let calls = 0,
@@ -20,7 +74,7 @@ test("reranker indices map to original candidate order and rate limits are not r
     res.end(
       JSON.stringify({
         results:
-          mode === "valid"
+          mode !== "invalid"
             ? [
                 { index: 1, relevance_score: 0.9 },
                 { index: 0, relevance_score: 0.3 },
@@ -29,7 +83,9 @@ test("reranker indices map to original candidate order and rate limits are not r
                 { index: 2, relevance_score: 1 },
                 { index: 2, relevance_score: 1 },
               ],
-        usage: { total_tokens: 123 },
+        ...(mode === "missing-usage"
+          ? {}
+          : { meta: { tokens: { input_tokens: 123, output_tokens: 0 } } }),
       }),
     );
   });
@@ -60,19 +116,24 @@ test("reranker indices map to original candidate order and rate limits are not r
       ["b", "a"],
     );
     assert.equal(usage[0]!.input, 123);
-    assert.ok(usage[0]!.cost! > 0);
+    assert.equal(usage[0]!.output, 0);
+    assert.equal(usage[0]!.cost, (123 * 0.7) / 1e6);
     mode = "invalid";
     await assert.rejects(
       provider.rerank("question", docs, AbortSignal.timeout(1000), record),
       /invalid candidate/,
     );
+    mode = "missing-usage";
+    await provider.rerank("question", docs, AbortSignal.timeout(1000), record);
+    assert.equal(usage[2]!.input, null);
+    assert.equal(usage[2]!.cost, null);
     mode = "rate";
     await assert.rejects(
       provider.rerank("question", docs, AbortSignal.timeout(1000), record),
       /429/,
     );
-    assert.equal(calls, 3);
-    assert.equal(usage[2]!.status, "rejected");
+    assert.equal(calls, 4);
+    assert.equal(usage[3]!.status, "rejected");
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

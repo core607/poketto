@@ -52,7 +52,7 @@ const clarificationTool = tool(
 const agentTools = [
   tool(
     "execute_shell",
-    "Run a shell command in the isolated corpus copy. Read README.md for topic navigation. Use shell, rg, Python or Git. No network.",
+    "Run a shell command in the isolated corpus copy. Read README.md for topic navigation. Use shell, rg, Python or Git. No network. Calls execute sequentially in one persistent shell: cd, environment variables and functions survive between calls. Use pwd when unsure of the current directory.",
     {
       command: { type: "string" },
     },
@@ -71,7 +71,16 @@ const agentTools = [
     "submit_evidence",
     "Finish retrieval with up to ten original document IDs, most relevant first. Directory README files are not evidence.",
     {
-      ids: { type: "array", maxItems: 10, items: { type: "string" } },
+      ids: {
+        type: "array",
+        maxItems: 10,
+        items: {
+          type: "string",
+          pattern: "^[A-Za-z0-9_-]+$",
+          description:
+            "Original document ID, without directory or .md extension; for example 12345, not corpus/topic/page/12345.md.",
+        },
+      },
     },
     ["ids"],
   ),
@@ -636,77 +645,118 @@ export class Engine {
     try {
       while (result.tools < experiment.maxToolCalls) {
         signal.throwIfAborted();
+        const submitting = result.tools === experiment.maxToolCalls - 1;
+        if (submitting) {
+          result.limited = true;
+          messages.push({
+            role: "user",
+            content:
+              "The search budget is exhausted. Do not execute any more commands or read artifacts. Use the final submit_evidence tool now to select at most ten original document IDs from the evidence already observed, most relevant first. IDs are filename stems without directories or the .md extension. Return an empty list if none is useful.",
+          });
+        }
         const message = await this.models.chat(
           messages,
-          agentTools,
+          submitting ? [agentTools[2]!] : agentTools,
           signal,
           this.record(run),
+          submitting ? "submit_evidence" : undefined,
         );
         const calls = message.tool_calls;
-        if (!Array.isArray(calls) || calls.length !== 1)
-          throw new Error("Agent must issue exactly one retrieval tool call");
+        if (!Array.isArray(calls) || !calls.length)
+          throw new Error("Agent must issue at least one retrieval tool call");
+        if (
+          submitting &&
+          (calls.length !== 1 || calls[0].function?.name !== "submit_evidence")
+        )
+          throw new Error(
+            "Agent must submit evidence with its final tool call",
+          );
         messages.push(message);
-        const call = calls[0],
-          args = JSON.parse(call.function.arguments);
-        result.tools++;
-        this.store.save(run, "tool_started", {
-          name: call.function.name,
-          arguments: args,
-          count: result.tools,
-        });
-        if (call.function.name === "submit_evidence") {
+        for (const call of calls) {
+          signal.throwIfAborted();
           if (
-            !Array.isArray(args.ids) ||
-            args.ids.length > 10 ||
-            new Set(args.ids).size !== args.ids.length ||
-            args.ids.some(
-              (id: unknown) =>
-                typeof id !== "string" || !/^[A-Za-z0-9_-]+$/.test(id),
+            result.tools === experiment.maxToolCalls - 1 &&
+            call.function.name !== "submit_evidence"
+          ) {
+            result.limited = true;
+            this.store.save(run, "tool_skipped", {
+              id: call.id,
+              name: call.function.name,
+              reason: "search_budget_exhausted",
+            });
+            messages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: JSON.stringify({
+                error:
+                  "Search tool budget exhausted; submit_evidence is required next.",
+              }),
+            });
+            continue;
+          }
+          const args = JSON.parse(call.function.arguments);
+          result.tools++;
+          this.store.save(run, "tool_started", {
+            id: call.id,
+            name: call.function.name,
+            arguments: args,
+            count: result.tools,
+          });
+          if (call.function.name === "submit_evidence") {
+            if (
+              !Array.isArray(args.ids) ||
+              args.ids.length > 10 ||
+              new Set(args.ids).size !== args.ids.length ||
+              args.ids.some(
+                (id: unknown) =>
+                  typeof id !== "string" || !/^[A-Za-z0-9_-]+$/.test(id),
+              )
             )
-          )
-            throw new Error("Agent returned invalid evidence IDs");
-          return await this.data.documents(args.ids);
+              throw new Error("Agent returned invalid evidence IDs");
+            return await this.data.documents(args.ids);
+          }
+          let output: Json;
+          if (call.function.name === "execute_shell") {
+            if (
+              typeof args.command !== "string" ||
+              !args.command ||
+              Buffer.byteLength(args.command) > 65536 ||
+              args.command.includes("\0")
+            )
+              throw new Error("Invalid shell command");
+            output = await session.execute(args.command);
+            for (const artifact of Object.values(
+              output.artifacts ?? {},
+            ) as Json[])
+              if (artifact?.artifactId) artifacts.add(artifact.artifactId);
+          } else if (call.function.name === "read_output") {
+            if (
+              !artifacts.has(args.artifactId) ||
+              !Number.isInteger(args.offset) ||
+              args.offset < 0
+            )
+              throw new Error("Invalid output artifact request");
+            const page = await session.artifact(args.artifactId, args.offset);
+            output = {
+              ...page,
+              text:
+                typeof page.data === "string"
+                  ? Buffer.from(page.data, "base64").toString("utf8")
+                  : undefined,
+            };
+            delete output.data;
+          } else throw new Error("Unknown retrieval tool");
+          this.store.save(run, "tool_finished", {
+            id: call.id,
+            name: call.function.name,
+            output,
+          });
+          messages.push({
+            role: "tool",
+            tool_call_id: call.id,
+            content: JSON.stringify(output),
+          });
         }
-        let output: Json;
-        if (call.function.name === "execute_shell") {
-          if (
-            typeof args.command !== "string" ||
-            !args.command ||
-            Buffer.byteLength(args.command) > 65536 ||
-            args.command.includes("\0")
-          )
-            throw new Error("Invalid shell command");
-          output = await session.execute(args.command);
-          for (const artifact of Object.values(
-            output.artifacts ?? {},
-          ) as Json[])
-            if (artifact?.artifactId) artifacts.add(artifact.artifactId);
-        } else if (call.function.name === "read_output") {
-          if (
-            !artifacts.has(args.artifactId) ||
-            !Number.isInteger(args.offset) ||
-            args.offset < 0
-          )
-            throw new Error("Invalid output artifact request");
-          const page = await session.artifact(args.artifactId, args.offset);
-          output = {
-            ...page,
-            text:
-              typeof page.data === "string"
-                ? Buffer.from(page.data, "base64").toString("utf8")
-                : undefined,
-          };
-          delete output.data;
-        } else throw new Error("Unknown retrieval tool");
-        this.store.save(run, "tool_finished", {
-          name: call.function.name,
-          output,
-        });
-        messages.push({
-          role: "tool",
-          tool_call_id: call.id,
-          content: JSON.stringify(output),
-        });
       }
       result.limited = true;
       return [];
