@@ -23,10 +23,18 @@ The database passes SQLite integrity checking and complete row-ID mappings for f
 
 This verifies data integration and baseline reproduction. It does not compare neural-reranked RAG against agentic retrieval. It also does not prove zero training contamination, answer correctness, multi-domain behavior or production scalability. The retrieved vectors were prepared by the dataset author; this run did not pay their original embedding bill. Timings exclude online query embedding.
 
-## Remaining experiment
+## Real-provider smoke, 2026-09-25
+
+Three development queries pass SiliconFlow `Qwen/Qwen3-Embedding-8B` compatibility: cosine similarity exceeds 0.9998 and all three have complete top-ten overlap with stored query retrieval. A real `Qwen/Qwen3-Reranker-8B` probe confirms input usage under `meta.tokens`, including a nonzero CNY estimate at the configured rate. The initial reranking attempt's missing usage remains unknown in its historical record.
+
+Development query `2048` exercises both routes with `deepseek-flash`. RAG completes with ten selected originals and eight validated verbatim citations. After provider-integration fixes, agentic retrieval completes in eleven tool calls with ten selected originals, nine validated citations and no limit stop. These are separate smoke attempts across implementation fingerprints, not a completed comparison pair. A valid verbatim quote does not establish that it supports the answer's claim.
+
+The retained agentic debugging history includes two limit stops without submitted evidence and three rejected responses: multiple calls where one was required, continued searching in the reserved submission step, and paths where bare document IDs were required. The adapter accepts multiple calls sequentially, describes persistent shell state, reserves the final submission slot and explicitly specifies the ID format. Failed attempts and their charges remain in private JSON/CSV exports; none is silently replaced or counted as a successful development pair.
+
+## Other acceptance and remaining runs
 
 The isolated Linux worker acceptance passes on all 57,600 documents and 630 navigation files, including denied host/network access, captured output, fresh-copy restoration, timeout recovery and cleanup after killing the client process. The repository's existing Java native `ephemeral-lifecycle` probe reports successful combined acceptance and cleanup. Browser acceptance exercises the page with clearly marked synthetic model replies; it does not supply retrieval-quality evidence.
 
 One Windows corpus preparation produced 54,962,751 text bytes and a 30,493,785-byte Git bundle. The observed 719.75 seconds includes initial Git preparation and automatic maintenance overhead. It is not a Linux serving-throughput measurement. Directory construction made no model calls; peak preparation memory was not measured in that run.
 
-Complete real-provider query-vector compatibility, the twenty development pairs, the fixed 100-test-query comparison, and human citation-support review before reporting a preferred retrieval route. Keep failed, interrupted and capped questions in the analysis. Record model identities, separate provider currencies, unknown usage and preparation costs. Private questions and integration with production QA remain later decisions.
+Complete the twenty development pairs, the fixed 100-test-query comparison, and human citation-support review before reporting a preferred retrieval route. None of these batches has run. Keep failed, interrupted and capped questions in the analysis. Record model identities, separate provider currencies, unknown usage and preparation costs. Private questions and integration with production QA remain later decisions.
