@@ -5,196 +5,96 @@ authorizes the principal and exports a credential-free Git bundle; the worker
 accepts a signed lease and runs SRT 0.0.75 as a separate unprivileged account.
 It never opens an application repository or accepts a caller-specified host path.
 The [supervisor decision](../notes/implemented/2026-09-05-local-execution-supervisor.md)
-owns topology, alternatives, and remaining integration acceptance.
+owns topology, rationale and alternatives.
 
 ## Runtime
 
-The application's HELLO check requires `codeActProtocol: 1`, `artifactProtocol: 1`, `moveProtocol: 1`, `exportProtocol: 1`, `diskCopyProtocol: 1`, `gitBaselineProtocol: 1`, `workspaceSyncProtocol: 1` and `leaseSandboxProtocol: 1` before exporting content or opening a lease. These markers cover the synchronous bridge, frozen text/binary capture, guarded materialization, retained artifacts, atomic local moves, Git baseline installation, recoverable workspace synchronization and persistent lease sandboxes. Missing or different values reject execution. Install the complete worker source set, including `artifacts.py`, `disk_pool.py`, `command_channel.py` and `shell_loop.py`, and restart its service before deploying the application; existing leases end on restart while account copies remain on disk. The outer signed envelope remains version 1.
+The host needs Linux with cgroup v2, systemd, unprivileged user namespaces, Python 3.10+, Git and the SRT toolchain prepared by [the native spike](../executor-spike/README.md).
 
-Linux with cgroup v2, systemd, unprivileged user namespaces, Python 3.10+, Git,
-and the toolchain prepared by [the native spike](../executor-spike/README.md)
-is required. Install [requirements.txt](requirements.txt) into a root-owned
-virtual environment. The service file expects that environment at
-`/opt/poketto-executor/venv`. Worker code, launcher, tools, configuration, and
-public key must be root-owned and unwritable by both application and execution
-accounts. The application holds the Ed25519 private key; the worker receives only
-its PEM public key. Never put the signing key or a real operator configuration
-in this repository.
+Install [requirements.txt](requirements.txt) into a root-owned virtual environment at `/opt/poketto-executor/venv`, where [poketto-executor.service](poketto-executor.service) expects it, and the worker sources in one directory: `worker.py`, `launcher.py`, `command_channel.py`, `shell_loop.py`, `disk_pool.py`, `resource_pool.py`, `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py`, `materialize.py` and `artifacts.py`. Worker code, launcher, tools, configuration and public key must be root-owned and unwritable by the application and execution accounts. The worker receives only the PEM public key; the application holds the Ed25519 private key. Never put the signing key or a real operator configuration in this repository.
 
-The prepared sandbox tool directory provides `python` as an alias for
-`/usr/bin/python3`, so both command names use the same interpreter and isolation.
-Existing installations can add that root-owned symlink at
-`TOOLS/extracted/usr/bin/python` without changing host-wide Python commands.
+Package worker sources from the selected commit with `git archive` or raw Git blobs so they keep LF line endings; a launcher shebang with CRLF cannot execute on Linux. Record the source revision and hashes, verify the installed files, and run `poketto --help` through the deployed connector after restart.
 
-Provision the [content toolkit](../notes/implemented/2026-09-05-local-execution-supervisor.md#sandbox-toolkit)
-on the Debian-compatible worker host after preparing its root-owned tools directory:
+Before exporting content or opening a lease, the application's HELLO check requires `codeActProtocol`, `artifactProtocol`, `moveProtocol`, `exportProtocol`, `diskCopyProtocol`, `gitBaselineProtocol`, `workspaceSyncProtocol` and `leaseSandboxProtocol`, each equal to 1; any other value rejects execution. Install and restart the matching worker before deploying the application. A restart ends existing leases and their artifacts; account copies remain on disk.
 
-```sh
-sudo bash executor-service/install-sandbox-tools.sh /opt/poketto-executor/tools
-```
+Install [resource_pool.py](resource_pool.py) at `/opt/poketto-executor/resource_pool.py`, and [poketto-executor.slice](poketto-executor.slice) and the service file in `/etc/systemd/system/`, keeping files and parent directories root-owned and unwritable by the application, execution and deployment accounts. The slice is the single source of aggregate limits for the supervisor, every lease sandbox and every helper, including bundle copying, filesystem cache and temporary pages; per-unit limits add to it, and repository storage has its own disk bound. Before starting the service, set finite `MemoryMax`, `MemorySwapMax`, `TasksMax` and `CPUQuota` in a private systemd drop-in, since the checked-in values are examples, and run `systemctl daemon-reload`. Startup and every new OPEN, ATTACH and EXEC reject a missing, unlimited or incorrectly placed pool; startup cleanup, CLOSE, revocation and `--cleanup` still run when that validation fails.
 
-This installs shared distribution packages for Pillow, BeautifulSoup/lxml, pypdf,
-openpyxl, python-docx, `awk`, `zip`, Poppler (`pdftotext`, `pdfinfo`, `pdftoppm`) and
-Noto CJK fonts. Substitute the installation's actual tools path. Package dependencies
-are installed on the host, not copied into each worktree. The script does not run a
-system upgrade or restart services; inspect `apt-get --simulate install` with its
-package list first when updating an existing host. Validate through `repo_exec`,
-including native image/PDF operations, after installation.
-
-Package Linux worker sources from the selected commit with `git archive` or raw Git blobs, retaining LF line endings. Do not package a Windows checkout whose existing files may still contain CRLF: a Python launcher shebang with CRLF cannot execute on Linux. Record the source revision and hashes, then verify installed files and run `poketto --help` through the deployed connector after restart.
-
-[config.example.json](config.example.json) lists all configurable paths and
-per-sandbox resource bounds. Add the required `idleUnitSeconds` setting before upgrading; the example uses 1800, and accepted values are 1 through 86400. Its UID/GID and numeric limits are examples, not approved
-production values. `runtimeRoot` must be a dedicated root-owned directory;
-`exportRoot` contains only the application's atomic `<UUID>.bundle` exports.
-`socketPath` must be under `runtimeRoot`. Configure `appUid` for `SO_PEERCRED`
-validation and `appGid` for socket mode 0660. The execution account cannot be
-the application account or a member of its socket group. Paths must contain no
-spaces, control characters, or systemd property metacharacters.
-
-## Account copy storage
-
-The application uses one disk copy per account, content workspace and reading scope. OAuth grants authorize operations; they do not create separate copies. `copyRoot` must be a dedicated root-owned XFS mount with enforced project quotas and total capacity no greater than `poolBytes`. The application refuses workers without disk-copy protocol 1. The worker requires disk storage; archived-checkpoint transfer and the tmpfs-copy fallback are removed.
-
-The initial storage limits are 4 GiB per copy and 32 GiB for the executor pool. `diskBytes` and `diskInodes` are inherited project hard limits; command memory and temporary storage have separate limits. Place exports, copies, original archives and account metadata on that same bounded filesystem. Provision the mount and application-owned export/metadata directories before starting either service. A preallocated loopback filesystem provides the aggregate bound without remounting an existing host root; [account working copies](../notes/implemented/2026-09-14-account-working-copies.md) records the storage decision and its verification.
-
-Set `poketto.executor.copies.metadata-root` to the application's private metadata directory within this pool. The remaining `poketto.executor.copies` defaults are `max-copies=128`, `max-record-bytes=16777216`, `pool-bytes=34359738368`, `idle-seconds=604800`, `original-bytes=268435456`, `original-expanded-bytes=1073741824` and `original-entries=100000`. Numeric examples require capacity validation for the actual host. Stored-copy count is separate from active worker leases and command concurrency.
-
-Acknowledged full-read saves and moves advance local HEAD and the index before CLI success, leaving unselected working files in place. The signed BASELINE operation imports an incremental authoritative bundle and runs Git inside SRT. A missing prerequisite retries local installation with a full bundle; it never repeats a remote write. Local commit objects remain available through Git history, and distinct staged content is retained in a stash before the index is reset. The original export commit remains the lease identity, while `gitCommit` is the current installed baseline. Public copies cannot invoke BASELINE.
-
-`LOCAL_BASELINE_PENDING` means the remote result was retained but local Git installation did not finish. `poketto status` reports the acknowledged `baseCommit`, installed `gitCommit` and `localBaselinePending`; `poketto recover` finishes installation without republishing. A reopened lease reads its protected baseline marker and attempts pending installation once. A contained helper failure leaves the parent command and lease usable; subsequent inspection does not retry it on every call. Parent cancellation still stops the helper, and unconfirmed helper containment fences the lease. Temporary baseline bundles and pending markers are removed after failures and on attachment. The application still validates save preconditions from its own authoritative baseline, not sandbox Git refs or index entries.
-
-The private journal stores ownership, the pinned original commit, per-file baselines, pending remote-write receipts and the previous worker/application/grant/lease identity. Original text uses one immutable, checksummed archive bound to the copy; extending idle expiry does not rewrite it. Public copies retain their host-owned projection proof and cannot carry a private original archive. Journal publication requires file fsync, atomic rename and directory fsync. An unconfirmed publication cannot acknowledge a completed command.
-
-Each admitted command holds the account writer lock, records execution intent before EXEC and records host write state before acknowledging a save, sync, move or media operation. The worker flushes command changes before a successful response. Reconnection fences the previous writer and attaches the same disk files, original lease identity and installed Git baseline. A previous incomplete command remains visible as potentially partial work; pending saves use the existing Git reconciliation path. No per-command working-tree archive is created.
-
-Successful authorized copy operations renew a seven-day idle deadline. A separate collector scans at most eight journals per minute, rotates through the inventory and rechecks eligibility under the owner lock. Active writers defer collection. Expired copies, incomplete initializations and interrupted disposal are contained before deletion. Disposal intent is durable; a process loss between worker deletion and metadata removal resumes cleanup rather than making the copy executable again. Cleanup does not undo remote Git commits and does not provide an off-host backup.
-
-## Process boundary
-
-The root supervisor only verifies requests, copies bounded exports, mounts
-private disk-copy mounts, and controls fixed systemd units. Git initialization and
-commands run as `execUser`, always through the pinned SRT launcher. A lease starts
-one command unit lazily and reuses its shell, working directory, environment,
-functions, aliases, private `/tmp` and background processes. Copy files survive
-unit resets until explicit disposal or copy expiry. A new lease never reuses
-another lease's unit.
-
-SRT starts in a root-owned bootstrap directory containing only inert deny-marker
-targets, the fixed CLI and the shell driver. The launcher enters the command-modified
-repository only after SRT has installed its boundary; Git and shell configuration cannot influence startup.
-
-Memory, swap, CPU, process count and private temporary storage are bounded by
-systemd for the whole unit, including background processes. The supervisor enforces
-each command's wall deadline; `RuntimeMaxSec` remains only on initialization and
-baseline helpers. `idleUnitSeconds` without a command stops the unit while the
-lease remains renewable. Unit stop always precedes an empty-cgroup assertion.
-The next command starts a new unit and reports `freshSandbox: true`; commands
-reusing the current unit report false. Timeout, output-limit stop and an explicit
-shell exit also reset the unit. Background output after its command completes is
-drained and discarded, never attached to a later command. XFS project quotas bound
-working-tree and history storage.
-
-The shell driver retains at most 128 output readers, including the current pair.
-When background processes keep older pipes open beyond that bound, the oldest
-readers close; a later write to those pipes receives `EPIPE`/`SIGPIPE`. Shell exit
-codes and completion frames are command-reported observations inside the sandbox,
-not proof that background work has stopped. Host cleanup confirms the cgroup is empty.
-
-The worker captures at most 4 MiB of combined stdout/stderr bytes and stops
-the process tree when that limit is exceeded. Each stream returns a preview of
-at most 16 KiB of captured bytes. Longer streams also return immutable artifact
-handles; `truncated` on an artifact means its captured bytes are incomplete,
-while `stdoutTruncated` and `stderrTruncated` describe the previews. An output
-limit preserves the lease and local files after process cleanup. Artifact quota
-or storage failures return explicit per-stream `artifactErrors`. UTF-8 decoding
-replaces malformed preview bytes; use binary artifact pages for exact bytes.
-The complete framed response has a separate 1 MiB bound. Resource-limit,
-cancelled and revoked sessions close under the existing lifecycle policy: they
-cannot retain or deliver artifact handles. Their shortened output reports
-`ARTIFACT_UNAVAILABLE`; the accompanying `terminationReason` identifies the cause.
-
-Install [resource_pool.py](resource_pool.py) with the worker at
-`/opt/poketto-executor/resource_pool.py`, and install
-[poketto-executor.slice](poketto-executor.slice) and
-[poketto-executor.service](poketto-executor.service) in `/etc/systemd/system/`.
-Keep these files and their parent directories root-owned and unwritable by
-application, execution, and deployment accounts. The slice is the single source
-of aggregate limits: set finite `MemoryMax`, `MemorySwapMax`, `TasksMax` and
-`CPUQuota` in a private systemd drop-in before starting the service. Its checked-in
-numbers are bounded examples, not production sizing. Run `systemctl daemon-reload`
-after installation or changes. `resourceSlice` in worker configuration must match
-the service's `Slice`; the default name is `poketto-executor.slice`.
-
-The root supervisor, lease sandboxes and transient helpers explicitly join this pool.
-Its memory budget includes command processes, bundle copying, filesystem cache and temporary pages. Repository storage has a separate disk bound. Per-unit limits remain additional bounds; they do not replace
-the pool. Startup and new OPEN/EXEC operations reject missing, unlimited or
-incorrectly placed pools. Startup cleanup runs before validation, and CLOSE,
-revocation and `--cleanup` remain available when pool validation fails.
-
-The deployment operator runs the same read-only validation without reading
-private worker configuration:
+The deployment script runs the same read-only validation when execution is enabled, without reading private worker configuration; a missing helper or failed check stops deployment:
 
 ```sh
 python3 /opt/poketto-executor/resource_pool.py --service poketto-executor.service
 ```
 
-It checks the actual root process, service membership and kernel cgroup limits.
-The deployment script requires this check when execution is enabled; a missing
-helper or failed check stops deployment. Install matching worker/helper versions
-before redeploying an application that requires execution.
+Provision the [content toolkit](../notes/implemented/2026-09-05-local-execution-supervisor.md#sandbox-toolkit) as root after preparing the tools directory, substituting its actual path:
 
-`maxSessions`, `maxConnections`, `maxRequests`, and `maxExecutionsPerSession`
-bound admission and replay state. An EXECUTION_CAPACITY refusal is reported as not executed; the application closes that lease and the next call attaches the same copy with a fresh execution budget. A full replay table can reject new work until
-signed requests expire. Spring must treat failed renewal as loss of execution
-authority; it cannot assume an earlier successful request keeps a lease alive.
+```sh
+sudo bash executor-service/install-sandbox-tools.sh /opt/poketto-executor/tools
+```
+
+It installs host distribution packages for Pillow, BeautifulSoup/lxml, pypdf, openpyxl, python-docx, `awk`, `zip`, Poppler (`pdftotext`, `pdfinfo`, `pdftoppm`) and Noto CJK fonts, and links `python` and `awk` inside the tools directory without changing host-wide commands. It runs no system upgrade and restarts no service; on an existing host, inspect `apt-get --simulate install` with its package list first. Afterwards validate through `repo_exec`, including native image and PDF operations.
+
+[config.example.json](config.example.json) lists every setting; its UID/GID and numeric limits are examples, not production values. Startup enforces these rules:
+
+| Setting | Rule |
+|---|---|
+| Paths | Absolute; only letters, digits, `_`, `.`, `/` and `-` |
+| `runtimeRoot` | Dedicated root-owned directory; `socketPath` lies directly inside it |
+| `exportRoot` | Holds only the application's atomic `<UUID>.bundle` exports, owned by `appUid` |
+| `copyRoot` | Neither inside nor containing `runtimeRoot`; see [account copy storage](#account-copy-storage) |
+| `appUid`, `appGid` | The only accepted `SO_PEERCRED` peer, and the group of the mode-0660 socket |
+| `execUser` | Unprivileged, not the application account, not a member of `appGid` |
+| `idleUnitSeconds` | Required, 1 through 86400 (example 1800) |
+| `renewAfterSeconds` | Less than `leaseSeconds` |
+| `unitPrefix` | Matches `poketto-exec-[a-z0-9]+-` |
+| `resourceSlice` | Required; the slice the worker must run in |
+
+## Account copy storage
+
+The application keeps one disk copy per account, content workspace and reading scope; OAuth grants authorize operations and create no copies. [Account working copies](../notes/implemented/2026-09-14-account-working-copies.md) owns the storage and lifecycle decisions.
+
+`copyRoot` must be a dedicated root-owned XFS mount with enforced project quotas and a total size no greater than `poolBytes`; the worker refuses any other mount and has no tmpfs fallback. A preallocated loopback filesystem provides that bound without remounting the host root. Place exports, copies, original archives and account metadata on it, and provision the mount and the application-owned export and metadata directories before starting either service.
+
+Each copy receives inherited project hard limits `diskBytes` and `diskInodes` before command access; initial limits are 4 GiB per copy and 32 GiB for the pool. Set `poketto.executor.copies.metadata-root` to the application's private metadata directory in this pool. The other `poketto.executor.copies` defaults are `max-copies=128`, `max-record-bytes=16777216`, `pool-bytes=34359738368`, `idle-seconds=604800`, `original-bytes=268435456`, `original-expanded-bytes=1073741824` and `original-entries=100000`; validate them against the host's capacity. Stored-copy count is separate from active leases and command concurrency.
+
+The private account journal (ownership, pinned original commit, per-file baselines, pending remote-write receipts) and an immutable, checksummed original archive stay with the copy; public copies carry only their host-owned projection proof. Journal publication uses file fsync, atomic rename and directory fsync, and no command is acknowledged before it is confirmed. Each command holds the account writer lock, records its intent before EXEC and its host write state before acknowledging a write, and is flushed to disk before a successful response. Reconnection fences the previous writer and reattaches the same files and baselines; an incomplete earlier command stays visible as potentially partial work. Copies survive transport loss, lease closure, command timeout and service restarts.
+
+Successful authorized operations renew a seven-day idle deadline. A collector removes expired copies and incomplete initializations after containment, deferring to active writers. Disposal intent is durable, so an interrupted deletion resumes and never makes the copy executable again. Cleanup never undoes remote Git commits, and there is no off-host backup.
+
+For full-read copies, an acknowledged save or move installs its authoritative commit as local HEAD and index before the CLI reports success, keeping working files and local commits and stashing distinct staged content. Public copies never receive this update. Save preconditions come only from the application's authoritative baseline, never from sandbox Git state. If local installation fails, the CLI reports `LOCAL_BASELINE_PENDING`, `poketto status` shows `baseCommit`, `gitCommit` and `localBaselinePending`, and `poketto recover` completes it without repeating the remote write. A reopened lease retries a pending installation once. A contained helper failure keeps the lease usable, unconfirmed helper containment fences it, and temporary baseline files are removed after failures and on attachment ([mutable working copy baselines](../notes/implemented/2026-09-15-mutable-working-copy-baselines.md)).
+
+## Process boundary
+
+The root supervisor only verifies requests, copies bounded exports, mounts disk copies and controls fixed systemd units. Git initialization and commands run as `execUser`, always through the pinned SRT launcher; a failed launcher or SRT invocation never runs a replacement command. SRT starts in a root-owned bootstrap directory, and the launcher enters the repository only after SRT has installed its boundary, so Git and shell configuration cannot influence startup.
+
+A lease runs its commands in one systemd unit, started by the first command, whose shell, working directory, environment, `/tmp` and background processes persist ([per-lease command sandboxes](../notes/implemented/2026-09-16-per-lease-command-sandboxes.md)). A new lease never reuses another lease's unit. systemd bounds the unit's memory, swap, CPU, tasks and private temporary storage, including background processes; XFS quotas bound repository storage. A timeout, an output-limit stop, a shell exit or `idleUnitSeconds` without a command stops only the unit, always followed by an empty-cgroup assertion; the next command of the lease starts a new unit reporting `freshSandbox: true`. Background output after its command completes is discarded. Shell exit codes do not prove that background work stopped; only the host's empty-cgroup check does.
+
+The worker captures at most 4 MiB of combined output, stopping the unit beyond it, and returns a preview of at most 16 KiB per stream with malformed UTF-8 replaced. Longer streams also return immutable artifact handles: an artifact's `truncated` means its capture is incomplete, `stdoutTruncated` and `stderrTruncated` describe the previews, and per-stream failures appear in `artifactErrors`. The framed response has a separate 1 MiB bound. Leases closed by resource limits, cancellation or revocation cannot deliver handles; their long output reports `ARTIFACT_UNAVAILABLE`.
+
+`maxSessions`, `maxConnections`, `maxRequests` and `maxExecutionsPerSession` bound admission and replay state. An `EXECUTION_CAPACITY` refusal did not execute; the application closes that lease, and the next call attaches the same copy with a fresh budget. A full replay table can reject new work until signed requests expire. Spring must treat failed renewal as loss of execution authority; an earlier successful request does not keep a lease alive.
 
 ## Working-copy identity
 
-`repo_exec` requires `expectedCopyId`. Use `"new"` to open the account's default copy, creating it only if absent; then retain its returned `copyId`. The same Git commit alone does not prove that a copy survived. Transports do not own the copy lifecycle, and an exact-ID mismatch is refused before this command executes.
+`repo_exec` requires `expectedCopyId`. `"new"` opens the account's default copy for the grant's reading scope, creating it only if absent; afterwards pass the returned `copyId`. A matching Git commit does not prove that a copy survived, transports do not own copies, and an ID mismatch is refused before the command executes.
 
 ```json
 {"expectedCopyId":"new","command":"pwd"}
 ```
 
-An explicit copy ID retains its original reading scope when a grant gains private-read permission. A public-only grant cannot select a full copy. Reconnection is automatic. Results contain `retention.expiresAt` in epoch milliseconds, `retention.resumed` and nullable `retention.lastInterruptedCommand`. No generation or resume input is required. The copy keeps its acknowledged baseline and local edits; it is never reconstructed against current main merely because its metadata is missing. Artifacts and `/tmp` have shorter lifetimes than the copy.
+A copy keeps its reading scope when a grant gains private-read permission, and a public-only grant cannot select a full copy. Reconnection is automatic and needs no generation or resume input. Results contain `retention.expiresAt` in epoch milliseconds, `retention.resumed` and nullable `retention.lastInterruptedCommand`. A copy keeps its acknowledged baseline and local edits and is never rebuilt against current main because metadata is missing. Artifacts and `/tmp` expire sooner than the copy.
 
-`SESSION_REPLACED` identifies an absent, closing or different copy. `EXECUTION_REFUSED` reports `executed: false`, a bounded reason and whether recovery remains available. Reasons distinguish `RECOVERY_REQUIRED`, `BUSY`, `CAPACITY`, `MISSING_COPY`, `EXPIRED` and `UNAVAILABLE`. These refusals describe this request, not an earlier command's outcome. `EXECUTION_UNCONFIRMED` supplies the actual copy ID and expiry when a command may have partly executed. Do not replay it: inspect the same copy and `poketto status`, and reconcile uncertain remote saves with `poketto recover`.
+`SESSION_REPLACED` identifies an absent, closing or different copy. `EXECUTION_REFUSED` reports `executed: false`, whether recovery remains available, and a reason: `RECOVERY_REQUIRED`, `BUSY`, `CAPACITY`, `MISSING_COPY`, `EXPIRED` or `UNAVAILABLE`. Both describe this request, not an earlier command. `EXECUTION_UNCONFIRMED` returns the actual copy ID and expiry when a command may have partly executed. Never replay it: inspect the same copy and `poketto status`, and reconcile uncertain remote saves with `poketto recover`.
 
-`repo_discard` takes the exact copy ID. Current execution permission and account ownership are required; cleanup remains possible after content-read permission is withdrawn. A busy writer prevents deletion. `DISCARDED` and `ABSENT` confirm completion; retry an unconfirmed result only with the same ID. A later `new` can create another copy. Remote Git commits remain unchanged.
+`repo_discard` takes the exact copy ID and requires current execution permission and account ownership, but not content-read permission. A busy writer prevents deletion. `DISCARDED` and `ABSENT` confirm completion; retry an unconfirmed result only with the same ID. Remote Git commits remain unchanged.
 
-The Micrometer registry exposes `poketto.executor.sessions.active`, `poketto.executor.operations.active`, `poketto.executor.sessions.created`, `poketto.executor.sessions.released`, and `poketto.executor.admission.rejected` with bounded reason tags. Management HTTP exposure remains operator configured; these metrics do not measure memory or disk consumption. Real-account and available-connector acceptance is recorded in [client acceptance](../acceptance/clients/README.md); the native fixtures here are synthetic by design.
+Micrometer exposes `poketto.executor.sessions.active`, `poketto.executor.operations.active`, `poketto.executor.sessions.created`, `poketto.executor.sessions.released` and `poketto.executor.admission.rejected` with bounded reason tags. Their HTTP exposure is operator-configured, and they do not measure memory or disk.
 
 ## Wire version 1
 
-Each UNIX connection carries exactly one request and response: an unsigned
-four-byte big-endian length followed by that many UTF-8 JSON bytes, at most
-1,048,576 bytes. Separate connections allow renewal and cancellation while EXEC
-waits. The application must verify the root-owned socket and directory before
-connecting. Responses are unsigned on this authenticated local channel.
+Each UNIX connection carries exactly one request and response: an unsigned four-byte big-endian length followed by that many UTF-8 JSON bytes, at most 1,048,576. Separate connections allow renewal and cancellation while EXEC waits. The application must verify the root-owned socket and directory before connecting. Responses are unsigned on this authenticated local channel.
 
-The only unsigned request is:
+The only unsigned request is `{"version":1,"operation":"HELLO"}`. It returns `ok`, `version`, the protocol markers listed under [runtime](#runtime), `workerBootId`, `maxFrameBytes`, `leaseSeconds` and `renewAfterSeconds`, and no path or key material. The worker takes its exclusive supervisor lock and completes startup cleanup before creating a boot ID, so a new boot ID at the same authenticated socket confirms that earlier leases were cleaned up. A failed HELLO or an unchanged boot ID confirms nothing.
 
-```json
-{"version":1,"operation":"HELLO"}
-```
-
-It returns `ok`, `version`, `workerBootId` (UUID), `maxFrameBytes`, `leaseSeconds`,
-and `renewAfterSeconds`. The boot ID changes after every worker restart. No
-path or key material appears in HELLO.
-The worker acquires its exclusive supervisor lock and completes startup cleanup
-before creating a boot ID or serving HELLO. A new boot at the same authenticated
-socket therefore confirms that prior worker leases were cleaned up. A failed
-HELLO or the same boot ID supplies no such confirmation.
-
-All other requests use this envelope:
-
-```json
-{"payload":"BASE64URL_RAW_JSON_WITHOUT_PADDING","signature":"BASE64URL_ED25519_SIGNATURE_WITHOUT_PADDING"}
-```
-
-Sign the decoded raw payload bytes, not a reserialized object. Reject duplicate
-JSON keys. Every payload contains exactly these fields:
+All other requests use `{"payload":"BASE64URL_RAW_JSON","signature":"BASE64URL_ED25519_SIGNATURE"}` without padding. Sign the decoded raw payload bytes, not a reserialized object, and reject duplicate JSON keys. Every payload contains exactly these fields:
 
 | Field | Meaning |
 |---|---|
@@ -207,275 +107,122 @@ JSON keys. Every payload contains exactly these fields:
 | `leaseId` | Application-generated opaque UUID |
 | `data` | Operation-specific object |
 
-The application sends the following operations for account disk copies.
+The worker rejects `data` with a missing or extra field; [java-frames.json](java-frames.json), written by `WorkerFrameContractTests`, holds one exact sample per operation.
 
-| Operation | Exact `data` fields and behavior |
+| Operation | Behavior |
 |---|---|
-| `OPEN` | `copyId` UUID, `scope` full or public, `exportId` UUID, `bundleSha256` 64 lowercase hex, `bundleBytes` positive integer, `commit` 40 lowercase hex. Blocks until READY or failure. Initialization accepts concurrent RENEW, but has its own hard timeout. |
-| `BASELINE` | `executionId` (empty when idle), `exportId`, `bundleSha256`, `bundleBytes`, `commit` | Full-read copy only. Freeze an existing lease unit, including an idle one, install trusted Git metadata inside SRT, preserve working files, and return `gitCommit`. |
-| `ATTACH` | `copyId`, `scope`, original `commit`. Claims an existing disk copy under a new execution lease after checking the signed account/workspace, pinned baseline and exclusive copy lock. Does not clone or replace files. |
-| `DISCARD` | `copyId`, `scope`, original `commit`. Deletes an owner-matched disk copy only after all execution leases release its lock. Returns DISCARDED or ABSENT; an active copy returns COPY_BUSY. |
-| `EXEC` | `executionId` UUID, `commit`, `command` nonempty UTF-8 text up to 64 KiB without NUL, `timeoutMillis` within worker bounds. Requires READY and the pinned commit; blocks until this command completes or the supervisor contains its stopped unit. |
-| `RENEW` | Empty object. Extends an unexpired INITIALIZING, READY, or RUNNING lease to `expiresAt`. Other operations do not renew it. |
-| `BRIDGE_POLL` | Empty object. Claims one current-command CLI request, or returns null while idle or after a bounded wait; includes the current `executionId`. Contention with input cleanup or another poll returns no request without cancelling the lease. Does not acquire the command operation lock. |
-| `BRIDGE_COMPLETE` | `executionId`, `bridgeRequestId` and `response` object. Publishes one bounded reply only for that running execution and pending request. |
-| `CAPTURE_BEGIN` | `executionId`, `writes` and `deletes` path lists. Freezes the command cgroup, captures up to 64 selected UTF-8 files and 4 MiB, then thaws. Returns a worker-owned capture ID, ordered path/length/SHA-256 manifest and explicit deletions. One capture per lease; use an empty executionId between commands. The next command or unit cleanup releases idle captures; mount cleanup waits for capture. |
-| `CAPTURE_OPTIONAL` | `executionId` and `path`. Captures one current text file or explicit absence for synchronization; missing lease roots and unsafe paths fail. Uses the same cgroup freeze and capture lifetime. |
-| `CAPTURE_BINARY` | `executionId` and `path`. Freezes the command cgroup and copies one regular binary file with a link count of one into protected lease storage, up to 128 MiB. Returns the same immutable capture manifest and uses `CAPTURE_READ`/`CAPTURE_RELEASE`; unsafe paths and missing bytes fail. |
-| `CAPTURE_READ` | `executionId`, `captureId`, zero-based file `index`, byte `offset`, and `limit` from 1 to 65536. Returns a base64 chunk from that immutable capture, never a fresh read of the mutable worktree. |
-| `CAPTURE_RELEASE` | `executionId` and `captureId`. Drops the retained capture; command cleanup also drops it. Capture operations require the matching running execution, or an empty executionId with an idle live unit, and current lease authority. |
-| `MATERIALIZE_BEGIN` | `executionId`, `path`, `bytes` (0 through 1 GiB; the lease disk quota still applies), `sha256`, `expectedSha256` (null means absent), `delete`, and `allowIdentical`. The last flag permits reusing an identical existing file without replacement; otherwise the captured precondition is strict. Allocates one protected incoming file per lease; returns `transferId`. |
-| `MATERIALIZE_CHUNK` | `executionId`, `transferId`, exact next byte `offset`, and base64 `data` of at most 65536 decoded bytes. Stages outside sandbox-readable paths. |
-| `MATERIALIZE_COMMIT` | `executionId` and `transferId`. Verifies staged length/hash, freezes the cgroup, compares the current target with the captured precondition, then atomically replaces or explicitly deletes it. Repeated completion returns its retained receipt without modifying a newer local edit. |
-| `MATERIALIZE_ABORT` | `executionId` and `transferId`. Releases the transfer slot and any staging file; never undoes an acknowledged installation. Command cleanup also releases them. |
-| `MOVE_BEGIN` | `executionId`, plan `bytes` (1 through 64 MiB) and `sha256`. Allocates the lease's protected incoming slot and returns `transferId`. |
-| `MOVE_CHUNK` | `executionId`, `transferId`, exact next byte `offset` and base64 `data` of at most 65536 decoded bytes. |
-| `MOVE_CHECK` | `executionId` and `transferId`. Validates the complete plan and checks local preconditions with the cgroup frozen. Reserves a protected completion receipt before Git is changed. |
-| `MOVE_COMMIT` | `executionId` and `transferId`. Rechecks local preconditions while frozen, renames the source and installs repaired text. Installation failure rolls back; rollback or completion-receipt failure closes the lease. A completed operation returns its protected receipt without overwriting later local edits. |
-| `MOVE_ABORT` | `executionId` and `transferId`. Releases incoming bytes and an unused receipt reservation. Completed receipts remain private to the lease until it closes. |
-| `ARTIFACT_CREATE` | `executionId`, `path`, and `mediaType`. Freezes the matching running command and copies one regular, single-link file into protected lease storage. Returns immutable artifact metadata. |
-| `ARTIFACT_READ` | `artifactId`, byte `offset`, and `limit` from 1 to 65536. Returns a bounded base64 page and metadata from this lease's private artifact map. Works after command completion; never selects a host path. |
-| `ARTIFACT_REMOVE` | `artifactId`. Releases the retained object early; an unknown ID is harmless. Every artifact operation requires the signed lease identity and current authority. |
-| `CLOSE` | Empty object or `reason`: `cancelled`, `session_closed`, or `client_shutdown`. May return CLOSING until cleanup finishes. A CLOSE arriving before OPEN creates a tombstone and returns CLOSED with null commit. |
-| `REVOKE` | `keyIds` and `accountIds`, each a list of at most 1000 UUIDs. Targets the payload workspace. Control identity fields may be zero UUIDs and a zero hash. Tombstones precede cancellation. |
+| `OPEN` | Creates copy `copyId` (`scope` `full` or `public`) at `commit` from export `exportId` after checking its size, at most `maxBundleBytes`, and SHA-256. Blocks until READY or failure within `initTimeoutMillis`, accepting RENEW meanwhile. |
+| `BASELINE` | Full-read copies only. Freezes the lease unit, idle or running, installs the bundle's commit as Git HEAD and index inside SRT, keeps working files and returns `gitCommit`. |
+| `ATTACH` | Claims an existing copy for a new lease after checking account, workspace, scope, pinned commit and the exclusive copy lock. Never clones or replaces files. |
+| `DISCARD` | Deletes an owner-matched copy once no lease holds its lock. Returns DISCARDED or ABSENT, or `COPY_BUSY`. |
+| `EXEC` | Runs `command` (1 byte to 64 KiB of UTF-8, no NUL) within `timeoutMillis`, at most `maxTimeoutMillis`. Requires READY and the pinned `commit`; blocks until completion or containment. |
+| `RENEW` | Extends an unexpired INITIALIZING, READY or RUNNING lease to `expiresAt`. Nothing else renews. |
+| `BRIDGE_POLL` | Claims one pending CLI request of the running command, or returns null when idle or after a bounded wait. Never takes the command lock or cancels on contention. |
+| `BRIDGE_COMPLETE` | Publishes one bounded reply to that pending request of that running execution. |
+| `CAPTURE_BEGIN` | Captures up to 64 selected UTF-8 files and 4 MiB plus explicit deletions; returns a capture ID and an ordered path/length/SHA-256 manifest. |
+| `CAPTURE_OPTIONAL` | Captures one text file, or its absence, for synchronization. |
+| `CAPTURE_BINARY` | Captures one regular, single-link file of up to 128 MiB. |
+| `CAPTURE_READ` | Returns up to 65536 bytes of a captured file, never a fresh worktree read. |
+| `CAPTURE_RELEASE` | Drops the capture. |
+| `MATERIALIZE_BEGIN` | Opens a transfer of up to 1 GiB to `path`, or a deletion, with precondition `expectedSha256` (null means absent); `allowIdentical` accepts an identical existing file. |
+| `MATERIALIZE_CHUNK` | Appends at most 65536 decoded bytes at the exact next offset, staged outside sandbox-readable paths. |
+| `MATERIALIZE_COMMIT` | Verifies length and hash, then with the cgroup frozen checks the precondition and atomically replaces or deletes the target. A repeat returns the retained receipt without touching newer edits. |
+| `MATERIALIZE_ABORT` | Releases the transfer; never undoes an acknowledged installation. |
+| `MOVE_BEGIN` | Opens a move-plan transfer of 1 byte to 64 MiB. |
+| `MOVE_CHUNK` | Appends like `MATERIALIZE_CHUNK`. |
+| `MOVE_CHECK` | Validates the plan and local preconditions with the cgroup frozen and reserves a completion receipt before Git changes. |
+| `MOVE_COMMIT` | Rechecks preconditions while frozen, renames and installs repaired text. Failure rolls back; a failed rollback or receipt closes the lease. A repeat returns the receipt. |
+| `MOVE_ABORT` | Releases the transfer and an unused receipt reservation; completed receipts stay until the lease closes. |
+| `ARTIFACT_CREATE` | Freezes the running command and copies one regular, single-link file into protected storage. |
+| `ARTIFACT_READ` | Returns up to 65536 bytes of an artifact from the lease's private map, also after its command completes. |
+| `ARTIFACT_REMOVE` | Releases an artifact early; an unknown ID is harmless. |
+| `CLOSE` | Optional `reason`: `cancelled`, `session_closed` or `client_shutdown`. Returns CLOSING until cleanup finishes; before OPEN it leaves a tombstone and returns CLOSED. |
+| `REVOKE` | Closes leases of up to 1000 `keyIds` and 1000 `accountIds` in the payload workspace, tombstones first. Identity fields may be zero UUIDs and a zero hash. |
 
-OPEN, RENEW, CLOSE, and EXEC success responses contain `ok: true`, `requestId`,
-`leaseId`, `state`, and `commit`. EXEC also returns `result`:
+Captures freeze the cgroup, allow one per lease, and require the running execution's ID, or an empty one with an idle live unit; the next command or unit cleanup releases them. Materialize and move share one incoming slot per lease, require the running execution and end with command cleanup. Operations on a lease recheck its identity and, except CLOSE, current authority.
+
+Success responses contain `ok: true`, `requestId`, `leaseId`, `state`, `commit` (the original export commit) and `gitCommit` (the installed baseline). DISCARD instead returns `copyId`, `commit` and `state`; REVOKE returns `state` (CLOSING or CLOSED) and `closedCount`; bridge responses add `executionId` and `bridgeRequest`. EXEC adds `result`:
 
 ```json
 {"commit":"40_HEX","exitCode":0,"stdout":"","stderr":"","stdoutTruncated":false,"stderrTruncated":false,"timedOut":false,"freshSandbox":true,"terminationReason":"normal","artifacts":{},"artifactErrors":{}}
 ```
 
-Bridge responses carry the same lease fields plus `executionId` and `bridgeRequest`. Commands use only a lease-specific FIFO, advisory writer lock and read-only reply directory. SRT keeps Unix socket creation disabled. The root worker installs `cli.py` as `poketto` in its protected bootstrap directory; `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py`, `materialize.py` and `artifacts.py` must be installed beside the launcher. The application authorizes every request and rechecks the lease before publishing a reply.
+Errors contain `ok: false`, a fixed `code`, an optional bounded `reason`, and `requestId` when verified, never exception strings, source paths or command text. General codes are `INVALID_FRAME`, `INVALID_REQUEST`, `INVALID_SIGNATURE`, `WORKER_RESTARTED`, `LEASE_EXPIRED`, `AUTH_REVOKED`, `SESSION_NOT_FOUND`, `SESSION_EXISTS`, `SESSION_CLOSED`, `SESSION_BUSY`, `SESSION_COMMIT_MISMATCH`, `INVALID_EXPORT`, `INITIALIZATION_FAILED`, `EXECUTOR_FAILED`, `REPLAY_CONFLICT`, `REQUEST_IN_PROGRESS`, `EXECUTION_ALREADY_STARTED`, `REQUEST_CAPACITY`, `SESSION_CAPACITY`, `EXECUTION_CAPACITY` and `RESPONSE_LIMIT`; copy, capture, transfer and artifact operations add their own, such as `COPY_BUSY` and `MATERIALIZE_CAPACITY`.
 
-The supervisor changes the bridge execution epoch while the unit is frozen. Each
-CLI process inherits its command's execution ID and checks the protected epoch;
-late requests and acknowledgements from completed commands cannot enter a later
-command. This ID correlates execution only and grants no authority. Command
-cleanup discards abandoned requests before another command starts; idle background
-processes cannot invoke host operations.
-
-`poketto edit PATH --old TEXT --new TEXT` changes one exact, unique match in an existing local UTF-8 text file. It refuses missing or ambiguous original text. `poketto create PATH --text TEXT` refuses existing paths. Both capture current local bytes and use the frozen compare-and-replace installation channel, so another local write between capture and installation is rejected. Neither changes the host save baseline or remote Git. Errors carry `EDIT_REJECTED` with a bounded reason, including `OLD_TEXT_NOT_FOUND`, `AMBIGUOUS_MATCH`, `ALREADY_EXISTS`, or `LOCAL_FILE_CHANGED`. The existing text bounds apply; arbitrary shell writes do not receive these edit preconditions.
-
-For long text, `poketto create PATH --stdin` reads UTF-8 from a quoted heredoc;
-`--text-file FILE` reads an existing UTF-8 file. `poketto edit` accepts `--old-file
-FILE` instead of `--old`, and `--new-stdin` or `--new-file FILE` instead of `--new`.
-Final newlines are preserved, including an empty replacement. Input-file paths
-follow the current shell directory; the target path remains repository-relative.
-These options retain absence/exact-match and compare-and-replace checks. They do
-not increase the 16,384-character `repo_exec` command bound or 512 KiB encoded bridge
-frame bound; use existing input files or smaller exact edits for larger content.
-
-```sh
-poketto create private/article.md --stdin <<'MARKDOWN'
-# Article
-
-Quotes, `$variables` and backticks remain ordinary Markdown.
-MARKDOWN
-```
-
-Client-side image transfer uses [MCP URL import or temporary raw upload](../docs/usage.md).
-The executor does not gain outbound networking or access to client-local paths.
-
-
-`poketto save PATH... --delete PATH` sends selections, not file contents. The application captures those files, checks authoritative revisions at its own baseline and uses the shared atomic Git writer. Success advances the host save baseline and installs the acknowledged Git commit as local HEAD and index while preserving unselected local edits. A failed local Git installation is reported as `LOCAL_BASELINE_PENDING` and recovered without repeating the remote write. Public-only sessions reject saves. Conflicts retain local files and the prior baseline; an ambiguous write blocks subsequent saves. `poketto status` exposes the host baseline and last save receipt. For full-read copies, it queries remote main and returns `remote: {state, commit}`: `MATCHES_BASE` or `DIFFERS_FROM_BASE` compares that head with the last confirmed save/sync base; `UNAVAILABLE` retains local status when the remote check fails. An empty remote has a null commit. This comparison does not imply every local file has the same baseline. Status changes neither local work nor baselines; synchronization remains explicit. Public copies instead report `PUBLIC_PROJECTION` and their synthetic commit, without querying the private head. The existing public-projection validity check still guards every command.
-
-`poketto recover` reconciles the exact host-retained commit against current remote history. An observed commit is acknowledged without another push; otherwise recovery retries that same commit only while the original remote base still matches. It revalidates the original patch and current authorization, retains newer local edits, and returns a conflict on divergence. A further lost reply retains the same attempt.
-
-Acknowledged saves and synchronizations persist each selected file's exact baseline text or absence with its commit. Sync retains the remote input, independently of its merged local output. Moves retain the affected remote file versions with their confirmed plan and adopt them after local installation, including non-text presence, available byte revisions and diagnostics; unselected draft media mappings never become the index baseline. Later operations can use these versions after historical cache reads become unavailable, while current authorization and remote conflict checks still apply. Paths still pinned to the original commit use their immutable archive. Missing retained advanced versions fail without a historical-reader fallback. Account journals provide this retention whenever disk execution is enabled; [account working copies](../notes/implemented/2026-09-14-account-working-copies.md) owns the current lifecycle.
-
-Original lookup opens at most one archive reader per admitted command and closes it before releasing the copy writer. Save-state copies preserve that binding; recovery and later commands bind a new reader. Current private-read permission is checked before archive I/O and again before returning data, including known absence. An expired copy, invalid writer or mismatched subject/workspace/commit is refused. Missing or corrupt original archives fail the operation rather than querying historical cache data or inferring that the selected path is absent.
-
-Retained file versions explicitly distinguish text, non-text presence and absence. The account journal must cover every advanced path and every path in an acknowledged pending move. Non-text versions preserve their available exact-byte revision and diagnostics, so restored media checks can distinguish Git collisions from indexed media. Diagnostics are bound to their file path and remain inside the metadata storage quota. Text saves return `NO_WRITABLE_BASELINE` for existing non-text targets before creating a pending write intent.
-
-`poketto move SOURCE DESTINATION` moves saved files, folders and indexed media
-through the shared atomic writer and repairs Markdown references. A full-read
-session and write authority are required; public changes also require publication
-authority. Dirty selected files, changed selected media mappings, unexpected
-source entries and occupied destinations are refused before the remote move.
-Unselected local files and unrelated unsaved media-index entries remain local.
-Materialized originals move with their directory; absent originals stay absent.
-
-Remote acknowledgement and local installation are separate. A pending local move
-reports its commit with `worktreeUpdated: false`; another save, move or sync waits
-for `poketto recover`. Recovery uses the retained request and completion receipt,
-including when a successful installation reply was lost before later local edits.
-`LOCAL_MOVE_CONFLICT` means local installation was refused after the remote commit.
-`poketto recover --skip-local` first confirms any uncertain remote outcome, then
-leaves all local files untouched and releases only the pending installation. It
-retains per-file baselines: subsequent saves cannot resurrect old paths or
-overwrite moved files without explicit `poketto sync` and conflict resolution.
-Plans include a fresh host operation ID, at most 16,384 affected paths, 32 MiB of
-replacement text and 64 MiB of serialized transfer data. Each lease retains at most
-256 protected 4-KiB completion receipts. Staging and receipts consume the lease's
-disk and inode quotas; failure to reserve capacity rejects preflight.
-
-`poketto sync` reconciles the complete workspace with one fixed remote commit. The host inventories at most 16,384 paths and 32 MiB of combined baseline/remote text within 20 seconds before changing files. New and deleted remote paths participate; local-only files remain. Text uses a three-way merge, with LOCAL/BASE/REMOTE markers for overlapping changes. Unchanged local binary files can receive remote blobs up to 128 MiB; conflicting binary edits, unsafe local paths and unsupported remote changes remain in place and are reported as conflicts. Synchronization does not commit remote changes.
-
-Each exact local installation is journaled before the worker performs frozen compare-and-replace. Recovery replays that installation, accepting already-installed identical bytes or an already-completed deletion; a different local edit is preserved with `LOCAL_SYNC_PENDING`. `poketto status` returns `syncPending` and bounded progress. `poketto recover` continues the fixed revision; `poketto recover --skip-local` releases the remainder without undoing installed paths or advancing the whole-workspace commit. Successful completion, including reported conflicts, installs the new Git baseline. Resolve conflicts before saving; later saves still check the authoritative remote. Conflict receipts include the total count and at most 64 paths within 16 KiB, with `conflictsTruncated` when necessary.
-
-`poketto media list [--prefix PREFIX] [--offset N] [--limit N] [--index-version HASH] [--commit COMMIT]`
-lists logical paths, declared media types and sizes without fetching originals.
-Full-read sessions use the current local index, including unsaved imports, or an
-explicit historical index. Public sessions use only the host-owned admitted
-projection and reject historical selection. Local index edits cannot expand that
-public list. Metadata does not prove that original bytes remain available.
-
-Pages are sorted by path and bounded to 12 KiB of compact JSON, with a default
-of 100 entries and a maximum of 200. A byte-limited page can contain fewer entries;
-continue with its `nextOffset` and `indexVersion`, keeping the same `--prefix`
-and `--commit` selection. The version identifies the index, not the query;
-restart at offset zero when changing the selection. A changed version returns
-`MEDIA_INDEX_CHANGED` without stale items. A null `nextOffset` means EOF. The
-prefix is a literal string, so use a trailing slash to select a directory tree.
-Listing does not materialize, upload, save or publish files.
-Historical catalog reads share the private original-read admission pool: four
-concurrent operations globally and two per workspace. Saturation returns
-`MEDIA_UNAVAILABLE`; retry the read after capacity is available.
-
-`poketto media fetch PATH [--commit COMMIT] [--output PATH]` materializes an indexed original into the worktree. Full-read sessions use their current local index, including unsaved imports, or select an authorized historical commit explicitly. The host resolves every original within the admitted workspace. Public sessions use only the admitted projection's host-owned media mapping and exact asset metadata; they expose no original commit identity. Transfer uses the shared original-file authorization and admission limits, bounded chunks and quarantined staging. An identical local file is retained; a different local file is not overwritten. Fetch does not upload, commit or update the index.
-
-`poketto media import FILE --as LOGICAL_PATH --key KEY [--type MIME] [--replace]` captures one regular file while the command cgroup is frozen and stores an immutable original. Captures are bounded to 128 MiB, charged to the lease's temporary storage and transferred in verified chunks. Keys contain 16–128 letters, digits, underscores or hyphens; retry the same bytes and type with the same key. The command updates only the selected entry in the local `.poketto/assets.json`; `--replace` permits a different logical entry while retaining the old original. Missing tracked indexes and collisions with tracked Git files are rejected. If the index changes during upload, the stored original remains available but the newer local index is preserved. `poketto status` retains `lastImport`, distinguishing original storage from index installation. Import requires private write permission and does not commit or publish. Save the index and referring text together with `poketto save`. [Client acceptance](../acceptance/clients/README.md) records real Codex and Claude Code workflows through isolated Spring authentication, PostgreSQL, HTTP MCP and native SRT. That loopback run does not complete the final HTTPS installation acceptance.
-
-`poketto media link LOGICAL_PATH --asset ID --revision REV [--replace]` links an existing original in the current workspace without uploading or fetching its bytes. The host resolves its actual size and media type, checks full-read and private-write permission, and uses the same local-index validation and compare-and-replace as import. A different entry requires `--replace`; repeating the same entry preserves the index's bytes. `lastImport` records the installation result for either command. Linking remains local until `poketto save .poketto/assets.json` (with any referring text); it does not publish. Missing or foreign originals return `MEDIA_UNAVAILABLE` with `reason: NOT_FOUND`.
-
-
-`poketto export PATH... --output FILE [--public]` packages the latest saved documents and media through the host. `.` selects the visible workspace. Full-read sessions default to a private copy; `--public` requires already-public selections and dependencies. Public-read sessions always produce public copies and resolve files and directory selections only through the host's admitted projection mapping. Selection expands to at most 128 source paths; select a smaller folder or explicit files when that bound is exceeded. Missing selections, internal guides and forged source paths fail without returning source coordinates.
-
-The ZIP is verified before the protected incoming-file channel installs it. A different existing destination returns `LOCAL_FILE_CHANGED` and remains untouched; an identical file may be reused. Only the output ZIP is installed: original Git, local edits, the save baseline and publication remain unchanged. Results report path, scope, bytes and SHA-256, never the server handle. `EXPORT_CAPACITY`, `EXPORT_NOT_FOUND`, `EXPORT_UNAVAILABLE` and `INVALID_EXPORT_SELECTION` are bounded failure outcomes. The command retains the ordinary execution/bridge deadline and lease disk quota; large packages can exceed either. Archive transfer has a 1 GiB protocol ceiling, while server export limits can be lower. Media upload and artifact return retain their separate 128 MiB limits. Use `poketto artifact create FILE --type application/zip` when a completed ZIP fits the artifact limits and needs to be returned over MCP.
-
-Temporary host packages are released after each export attempt, including failed installation, and on execution-session shutdown. Cancellation does not authorize completing a transfer after the session has stopped. Worker installation must precede application deployment because older workers lack the export protocol marker.
-
-Incoming files must also fit the session's currently available filesystem space,
-leaving 1 MiB for bridge replies and path installation. Space is checked again
-while streaming; `MATERIALIZE_CAPACITY` reports admission failure or disk/quota
-exhaustion without discarding the session's existing files. Free local space,
-select fewer files, or use browser export for packages exceeding the worker's
-capacity or ordinary command deadline. If media import has already stored the
-original when local index installation runs out of space, the capacity response
-includes its receipt with `originalStored: true` and `indexUpdated: false`.
-Free space and retry the same bytes, type and operation key to finish the local index.
-Unexpected transfer/storage failures still
-require session cleanup. Export authorization failures return `ACCESS_DENIED`.
-
-### Selection diagnostics
-
-`INVALID_SELECTION` and `INVALID_MEDIA_REQUEST` include a stable `reason` for rejected local inputs. Reasons are `INVALID_ARGUMENTS`, `INVALID_PATH`, `SELECTION_LIMIT`, `PATH_COLLISION`, `NOT_FOUND`, `NOT_REGULAR_FILE`, `NOT_UTF8`, `TEXT_LIMIT`, `BINARY_LIMIT`, `FILE_CHANGED`, `CAPTURE_UNAVAILABLE`, or `NO_WRITABLE_BASELINE`. Missing selected files are not deletions; use an explicit `--delete`. Unsafe or unavailable captures may be indistinguishable and return `CAPTURE_UNAVAILABLE`. Diagnostics never include host exception text or storage paths. Existing conflict and uncertain-write codes retain their recovery behavior.
-
-### Returned artifacts
-
-`poketto artifact create FILE [--type MIME]` returns an immutable snapshot of a
-repository-relative regular file. `poketto artifact remove ID` releases it early.
-The worker retains at most 16 artifacts and 256 MiB per lease, with a 128 MiB
-per-file bound and a five-minute lifetime. Retained bytes count against the lease
-disk quota. The protected copies are inaccessible to sandbox commands. There is
-no shared object registry or cross-workspace deduplication; closing or revoking
-the lease invalidates handles and cleans up their storage.
-
-The `get_artifact` MCP tool serves a handle to any MCP session of the same account,
-workspace and reading scope while the lease that captured it stays open, after
-current authorization; it is not bound to the originating MCP session. A request
-under a different credential of that account first moves the copy to a new lease,
-which closes the old lease and its artifacts. A public-only grant never reads a
-full copy's artifacts. Its default `auto` format renders validated
-PNG, JPEG, GIF or WebP images up to 16 MiB in full, pages UTF-8 text, and returns
-other files, including SVG, as exact binary resource pages. Invalid raster bytes
-or a mismatched image digest fail preview validation; use `format=bytes` to read
-those original bytes without rendering them. `format=bytes` always returns binary
-pages. Page `offset` and `nextOffset` count bytes; `limit` is 4–65536 bytes (8192 by default), and a
-null `nextOffset` means EOF. Image previews require offset zero and ignore the
-page limit. Public-scope reads recheck the admitted publication before delivery.
-Neither creating nor reading an artifact uploads an original, writes Git,
-publishes content, or creates an independently accessible URL.
+Identical signed request bytes return their cached result while the signature is valid. A reused request ID with different bytes fails, as does a reused execution ID under a new request ID. An absent response never authorizes retrying the command: CLOSE the session and report an unknown result. Tombstones outlive every request signed before cancellation or revocation; fresh signatures after that boundary are Spring's authorization responsibility.
 
 ### Termination and cleanup
 
-`terminationReason` is `normal`, `timeout`, `resource_limit`, `output_limit`,
-`cancelled`, `session_closed`, `client_shutdown`, `lease_expired`, `sandbox_failed`, or `revoked`.
-`normal` may have a nonzero exit code. An execution timeout keeps the same copy
-after the complete command control group is confirmed empty. Prior files and
-partial command work remain local; the next command receives fresh shell state and `/tmp`, reported by `freshSandbox: true`.
-Failed containment still closes the copy. Resource exhaustion and lifecycle
-cancellation retain their existing closure behavior. Failed OPEN initialization is an operation
-error, never a ready session. A failed launcher or SRT invocation does not run a
-replacement command.
+`terminationReason` is `normal`, `timeout`, `resource_limit`, `output_limit`, `cancelled`, `session_closed`, `client_shutdown`, `lease_expired`, `sandbox_failed` or `revoked`; `normal` may have a nonzero exit code. A timeout or output-limit stop keeps the lease, prior files and partial work once the unit's control group is confirmed empty. Failed containment closes the lease and keeps the copy locked against another lease; resource exhaustion and lifecycle cancellation also close the lease. Failed OPEN initialization is an operation error, never a ready session.
 
-REVOKE returns `ok`, `requestId`, `state` (CLOSING or CLOSED), and `closedCount`.
-Poll CLOSE or REVOKE with fresh request IDs until CLOSED. Reusing a request ID
-returns its cached response and therefore does not observe a state transition.
-A signed CLOSE matching the session identity remains available after revocation
-so the application can confirm cleanup. It grants no new execution or renewal.
-Repeated close requests preserve the first cancellation reason.
+Poll CLOSE or REVOKE with fresh request IDs until CLOSED; a reused request ID returns its cached response. A signed CLOSE matching the session identity works after revocation so the application can confirm cleanup, and grants no execution or renewal. Repeated close requests keep the first cancellation reason.
 
-Errors contain `ok: false`, a fixed `code`, and `requestId` when verified. They
-do not contain exception strings, source paths, or command text. Codes include
-`INVALID_FRAME`, `INVALID_REQUEST`, `INVALID_SIGNATURE`, `WORKER_RESTARTED`,
-`LEASE_EXPIRED`, `AUTH_REVOKED`, `SESSION_NOT_FOUND`, `SESSION_EXISTS`,
-`SESSION_CLOSED`, `SESSION_BUSY`, `SESSION_COMMIT_MISMATCH`, `INVALID_EXPORT`,
-`INITIALIZATION_FAILED`, `EXECUTOR_FAILED`, `REPLAY_CONFLICT`,
-`REQUEST_IN_PROGRESS`, `EXECUTION_ALREADY_STARTED`, `REQUEST_CAPACITY`,
-`SESSION_CAPACITY`, `EXECUTION_CAPACITY`, and `RESPONSE_LIMIT`.
+## Sandbox CLI
 
-Identical signed request bytes return their cached result while their signature
-is valid. A reused request ID with different bytes fails. A reused execution ID
-with a new request ID also fails. An absent response never authorizes retrying
-the command. CLOSE the affected session and report an unknown result instead.
-Tombstones outlive every request signed before cancellation or revocation;
-fresh signatures after that boundary remain Spring's authorization responsibility.
+Commands reach the host only through `poketto` (`cli.py` in the lease's protected bootstrap directory), which uses a lease-specific FIFO, writer lock and read-only reply directory; SRT keeps Unix socket creation disabled. The application authorizes every request and rechecks the lease before replying. The supervisor changes the bridge epoch with the unit frozen, so requests from completed commands or idle background processes never reach the host; the execution ID each CLI process inherits grants no authority. The sandbox has no outbound network or access to client-local paths; clients send images through [MCP URL import or temporary raw upload](../docs/usage.md).
+
+`poketto edit PATH --old TEXT --new TEXT` replaces one exact, unique match in an existing UTF-8 file; `poketto create PATH --text TEXT` creates an absent file. `--stdin`, `--text-file`, `--old-file`, `--new-stdin` and `--new-file` read long UTF-8 text with final newlines, resolving files from the shell's directory. Both install through frozen compare-and-replace, so an intervening local write fails, and neither changes the save baseline or remote Git. Failures return `EDIT_REJECTED` with `OLD_TEXT_NOT_FOUND`, `AMBIGUOUS_MATCH`, `ALREADY_EXISTS` or `LOCAL_FILE_CHANGED`. The 16,384-character `repo_exec` command and 512 KiB encoded bridge frame still bound the text; ordinary shell writes get none of these checks.
+
+`poketto save PATH... --delete PATH` sends selections, not contents. The application captures them, checks authoritative revisions at its own baseline and commits through the shared atomic Git writer; success advances the save baseline and the local Git baseline while unselected edits stay local. Public-only sessions cannot save. A conflict keeps local files and the prior baseline, and an ambiguous write blocks later saves.
+
+`poketto status` reports the copy ID, host baseline and last save receipt. On full-read copies it compares remote main with the last confirmed save or sync base: `remote.state` is `MATCHES_BASE` or `DIFFERS_FROM_BASE` with `remote.commit` (null when empty), or `UNAVAILABLE`. That comparison does not certify every file, and status changes nothing. Public copies report `PUBLIC_PROJECTION` and their synthetic commit without querying the private head.
+
+`poketto recover` reconciles the exact retained commit with current remote history. An observed commit is acknowledged without another push; otherwise the same commit is retried only while the original remote base still matches. Recovery revalidates the patch and current authorization, keeps newer local edits, and reports divergence as a conflict. A further lost reply keeps the same attempt.
+
+Acknowledged saves, syncs and moves record each affected file's version (text, non-text presence with its byte revision and diagnostics, or absence); other paths use the original archive, and unselected draft media mappings never become the index baseline. Later operations use these records, never historical caches, and check private-read permission before and after archive reads. A missing record or archive fails the operation instead of falling back or inferring absence. A text save onto an existing non-text file returns `NO_WRITABLE_BASELINE` before any write intent.
+
+`poketto move SOURCE DESTINATION` moves saved files, folders and indexed media through the shared atomic writer and repairs Markdown references. It needs a full-read session and write authority, plus publication authority for public changes. Dirty selected files, changed selected media mappings, unexpected source entries and occupied destinations are refused before the remote move; unselected edits stay local, and materialized originals move with their directory. Plans are limited to 16,384 paths, 32 MiB of replacement text and 64 MiB of transfer data. A lease keeps at most 256 completion receipts of 4 KiB; receipts and staging count against its quotas, and a failed reservation rejects preflight.
+
+A move whose local installation is pending returns `worktreeUpdated: false`, and later saves, moves and syncs wait for `poketto recover`, which uses the retained request and receipt even when a successful reply was lost. `LOCAL_MOVE_CONFLICT` means installation was refused after the remote commit. `poketto recover --skip-local` confirms any uncertain remote outcome, leaves local files untouched and releases the pending installation while keeping per-file baselines, so later saves cannot resurrect old paths or overwrite moved files without an explicit `poketto sync`.
+
+`poketto sync` merges one fixed remote commit into the workspace, including new and deleted paths, and commits nothing. The host first inventories at most 16,384 paths and 32 MiB of text within 20 seconds. Text merges three ways with LOCAL/BASE/REMOTE markers; local-only files remain; unchanged local binaries can receive remote blobs up to 128 MiB. Conflicting binary edits, unsafe paths and unsupported changes stay in place as conflicts, and receipts list the total and at most 64 paths within 16 KiB, with `conflictsTruncated`. Each installation is journaled first. After interruption `poketto status` shows `syncPending`; `poketto recover` continues, preserving a different local edit with `LOCAL_SYNC_PENDING`, and `--skip-local` releases the rest without undoing installed paths. Completion, conflicts included, installs the new Git baseline; resolve conflicts before saving.
+
+`poketto media list [--prefix PREFIX] [--offset N] [--limit N] [--index-version HASH] [--commit COMMIT]` lists logical paths, declared types and sizes; the originals may no longer exist. Full-read sessions read the local index, including unsaved imports, or a historical one; public sessions read only the admitted projection, never local edits or history. Pages are sorted by path within 12 KiB of JSON, 100 entries by default and 200 at most. Continue with `nextOffset` and `indexVersion` under the same prefix and commit; a changed index returns `MEDIA_INDEX_CHANGED`, and a null `nextOffset` means EOF. The prefix is literal, so end a directory with a slash. Historical reads share the original-read pool of four operations globally and two per workspace, returning `MEDIA_UNAVAILABLE` when saturated.
+
+`poketto media fetch PATH [--commit COMMIT] [--output PATH]` materializes an indexed original into the worktree from the local index or an authorized historical commit; public sessions use only the projection's host-owned mapping and never see original commits. It shares original-read authorization and admission limits, keeps an identical local file, never overwrites a different one, and does not upload, commit or change the index.
+
+`poketto media import FILE --as LOGICAL_PATH --key KEY [--type MIME] [--replace]` captures one regular file of up to 128 MiB with the cgroup frozen, charged to temporary storage, and stores an immutable original. Keys have 16–128 letters, digits, `_` or `-`; retry the same bytes and type with the same key. Only that entry of the local `.poketto/assets.json` changes; `--replace` replaces a different entry and keeps the old original. Missing tracked indexes and collisions with tracked Git files are rejected. If the index changed during upload, the original stays stored and the newer index is kept; `lastImport` in `poketto status` shows both steps. Import needs private write permission and neither commits nor publishes.
+
+`poketto media link LOGICAL_PATH --asset ID --revision REV [--replace]` adds an existing original of this workspace to the local index without transferring bytes, with the same permissions, validation and compare-and-replace as import; repeating the same entry keeps the index bytes. Missing or foreign originals return `MEDIA_UNAVAILABLE` with `reason: NOT_FOUND`. Save the index with its referring text through `poketto save`.
+
+`poketto export PATH... --output FILE [--public]` packages the latest saved documents and media as a ZIP; `.` selects the visible workspace. Full-read sessions default to private content, and `--public` requires public selections and dependencies; public-read sessions always export public content through the projection mapping. Selections expand to at most 128 source paths. Missing selections, internal guides and forged paths fail without revealing source coordinates. The verified ZIP is the only change, locally or remotely; a different existing destination returns `LOCAL_FILE_CHANGED` untouched, and an identical one may be reused. Results report path, scope, bytes and SHA-256. Failures are `EXPORT_CAPACITY`, `EXPORT_NOT_FOUND`, `EXPORT_UNAVAILABLE`, `INVALID_EXPORT_SELECTION` and `ACCESS_DENIED`. Transfer is capped at 1 GiB or lower server limits, within the command deadline and disk quota. Host packages are released after every attempt and at shutdown; cancellation never completes a stopped transfer.
+
+Incoming files must fit the available space with 1 MiB to spare, checked again while streaming. `MATERIALIZE_CAPACITY` reports the shortfall without discarding existing files; free space, select fewer files, or use browser export. When media import stored the original but could not install the index, the receipt shows `originalStored: true` and `indexUpdated: false`; retry with the same bytes, type and key after freeing space. Other transfer or storage failures require session cleanup.
+
+### Selection diagnostics
+
+`INVALID_SELECTION` and `INVALID_MEDIA_REQUEST` include a stable `reason` for rejected local inputs. Reasons are `INVALID_ARGUMENTS`, `INVALID_PATH`, `SELECTION_LIMIT`, `PATH_COLLISION`, `NOT_FOUND`, `NOT_REGULAR_FILE`, `NOT_UTF8`, `TEXT_LIMIT`, `BINARY_LIMIT`, `FILE_CHANGED`, `CAPTURE_UNAVAILABLE`, or `NO_WRITABLE_BASELINE`. Missing selected files are not deletions; use an explicit `--delete`. Unsafe or unavailable captures may be indistinguishable and return `CAPTURE_UNAVAILABLE`. Diagnostics never include host exception text or storage paths.
+
+### Returned artifacts
+
+`poketto artifact create FILE [--type MIME]` returns an immutable snapshot of a repository-relative regular file, and `poketto artifact remove ID` releases it early. A lease retains at most 16 artifacts and 256 MiB, charged to its disk quota, with 128 MiB per file and a five-minute lifetime. Sandbox commands cannot read the protected copies, and closing or revoking the lease invalidates handles and deletes their storage.
+
+`get_artifact` serves a handle to any MCP session of the same account, workspace and reading scope while the capturing lease stays open; a request under another credential of the account moves the copy to a new lease, ending the old lease's artifacts, and a public-only grant never reads a full copy's artifacts ([session artifacts](../notes/implemented/2026-09-10-session-artifacts.md)). Every read rechecks authorization, and public-scope reads recheck the publication. Its default `auto` format renders validated PNG, JPEG, GIF or WebP images up to 16 MiB in full, pages UTF-8 text, and returns other files, including SVG, as binary resource pages. Invalid raster bytes or a mismatched digest fail preview; `format=bytes` always returns binary pages. `offset` and `nextOffset` count bytes, `limit` is 4–65536 (8192 by default), and a null `nextOffset` means EOF. Image previews require offset zero. Artifacts never upload originals, write Git, publish or create URLs.
 
 ## Verification
 
-The root-only `python3 executor-service/disk_pool_probe.py` creates a disposable
-512 MiB XFS mount. It kills allocation processes before identity publication,
-after identity fsync and after publication, then checks recovery and preservation
-of an existing copy. Both the phase results and cleanup must report `PASS`.
-
-Run protocol and state tests on Linux with the pinned Python dependencies:
+Run the protocol and state tests on Linux with the pinned Python dependencies; `./gradlew executorServiceTests` runs them there, or in a pinned Linux container on Windows:
 
 ```sh
 python -m unittest discover -s executor-service -v
 ```
 
-The root-only [native probe](native_probe.py) creates synthetic history, a
-temporary account, transient units, and an isolated 512 MiB XFS pool with per-copy project quotas. It verifies the
-actual signed socket entry point and cleans units, mounts, and the account in
-`finally`. Its runtime uses a new root-owned directory under `/run` and the
-production `UMask=0077`; this prevents the private `/tmp` write grant from
-concealing a production filesystem-mount error. Use a new disposable root
-directory on disk containing worker.py, disk_pool.py, resource_pool.py, native_pool.py,
-launcher.py, bridge.py, cli.py, session_files.py, binary_capture.py, materialize.py, artifacts.py, native_probe.py, and a prepared `tools` directory. Install the
-pinned Python dependencies into `tools/python`; the probe's supervisor uses
-that directory. `prepare-native.sh NEW_TOOLS_DIRECTORY executor-spike` creates
-the pinned SRT toolchain without installing global packages.
+The root-only probes below use synthetic, disposable fixtures, and each needs `cleanup: PASS`. [Client acceptance](../acceptance/clients/README.md) covers real accounts, and [executor-native](../executor-native/README.md) probes the Java adapter with this worker.
+
+`python3 executor-service/disk_pool_probe.py` kills allocation on a disposable 512 MiB XFS mount before identity publication, after identity fsync and after publication, and checks recovery and an existing copy. Every phase must report `PASS`.
+
+The [native probe](native_probe.py) drives the signed socket entry point against a temporary account, transient units and a 512 MiB XFS pool with per-copy quotas, under `/run` with the production `UMask=0077` ([why](../notes/implemented/2026-09-05-local-execution-supervisor.md#supervisor-and-worker)). Prepare a new disposable directory on disk with `native_probe.py`, `native_pool.py`, the worker sources listed under [runtime](#runtime) and a `tools` directory created by `prepare-native.sh NEW_TOOLS_DIRECTORY executor-spike`, with the pinned Python dependencies in `tools/python`.
 
 ```sh
 sudo env PYTHONPATH=/temporary/probe/tools/python python3 /temporary/probe/native_probe.py --root /temporary/probe
 ```
 
-Add `--baseline-only` to focus on baseline advancement, helper timeout cleanup and parent cancellation with the real worker. Only exit zero plus both `summary: PASS` and `cleanup: PASS` completes the probe.
-The disposable source, tools, and logs remain for inspection; remove that exact
-verified probe directory after its mounts and units are gone. The checked-in
-[evidence](evidence.jsonl) records 19 synthetic checks, including supervisor and
-command membership in the finite resource pool, with the worker, launcher,
-probe and pool source hashes. Those hashes define the verified implementation;
-changed sources require a new run. The record does not claim production sizing,
-actual MCP clients, or formal deployment.
+`--baseline-only` and `--lease-sandbox-only` limit the run to baseline installation or to lease sandbox reuse and resets. Success requires exit zero, `summary: PASS` and `cleanup: PASS`; remove the directory after its mounts and units are gone. [evidence.jsonl](evidence.jsonl) records one run with its source hashes and proves only those sources, not production sizing, MCP clients or deployment.
 
-The separate [resource pool probe](resource_pool_probe.py) needs only root,
-systemd/cgroup v2, Python, `runuser` with a `nobody` account, `mount`, and the kernel
-journal. Place it beside `resource_pool.py` and `native_pool.py`, then run:
+The [resource pool probe](resource_pool_probe.py) needs root, systemd with cgroup v2, Python, `runuser` with a `nobody` account, `mount` and the kernel journal. Place it beside `resource_pool.py` and `native_pool.py` and give it a new output path:
 
 ```sh
 sudo python3 resource_pool_probe.py --output /temporary/new-pool-evidence.json
 ```
 
-The output must not exist. The probe creates a new 96 MiB pool and a 128 MiB tmpfs,
-checks the unprivileged deployment helper against real service identities and
-missing limits, then verifies that 32 MiB remains charged after its allocating
-process exits. A second 80 MiB write must hit the parent memory limit. It records
-kernel counters and scoped OOM evidence, and removes only its own units, mount,
-slice and files. Both `result: PASS` and `cleanup: PASS` are required. This is an
-isolated aggregate-budget test, not an SRT or production-capacity acceptance.
-The [recorded result](resource-pool-evidence.json) contains source hashes and
-synthetic counters from a Linux cgroup v2 run; it does not include operator paths
-or production limits.
+In a 96 MiB pool it checks the deployment helper against real services and missing limits, and verifies that tmpfs pages stay charged after their writer exits, so the pool's memory limit stops a second write. It removes only what it created and requires `result: PASS`; it is not an SRT or production-capacity acceptance. The [recorded result](resource-pool-evidence.json) holds source hashes and synthetic counters.
