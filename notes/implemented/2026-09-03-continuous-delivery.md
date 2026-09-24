@@ -33,6 +33,8 @@ Production and integration tests select the same [official PostgreSQL 17 image](
 
 ### Optional automatic deployment
 
+The [independent retrieval lab](2026-09-24-retrieval-lab.md) defines an experiment-only push exception to automatic deployment; image publication and explicit revision-based deployment remain available.
+
 Without a configured target the workflow succeeds after publication. The `deploy` job runs only when the repository variable `POKETTO_DEPLOY_ENABLED` is `true`; it uses the GitHub `production` environment, a fixed `production-deploy` concurrency group that never cancels an in-progress deployment, and workflow-level cancellation only for pull requests. Open-source CI never depends on a maintainer's private server.
 
 The deployment job allows 180 minutes for archive transfer and installation.

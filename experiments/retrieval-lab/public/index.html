@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Retrieval lab · Poketto</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <a href="/" class="brand">poketto <span>/ retrieval lab</span></a
+      ><span class="badge">独立实验 · FiQA</span>
+    </header>
+    <main>
+      <section class="intro">
+        <p class="eyebrow">检索，还是调查？</p>
+        <h1>同一批文章，两种找答案的方法。</h1>
+        <p>对照传统 RAG 与文件搜索代理。看证据、过程和花费，再判断适用场景。</p>
+        <div id="readiness" role="status"></div>
+      </section>
+      <div class="workspace">
+        <aside>
+          <div class="row">
+            <h2>实验记录</h2>
+            <button id="refresh" class="quiet">刷新</button>
+          </div>
+          <div id="history"></div>
+          <div class="exports">
+            <a href="/api/export?format=json">导出 JSON</a
+            ><a href="/api/export?format=csv">导出 CSV</a>
+          </div>
+        </aside>
+        <div class="work">
+          <form id="question-form" class="panel">
+            <label for="benchmark">问题来源</label
+            ><select id="benchmark">
+              <option value="">自由提问</option>
+            </select>
+            <label for="question">想查些什么？</label
+            ><textarea
+              id="question"
+              rows="3"
+              placeholder="例如：抵押贷款提前还款需要考虑哪些因素？"
+              required
+              maxlength="8000"
+            ></textarea>
+            <div class="controls">
+              <label><input id="rag" type="checkbox" checked />传统 RAG</label
+              ><label
+                ><input id="agentic" type="checkbox" checked />Agentic
+                search</label
+              ><label
+                ><input
+                  id="clarify"
+                  type="checkbox"
+                  checked
+                />必要时先澄清</label
+              ><button type="submit">开始检索 ↗</button>
+            </div>
+            <p class="hint">
+              自由问题需要先通过查询向量兼容性检查。公开题目复用已有向量，不改写题意。
+            </p>
+          </form>
+          <p id="error" role="alert"></p>
+          <section id="active" hidden>
+            <div class="row">
+              <div>
+                <h2 id="run-title"></h2>
+                <p id="run-status"></p>
+              </div>
+              <div>
+                <button id="retry" class="quiet" hidden>显式重试</button
+                ><button id="cancel" class="quiet">取消</button>
+              </div>
+            </div>
+            <form id="clarification" class="panel" hidden>
+              <h3 id="clarification-question"></h3>
+              <div id="choices"></div>
+              <label for="reply">选择或补充说明</label
+              ><input id="reply" maxlength="8000" required /><button
+                type="submit"
+              >
+                继续两条路线
+              </button>
+            </form>
+            <div class="comparison">
+              <article id="rag-result" class="panel route rag"></article>
+              <article
+                id="agentic-result"
+                class="panel route agentic"
+              ></article>
+            </div>
+            <details class="panel">
+              <summary>调用过程与工具输出</summary>
+              <div id="events"></div>
+            </details>
+            <div id="usage" class="hint"></div>
+          </section>
+          <section class="panel benchmark-panel">
+            <p class="eyebrow">可复现实验</p>
+            <h2>先校准，再比较。</h2>
+            <p>
+              离线全量检索校准在数据准备时完成。开发集用于调试；正式对照固定抽取
+              100 道测试题，每题依次运行两条路线。
+            </p>
+            <p id="estimate"></p>
+            <div class="controls">
+              <button id="compatibility" class="quiet">
+                检查向量兼容性 · 3 个请求</button
+              ><button id="dev-batch" class="quiet">开发集 · 20 题</button
+              ><button id="test-batch" class="quiet">正式对照 · 100 题</button>
+              <button id="cancel-all" class="quiet">停止全部实验</button>
+            </div>
+            <p class="hint">
+              公开题目可能出现在模型训练数据里；这些结果不能直接代表私有知识库效果。引用原文匹配只是检查，证据是否支持结论仍需人工审阅。
+            </p>
+          </section>
+        </div>
+      </div>
+    </main>
+    <dialog id="batch-dialog">
+      <h2 id="batch-title"></h2>
+      <p id="batch-estimate"></p>
+      <p>
+        启动会调用付费模型，按当前固定配置顺序运行。已完成题目会跳过；中断的调用不会自动重放。
+      </p>
+      <div class="controls">
+        <button id="batch-dismiss" class="quiet">暂不开始</button
+        ><button id="batch-confirm">启动本批实验</button>
+      </div>
+    </dialog>
+  </body>
+</html>

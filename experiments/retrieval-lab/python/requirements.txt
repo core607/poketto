@@ -1,0 +1,8 @@
+numpy==2.2.6
+sqlite-vec==0.1.6
+scipy==1.15.3
+scikit-learn==1.6.1
+joblib==1.4.2
+threadpoolctl==3.6.0
+tqdm==4.67.1
+scrydb @ git+https://github.com/breuert/scrydb.git@cdbc97582be91f41bf9cb0d23eab53465fcc9280

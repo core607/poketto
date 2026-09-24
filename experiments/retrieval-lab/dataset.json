@@ -1,0 +1,12 @@
+{
+  "dataset": "breuert/scrydb-eval",
+  "revision": "ea5a009b6b0af4f2d164e95abca057090210db77",
+  "sourceRevision": "400eb01d010156a0397d01347851196b290c5f5b",
+  "scrydbRevision": "cdbc97582be91f41bf9cb0d23eab53465fcc9280",
+  "databasePath": "indices/beir/fiqa.db",
+  "databaseSha256": "45ac7d656e1446daee631a7a6a0bc780dfb97faa102e89cf6c2eac0e817899a2",
+  "databaseBytes": 1522446336,
+  "dimensions": 4096,
+  "expectedTestQueries": 648,
+  "queryInstruction": "Given a financial question, retrieve user replies that best answer the question"
+}

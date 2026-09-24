@@ -1,0 +1,22 @@
+{
+  "name": "poketto-retrieval-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.19.0",
+    "npm": "12.0.2"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test --test-concurrency=1 dist/test/*.test.js",
+    "format:check": "prettier --check src test public package.json tsconfig.json dataset.json README.md REPORT.md",
+    "check": "npm run format:check && npm run build && npm test && python -m unittest discover -s python -p test_*.py",
+    "start": "node dist/src/server.js"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3"
+  }
+}
