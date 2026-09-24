@@ -1,10 +1,14 @@
 import { normalizeUri } from "micromark-util-sanitize-uri";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
-import rehypeSlug from "rehype-slug";
-import remarkGfm from "remark-gfm";
 import { articleHref, safeImage, safeLink } from "../lib/format";
-import { HEADING_PREFIX, readingHeading } from "../lib/reading-heading";
+import {
+  HEADING_PREFIX,
+  headingAnchors,
+  headingHref,
+  markdownSyntax,
+  readingHeading,
+} from "../lib/reading-heading";
 import { MediaPlayer } from "./media-player";
 
 export function Markdown({
@@ -56,9 +60,9 @@ export function Markdown({
     <div className="markdown">
       <ReactMarkdown
         skipHtml
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={markdownSyntax}
         rehypePlugins={[
-          [rehypeSlug, { prefix: HEADING_PREFIX }],
+          ...headingAnchors,
           [readingHeading, { title: preview ? undefined : pageTitle }],
           // Only fenced blocks that name their language are highlighted; nothing is guessed.
           [rehypeHighlight, { detect: false }],
@@ -186,5 +190,5 @@ function resolvedLink(
 function headingFragment(fragment: string) {
   return fragment === "#"
     ? fragment
-    : "#" + HEADING_PREFIX + normalizeUri(fragment.slice(1));
+    : headingHref(HEADING_PREFIX + fragment.slice(1));
 }

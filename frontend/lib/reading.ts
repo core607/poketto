@@ -1,21 +1,24 @@
-import type { Element, Root, RootContent } from "hast";
+import type { Root, RootContent } from "hast";
 import { toString } from "hast-util-to-string";
-import rehypeSlug from "rehype-slug";
-import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
-import { HEADING_PREFIX } from "./reading-heading";
+import {
+  HEADING_PREFIX,
+  headingAnchors,
+  markdownSyntax,
+  titleHeading,
+} from "./reading-heading";
 
 /** One table-of-contents line; `level` is 0 for the top listed level and 1 below it. */
 export type ContentsEntry = { id: string; text: string; level: number };
 
-// The same parse and slug steps as components/markdown.tsx, so every anchor matches the page.
+// react-markdown parses the same way before running the renderer's plugins.
 const pipeline = unified()
   .use(remarkParse)
-  .use(remarkGfm)
+  .use(markdownSyntax)
   .use(remarkRehype, { allowDangerousHtml: true })
-  .use(rehypeSlug, { prefix: HEADING_PREFIX });
+  .use(headingAnchors);
 
 const CJK =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
@@ -29,9 +32,7 @@ const WORD = /[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu;
 export function readingGuide(source: string, title?: string) {
   const tree = pipeline.runSync(pipeline.parse(source)) as Root;
   const headings: { id: string; text: string; depth: number }[] = [];
-  const first = tree.children.find(
-    (node) => node.type !== "text" || node.value.trim(),
-  );
+  const hidden = titleHeading(tree, title);
   const visit = (nodes: (Root | RootContent)[]) => {
     for (const node of nodes) {
       if (node.type !== "element" && node.type !== "root") continue;
@@ -42,7 +43,7 @@ export function readingGuide(source: string, title?: string) {
           depth &&
           typeof id === "string" &&
           id.startsWith(HEADING_PREFIX) &&
-          !(node === first && repeatsTitle(node, title))
+          node !== hidden
         ) {
           const text = toString(node).trim();
           if (text) headings.push({ id, text, depth: Number(depth) });
@@ -58,14 +59,6 @@ export function readingGuide(source: string, title?: string) {
     .filter((heading) => heading.depth <= top + 1)
     .map(({ id, text, depth }) => ({ id, text, level: depth - top }));
   return { minutes: readingMinutes(toString(tree)), contents };
-}
-
-function repeatsTitle(node: Element, title?: string) {
-  return (
-    node.tagName === "h1" &&
-    title !== undefined &&
-    toString(node).trim() === title.trim()
-  );
 }
 
 /** About 400 CJK characters, or 200 other words, a minute; never less than one. */

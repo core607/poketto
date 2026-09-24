@@ -8,7 +8,7 @@ Long articles gave readers no outline and no sense of length. Fenced code render
 
 ## Decision
 
-**Table of contents.** [lib/reading.ts](../../frontend/lib/reading.ts) parses the body with the same remark, GFM, remark-rehype and heading-slug steps as the renderer, so every listed anchor is the anchor on the page. It lists headings from h1 to h3 at the two shallowest levels in use. It skips an opening heading that repeats the title, as [reading-heading](../../frontend/lib/reading-heading.ts) hides it, and skips the generated footnote label. The reading page shows the list only for three or more headings: in the sticky rail beside the text on wide screens, and as a collapsible **目录** above the text below 1080 px. The rail keeps any collection panel below the contents.
+**Table of contents.** [lib/reading.ts](../../frontend/lib/reading.ts) parses the body with the syntax and heading-anchor steps that [reading-heading](../../frontend/lib/reading-heading.ts) exports for both the renderer and itself, so every listed anchor is the anchor on the page. The same module owns the title-repeat rule and the anchor link spelling. The guide lists headings from h1 to h3 at the two shallowest levels in use. It skips an opening heading that repeats the title, which the page hides, and skips the generated footnote label. The reading page shows the list only for three or more headings: in the sticky rail beside the text on wide screens, and as a collapsible **目录** above the text below 1080 px. The rail keeps any collection panel below the contents.
 
 **Reading time.** The page counts CJK characters at about 400 a minute and other words at about 200 a minute, rounded, never below one minute. Folder pages show no estimate.
 
