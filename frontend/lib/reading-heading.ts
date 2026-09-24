@@ -1,5 +1,8 @@
 import type { Root, RootContent } from "hast";
 
+/** Heading anchors carry this prefix, so authored IDs cannot collide with page elements. */
+export const HEADING_PREFIX = "poketto-heading-";
+
 /** Run after heading IDs are assigned so authored fragments keep their target. */
 export function readingHeading({ title }: { title?: string }) {
   return (tree: Root) => {
