@@ -3,10 +3,13 @@ package io.github.core607.poketto.community.internal;
 import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.CommunityAccounts;
 import io.github.core607.poketto.community.Community;
+import io.github.core607.poketto.community.Readership;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.workspace.PublicationGuard;
 import io.github.core607.poketto.workspace.WorkspacePublications;
+import java.security.SecureRandom;
 import java.time.Clock;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,5 +39,21 @@ class CommunityConfiguration {
         var inbox = new CommunityInbox(jdbc, scope, targets, comments, communityAccounts, activity);
         var moderation = new CommunityModeration(jdbc, scope, communityAccounts, comments, activity);
         return new JdbcCommunity(accounts, targets, relations, comments, feeds, inbox, moderation);
+    }
+
+    @Bean
+    Readership readership(
+            JdbcTemplate jdbc,
+            WorkspacePublications publications,
+            PublicContentSnapshots snapshots,
+            @Value("${poketto.community.reader-capacity:100000}") int capacity,
+            @Value("${poketto.community.reader-reports-per-address:300}") int perAddress) {
+        var random = new SecureRandom();
+        var seen = new ReaderDigests(capacity, perAddress, () -> {
+            byte[] salt = new byte[32];
+            random.nextBytes(salt);
+            return salt;
+        });
+        return new JdbcReadership(jdbc, new CommunityTargets(publications, snapshots), seen, Clock.systemUTC());
     }
 }

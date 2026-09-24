@@ -3,12 +3,15 @@ package io.github.core607.poketto.web.internal;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.community.Community;
 import io.github.core607.poketto.community.CommunityException;
+import io.github.core607.poketto.community.Readership;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.workspace.PublicationUnavailableException;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -32,10 +35,28 @@ import org.springframework.web.bind.annotation.RestController;
 class CommunityController {
     private static final String PRIVATE = "/api/auth/community";
     private static final String ARTICLE = PRIVATE + "/spaces/{space}/articles/{articleId}";
+    private static final String VIEWS = "/api/public/community/spaces/{space}/views";
     private final Community community;
+    private final Readership readership;
 
-    CommunityController(Community community) {
+    CommunityController(Community community, Readership readership) {
         this.community = community;
+        this.readership = readership;
+    }
+
+    /** Anonymous and CSRF-exempt: it changes no account state, and answers alike whether it counted. */
+    @PostMapping(VIEWS)
+    ResponseEntity<Void> view(@PathVariable String space, @RequestParam String route, HttpServletRequest request) {
+        readership.record(space, route, request.getRemoteAddr(), request.getHeader(HttpHeaders.USER_AGENT));
+        return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
+    }
+
+    @GetMapping(VIEWS)
+    ResponseEntity<Views> views(@PathVariable String space, @RequestParam String route) {
+        long views = readership
+                .total(space, route)
+                .orElseThrow(() -> new CommunityException(CommunityException.Code.UNAVAILABLE));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Views(views));
     }
 
     @GetMapping("/api/public/community/spaces/{space}/articles/{articleId}")
@@ -198,6 +219,8 @@ class CommunityController {
     ProblemDetail unavailable() {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, "Public article is unavailable");
     }
+
+    record Views(long views) {}
 
     record Toggle(Boolean enabled) {
         Toggle {
