@@ -32,6 +32,9 @@ export type Prices = {
   rerank?: number;
 };
 export function config() {
+  const port = Number(process.env.LAB_PORT ?? 38470);
+  if (!Number.isInteger(port) || port < 1 || port > 65535)
+    throw new Error("LAB_PORT must be an integer from 1 to 65535");
   const number = (name: string) => {
     const raw = process.env[name];
     if (!raw) return undefined;
@@ -42,7 +45,7 @@ export function config() {
   };
   return {
     data: resolve(process.env.LAB_DATA ?? "data"),
-    port: Number(process.env.LAB_PORT ?? 38470),
+    port,
     python:
       process.env.LAB_PYTHON ??
       (process.platform === "win32"

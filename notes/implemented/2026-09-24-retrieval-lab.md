@@ -32,6 +32,8 @@ Persist runs and events before external operations. Support creation, SSE events
 
 The dedicated experiment host uses loopback HTTP through an SSH tunnel. Host-specific configuration and cleanup inventories remain in private operator storage. Cleanup may remove authorized obsolete applications and data but preserves the OS, SSH and networking. Provision the complete corpus, adequate inode quotas and a bounded worker pool; fail explicitly rather than downsampling if capacity is insufficient. Price a formal batch from a measured development sample and let the operator launch it explicitly. A displayed account balance is not a budget.
 
+Every verified main commit still publishes application images under the [continuous-delivery contract](2026-09-03-continuous-delivery.md). Automatic production deployment is skipped when a push changes this experiment and only its decision record, the continuous-delivery record or the shared CI workflow alongside it. The lab is deployed separately. This file-level classification also defers delivery-only workflow edits bundled with experiment changes; operators can deploy the published revision explicitly. Changes to application code, dependencies or deployment scripts retain automatic delivery.
+
 ## Alternatives and consequences
 
 Adding an index to the production application would couple an unresolved experiment to synchronization and permission contracts. This service keeps that decision reversible. PostgreSQL with pgvector would be representative of another deployment choice, but SQLite with FTS5 and sqlite-vec can reuse the available corpus without vector conversion or a resident database service. Index choice and retrieval quality are separate variables.

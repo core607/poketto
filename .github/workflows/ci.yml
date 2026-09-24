@@ -76,7 +76,7 @@ jobs:
             while IFS= read -r file; do
               case "$file" in
                 experiments/retrieval-lab/*) has_experiment=true ;;
-                notes/proposed/2026-09-24-retrieval-lab.md | notes/implemented/2026-09-24-retrieval-lab.md | .github/workflows/ci.yml) ;;
+                notes/proposed/2026-09-24-retrieval-lab.md | notes/implemented/2026-09-24-retrieval-lab.md | notes/implemented/2026-09-03-continuous-delivery.md | .github/workflows/ci.yml) ;;
                 *) allowed=false ;;
               esac
             done <<< "$files"
@@ -364,10 +364,10 @@ jobs:
   # Only a verified main commit of the canonical repository becomes an image. This is the only
   # job with package-write authority.
   publish:
-    needs: [verify, changes]
+    needs: verify
     # Optional lanes can be skipped upstream. Use the completed verification gate,
     # rather than the implicit success() condition over every ancestor job.
-    if: ${{ !cancelled() && needs.verify.result == 'success' && needs.changes.outputs.experiment_only != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'core607/poketto' }}
+    if: ${{ !cancelled() && needs.verify.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'core607/poketto' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -493,8 +493,8 @@ jobs:
   # Existing installations must install the current privileged updater before enabling
   # this delivery version; transfer never replaces an operator's privileged executable.
   deploy:
-    needs: [publish, mirror]
-    if: ${{ !cancelled() && needs.publish.result == 'success' && vars.POKETTO_DEPLOY_ENABLED == 'true' }}
+    needs: [publish, mirror, changes]
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.changes.outputs.experiment_only != 'true' && vars.POKETTO_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-24.04
     # Full image archives may need a slow-link transfer window; updater deadlines remain bounded.
     timeout-minutes: 180
