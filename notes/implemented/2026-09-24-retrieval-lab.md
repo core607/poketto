@@ -33,7 +33,7 @@ Flat numeric folders would remove useful navigation that the product already sup
 
 ## Verification and remaining runs
 
-The [calibration report](../../experiments/retrieval-lab/REPORT.md) records all 648 identical top-ten rankings and the disclosed empty-document discrepancy. The experiment's `npm run check`, which the CI `retrieval-lab` lane runs, covers its TypeScript and Python checks; native acceptance on the complete corpus covers host and network denial, label separation and cleanup. Real-provider vector compatibility, development pairs, the operator-launched formal batch and human support review remain required before reporting comparative quality.
+The [calibration report](../../experiments/retrieval-lab/REPORT.md) records all 648 identical top-ten rankings and the disclosed empty-document discrepancy, and later real-provider compatibility and smoke outcomes, including unsuccessful attempts. The experiment's `npm run check`, which the CI `retrieval-lab` lane runs, covers its TypeScript and Python checks; native acceptance on the complete corpus covers host and network denial, label separation and cleanup. Development pairs, the operator-launched formal batch and human support review remain required before reporting comparative quality; offline calibration and individual smoke runs do not establish that comparison.
 
 ## Related decisions
 
