@@ -85,7 +85,12 @@ test("reranker indices map to original candidate order and rate limits are not r
               ],
         ...(mode === "missing-usage"
           ? {}
-          : { meta: { tokens: { input_tokens: 123, output_tokens: 0 } } }),
+          : mode === "partial-meta"
+            ? {
+                meta: { tokens: { output_tokens: 0 } },
+                usage: { prompt_tokens: 123 },
+              }
+            : { meta: { tokens: { input_tokens: 123, output_tokens: 0 } } }),
       }),
     );
   });
@@ -127,13 +132,17 @@ test("reranker indices map to original candidate order and rate limits are not r
     await provider.rerank("question", docs, AbortSignal.timeout(1000), record);
     assert.equal(usage[2]!.input, null);
     assert.equal(usage[2]!.cost, null);
+    mode = "partial-meta";
+    await provider.rerank("question", docs, AbortSignal.timeout(1000), record);
+    assert.equal(usage[3]!.input, 123);
+    assert.equal(usage[3]!.cost, (123 * 0.7) / 1e6);
     mode = "rate";
     await assert.rejects(
       provider.rerank("question", docs, AbortSignal.timeout(1000), record),
       /429/,
     );
-    assert.equal(calls, 4);
-    assert.equal(usage[3]!.status, "rejected");
+    assert.equal(calls, 5);
+    assert.equal(usage[4]!.status, "rejected");
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

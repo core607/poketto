@@ -499,10 +499,7 @@ export class Engine {
       run.clarify = false;
       if (message.tool_calls?.length) {
         const call = message.tool_calls[0];
-        if (
-          message.tool_calls.length !== 1 ||
-          call.function.name !== "ask_user"
-        )
+        if (call.function.name !== "ask_user")
           throw new Error("Invalid clarification tool");
         const args = JSON.parse(call.function.arguments);
         if (
@@ -647,7 +644,6 @@ export class Engine {
         signal.throwIfAborted();
         const submitting = result.tools === experiment.maxToolCalls - 1;
         if (submitting) {
-          result.limited = true;
           messages.push({
             role: "user",
             content:

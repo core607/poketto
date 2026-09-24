@@ -52,7 +52,7 @@ async function settled(
   throw new Error("Run failed to reach expected durable state");
 }
 
-test("clarification survives restart, starts no sandbox, and resumes the same task", async () => {
+test("the first batched clarification survives restart and resumes the same task without a waiting sandbox", async () => {
   const f = fixture();
   let opens = 0;
   const questions: string[] = [];
@@ -68,6 +68,16 @@ test("clarification survives restart, starts no sandbox, and resumes the same ta
                 arguments: JSON.stringify({
                   question: "Which period?",
                   options: ["Recent", "All time"],
+                }),
+              },
+            },
+            {
+              id: "second-question",
+              function: {
+                name: "ask_user",
+                arguments: JSON.stringify({
+                  question: "Which country?",
+                  options: ["US", "UK"],
                 }),
               },
             },
@@ -108,11 +118,13 @@ test("clarification survives restart, starts no sandbox, and resumes the same ta
     assert.equal(opens, 0);
     f.store.recover();
     assert.equal(f.store.get(id).status, "waiting");
+    assert.equal(f.store.get(id).clarification!.question, "Which period?");
     f.engine.reply(id, "Recent");
     const done = await settled(f.store, id, ["completed", "failed"]);
     assert.equal(done.status, "completed");
     assert.equal(opens, 1);
     assert.match(questions[0]!, /Clarification \(Which period\?\): Recent/);
+    assert.ok(!questions[0]!.includes("Which country?"));
   } finally {
     f.close();
   }
@@ -217,75 +229,82 @@ test("agent executes batched calls in order and stops at evidence submission", a
   }
 });
 
-test("agent reserves final submission and returns tool errors for calls beyond the search budget", async () => {
-  const f = fixture();
-  let closes = 0;
-  let executions = 0;
-  try {
-    f.engine.models.chat = async (
-      messages,
-      tools,
-      _signal,
-      _record,
-      requiredTool,
-    ) => {
-      if (requiredTool) {
-        assert.equal(requiredTool, "submit_evidence");
-        assert.deepEqual(
-          tools!.map((t) => t.function.name),
-          ["submit_evidence"],
-        );
-        assert.equal(messages.filter((m) => m.role === "tool").length, 15);
-        return {
-          tool_calls: [
-            {
-              id: "done",
-              function: { name: "submit_evidence", arguments: '{"ids":[]}' },
-            },
-          ],
-        };
-      }
-      return tools
-        ? {
-            tool_calls: Array.from({ length: 5 }, (_, index) => ({
-              id: `call-${index}`,
-              function: {
-                name: "execute_shell",
-                arguments: '{"command":"rg interest corpus"}',
+for (const { batchSize, searchReplies, skipped } of [
+  { batchSize: 1, searchReplies: 11, skipped: 0 },
+  { batchSize: 5, searchReplies: 15, skipped: 4 },
+])
+  test(`agent reserves final submission and marks only skipped searches as limited (batch ${batchSize})`, async () => {
+    const f = fixture();
+    let closes = 0;
+    let executions = 0;
+    try {
+      f.engine.models.chat = async (
+        messages,
+        tools,
+        _signal,
+        _record,
+        requiredTool,
+      ) => {
+        if (requiredTool) {
+          assert.equal(requiredTool, "submit_evidence");
+          assert.deepEqual(
+            tools!.map((t) => t.function.name),
+            ["submit_evidence"],
+          );
+          assert.equal(
+            messages.filter((m) => m.role === "tool").length,
+            searchReplies,
+          );
+          return {
+            tool_calls: [
+              {
+                id: "done",
+                function: { name: "submit_evidence", arguments: '{"ids":[]}' },
               },
-            })),
-          }
-        : {
-            content:
-              '{"answer":"Insufficient evidence.","citations":[],"limitations":"Investigation limit."}',
+            ],
           };
-    };
-    f.engine.worker.open = async () => ({
-      execute: async () => {
-        executions++;
-        return { stdout: "a.md: text" };
-      },
-      artifact: async () => ({}),
-      close: async () => {
-        closes++;
-      },
-    });
-    const id = await f.engine.create({ qid: "dev", routes: ["agentic"] });
-    const run = await settled(f.store, id, ["completed", "failed"]);
-    assert.equal(run.status, "completed");
-    assert.equal(run.results.agentic!.tools, 12);
-    assert.equal(executions, 11);
-    assert.equal(
-      f.store.events(id).filter((e) => e.type === "tool_skipped").length,
-      4,
-    );
-    assert.equal(run.results.agentic!.limited, true);
-    assert.deepEqual(run.results.agentic!.evidence, []);
-    assert.equal(closes, 1);
-  } finally {
-    f.close();
-  }
-});
+        }
+        return tools
+          ? {
+              tool_calls: Array.from({ length: batchSize }, (_, index) => ({
+                id: `call-${index}`,
+                function: {
+                  name: "execute_shell",
+                  arguments: '{"command":"rg interest corpus"}',
+                },
+              })),
+            }
+          : {
+              content:
+                '{"answer":"Insufficient evidence.","citations":[],"limitations":"Investigation limit."}',
+            };
+      };
+      f.engine.worker.open = async () => ({
+        execute: async () => {
+          executions++;
+          return { stdout: "a.md: text" };
+        },
+        artifact: async () => ({}),
+        close: async () => {
+          closes++;
+        },
+      });
+      const id = await f.engine.create({ qid: "dev", routes: ["agentic"] });
+      const run = await settled(f.store, id, ["completed", "failed"]);
+      assert.equal(run.status, "completed");
+      assert.equal(run.results.agentic!.tools, 12);
+      assert.equal(executions, 11);
+      assert.equal(
+        f.store.events(id).filter((e) => e.type === "tool_skipped").length,
+        skipped,
+      );
+      assert.equal(run.results.agentic!.limited, skipped > 0);
+      assert.deepEqual(run.results.agentic!.evidence, []);
+      assert.equal(closes, 1);
+    } finally {
+      f.close();
+    }
+  });
 
 test("cancellation between batched tools prevents remaining commands and answering", async () => {
   const f = fixture();

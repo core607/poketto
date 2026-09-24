@@ -80,10 +80,17 @@ export class Models {
       const body = (await response.json()) as Json;
       usage.status = "completed";
       usage.model = typeof body.model === "string" ? body.model : payload.model;
-      const raw =
-        (kind === "rerank" ? body.meta?.tokens : undefined) ?? body.usage ?? {};
-      const input = raw.prompt_tokens ?? raw.input_tokens ?? raw.total_tokens;
-      const output = raw.completion_tokens ?? raw.output_tokens;
+      const raw = body.usage ?? {};
+      const rerankTokens = kind === "rerank" ? body.meta?.tokens : undefined;
+      const input =
+        rerankTokens?.input_tokens ??
+        raw.prompt_tokens ??
+        raw.input_tokens ??
+        raw.total_tokens;
+      const output =
+        rerankTokens?.output_tokens ??
+        raw.completion_tokens ??
+        raw.output_tokens;
       usage.input = Number.isInteger(input) && input >= 0 ? input : null;
       usage.output =
         Number.isInteger(output) && output >= 0 ? output : deepseek ? null : 0;
