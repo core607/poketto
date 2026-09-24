@@ -48,6 +48,19 @@ export const SHARE_IMAGE = {
 export function coverHref(route: string, space: string) {
   return spaceHref(space) + "/cover" + encodedRoute(route);
 }
+/**
+ * The article route in a cover address path, the inverse of coverHref: undefined for any other
+ * path and null for a malformed route. Only the cover route handler serves these paths, and the
+ * proxy leaves their caching to it.
+ */
+export function coverRoute(pathname: string) {
+  const match = /^\/s\/[^/]+\/cover(\/.*)?$/.exec(pathname);
+  if (!match) return undefined;
+  const rest = match[1] ?? "";
+  return routeFromSegments(
+    rest === "" || rest === "/" ? [] : rest.slice(1).split("/"),
+  );
+}
 export function articleHref(route: string, space?: string) {
   return spaceHref(space) + "/read" + encodedRoute(route);
 }

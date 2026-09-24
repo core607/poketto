@@ -1,5 +1,5 @@
 import { PublicApiError, spaceCover } from "../../../../../lib/public-api";
-import { routeFromSegments } from "../../../../../lib/format";
+import { coverRoute } from "../../../../../lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -16,16 +16,8 @@ export async function GET(
   { params }: { params: Promise<{ space: string }> },
 ) {
   const { space } = await params;
-  const marker = `/s/${encodeURIComponent(space)}/cover`;
-  const path = new URL(request.url).pathname;
-  const rest = path.startsWith(marker) ? path.slice(marker.length) : null;
-  const route =
-    rest === null
-      ? null
-      : routeFromSegments(
-          rest === "" || rest === "/" ? [] : rest.slice(1).split("/"),
-        );
-  if (route === null) return missing();
+  const route = coverRoute(new URL(request.url).pathname);
+  if (!route) return missing();
   try {
     const cover = await spaceCover(space, route);
     if (cover === null)
