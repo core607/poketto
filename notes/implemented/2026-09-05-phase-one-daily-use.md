@@ -11,11 +11,11 @@ Status: Implemented
 
 ## Delivered components
 
-[CodeAct content and media](2026-09-09-codeact-content-and-media.md) own the implemented repository-agent contract: workspace-scoped local media, public/private roots, isolated execution and host-mediated persistence. The broader installation acceptance below remains required.
+[CodeAct content and media](2026-09-09-codeact-content-and-media.md) own the implemented repository-agent contract: workspace-scoped local media, public/private roots, isolated execution and host-mediated persistence.
 
-The [identity HTTP backend](2026-09-06-workspace-identity-http.md) delivers the self-hosted account, session, invitation, membership and key foundation. The [acceptance record](2026-09-15-multiuser-daily-use-acceptance.md) consolidates installation and daily-use evidence.
+The [identity HTTP backend](2026-09-06-workspace-identity-http.md) delivers the self-hosted account, session, invitation, membership and key foundation.
 
-The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) add repository-native content, publication policy, atomic patches and snapshot-bound images. The [MCP and local execution integration](2026-09-05-local-execution-supervisor.md) supplies the tool transport and signed worker adapter. The [blog and browser administration](2026-09-06-blog-browser-interface.md) provides public pages and the editor. Integrated installation evidence is recorded in the acceptance record.
+The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) add repository-native content, publication policy, atomic patches and snapshot-bound images. The [MCP and local execution integration](2026-09-05-local-execution-supervisor.md) supplies the tool transport and signed worker adapter. The [blog and browser administration](2026-09-06-blog-browser-interface.md) provides public pages and the editor.
 
 ## Problem
 
@@ -27,7 +27,7 @@ The single-host installation provides a blog, authenticated administration, and 
 
 The public interface includes an article stream, article and folder pages, tags, archive, bounded search, RSS, and sitemap. Administration includes a file tree, Markdown editing and preview, image selection and upload, invitations, memberships, and API keys. Interface text is Simplified Chinese; interface language switching is outside this delivery.
 
-Backups, restore drills, visitor Q&A, open registration, automatic provider-side repository creation, serverless deployment, rich-text editing, general image transformations, and persistent content indexes are excluded. The multi-user scope includes invitation-gated accounts, connecting existing repositories and album thumbnails. Backup proposals remain future work and are not implementation or deployment prerequisites. All acknowledged managed originals are retained; temporary uploads, derived caches, and execution copies may be cleaned up only under their owning lifecycle rules.
+Backups, restore drills, visitor Q&A, open registration, automatic provider-side repository creation, serverless deployment, rich-text editing, general image transformations, and persistent content indexes are excluded. The multi-user scope includes accounts, whose registration [consumer identity](2026-09-20-consumer-identity-and-site-policy.md) now owns, connecting existing repositories and album thumbnails. Backup proposals remain future work and are not implementation or deployment prerequisites. All acknowledged managed originals are retained; temporary uploads, derived caches, and execution copies may be cleaned up only under their owning lifecycle rules.
 
 ## Repository contracts
 
@@ -45,7 +45,7 @@ The YAML schema has `enabled` (boolean), `mode` (`public-root`), and optional `e
 
 Readers use one resolved commit. A successful remote refresh renews snapshot verification; an acknowledged application write immediately updates the serviceable snapshot. Direct Git pushes become visible through scheduled refresh. A temporarily unreachable remote permits the last verified snapshot only until `poketto.repository.stale-after-seconds`, default 3600. At expiry, public content service and new image grants stop and readiness becomes unavailable. Process restart must not renew the last verification time. Failure to validate policy is distinct from remote transport failure.
 
-Public search fixes its scope internally. Private search authorizes the workspace before scanning. Both perform bounded literal text matching with tag and date filters against a resolved tree; diagnostics and errors never expose private paths to public callers. PostgreSQL stores relational application state, not a content projection or search index. Remove the empty `projection` and `search` modules, zhparser, and their test and deployment dependencies.
+Public search fixes its scope internally. Private search authorizes the workspace before scanning. Both perform bounded literal text matching with tag and date filters against a resolved tree; diagnostics and errors never expose private paths to public callers. PostgreSQL stores relational application state, not a content projection or search index; [stock PostgreSQL](2026-09-05-stock-postgresql.md) removed the empty `projection` and `search` modules and zhparser.
 
 Git transport fetches history objects and reuses them incrementally; repository images materialize lazily from those objects. Partial clone is excluded. Cold startup may transfer historical and image objects beyond the requested file. Measure initial fetch, retained history, derived cache storage, and scan costs instead of claiming selective cold transfer.
 
@@ -57,13 +57,13 @@ Browser editing and host-mediated CodeAct saves call the same workspace-authoriz
 
 ## Identity and assets
 
-The interactive deployment command initializes the first site administrator and space owner with hidden password input and a durable one-time guard; no anonymous initialization endpoint remains. Spring Security owns adaptive password hashing, server-side sessions, logout, CSRF, and login throttling. Registration invitations and workspace membership invitations are distinct single-use, expiring credentials. Suspension blocks new requests and revokes affected keys. Concurrent membership changes cannot remove the last active owner.
+The interactive deployment command initializes the first site administrator and space owner with hidden password input and a durable one-time guard; no anonymous initialization endpoint remains. Spring Security owns adaptive password hashing, server-side sessions, logout, CSRF, and login throttling. Workspace membership invitations are single-use, expiring credentials and never create an account. Suspension blocks new requests and revokes affected keys. Concurrent membership changes cannot remove the last active owner.
 
 Workspace API keys store verification digests and reveal the full token only on creation. Human sessions, API keys, and system principals have separate attribution. AI keys lack `PUBLISH`, `MANAGE_KEYS`, and `EXECUTE_REPOSITORY` by default; the owner explicitly grants these capabilities. Revocation and suspension also terminate active executions. Authorization remains a business boundary shared by browser and MCP entrances.
 
 The asset module owns a local authoritative `ManagedBlobStore`, bounded idempotent uploads, immutable references, and a disposable read-only Git-image cache. Acknowledged originals survive cache cleanup and application restart. Uploads do not mutate Git or publish an image. Image validation checks signature, type, bytes, path containment, and cumulative response bounds; production limits must accommodate the designated corpus without permitting unbounded allocation.
 
-Public image grants are opaque and bind workspace, page commit, and exact Git blob or managed revision. Their lifetime is at most five minutes and never exceeds the content snapshot expiry. Image delivery validates that grant and exact bytes; it does not reinterpret an old page against a newer tree. The [website delivery boundary](2026-09-14-workspace-public-delivery.md) additionally invalidates issued public grants on withdrawal or snapshot replacement. Private preview checks current identity on every request. Public page and image caches cannot outlive the authorization they contain.
+Public image grants are opaque and bind workspace, page commit, and exact Git blob or managed revision. Their lifetime is at most five minutes and never exceeds the content snapshot expiry. Image delivery validates that grant and exact bytes; it does not reinterpret an old page against a newer tree. Under the [website delivery boundary](2026-09-14-workspace-public-delivery.md), every replay also requires the currently approved page commit and path, so website withdrawal or a snapshot replacement invalidates issued grants before they expire. Private preview checks current identity on every request. Public page and image caches cannot outlive the authorization they contain.
 
 ## Frontend and MCP
 
@@ -81,7 +81,7 @@ Use the Spring AI 2.0.1 WebMVC Streamable HTTP server at `/mcp`, authenticated w
 | `repo_discard` | Explicit owner-authorized disposal by copy ID; never reverses remote saves |
 | `get_artifact` | Bounded access to an artifact created by an authorized execution lease |
 
-Default copies are keyed by Poketto account, workspace and reading scope. Authorized clients share the same copy; a restricted public projection cannot expose a full copy. Commands serialize, while exact-text edits and final save conflicts retain operation-level protections. An omitted commit uses the current copy. Confirmed saves advance its local Git baseline while retaining host-owned per-file write preconditions; [Git baseline installation](2026-09-15-executor-git-baseline-installation.md) owns pending local installation and its recovery. Authoritative reads never use command-modified execution files. MCP disconnects do not remove work; the account-copy contract owns disk quotas, seven-day idle expiry, reattachment, interrupted commands and explicit disposal.
+Default copies are keyed by Poketto account, workspace and reading scope. Authorized clients share the same copy; a restricted public projection cannot expose a full copy. Commands serialize, while exact-text edits and final save conflicts retain operation-level protections. An omitted commit uses the current copy. Confirmed saves advance its local Git baseline while retaining host-owned per-file write preconditions; [Mutable working copy baselines](2026-09-15-mutable-working-copy-baselines.md) own pending local installation and its recovery. Authoritative reads never use command-modified execution files. MCP disconnects do not remove work; the account-copy contract owns disk quotas, seven-day idle expiry, reattachment, interrupted commands and explicit disposal.
 
 ## Execution boundary
 
@@ -91,53 +91,17 @@ Execution copies have no shared source-object inodes, alternates, or credentials
 
 Resource and lease parameters are centralized and receive production values only after real-host tests. Sandbox setup failure never falls back to an ordinary subprocess. If the selected topology cannot meet isolation, retain this acceptance gap and record a new runtime decision before substituting another execution design.
 
-## Delivery sequence and evidence
-
-| Stage | Required result |
-|---|---|
-| 0 | This scope record, reconciled proposal links, working test environment, and an early real-Linux SRT isolation/resource/cleanup spike using synthetic data |
-| 1 | Arbitrary-path exact-commit reads, optional metadata, diagnostics, publication policy, bounded search, and atomic text writes with real-ref conflict behavior |
-| 2 | Identity lifecycle with PostgreSQL tests; managed uploads and Git-image delivery with real storage and permission tests |
-| 3 | Blog/admin and repository MCP tools over shared business contracts; pinned frontend dependencies and lockfile-based CI production build |
-| 4 | Prebuilt frontend, Spring, PostgreSQL, and executor integrated with Caddy same-origin HTTPS; health, failed deployment retry, fixed-version redeployment, and resource evidence |
-| 5 | The configured real content repository on a formal HTTPS domain; browser and currently callable MCP client workflows, supplemented by real service integration; final reviewed commit equals deployed revision |
-
-Independent work may proceed while a stage has a remaining gap, but that gap cannot be marked passed. The sandbox spike precedes dependent execution implementation. A missing domain or operator authorization does not prevent isolated development, but prevents final live acceptance.
-
-Use bounded parallel implementation with independent review of critical contracts. Each completed slice records its commit, checks, actual results, and remaining gaps. Short branches and isolated worktrees deliver reviewable PRs. Inspect actual bot comments, fix valid findings, and recheck CI and review against the latest head. Merge and formal deployment require their corresponding operator authorization after the result is concrete and reviewable.
-
 ## Acceptance
 
-The [delivery evidence](2026-09-15-multiuser-daily-use-acceptance.md) maps these requirements to real service, browser, client and installation results.
+The delivery was accepted on the authorized HTTPS installation against the real content repository; its evidence lives under [acceptance/](../../acceptance/README.md). These evidence rules still apply to later deliveries:
 
-- The existing corpus works without directory moves or mandatory frontmatter; Chinese paths, malformed files, route collisions, and large images have deterministic outcomes.
-- Public pages, galleries, search, RSS, sitemap, stale URLs, and errors cannot expose private or excluded content. Authorized private reads work.
-- Browser and MCP creation, update, move, and deletion share atomic revision checks. Concurrent edits conflict; remote outages and lost replies do not fabricate success.
-- Pages retain exact authorized image versions across commits until grant expiry. Withdrawal prevents new grants; expired grants fail. Deleting derived caches rebuilds them without deleting originals.
-- Owner initialization and invitations cannot be reused. Concurrent owner removal is protected. Key revocation and suspension deny new requests and terminate active executions.
-- Currently callable MCP clients connect, discover tools, inspect directories and history, read authorized text and images, upload images, write with revision checks, save and read back content, and handle continuity and conflicts. Real authenticated HTTP/native-worker integration covers service boundaries that the available connector cannot expose. Protocol probes alone do not replace actual-client evidence. An external client that the operator cannot access is not a completion condition and is never reported as tested.
-- Real sandbox tests deny sensitive host paths, another workspace, direct network and proxy access; source objects remain unchanged. Timeout, resource exhaustion, cancellation, service restart, and abandoned sessions clean up correctly. Measure initial copy plus twenty reused executions and deployed-process resource peaks.
-- A real browser verifies JavaScript-disabled public reading, editor preview, conflicts, and mobile layouts. Screenshots or recordings correspond to the exact delivered tree.
-- Focused tests cover each slice. Final Gradle `check` covers PostgreSQL integration, module boundaries, deployment scripts, frontend checks, and production build; `repoCheck`, generated-file checks, and `git diff --check` pass. Missing required infrastructure is repaired or reported as incomplete, never replaced by a claimed manual pass.
-- Final delivery requires all functionality and workflows on the authorized host under valid HTTPS with no unresolved valid blocking review findings. Waiting for a domain, authorization, or environment repair does not complete the goal.
+- A remaining gap is never marked passed. Missing required infrastructure is repaired or reported as incomplete, never replaced by a claimed manual pass.
+- Protocol probes and synthetic fixtures do not replace real browser, currently callable client, and HTTPS evidence. Real authenticated HTTP and native-worker integration covers service boundaries that the available connector cannot expose.
+- An external client that the operator cannot access is not a completion condition and is never reported as tested.
 
 ## Related decisions and alternatives
 
-The scoped same-topic audit retains these records; none is archived or rejected by this delivery boundary:
-
-| Record | Relationship |
-|---|---|
-| [Remote repository authority](2026-09-01-remote-repository-authority.md) | Retain exact-ref authority, conflict, and lost-response semantics |
-| [Validated content snapshot](2026-09-04-validated-content-snapshot.md) | Retain snapshot and resource ownership; this proposal replaces whole-tree document rejection and indefinite stale public service |
-| [Repository publishing](../rejected/2026-09-01-repository-native-publishing-and-assets.md) | Retain discovery, policy, gallery, and patch contracts; bound delivery grants explicitly here |
-| [Repository retrieval and execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) | Retain composable exploration and isolation; exclude Q&A and selective cold transfer from this delivery |
-| [Asset storage](../rejected/2026-09-01-repository-asset-blob-store.md) | Deliver local storage and Git-image cache; retain OSS and physical reclamation as unimplemented scope |
-| [Invitation-only membership](2026-08-27-invitation-only-membership.md) | Deliver self-hosted identity lifecycle and member administration |
-| [Next.js frontend](2026-08-30-nextjs-frontend.md) | Deliver presentation boundary and runtime evidence; omit Q&A controls |
-| [Continuous delivery](2026-09-03-continuous-delivery.md) | Retain immutable artifacts and deployment verification; this delivery does not require a backup gate |
-| [Off-host backup and source-encrypted recovery](../proposed/2026-08-27-off-host-backup-and-restore.md) | Retain as future work, excluded from phase-one completion |
-| [Multi-user workspaces](2026-09-11-multiuser-workspaces-and-discovery.md) | Deliver invitation-gated accounts, existing-repository spaces, scoped access and public discovery |
-| [Serverless](../proposed/2026-09-01-optional-serverless-deployment-profile.md) | Retain as an independent future profile |
+Related: [remote repository authority](2026-09-01-remote-repository-authority.md) keeps exact-ref conflict and lost-response semantics; the [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) own the public content snapshot, which replaces whole-tree rejection and indefinite stale service; [continuous delivery](2026-09-03-continuous-delivery.md) keeps immutable artifacts without a backup gate; remote object storage and physical reclamation of managed originals stay unimplemented; [off-host backup](../proposed/2026-08-27-off-host-backup-and-restore.md) remains a proposal, and the [serverless profile](../rejected/2026-09-01-optional-serverless-deployment-profile.md) is rejected.
 
 Whole-commit rejection preserves an all-valid document set but lets a malformed private file hide unrelated articles. Per-file diagnostics preserve the actual commit while identifying precisely which structured results are unavailable. Invalid publication policy still closes the entire public surface because its authorization decision cannot be reconstructed safely.
 

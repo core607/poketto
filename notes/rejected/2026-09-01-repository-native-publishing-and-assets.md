@@ -2,15 +2,7 @@
 
 Date: 2026-09-01
 
-Rejected on 2026-09-17 as superseded. Its central decision, publication by default for every path outside `private/`, was reversed by [CodeAct content and media](../implemented/2026-09-09-codeact-content-and-media.md), whose public-root policy publishes nothing until the owner enables it; moving this record to implemented would mean rewriting that decision into its opposite. The parts that shipped are owned elsewhere: discovery, folder galleries and image grants by [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md), routes by [logical repository routes](../implemented/2026-09-06-logical-repository-routes.md), the media index by [logical media index](../implemented/2026-09-09-logical-media-index.md); the agent file tools it proposed, `get_file` and `repo_patch`, were removed by the [CodeAct MCP entrance](../implemented/2026-09-10-codeact-mcp-entrance.md). The text is kept as the record of the public-by-default design that lost.
-
-The [CodeAct MCP entrance](../implemented/2026-09-10-codeact-mcp-entrance.md) supersedes
-standalone agent file-read, list and patch tool selections in this record. Shared
-service contracts and outstanding delivery requirements remain applicable.
-
-The [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md) record the delivered subset and its remaining integration gaps.
-
-[Phase-one delivery](../implemented/2026-09-05-phase-one-daily-use.md) fixes the initial delivery boundary, snapshot expiry, and maximum public image grant lifetime. This proposal remains unimplemented until its corresponding behavior and acceptance evidence ship.
+Rejected on 2026-09-17 as superseded. Its central decision, publication by default for every path outside `private/`, was reversed by [CodeAct content and media](../implemented/2026-09-09-codeact-content-and-media.md), whose public-root policy publishes nothing until the owner enables it; moving this record to implemented would mean rewriting that decision into its opposite. Public-by-default loses because it makes file placement a publication act: adding a note or a sibling image anywhere outside `private/` publishes it, and a later withdrawal cannot recall copies already delivered. The parts that shipped are owned elsewhere: discovery, folder galleries and image grants by [repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md), routes by [logical repository routes](../implemented/2026-09-06-logical-repository-routes.md), the media index by [logical media index](../implemented/2026-09-09-logical-media-index.md); the agent file tools it proposed, `get_file` and `repo_patch`, were removed by the [CodeAct MCP entrance](../implemented/2026-09-10-codeact-mcp-entrance.md). The text is kept as the record of the public-by-default design that lost.
 
 ## Problem
 
@@ -44,7 +36,7 @@ An eligible folder `index.md` renders its Markdown body followed by a gallery of
 
 This convention lets a Git author publish a folder containing `index.md` and sibling images without writing one Markdown reference per image. It does not guess relationships for other Markdown files or images in child directories. Page-level image-count, individual-byte, cumulative-byte, and execution-time bounds apply before public rendering.
 
-Repository images are owned by Git. Poketto may validate and materialize them through the derived cache defined by [managed assets and repository image materialization](2026-09-01-repository-asset-blob-store.md), but it never changes their paths or bytes. The browser presents them as repository-managed and provides no delete, move, replace, import, export, or synchronization control. Adding an image to an eligible public folder is a publication action; an owner who wants to remove or privatize it changes the repository or publishing exclusions through Git.
+Repository images are owned by Git. Poketto may validate and materialize them through a disposable derived cache, but it never changes their paths or bytes. The browser presents them as repository-managed and provides no delete, move, replace, import, export, or synchronization control. Adding an image to an eligible public folder is a publication action; an owner who wants to remove or privatize it changes the repository or publishing exclusions through Git.
 
 ### Managed images and rendering
 
@@ -60,25 +52,11 @@ Before issuing a grant, rendering validates workspace, snapshot-bound public rea
 
 ### Browser and agent authoring
 
-The browser editor offers managed upload and repository browsing as separate sources. Upload returns a managed reference that the editor inserts automatically. Repository browsing enumerates authorized image paths without copying them; preview materializes bounded original bytes on demand, and selecting an image makes the editor calculate and write the relative path. A user never has to type the repository path merely because Poketto preserves it.
-
-`repo_exec` discovers folder structure, reads text, inspects Git history, and runs bounded local analysis inside the SRT workspace. It never writes repository or asset authority. A structured `get_asset` accepts either an exact managed identity and revision or an authorized commit and repository path. It returns bounded multimodal content without giving SRT a repository-authority, ManagedBlobStore, or remote Git credential.
-
-`put_asset` creates a managed image and returns its immutable reference. A separate `repo_patch` applies bounded UTF-8 changes to repository authority with the resolved base commit and expected blob revision or expected absence for every affected path. It requires `WRITE_PRIVATE`; it also requires `PUBLISH` whenever the resulting commit creates or changes currently or newly public content, changes public reachability through an `index.md` gallery or reference, or changes publishing policy. Without `PUBLISH`, every affected path must remain excluded or private before and after the patch. An editor or agent may compose upload and patch operations, but a successful upload does not claim that a conflicting document patch committed. Binary repository writes and modification of repository images remain unavailable.
-
-### Directory shape and performance
-
-The first read of a cold repository fetches only the objects required for the resolved commit and selected content. Later reads reuse a bounded commit-keyed cache. Repository-image materialization is on demand, so connecting or scanning a repository does not copy every image. A folder gallery enumerates metadata first and materializes each image only when a bounded response or lazy client request needs it.
-
-Resource evidence covers a representative nested repository without identifying a private corpus. It records cold and warm repository reads, a folder gallery, managed image upload and delivery, Git-image materialization, and a reused SRT session. The measurements include network bytes, local bytes copied, latency, CPU, memory, and cache storage.
+The browser editor offers managed upload and repository browsing as separate sources, inserting managed references and calculated relative paths. Agents would have used a structured `get_asset` and a `repo_patch` that required `WRITE_PRIVATE`, plus `PUBLISH` whenever the resulting commit created or changed public content, gallery reachability, references, or publishing policy.
 
 ## Implementation scope and dependencies
 
-The first implementation depends on [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md) and [managed asset storage](2026-09-01-repository-asset-blob-store.md). It adds arbitrary nested Markdown discovery, the repository publishing policy, the built-in private tree, folder pages and bounded sibling galleries, safe relative-image resolution, managed-reference rendering, browser and structured-agent entrances, and the UTF-8 `repo_patch` bridge.
-
-It updates the requirements counterparts and frontend proposal. It reverses the target assumption that every content file lives below `documents/`, every publish is a per-document visibility mutation, every image reference is a managed hash, and repository sibling images require migration. The implemented content and write notes remain the executable baseline until this proposal ships.
-
-The first implementation excludes arbitrary binary writes through `repo_exec` or `repo_patch`, repository-image mutation, managed-to-Git export, Git-to-managed import, image editing, thumbnail generation, OCR as a service, automatic captions, CDN configuration, redirects inferred from history, submodule content, and Git LFS integration.
+The proposal depended on [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md) and managed asset storage. It reversed the target assumptions that every content file lives below `documents/`, every publish is a per-document visibility mutation, every image reference is a managed hash, and repository sibling images require migration.
 
 ## Alternatives considered
 
@@ -93,20 +71,6 @@ The first implementation excludes arbitrary binary writes through `repo_exec` or
 **Store every upload in Git.** This would make ordinary clones carry recurring binary history and force the structured upload path into repository layout. Managed storage keeps browser and agent uploads independent from Git binary history.
 
 **Generate a complete Git export of managed images.** A workspace export may later materialize managed references into a portable snapshot, but it is neither publishing nor synchronization and requires a separate product decision.
-
-## Acceptance
-
-- A configured repository discovers eligible nested Markdown outside `documents/`; malformed or excluded files fail locally without hiding unrelated valid content.
-- An unconfigured repository is private. Enabling `public-by-default` never publishes the root `private/` tree or a configured exclusion, including through a cross-reference or folder gallery.
-- `folder/index.md` renders a bounded non-recursive gallery of eligible sibling images in deterministic order. Explicit inline images are not duplicated, and child-directory or private images are absent.
-- A repository image is read and materialized only after an eligible reference, gallery, preview, or structured read selects it. Poketto exposes no operation that changes or deletes the Git file.
-- A managed upload writes no Git binary and returns an immutable reference. A document patch can attach it with expected revisions; a patch conflict leaves the uploaded object unreferenced rather than claiming a document commit.
-- Removing a managed reference changes only Markdown. Repository images remain read-only, and managed physical cleanup remains delayed behind reachability, retention, and backup holds.
-- A page rendered from one commit continues to load its exact authorized images for the bounded delivery-grant lifetime even if remote `main` advances between HTML and image requests. A withdrawal prevents new grants immediately, and old grants plus page caches expire within the configured bound.
-- Public rendering rejects unsafe HTML, traversal, symlinks, submodules, ambiguous routes, unsupported or active media, oversized files, excessive galleries, and links into private or excluded paths.
-- `repo_exec` can discover mixed text-and-image folders. `get_asset` returns a bounded managed revision or exact repository blob without base64 command output or sandbox network access.
-- `repo_patch` can create or update UTF-8 Markdown with expected-blob and expected-ref protection. `WRITE_PRIVATE` without `PUBLISH` changes only paths that remain private or excluded; creating or changing public content, gallery reachability, references, or publishing policy requires `PUBLISH`. It cannot write binary files, escape allowed paths, or commit sandbox debris.
-- Requirements, README counterparts, frontend and retrieval proposals, relevant automated tests, `./gradlew repoCheck`, and `git diff --check` pass.
 
 ## Risks
 

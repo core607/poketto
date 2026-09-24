@@ -56,7 +56,7 @@ with `reason: IMAGE_MEMORY_BUSY`; it does not close the MCP session or block tex
 calls through a global request slot.
 
 Existing bounds retain distinct meanings. `poketto.executor.max-sessions` defaults
-to four live execution copies. Command admission separately permits four concurrent
+to four active execution leases. Command admission separately permits four concurrent
 commands and serializes access to one copy. `poketto.mcp.max-sessions` defaults to
 128 protocol sessions, each of which can use several HTTP requests or streams.
 `CancellableMcpSession` permits four active tool calls per session. Their cleanup,
@@ -89,24 +89,18 @@ not a guarantee of total JVM memory use.
 
 ## Verification
 
-The focused bounds, image-memory, cancellation and image-transfer checks cover
-declared/chunked excess, maximum escaped command input, exact stream consumption,
-image admission before download, storage failure cleanup and blocking-write lifetime.
-Tests that only exercised the removed filter slots and listeners are removed.
-
-`McpProtocolIntegrationIT` uses real HTTP, Spring, the SDK and PostgreSQL for the
-tool catalog, permissions, request bounds, repeated sessions and DELETE, and readable
-budget refusals while text and upload-grant calls remain available. The independent
-`acceptance/image-memory-smoke.py` probe exercises maximum-size images and slow
-socket writes, cancellation, disconnect recovery and raw upload receipts against
-the staged Linux application. The [Linux receipt](../../acceptance/evidence/2026-09-15-mcp-admission.json) records successful repeated calls, bounded refusals and cleanup. These are isolated fixtures; production deployment
-and external-client results must be reported separately.
+`McpBoundsTests`, `McpImageMemoryTests`, `McpCancellationTests` and
+`ImageTransfersTests` pin the byte and envelope bounds, image admission at its
+owners and producer lifetime; `McpProtocolIntegrationIT` pins the bounds and
+budget refusals over real HTTP and PostgreSQL. The `acceptance/image-memory-smoke.py`
+probe and its [Linux receipt](../../acceptance/evidence/2026-09-15-mcp-admission.json)
+record maximum-size images, slow writes and disconnect recovery on the staged
+application.
 
 ## Related decisions
 
-- [Local execution supervisor](2026-09-05-local-execution-supervisor.md):
-  this record supersedes its MCP body sizes, global filter slots and filter-owned
-  image reservation; executor admission remains independent.
+- [Local execution supervisor](2026-09-05-local-execution-supervisor.md): executor
+  admission is independent of these request bounds.
 - [Image transfers](2026-09-15-mcp-image-transfers.md): this record withdraws its
   programmatic Base64 input; grants, download validation and idempotency remain.
 - [Authoring foundations](2026-09-05-repository-authoring-foundations.md): retains

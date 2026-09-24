@@ -40,19 +40,14 @@ isolate unavailable content to its own sitemap. The index may link an enabled
 space whose first verified snapshot is not ready yet; its child returns 503 until
 background refresh succeeds.
 
-The [website delivery boundary](../implemented/2026-09-14-workspace-public-delivery.md)
-continues to own withdrawal and image invalidation. The
-[multiuser plan](2026-09-11-multiuser-workspaces-and-discovery.md) and
-[daily-use plan](2026-09-05-phase-one-daily-use.md) retain their remaining scope.
-The [frontend boundary](2026-08-30-nextjs-frontend.md) retains Next.js ownership of
-presentation resources; this change supplies its multi-space sitemap contract.
+The [website delivery boundary](2026-09-14-workspace-public-delivery.md) owns
+withdrawal, and the [frontend boundary](2026-08-30-nextjs-frontend.md) owns Next.js
+presentation resources.
 
 ## Verification
 
-Real local Spring, PostgreSQL, Next.js and Caddy with two independent spaces
-verify the index and child sitemaps, canonical Chinese and ampersand routes,
-private-content exclusion, withdrawal through a repository patch, website shutdown
-through the owner API, and robots.txt origin and directives. An application outage
-returns 503 without a cached partial list. Frontend checks, Java style and
-repository validation pass. These checks establish the local serving behavior;
-deployment requires a separate production readback.
+`SpacePublicationIntegrationIT` covers the per-space sitemap API over real
+PostgreSQL and HTTP; `frontend/tests/api.test.tsx` pins refusal of mixed publication
+commits and `frontend/tests/seo-metadata.test.tsx` the robots.txt directives. The
+index, canonical Chinese routes, withdrawal and outage behavior were verified once
+against a local real stack; no automated test pins the index.

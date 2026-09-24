@@ -49,6 +49,16 @@ prefix belonged to the stacked-branch arrangement of the first delivery, which i
 authorization check that decides which pull requests receive a paid review with repository read
 access. Its guard test now pins the narrower rule.
 
+AGENTS.md carries no sentence saying that no human reads a change before it merges; the
+[agent rule surface](2026-09-17-agent-rule-surface.md) change had added one, and this record removed
+it. It stated no rule: the authorization rule already tells an agent to drive its own pull request
+to merge, so nothing actionable depended on it. It did reach two readers it should not have. The AI
+Review workflow loads `AGENTS.md` from `main` as trusted rules, so every review began by being told
+that nothing else would catch a defect, which calibrates severity by a story rather than by the
+diff. The repository is public, so the same sentence framed the project for any reader before they
+saw a line of code. The absence of an approval gate stays recorded in these notes, which is where
+rationale belongs.
+
 ## Alternatives
 
 **Post the review with `REQUEST_CHANGES` instead of `COMMENT`.** Rejected. Whether a finding blocks
@@ -68,25 +78,6 @@ that the deployment has already outrun.
 **Treat the merged-under-review case as acceptable because CI still passed.** Rejected. The matrix
 proves the change builds and its tests pass; the review is the only reader of intent, lifecycle and
 security in the diff. Losing it silently is the whole defect.
-
-## Same-topic audit
-
-[Verification reporting for metadata edits](2026-09-12-metadata-edit-verification.md) owns how the
-required `verify` check relates to the newest workflow run, including the cost of the `edited`
-trigger; that decision is unchanged and this record does not touch the CI triggers.
-[Continuous delivery](2026-09-03-continuous-delivery.md) owns the deployment failure path, including
-the deliberate absence of automatic rollback and the manual redeployment of the pins saved in
-`.env.previous`; also unchanged.
-
-[Agent rule surface](2026-09-17-agent-rule-surface.md)
-added a sentence to the arrival guide stating that no human reads a change before it merges. That
-sentence is removed here. It stated no rule: the authorization rule already tells an agent to drive
-its own pull request to merge, so nothing actionable depended on it. What it did do was reach two
-readers it should not have. The AI Review workflow loads `AGENTS.md` from `main` as trusted rules, so
-every review began by being told that nothing else would catch a defect, which calibrates severity by
-a story rather than by the diff. The repository is public, so the same sentence framed the project
-for any reader before they saw a line of code. The absence of an approval gate stays recorded here
-and in that note, which is where rationale belongs.
 
 ## Consequences
 
@@ -112,11 +103,5 @@ against the previous head as "already reviewed" and sets the status, which is id
 
 ## Verification
 
-- `.github/review/test_review.py` asserts that the status names the same head as the posted review,
-  that a drifted head receives neither, that a head with nothing to review is still marked and says
-  so, that a head re-reviewed against itself regains the status rather than reporting no review,
-  that a failed status call leaves the run successful whether it raises `Incomplete` or `ValueError`,
-  that the workflow grants `statuses: write`, and that the identity gate accepts only an open owner
-  pull request targeting `main`.
-- `python -m unittest discover -s .github/review -p "test_*.py"` passes, which `check` runs as part
-  of the `java` lane.
+`.github/review/test_review.py` pins the status rules, the `statuses: write` grant and the
+`main`-only identity gate; the CI `java` lane runs it.

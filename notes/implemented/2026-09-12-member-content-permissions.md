@@ -6,7 +6,7 @@ Date: 2026-09-12
 
 Workspace membership permits reading the current public scope. It does not imply private access or permission to change content. Owners assign `READ_PRIVATE`, `WRITE_PRIVATE` and `PUBLISH` independently, except that private writing requires private reading. Workspace invitations carry these initial grants and default to none. Owners retain all capabilities and exclusive membership and static-key administration. Site administration remains separate from workspace ownership.
 
-This implements the membership portion of the [multi-user proposal](2026-09-11-multiuser-workspaces-and-discovery.md). It replaces implicit ordinary-member private access in the [identity HTTP decision](2026-09-06-workspace-identity-http.md) while retaining its invitation digests, last-owner invariant and workspace locking. Installing the permission schema gives existing ordinary members empty content grants and revokes their keys with private, publication or management authority. Owners must explicitly grant any continuing private access.
+This is the membership portion of [multi-user workspaces](2026-09-11-multiuser-workspaces-and-discovery.md). It replaces implicit ordinary-member private access in the [identity HTTP decision](2026-09-06-workspace-identity-http.md) while retaining its invitation digests, last-owner invariant and workspace locking. Installing the permission schema gives existing ordinary members empty content grants and revokes their keys with private, publication or management authority. Owners must explicitly grant any continuing private access.
 
 ## Content authorization
 
@@ -32,10 +32,8 @@ The [CodeAct execution boundary](2026-09-09-codeact-content-and-media.md) still 
 
 Role-wide private access cannot represent a member invited only to read public content. A single write capability would force public editors to receive private write authority. UI-only controls would leave API, media and machine entrances available. Explicit grants and path-level service checks avoid those failures while keeping repository policy as the content-scope authority.
 
-Requiring private reading for full-source execution retains its existing metadata and history boundary. The browser can edit current public source with publication permission alone; a sanitized execution projection cannot provide equivalent source-preserving authoring. The broader proposal remains proposed, including that machine authoring gap, public website controls, discovery and remaining administration interaction.
+Requiring private reading for full-source execution retains its existing metadata and history boundary. The browser can edit current public source with publication permission alone; a sanitized execution projection cannot provide equivalent source-preserving authoring.
 
 ## Verification
 
-PostgreSQL tests cover grant validation, invitation defaults, current membership intersection, non-expansion, OAuth self-delegation and credential revocation. Real HTTP tests use separate Git repositories to exercise filtered reads, independent public/private writes and moves with public and private reference repair. MCP protocol tests verify over-scoped session revocation while retaining a narrower connection.
-
-Native Linux storage tests cover member previews, immutable originals, stale versions, publication withdrawal and transfer revocation. Socket tests exercise the host execution boundary; frontend tests cover permission selection, OAuth workspace changes and editor controls. These checks do not replace final-tree browser evidence or an actual external MCP client exchange.
+`AuthIntegrationIT`, `OAuthIntegrationIT`, `RepositoryAdminIntegrationIT`, `McpProtocolIntegrationIT`, `AssetAuthorizationConcurrencyIT` and `MediaFileServiceTests` pin grant validation, invitation defaults, non-expansion, filtered reads and writes, session revocation and transfer rechecks; they do not replace an exchange with an actual external MCP client.

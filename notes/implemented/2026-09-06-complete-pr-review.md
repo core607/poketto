@@ -3,9 +3,7 @@
 Date: 2026-09-06
 Status: Implemented
 
-[Core review sessions](2026-09-10-review-scope-and-sessions.md) replaces all-file coverage with runtime-code coverage and defines test/document exemptions and versioned continuation. Transport completeness still applies to every selected core change.
-
-[Repository-aware review](2026-09-09-review-agent-loop.md) supersedes the request budgets, single-response stages, per-part posting, and reasoning-retention rules below with bounded code-reading loops and diagnostic traces. Immutable diff coverage, trusted execution, commit-bound results, and failure rules remain current.
+This record owns immutable diff coverage, trusted execution, commit-bound results, and failure rules. [Core review sessions](2026-09-10-review-scope-and-sessions.md) narrows coverage to runtime code, owns the triggers, and adds versioned continuation. [Repository-aware review](2026-09-09-review-agent-loop.md) owns the request and time budgets, the code-reading loop, posting of the final review only, and the diagnostic traces.
 
 ## Problem
 
@@ -13,28 +11,24 @@ The [API review workflow](2026-09-01-api-pr-review-ci.md) used one GitHub diff r
 
 ## Decision
 
-Keep the configured provider, model, reasoning effort, persona, owner-only admission, and fixed `COMMENT` review event. Replace the transport and completion rules with a trusted Python standard-library runner. This record supersedes the earlier single-request, truncation, warning-only failure, and base-branch rule-loading decisions. Model findings remain advisory; successful coverage is neither approval nor proof that the change is correct.
+Keep the configured provider, model, reasoning effort, persona, owner-only admission, and fixed `COMMENT` review event. Replace the transport and completion rules with a trusted Python standard-library runner. Model findings remain advisory; successful coverage is neither approval nor proof that the change is correct.
 
-The workflow and runner come from `main`. The gate accepts a `main` base alone since [the reviewed-head status](2026-09-17-reviewed-commit-status.md); it previously also accepted stacked pull requests targeting `codex/phase-one-*`. Pull request content never supplies executable code or review instructions. A temporary bare repository fetches fixed base/head objects from the canonical GitHub repository and computes their merge-base diff with external diff, text conversion, hooks, and submodule recursion disabled. No head working tree is created. Missing history or unsupported content fails explicitly.
+The workflow and runner come from `main`. The gate accepts a `main` base alone since [the reviewed-head status](2026-09-17-reviewed-commit-status.md). Pull request content never supplies executable code or review instructions. A temporary bare repository fetches fixed base/head objects from the canonical GitHub repository and computes their merge-base diff with external diff, text conversion, hooks, and submodule recursion disabled. No head working tree is created. Missing history or unsupported content fails explicitly.
 
 The runner partitions the complete diff at file and hunk boundaries, continuing oversized hunks only at complete UTF-8 lines. Context repeated for a continuation is separate from the recorded raw byte range. The manifest records base, head, merge base, rules hash, complete diff hash, and each part's contiguous range, hash, request size, and review result. Concatenating the retained raw parts reproduces the original diff exactly.
 
-Each serialized model request, including rules, title, context, and JSON escaping, is at most 200,000 bytes. The complete diff is at most 8,000,000 bytes, with at most 32 serial part requests and one cross-contract request. The runner has a 30-minute wall-clock deadline; the workflow allows 35 minutes for checkout and retained evidence. Responses are bounded by 2,000,000 bytes and 50,000 visible characters, with a 128,000-token model ceiling per request. The token ceiling covers reasoning and visible output together; it is not a target for review length. The persona still requests a short review, and the character/byte bounds protect GitHub posting and transport. Missing or provider-truncated text reports the bounded finish reason and visible character count without logging model text or reasoning; byte-cap and visible-length failures retain their separate explicit errors. There is no cumulative output-token cap; the wall deadline limits the run. A binary diff, non-UTF-8 text, an oversized indivisible line, or an oversized cross-contract request fails without dropping content. These are explicit limits, not automatic review exemptions.
-
-Every successful part produces a commit-bound review and retains its exact visible text. A final request examines the collected findings and contract relationships; it does not claim to reread source absent from those reports. All part comments remain actionable even when the persona's final summary selects at most three findings. Diff parts, visible responses, and coverage manifest are retained as an Actions artifact for 14 days; provider reasoning and response envelopes are not retained. Mention replacement applies only to GitHub comments.
+A binary diff, non-UTF-8 text, an oversized indivisible line, or a request that cannot fit its bound fails without dropping content. These are explicit limits, not automatic review exemptions. Missing or provider-truncated text reports the bounded finish reason and visible character count without logging model text. Diff parts, visible responses, and the coverage manifest are retained as an Actions artifact. Mention replacement applies only to GitHub comments.
 
 Missing credentials, failed requests, malformed or truncated model results, missing parts, posting failures, and base/head drift leave the run incomplete and failing. Already posted comments remain bound to their original commit. Complete coverage requires every part and the cross-contract response, successful posting, and an unchanged PR identity. The workflow does not make itself a protected-branch required check or approve or merge anything.
 
-Opening, synchronizing, reopening, marking ready, and changing the target branch trigger review. Editing only the title or description does not. These skipped metadata events use separate concurrency groups so they cannot cancel a source review already in progress. A manual dispatch on `main` can review an existing owner PR; the runner rechecks current admission and base/head identity. Repeating a failed run consumes a new bounded set of provider calls; there is no automatic retry of an ambiguous provider request or GitHub post.
+A manual dispatch on `main` can review an existing owner PR; the runner rechecks current admission and base/head identity. Repeating a failed run consumes a new bounded set of provider calls; there is no automatic retry of an ambiguous provider request or GitHub post.
 
 ## Alternatives and Consequences
 
 Raising a single response limit cannot remove GitHub's server-side diff limit and makes omission harder to see. Splitting product delivery remains useful for dependency and release review, but even a coherent slice may contain a large lockfile or test fixture. Complete bounded review therefore remains necessary for each slice.
 
-The files API is useful as an inventory, but a missing patch is not complete source coverage. Reading Git objects avoids depending on that response shape while preserving a data-only trust boundary. The runner still sends source diffs and trusted review rules to the configured external provider. Multiple requests cost more than a truncated prefix; the fixed request count and time bounds limit each run.
+The files API is useful as an inventory, but a missing patch is not complete source coverage. Reading Git objects avoids depending on that response shape while preserving a data-only trust boundary. The runner still sends source diffs and trusted review rules to the configured external provider. Multiple requests cost more than a truncated prefix; the call and time bounds limit each run.
 
 ## Verification
 
-`python3 -m unittest discover -s .github/review -p 'test_*.py' -v` runs in CI. Real Git fixtures exceed 20,000 lines and 200,000 bytes, contain multibyte text and malicious head scripts, and verify byte-for-byte coverage without executing head code. Tests also cover continuation limits, provider failures and truncated results, missing parts, manual-trigger admission, commit binding, and base/head drift.
-
-`repoCheck` and `git diff --check` cover repository form. A live run after the trusted workflow reaches `main` remains necessary to verify provider availability, GitHub posting, and complete coverage artifacts; local fixtures do not claim those external operations succeeded.
+`python3 -m unittest discover -s .github/review -p 'test_*.py' -v` runs in the CI `java` lane, with real Git fixtures over 200,000 bytes that contain multibyte text and malicious head scripts.

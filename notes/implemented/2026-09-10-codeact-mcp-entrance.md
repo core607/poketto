@@ -52,13 +52,8 @@ reviewer agent or mandatory approval step is added.
 
 ## Verification
 
-Catalog tests cover enabled and absent executors. Real HTTP MCP integration checks
-the reduced catalog, explicit rejection of old names, image bytes, oversized
-requests rejected before uploads run, key/session isolation and revocation.
-Artifact and image-admission tests retain result bounds and cleanup coverage.
-The [authenticated HTTP client run](../../acceptance/clients/evidence/2026-09-10-codeact-mcp-entrance.json)
-exercises the four-tool catalog against real Spring authentication, PostgreSQL
-and native SRT. Authoritative readback confirms selected saves and moves preserve
-unselected scratch; exact image and artifact bytes, public projection isolation,
-capability denial, revocation and fixture cleanup pass. This deterministic client
-run does not establish model-driven or final production HTTPS acceptance.
+`McpToolCatalogTests` covers the catalog with and without an executor, and
+`McpProtocolIntegrationIT` checks the catalog and the rejection of removed names
+over real HTTP. The [authenticated HTTP client run](../../acceptance/clients/evidence/2026-09-10-codeact-mcp-entrance.json)
+recorded the catalog as it stood before `repo_discard` was added, against real
+Spring authentication, PostgreSQL and native SRT.

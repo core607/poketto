@@ -20,7 +20,7 @@ exact authority base, bound affected paths to 16,384, replacement text to 32 MiB
 each Git original to 128 MiB and aggregate Git fingerprint reads to the workspace
 byte limit. The worker stages and installs this plan through the CLI integration below.
 
-The service requires `READ_PRIVATE` and `WRITE_PRIVATE` before accessing repository state. It uses the same remote-ref writer as text patches, including atomic compare-and-swap, current publication authorization, withdrawal before an uncertain outcome, reconciliation, attribution and separate snapshot-installation acknowledgement. Public changes and repaired inbound references require `PUBLISH`. A move that creates a public-to-private reference fails before authority advances. Invalid publication or media configuration must be repaired first.
+The service derives its requirements from every affected path, as [member content permissions](2026-09-12-member-content-permissions.md) define: a publishable source, destination, repaired reference or media entry requires `PUBLISH`, and any other one requires `READ_PRIVATE` and `WRITE_PRIVATE`. A plan that would disclose private media-index entries also requires `READ_PRIVATE`. It uses the same remote-ref writer as text patches, including atomic compare-and-swap, current publication authorization, withdrawal before an uncertain outcome, reconciliation, attribution and separate snapshot-installation acknowledgement. A move that creates a public-to-private reference fails before authority advances. Invalid publication or media configuration must be repaired first.
 
 `RepositoryMoveService.recover` accepts the original request and host-retained
 commit bytes after an uncertain acknowledgement. It recomputes the candidate from
@@ -35,9 +35,9 @@ Reference repair scans bounded Markdown at the same immutable base, resolves exi
 
 ## Delivery and evidence
 
-The domain implementation and shared-writer refactor are available. The session-authenticated `/api/admin/repository/directory` endpoint supplies commit-pinned immediate Git and indexed-media entries, and `/api/admin/repository/move` applies the same domain operation with CSRF protection. The browser presents a lazy directory tree and a destination picker for files and folders, including renaming and one new child directory. Browser moves of existing files use this entrance instead of delete/create saves. Unsaved edits block moves; rejected destinations remain editable without automatic retries. A stale authority version closes the picker and clears the unmodified selection while refreshing the directory, so the user selects again against current state. A successful move reloads the selected document and directory state, including repaired references. Public-root format conversion belongs to its coordinated migration; this service consumes the current publication policy rather than changing it.
+The session-authenticated `/api/admin/workspaces/{workspaceId}/repository/directory` endpoint supplies commit-pinned immediate Git and indexed-media entries, and `…/repository/move` applies the same domain operation with CSRF protection. Browser moves of existing files use this entrance instead of delete/create saves. Unsaved edits block moves, and a rejected destination is never retried automatically. A stale authority version closes the picker and clears the unmodified selection, so the user selects again against current state. The service consumes the current publication policy rather than changing it.
 
-Real Git fixtures cover a folder exceeding the external patch's file limit, exact binary object reuse, logical media relocation, inbound/outbound reference repair, preserved source, stale bases, collisions and publication refusal without partial writes. The PostgreSQL integration path exercises the actual bean, scoped key permissions, owner publication, snapshot replacement and key revocation, plus authenticated HTTP listing and moves with CSRF enforcement. The required Linux storage replay includes the shared writer suite. Browser acceptance through the real Spring, PostgreSQL, Next.js and gateway services demonstrates cancellation with focus restoration, collision rejection, destination correction, a successful folder move and the repaired inbound document link. Native executor and actual Codex acceptance cover the CLI integration below.
+`RepositoryPatchServiceTests`, `RepositoryPatchIntegrationIT` and `RepositoryAdminIntegrationIT` pin moves through real Git fixtures, PostgreSQL, scoped keys and authenticated HTTP; the required Linux storage replay includes the shared writer suite, and native executor and client evidence below covers the CLI.
 
 ## CLI session integration
 
@@ -89,30 +89,19 @@ receipt before the authority write. Receipts bind a fresh host operation ID and
 the full plan hash, so retrying an acknowledged local installation preserves later
 edits and a new cyclic move cannot reuse an older completion. Pending moves retain
 the original request, plan and uncertain commit separately from local completion.
-The [native run](../../executor-native/evidence/2026-09-10-cli-moves.json) covers
-28 Java scenarios, including optional media, dirty-source refusal, uncertain-write
-recovery and the existing isolation suite, plus process-loss expiry and cleanup.
-The [actual Codex run](../../acceptance/clients/evidence/2026-09-10-cli-moves.json)
-uses real database authentication and HTTP MCP. Independent Git and HTTP readback
-confirm the move and repaired links, exclude unselected local edits, and verify
-that the refused dirty move adds no commit. Fixture cleanup passes.
-
-The [recovery run](../../executor-native/evidence/2026-09-10-cli-move-recovery.json)
-adds adapter-boundary reply loss and installation refusal. Real CLI recovery
-preserves subsequent local edits; skipping confirmed installation permits explicit
-synchronization while conservative baselines prevent an unsafe save. All 30 native
-scenarios and cleanup pass. Worker tests separately exercise dirty preconditions.
+The [native run](../../executor-native/evidence/2026-09-10-cli-moves.json), the
+[recovery run](../../executor-native/evidence/2026-09-10-cli-move-recovery.json)
+and the [Codex client run](../../acceptance/clients/evidence/2026-09-10-cli-moves.json)
+record the CLI verification, including reply loss, installation refusal and
+dirty-source refusal.
 
 The worker advertises `moveProtocol: 1`; the application requires it before
 opening a lease. Deploy the matching worker before enabling the application
 version that requires this protocol. Completed move receipts remain in the
-protected lease until closure, bounded to 256 receipts of 4 KiB each. Public-root
-switching and portable exports remain part of the separate content-format plan.
+protected lease until closure, bounded to 256 receipts of 4 KiB each.
 
 ## Alternatives and related records
 
-[Browser recording and source provenance](https://github.com/core607/poketto/blob/19a35eb913d169db25735ed1992aeadd868d8bf4/README.md) retain the isolated real-service acceptance separately from product history. The recording covers an actual concurrent save as well as a rejected destination; mocked HTTP component tests do not substitute for it.
-
 Sending delete/create text pairs through the external patch API limits ordinary folders to small text batches and cannot move arbitrary binary objects. Letting the agent edit the index and every backlink separately leaves repair incomplete and creates multiple authorization commit points. One host-prepared candidate avoids both problems without adding another persistence engine.
 
-[Authoring foundations](2026-09-05-repository-authoring-foundations.md) retain the atomic writer and authorization contract; [logical media](2026-09-09-logical-media-index.md) retains index ownership and original validation; [directory navigation](2026-09-08-repository-directory-navigation.md) retains the listing contract for the destination picker. The [CodeAct workspace proposal](2026-09-09-codeact-workspaces.md) owns session capture and baseline advancement. These records remain active during the wider CodeAct cutover.
+[Authoring foundations](2026-09-05-repository-authoring-foundations.md) retain the atomic writer and authorization contract; [logical media](2026-09-09-logical-media-index.md) retains index ownership and original validation; [directory navigation](2026-09-08-repository-directory-navigation.md) retains the listing contract for the destination picker. The [CodeAct workspace record](2026-09-09-codeact-workspaces.md) owns session capture and baseline advancement.

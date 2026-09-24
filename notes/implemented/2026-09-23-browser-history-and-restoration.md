@@ -80,28 +80,6 @@ file-read limit. Neither preview nor restoration edits the historical object.
 
 ## Verification
 
-Real Git tests cover additions, edits, unrelated commits, first-parent merges,
-deletion and recreation, bounded pagination, metadata limits and cross-workspace
-commit rejection. Authorization tests check denial before traversal and revocation
-before returning data. HTTP integration tests reject anonymous and public-only
-readers, retrieve exact historical source, and verify that restoration adds a
-commit while stale writes fail without overwriting current content.
+`RepositoryHistoryTests` covers first-parent traversal, merges, deletion and recreation, pagination, metadata limits and cross-workspace commit rejection, including denial before traversal and revocation before return; `RepositoryAdminIntegrationIT` rejects anonymous and public-only readers and verifies that restoration adds a commit while stale writes fail. `frontend/tests/source-diff.test.tsx` pins exact line endings and the comparison fallback, and `editor-navigation.test.tsx` pins late responses and saving restored text against current preconditions.
 
-Mounted editor tests cover late responses, escaped source, cancellation of unsaved
-replacement and saving restored text with the current write preconditions. Source
-comparison tests retain exact line endings and exercise the fallback bounds.
-Chrome acceptance through the [browser entrance](../../acceptance/README.md)
-confirmed a new saved restoration with earlier history retained, conflicting edits
-from another tab preserved, desktop and mobile layouts, and the large-source
-fallback.
-
-## Same-topic audit
-
-[Repository authoring foundations](../implemented/2026-09-05-repository-authoring-foundations.md)
-retains arbitrary-path reads and revision-checked writes.
-[CodeAct content and media](../implemented/2026-09-09-codeact-content-and-media.md)
-retains full-reader history and excludes it from public projections.
-[Authoring and discovery](../implemented/2026-09-23-authoring-and-discovery-experience.md)
-retains unsaved local recovery; this feature recovers committed source.
-[Off-host backup and restore](../proposed/2026-08-27-off-host-backup-and-restore.md) remains a
-separate proposal; choosing an older text version supplies no backup service.
+Related: [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) keep arbitrary-path reads and revision-checked writes; [CodeAct content and media](2026-09-09-codeact-content-and-media.md) keeps full-reader history out of public projections; [authoring and discovery](2026-09-23-authoring-and-discovery-experience.md) recovers unsaved text, while this feature recovers committed source. Choosing an older text supplies no backup service ([off-host backup](../proposed/2026-08-27-off-host-backup-and-restore.md)).

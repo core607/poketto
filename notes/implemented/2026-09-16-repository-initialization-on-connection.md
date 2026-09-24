@@ -21,7 +21,7 @@ Connection verification already lists the remote's refs; it now reports whether 
 - A branch: creation changes nothing and reads nothing from the repository. The space's repository connection view reads the four paths at one commit, lists the absent ones with the guarantee that nothing existing is modified or moved, and an explicit owner action applies the change. The same view serves a space connected before this record and a deployment-managed repository.
 - All four files present: the view says so and offers nothing.
 
-The proposal had creation list the absent files of a nonempty repository in its own response. That would read the repository during creation and would need the list persisted for status polling; the view computes it on demand instead, which is where the action is.
+[Space templates](2026-09-24-space-templates.md) add named folder sets through the same create-only path.
 
 Until a repository has a commit, `repo_exec` and the public projection answer `REPOSITORY_EMPTY` with a message that names the space's repository connection view. The authority-unavailable text is kept for authority failures only. Per [service diagnostics](2026-09-14-service-diagnostics.md), the tool boundary records a failure it maps to `UNAVAILABLE` by its exception type chain, never by its message or stack, which can name private material.
 
@@ -31,24 +31,15 @@ Until a repository has a commit, `repo_exec` and the public projection answer `R
 - Let the agent initialize through a CLI command in the sandbox. Rejected: an empty repository cannot open a copy, and a first connection must not depend on an agent choosing a layout for someone else's content.
 - Initialize a nonempty repository automatically. Rejected: even an additive commit to a repository the owner has just connected needs the owner's explicit choice; the empty case has nothing to protect.
 - Move existing content into `private/`. Rejected: paths outside `public/` are already private, and moving another author's files is not the service's decision.
+- List the absent files of a nonempty repository in the creation response. Rejected: creation would read the repository and would need the list persisted for status polling; the view computes it on demand, where the action is.
 
 ## Consequences and risks
 
 - The application authors a commit on the owner's remote at creation time; the credential already needs write access for saves, so no new permission is required. Writing `.poketto/publishing.yaml` requires the publication capability, which the creator holds as owner; the view's action requires the owner capability that also guards credential rotation.
 - A push between inspection and the initialization commit surfaces as a conflict; the view keeps offering initialization until it applies.
-- Initialization inspects each of the four paths through the authority, one fetch per path; the cost is a few round trips against a cached repository and is paid only when the view is opened or the action taken.
+- Initialization reads each template path at one commit, one read per path; the cost is a few round trips against a cached repository and is paid only when the view is opened or the action taken.
 - Generations of the executor that saw an empty repository as an unavailable authority are replaced; nothing else observes the new exception type.
 
-## Implementation and acceptance
+## Verification
 
-`RepositoryInitialization` (content API) with `ContentRepositoryInitializer`; `RepositoryEmptyException` thrown by the snapshot exports and passed through executor admission; `REPOSITORY_EMPTY` in the MCP tool boundary; `RepositoryConnections.Verified.emptyRepository`; `SpaceCreationService.complete` initializes after the transaction; `GET`/`POST /api/auth/workspaces/{workspaceId}/repository-initialization`; the creation form wording and the initialization section of the repository connection view.
-
-- `ContentRepositoryInitializerTests`: an empty remote yields a root commit with the four files and publication disabled, and a second application adds nothing; a remote with its own `AGENTS.md` and other content keeps every byte and gains only the absent files on top of its head; owner authorization precedes any read; the shipped template equals `content-template/`.
-- `RepositorySnapshotExportsTests` and `McpEmptyRepositoryTests`: an empty repository is `RepositoryEmptyException` for the full and the public export, and `REPOSITORY_EMPTY` at the tool boundary.
-- `SpaceCreationIntegrationIT`: initialization runs once, after the transaction, as the owner, only for an empty repository, and its failure leaves the space `READY`. `SpaceCreationHttpIntegrationIT`: creation on the empty fixture remote leaves a root commit with the four files, and the initialization routes answer the owner and refuse an outsider.
-- `frontend/tests/repository-connection.test.tsx`: the view lists the absent files, applies only on the explicit action, reports the commit and re-reads the status.
-- Interface evidence from the acceptance harness is attached to the pull request.
-
-## Same-topic audit
-
-[Multi-user workspaces and discovery](2026-09-11-multiuser-workspaces-and-discovery.md) owns space creation and is retained; it excludes automatic remote creation, which this record does not change. [CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns the layout the template provides and is retained; its statement that the template initializes both roots stays true, and [usage](../../docs/usage.md) now describes initialization as the service's behavior instead of an operator step. [Service diagnostics](2026-09-14-service-diagnostics.md) is retained; the type-chain record of a mapped tool failure completes the gap it names for refusals.
+`ContentRepositoryInitializerTests`, `RepositorySnapshotExportsTests`, `McpEmptyRepositoryTests`, `SpaceCreationIntegrationIT`, `SpaceCreationHttpIntegrationIT` and `frontend/tests/repository-connection.test.tsx` pin the create-only commit, `REPOSITORY_EMPTY`, initialization after the creation transaction and the owner-only view action; `ContentRepositoryInitializerTests` also pins the shipped template to `content-template/`.

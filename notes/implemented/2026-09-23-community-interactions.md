@@ -121,19 +121,10 @@ allowances. The feed admits two concurrent scans with 100,000-document and five-
 bounds, checked between bounded workspace scans. Request bodies allow 64 KiB to
 accommodate a 4,000-code-point comment even when JSON escapes surrogate pairs.
 
-### Acceptance
+### Verification
 
-The identity suites exercise real Git save, move, route-change, duplicate and conflict
-paths. Database integration tests cover uniqueness, retries, reply depth, moderation,
-private-list isolation, downgrade, withdrawal, recovery, inbox retention and concurrent
-credential recovery. HTTP acceptance covers session/CSRF enforcement, private-list
-isolation, 4,000-code-point comments and the no-write identity preparation endpoint.
-
-The [browser entrance](../../acceptance/README.md) was exercised with separate author,
-community, viewer and administrator fixture accounts. It confirmed saved identity
-preparation; likes, private bookmarks and following; comments and replies; notifications
-and read state; report handling and blocking; article moves; website withdrawal and
-recovery; downgrade and removal of unavailable records. Article bylines remain distinct
-from account display identities. The additive migration preserves existing accounts,
-workspaces and grants. These synthetic fixtures do not claim real-provider acceptance;
-community interactions require no additional external provider.
+`ArticleIdentityDraftsTests` and `ArticleIdentitySnapshotTests` pin article identity through
+real Git saves, moves and duplicates; `CommunityIntegrationIT` pins uniqueness, retries, reply
+depth, moderation, downgrade, withdrawal, inbox retention and concurrent credential recovery;
+`frontend/tests/community.test.tsx` pins the browser flows. The fixtures use synthetic accounts;
+community interactions need no external provider.

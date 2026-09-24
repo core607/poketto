@@ -21,9 +21,13 @@ Two pull requests reached that state: one after an unrelated body edit, and one 
 
 ## Decision
 
-The `verify` job always runs, always verifies, and always reports under its fixed name. A title or
-body edit therefore starts a full verification of a commit that was already verified, and its result
-is the truth about that commit rather than a restatement of an earlier one.
+The `verify` job always runs, always reports under its fixed name, and never reports success for
+work its run did not do. Verification runs in parallel lanes chosen by the change classification
+([development baseline](2026-08-26-development-baseline.md)); `verify` carries only `if: always()`
+and passes only when every lane that classification requires succeeded, so a skipped, failed or
+cancelled lane fails it. A title or body edit therefore starts a new verification of a commit that
+was already verified, and its result is the truth about that commit rather than a restatement of an
+earlier one.
 
 The concurrency group is one per PR number, with branch runs in a separate namespace. Its previous exemption gave a metadata edit its own group
 so that a run which did no work could not cancel a real verification; now that every run verifies,
@@ -52,22 +56,11 @@ full verification cycle anyway and strands the pull request until someone recogn
 
 ## Consequences
 
-A title or body edit now costs one full verification. Setting the description when the pull request
-is opened avoids that cost; editing it afterwards is correct but not free.
-
-A pull request already stranded by the old behavior is not repaired by this change. It still needs a
-new head commit, because the unmet expectation belongs to the commit that was current at the time.
-
-## Consequences for the workflow's own guard test
-
-`.github/review/test_review.py` pinned the previous design by asserting that `ci.yml` contained the
-job-level condition and the conditional job name. Both are gone, so that test now encodes the new
-invariant instead: the job carries no job-level condition, its name is exactly `verify`, no variable
-decides whether to verify, the only conditional step is the failure-report upload, and the
-verification command is still there. A change that reintroduces a skip fails it.
+A title or body edit costs one verification of the change's lanes. Setting the description when the
+pull request is opened avoids that cost; editing it afterwards is correct but not free.
 
 ## Verification
 
-- The workflow's own pull request runs `verify` to success on push.
-- Editing that pull request's body afterwards starts a second run that verifies again and reports
-  `verify` under the same name, leaving the pull request mergeable.
+`.github/review/test_review.py` pins that the job is named exactly `verify`, carries only
+`if: always()`, names every lane it waits on in its own decision, and accepts only a successful
+lane; a change that reintroduces a skip or leaves an awaited lane unrequired fails it.

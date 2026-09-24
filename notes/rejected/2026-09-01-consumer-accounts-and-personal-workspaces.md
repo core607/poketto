@@ -40,9 +40,7 @@ Quotas and usage accounting attach to `WorkspaceId`. Billing may later aggregate
 
 ## Implementation scope and dependencies
 
-The first implementation depends on the account, session, and membership foundation from [invitation-only membership](../implemented/2026-08-27-invitation-only-membership.md), the binding contract from [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md), and the local managed-storage contract from [managed assets and repository image materialization](2026-09-01-repository-asset-blob-store.md). It adds the provider adapter that creates an isolated private repository, durable provisioning state, personal-workspace creation entrance, managed-object scope, owner membership, retry and cleanup behavior, authorization, audit events, and focused failure-injection and isolation tests.
-
-It targets the primary single-server profile first, but every personal workspace receives remote Git authority. Repository provisioning is therefore shared product infrastructure rather than a serverless adapter. Its start gate requires an isolated non-production provider account and narrowly scoped credentials capable of creating private repositories; without them the proposal remains pending rather than substituting local authority. The optional serverless profile later changes managed storage, derived image caching, database, and SRT deployment without changing consumer identity or repository ownership. Email or SMS delivery, OAuth, social login, passkeys, billing, custom domains, ownership transfer, account recovery, and destructive deletion remain outside this implementation.
+The proposal needed a provider adapter that creates an isolated private repository, durable provisioning state, a personal-workspace creation entrance, managed-object scope, owner membership, retry and cleanup behavior, and audit events. Repository provisioning was shared product infrastructure on the single-server deployment rather than a serverless adapter. Its start gate required an isolated non-production provider account and narrowly scoped credentials able to create private repositories. Email or SMS delivery, social login, billing, custom domains, ownership transfer, account recovery, and destructive deletion were outside it.
 
 ## Alternatives considered
 
@@ -53,16 +51,6 @@ It targets the primary single-server profile first, but every personal workspace
 **Use invitations to create every consumer account and workspace.** Invitations express access to an existing tenant. Reusing them for personal provisioning would confuse joining with ownership and prevent a true registration entrance.
 
 **Wait for the serverless deployment profile.** Remote repository provisioning works on the primary single-server deployment and is part of the consumer product rather than request-host topology. Deferring the product model to optional infrastructure would block independently useful work.
-
-## Acceptance
-
-- Duplicate and concurrent delivery creates exactly one account, personal workspace, `OWNER` membership, private remote repository, and managed-object scope for one provisioning operation.
-- No route, list, API key, background task, cache, log, metric, or error exposes the workspace before provisioning completes or reveals another consumer's failed provisioning.
-- A retry resumes recorded state after failure at every storage boundary. Cleanup touches only resources proven to belong to the recorded `WorkspaceId`.
-- One account may own or join several workspaces without an account-wide role or content scope. Joining someone else's workspace still requires an invitation.
-- Missing and unauthorized personal workspaces remain indistinguishable to other consumers. Workspace quotas, credentials, audits, and usage records carry `WorkspaceId`.
-- The implementation exercises an isolated provider repository fixture, the real local ManagedBlobStore adapter, and PostgreSQL under duplicate delivery, injected failure, ambiguous provider response, restart, and two-account isolation tests. Repository-image caches remain absent from provisioning state and can be deleted between assertions.
-- The relevant automated tests, `./gradlew repoCheck`, and `git diff --check` pass.
 
 ## Risks
 

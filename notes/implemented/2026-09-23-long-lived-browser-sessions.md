@@ -5,9 +5,8 @@ Status: Implemented
 
 ## Problem
 
-[Invitation-only membership](2026-08-27-invitation-only-membership.md) and
-[workspace identity](2026-09-06-workspace-identity-http.md) record browser sessions that
-expire after 30 minutes of inactivity and live in the servlet container's memory. Poketto is a
+[Workspace identity](2026-09-06-workspace-identity-http.md) first kept browser sessions in the
+servlet container's memory with a 30-minute idle expiry. Poketto is a
 notebook and a website people return to over days, and every merge to `main` redeploys
 production. The consequences:
 
@@ -102,19 +101,6 @@ it. The PostgreSQL customizer writes attributes with `ON CONFLICT` upserts.
 
 ## Verification
 
-- `BrowserSessionConfigurationTests` round-trips the following through the attribute
-  conversion:
-  - the signed-in context and the CSRF token;
-  - pending OAuth requests;
-  - the GitHub and Google flows.
-
-  It also shows that classes outside the allow-list, damaged bytes and a value that cannot be
-  serialized all read as absent.
-- `BrowserSessionStoreIntegrationIT` checks the store over real HTTP:
-  - an anonymous CSRF session has a 30-minute idle timeout and a 400-day cookie;
-  - the login response alone leaves the row with the 90-day timeout;
-  - the next request authenticates from the stored row, which names the account;
-  - logout deletes the row;
-  - an unreadable stored context answers 401, not an error.
-- `GoogleIdentityHttpIntegrationIT` checks that a Google login leaves its session with the
-  90-day timeout.
+`BrowserSessionConfigurationTests` pins the attribute round trips and the allow-list, and
+`BrowserSessionStoreIntegrationIT` and `GoogleIdentityHttpIntegrationIT` pin the stored timeouts,
+cookie lifetime, logout deletion and unreadable-context handling over real HTTP.

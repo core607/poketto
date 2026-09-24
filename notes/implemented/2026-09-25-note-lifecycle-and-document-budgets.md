@@ -27,7 +27,7 @@ An implemented note could only stay active or be archived. The archive test, whe
 - A feature removed everywhere folds into its removal note.
 - A complete decision unlikely to guide future work is archived.
 
-The skill carries calibrated examples from this repository, and every new note triggers the audit in the same change.
+The skill carries calibrated examples from this repository, and every new note triggers the audit in the same change. It brings back the role of `archive-notes`, which the [agent rule surface record](2026-09-17-agent-rule-surface.md) deleted; the failure it prevents is the one above, notes accumulating with no way out.
 
 **Content.** Verification names the tests or checks that pin a decision; it does not restate their cases. AGENTS.md now lists what each documentation home does not hold, and the review skill treats a note written for a local UI or mechanical change, or a proposal kept after implementation without lasting rationale, as a finding.
 

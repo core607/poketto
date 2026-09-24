@@ -2,13 +2,6 @@
 
 Date: 2026-09-11
 
-[Consumer identity and site policy](2026-09-20-consumer-identity-and-site-policy.md)
-supersedes invitation-only registration and unrestricted account eligibility to
-connect repositories. New identities start as viewers; creator eligibility and
-all-owner website eligibility supplement this record's workspace boundaries.
-[GitHub-authorized personal spaces](2026-09-21-github-authorized-personal-spaces.md)
-add the user-authorized repository creation this record excludes.
-
 ## Problem
 
 The original account registration, workspace membership, and installation shared a browser entrance. Browser and MCP requests resolve the default workspace even though relational identity and storage already carry workspace identifiers. Public navigation treats directory indexes as ordinary articles, emits Markdown fragments as summaries, and loses collection and search context.
@@ -17,23 +10,21 @@ This delivery extends [workspace identity](2026-09-06-workspace-identity-http.md
 
 ## Accounts and installation
 
-An operator runs an interactive deployment command to create the first site administrator and default-space owner. Password input is hidden and never appears in arguments or logs. The durable initialization singleton prevents a second initialization. The anonymous browser initialization endpoint and its navigation are removed.
+An operator runs an interactive deployment command to create the first site administrator and default-space owner ([operator administrator setup](2026-09-11-operator-administrator-setup.md)). There is no anonymous browser initialization endpoint.
 
-The browser has login and registration entrances. Registration requires a registration invitation, accepted through a text field or a link that populates it. Registration creates an account without membership or an automatic personal workspace. Accounts without spaces can log in, create a space, or accept a workspace invitation.
+[Consumer identity and site policy](2026-09-20-consumer-identity-and-site-policy.md) owns registration and account groups. A new account is a `VIEWER` with no membership and no automatic personal workspace; only `CREATOR` and `ADMINISTRATOR` accounts create spaces. An account without spaces can log in, manage its login methods, and accept a workspace invitation.
 
-Registration invitations and workspace invitations are separate credentials and operations. Each is single-use, expires after seven days, and is stored only as a digest. A workspace invitation specifies its workspace and initial member permissions; it cannot register an account or replace a registration invitation. An unauthenticated recipient completes login or separately authorized registration before continuing acceptance.
-
-`poketto.registration.user-invitations-enabled` defaults to `false`: only site administrators can issue registration invitations. Enabling it permits authenticated accounts to issue them. Eligibility and issuance allowance use one policy boundary so user classes and per-account quotas can be added independently. This delivery does not impose a fixed per-user invitation quota. Bounded request admission and paginated listings remain transport safeguards. Issuers can list and revoke their invitations; site administration is distinct from workspace ownership. Disabling ordinary issuance does not silently revoke previously issued invitations.
+A workspace invitation specifies its workspace and initial member permissions, is single-use, expires after seven days, and is stored only as a digest. It cannot register an account: an unauthenticated recipient signs in or registers first, then accepts. Site administration is distinct from workspace ownership.
 
 ## Workspace lifecycle and access
 
-The account-level space list supports creation, joining, and switching. Creation asks for a display name, public slug, and an existing GitHub or CNB HTTPS repository with credentials. [Repository initialization on connection](2026-09-16-repository-initialization-on-connection.md) commits the content template into an empty repository once the space exists and, for a repository with content, offers the template's absent files from the space's repository connection view. The creator receives the owner membership. Creation is durable and idempotent, records failure stages, and resumes without duplicate spaces or destructive writes to existing content. One remote repository cannot be bound to two spaces. There is no automatic provider-side repository creation.
+The account-level space list supports creation, joining, and switching. Manual creation asks for a display name, public slug, and an existing GitHub or CNB HTTPS repository with credentials; [GitHub-authorized personal spaces](2026-09-21-github-authorized-personal-spaces.md) add creation of a private repository in the user's own GitHub account, the only path on which Poketto creates a provider repository. [Repository initialization on connection](2026-09-16-repository-initialization-on-connection.md) commits the content template into an empty repository once the space exists and, for a repository with content, offers the template's absent files from the space's repository connection view. The creator receives the owner membership. Creation is durable and idempotent, records failure stages, and resumes without duplicate spaces or destructive writes to existing content. One remote repository cannot be bound to two spaces.
 
 Credentials are encrypted using a deployment-provided key, scoped by workspace, excluded from response bodies and logs, and rotatable only by the space owner. Repository validation rejects unsupported origins, credentials in URLs, unsafe redirect targets, and private-network destinations. An established workspace cannot be rebound to another repository through this delivery's UI.
 
 A new workspace starts with public delivery disabled, including when its repository already contains `public/`. The owner must enable public delivery explicitly. Public delivery then exposes only the repository's public scope; `private/` and other excluded files never enter public discovery. Registered membership is required to use the private administration surface. Members can read the public scope within their space even while its public website is disabled; private files additionally require private-read permission.
 
-Owners list members and assign private read, private write, and public-content write/publish permissions separately. Private write requires private read. Ordinary invitations default to none of these capabilities. Owners alone administer membership, repository credentials, and the space's publication switch. The last-owner invariant remains. Existing ordinary members lose implicit permissions when the new permission model is installed; owners remain owners.
+Owners list members and assign private read, private write, and public-content write/publish permissions separately ([member content permissions](2026-09-12-member-content-permissions.md)). Private write requires private read. Ordinary invitations default to none of these capabilities. Owners alone administer membership, repository credentials, and the space's publication switch. The last-owner invariant remains.
 
 Effective machine access is the intersection of the connection's explicit grants and its holder's current permissions. Reducing membership permissions revokes over-scoped connections and terminates affected execution sessions. Increasing permissions never expands existing connection grants. All storage, media, histories, exports, caches, jobs, and authorization checks remain workspace-scoped.
 
@@ -41,60 +32,28 @@ Account identity is available independently of workspace access. Private HTTP op
 
 ## Public discovery and reading
 
-The root site becomes cross-workspace public discovery. Space websites use `/s/{slug}`; existing published default-space article URLs redirect to their canonical new routes. Both logged-in and anonymous visitors see public discovery; accounts additionally have a My spaces entrance. Cards identify their author display name, space, and collection without exposing private account fields.
+The root site is cross-workspace public discovery. Space websites use `/s/{slug}`; published default-space article URLs redirect to their canonical routes. Both logged-in and anonymous visitors see public discovery; accounts additionally have a My spaces entrance. Cards identify their author display name, space, and collection without exposing private account fields.
 
-The [public sitemap contract](2026-09-14-public-sitemaps.md) specifies complete
-enumeration of canonical space URLs and robots.txt discovery independently of
-sampled browsing batches.
+Discovery mixes public article, album, and collection cards; it does not turn every raw media file into a post. [Discovery batches](2026-09-14-public-discovery-batches.md) keep random order stable within a browsing batch, including pagination and return navigation, and use bounded verified public data rather than a repository fetch per request. Publication withdrawal overrides old batches. [Album entrances](2026-09-14-album-entrances-and-lightbox.md) and [collection reading](2026-09-14-collection-reading.md) own folder landings, thumbnails and sequential reading; album and collection names are content-derived, never hard-coded.
 
-Discovery mixes public article, album, and collection cards. It does not turn every raw media file into a post. Random order is stable within a browsing batch, including pagination and return navigation; an explicit reshuffle starts a new batch. Publication withdrawal overrides old batches. Discovery uses bounded verified public data, not a synchronous repository fetch for every space on each request.
+Summaries come from parsed visible Markdown text before truncation. Link labels remain without URL syntax; duplicate opening titles are omitted from summaries. Reading-text extraction is shared by public and authorized management search. CommonMark nodes and the table, strikethrough, task-list and footnote extensions retain authored prose, code and image descriptions without interpreting link destinations as text. Only reachable footnote definitions participate, in reference order. Text normalization and summary generation are transient reads; they never rewrite repository content.
 
-Albums and collections have stable navigation entrances. Folder landing detection prefers `index.md`, with `README.md` when no index exists; two files in one folder must not produce duplicate landing cards. Existing authored text remains intact. Album thumbnails use a disposable cache keyed by workspace, immutable media version, and representation; originals remain authoritative. A lightbox supports previous/next, Escape, and focus restoration. Album and collection names are content-derived, never hard-coded to demonstration data.
+Site search covers enabled public spaces; space search fixes one space. Authenticated management search fixes both a space and the caller's current authorization. Search matches literal visible text, without semantic search. [Site search](2026-09-14-public-site-search.md) and [search highlights and reading return](2026-09-14-search-highlights-and-reading-return.md) own result identity, escaped highlighting, URL state and return navigation; raw or cross-origin return URLs are not trusted navigation targets. The [public sitemap contract](2026-09-14-public-sitemaps.md) enumerates every canonical space URL.
 
-Collection entries follow resolved article links in the landing document's authored order. An article retains the collection through which it was opened; direct entry offers its memberships instead of guessing an ambiguous parent. Reading navigation supplies collection return and previous/next articles, with a clear final entry.
-
-Summaries come from parsed visible Markdown text before truncation. Link labels remain without URL syntax; duplicate opening titles are omitted from summaries. Article rendering omits only a first level-one heading equal to the separately rendered page title.
-
-Reading-text extraction is shared by public and authorized management search. CommonMark nodes and the table, strikethrough, task-list and footnote extensions retain authored prose, code and image descriptions without interpreting link destinations as text. Only reachable footnote definitions participate, in reference order. Text normalization and summary generation are transient reads; they never rewrite repository content. Summary suppression does not itself suppress the separately rendered article heading; that remains a frontend reading requirement.
-
-Site search covers enabled public spaces; space search fixes one space. Authenticated management search fixes both a space and the caller's current authorization. Literal visible-text matching is retained without semantic search. Titles and snippets highlight matches using escaped text nodes and `mark`, while article bodies retain normal reading. Snippets surround visible matches rather than raw URL or Markdown bytes.
-
-The [site search decision](2026-09-14-public-site-search.md) implements complete bounded search across enabled public spaces, with space-specific result identity and preserved site-search return state.
-
-Search query, pagination, and space scope live in URLs. Browser-history-local state preserves the result anchor and scroll offset. Articles entered from search offer Return to results; direct entries use their space or collection. Browser Back must continue to work. Raw or cross-origin return URLs are not trusted navigation targets.
-
-Disabling public delivery or withdrawing content denies discovery, search, page, thumbnail, image, and download access, including stale snapshots or cached grants. External copies already downloaded cannot be recalled. Public and authenticated cache variants must never mix.
-
-The [website delivery boundary](2026-09-14-workspace-public-delivery.md) specifies the independent website switch, owner-only control and strict invalidation of previously issued public image tokens. Repository-public member access remains available while anonymous delivery is disabled.
+Disabling public delivery or withdrawing content denies discovery, search, page, thumbnail, image, and download access, including stale snapshots or cached grants. External copies already downloaded cannot be recalled. Public and authenticated cache variants must never mix. The [website delivery boundary](2026-09-14-workspace-public-delivery.md) owns the owner-only switch and the invalidation of previously issued public image tokens.
 
 ## Administration experience
 
-New note and New folder actions operate in the selected directory. New notes and uploads default to private; full path entry remains an advanced action. Filename search covers all authorized files, not just expanded tree entries, and is distinct from body search.
-
-Management tabs, selected space, folder, and document have restorable URLs. Unsaved changes are handled before changing space or document. The editor distinguishes saved Git state from public-page availability, labels visibility, offers View public page, and updates image previews automatically. Publishing reuses repository public/private roots and coordinated moves and references; it does not add a second per-document visibility authority outside files.
-
-The [content navigation decision](2026-09-14-admin-content-navigation.md) implements independent folder/document URLs, guarded history traversal, and private note/folder draft creation. [Repository-wide filename search](2026-09-14-administration-filename-search.md) and [explicit public-page availability](2026-09-14-editor-public-page-state.md) implement the remaining editor capabilities; final installation acceptance remains part of this delivery.
+New notes and uploads default to private; full path entry remains an advanced action. Publishing reuses repository public/private roots and coordinated moves and references; it does not add a second per-document visibility authority outside files. [Content navigation](2026-09-14-admin-content-navigation.md), [repository-wide filename search](2026-09-14-administration-filename-search.md) and [explicit public-page availability](2026-09-14-editor-public-page-state.md) own restorable URLs, unsaved-change handling, filename search and the editor's saved-versus-public state.
 
 ## Alternatives and boundaries
 
-A default-space blog cannot represent several independent accounts. Content storage owned only by an account would lose the shared-space authorization boundary; account-owned executor copies remain scoped to an authorized workspace. Open registration and provider-side private-repository creation add provisioning and abuse mechanisms beyond connecting an existing repository, so registration remains invitation-gated and remote creation is excluded.
+A default-space blog cannot represent several independent accounts. Content storage owned only by an account would lose the shared-space authorization boundary; [account working copies](2026-09-14-account-working-copies.md) remain scoped to an authorized workspace. Open registration and provider-side repository creation need their own abuse and provisioning controls, which [consumer identity](2026-09-20-consumer-identity-and-site-policy.md) and [GitHub-authorized personal spaces](2026-09-21-github-authorized-personal-spaces.md) own.
 
 Purely client-side workspace switching could save edits into another tab's selected repository; request-scoped workspace selection is required. Hiding private links in UI would leave image, history, export, and execution entrances exposed, so service authorization owns visibility. Per-request random ordering would break pagination and reading returns, so randomization has a stable batch.
 
-This delivery excludes cross-instance identities, automatic remote creation, personalized ranking, comments, likes, email recovery, destructive workspace deletion, and ownership transfer. Scoped credential rotation, revocation, and last-owner protection remain required operations.
+Cross-instance identities, personalized ranking, destructive workspace deletion, and ownership transfer are not implemented. [Community interactions](2026-09-23-community-interactions.md) own comments and likes, and consumer identity owns email recovery. Scoped credential rotation, revocation, and last-owner protection remain required operations.
 
-## Acceptance and delivery
+## Verification
 
-- Registration invitation defaults admit only site-administrator issuance; enabling ordinary issuance permits accounts without making workspace owners site administrators. Separate credential types cannot be exchanged or reused, and concurrent redemption creates at most one account.
-- Two accounts and two spaces remain isolated across simultaneous tabs, invitation acceptance, member updates, files, media, exports, OAuth, and MCP execution. A no-space account can log in and create or join a space.
-- Repository connection failure, retry, ambiguous response, and duplicate submission do not duplicate resources or overwrite source content. Credentials never appear in UI evidence or logs.
-- New workspaces keep existing public files off the internet until enabled; private files remain private afterward. Stale discovery and media grants cannot bypass withdrawal.
-- From the home page, two clicks reach an existing named album with recognizable thumbnails. Any collection article provides collection return and sequential reading.
-- Homepage and search cards contain no encoded destinations, broken Markdown, or repeated title. Search matches highlight safely, and browser/page returns restore query, page, and reading position.
-- New-file, filename search, editor state, keyboard navigation, and mobile flows use a real running frontend and backend for evidence.
-
-The [acceptance record](2026-09-15-multiuser-daily-use-acceptance.md) maps the complete behavior to real provider, database, browser, native-worker and production evidence. Subsystem records retain their contracts and limitations. HTTPS acceptance preserves existing managed originals and independently verifies public and private behavior.
-
-[Account working copies](2026-09-14-account-working-copies.md) implements disk-backed, transport-independent execution with real authenticated HTTP evidence. The production connector has demonstrated reconnection, timeout retention, save/readback and application-restart continuity. Search and editor delivery has [real two-space browser evidence](../../acceptance/evidence/2026-09-14-daily-use-ui.json), and the demonstrated frontend is unchanged in application revision `9474a8121c3aadb9cacd236f005a77b54a0eafd1`. The [acceptance record](2026-09-15-multiuser-daily-use-acceptance.md) consolidates the complete delivery audit and its evidence limits. External clients unavailable to the operator are not final completion conditions and must not be described as tested; current callable connectors and real service integration supply the execution evidence.
-
-The [real GitHub connection run](../../acceptance/evidence/2026-09-15-provider-connection.json) verifies failed credentials, successful same-request retry, authoritative result lookup, idempotent replay and duplicate-binding rollback against PostgreSQL. Git metadata and transport advertisements use a real existing private repository without modifying it. Browser evidence verifies retained failure controls and private website defaults. CNB interoperability and remote content writes are not claims of that run.
+Subsystem records name the tests that pin their contracts. The [real GitHub connection run](../../acceptance/evidence/2026-09-15-provider-connection.json) verifies failed credentials, same-request retry, authoritative result lookup, idempotent replay and duplicate-binding rollback against PostgreSQL without modifying the repository; it makes no claim about CNB interoperability or remote content writes. The [two-space browser evidence](../../acceptance/evidence/2026-09-14-daily-use-ui.json) covers search and editor delivery.

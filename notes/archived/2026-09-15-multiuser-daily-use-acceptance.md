@@ -1,6 +1,7 @@
 # Multi-user Daily-use Acceptance
 
 Date: 2026-09-15
+Archived: 2026-09-25
 
 ## Delivery boundary
 

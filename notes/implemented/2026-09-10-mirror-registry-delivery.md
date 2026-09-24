@@ -34,7 +34,7 @@ Repository configuration: variable `POKETTO_MIRROR_REPOSITORY` (image name prefi
 
 ### Deployment
 
-`POKETTO_DEPLOY_MODE=mirror` is valid for both layouts and requires `POKETTO_MIRROR_REPOSITORY`. The deployment job passes the mirror digest references to `transfer.sh --pull`; the host pulls only the layers it lacks. The workflow's configuration check accepts `existing` with `mirror` and continues to require `transfer` for `existing` otherwise.
+`POKETTO_DEPLOY_MODE=mirror` is valid for both layouts and requires `POKETTO_MIRROR_REPOSITORY`. The deployment job passes the mirror digest references to `transfer.sh --pull`; the host pulls only the layers it lacks. The workflow's configuration check accepts `mirror` in either layout only when the mirror job succeeded.
 
 For the standard layout nothing else changes: `deploy.sh` already pulls digest-pinned images, logs in with streamed `REGISTRY_USERNAME` and `REGISTRY_PASSWORD` lines inside a temporary Docker configuration directory, and verifies revision labels.
 
@@ -46,7 +46,7 @@ A failed mirror pull fails the deployment with the pull error. There is no autom
 
 **Longer deadline or off-peak scheduling.** The [90-minute limit was already raised to 180](../implemented/2026-09-03-continuous-delivery.md); at 9 KB/s the archive needs more than eight hours, and the route also degraded during working hours.
 
-**Host pulls from GHCR.** `--pull` mode exists for the standard layout, but it uses the same international route, the operator has observed unstable GHCR access from the host, and the existing layout refuses pulls. The proposal reuses that pull path with a domestic source.
+**Host pulls from GHCR.** `--pull` mode exists for the standard layout, but it uses the same international route, the operator had observed unstable GHCR access from the host, and the existing layout did not yet support pulls. The mirror reuses that pull path with a domestic source. A host that reaches GHCR reliably needs no mirror: both layouts now default to pulling from it.
 
 **Tencent Cloud Container Registry.** Equivalent for delivery and interchangeable through the same variables. CNB was chosen because it needs no additional cloud product and its registry accepts pushes from any Docker client; a later switch is configuration, not code.
 
@@ -60,12 +60,9 @@ A failed mirror pull fails the deployment with the pull error. There is no autom
 - Registry quotas depend on the provider and account plan. Old `sha-` tags accumulate on the mirror and on the host; cleanup of either is separate work.
 - A mirror outage blocks deployment in mirror mode, not verification or GHCR publication. Mirror delivery depends on a third-party platform in addition to GitHub.
 - Content integrity comes from the expected digest produced by trusted GHCR publication, preserved and checked during copying and used for the host pull. Revision labels are ordinary image metadata and provide only a source-version consistency check; an altered image could retain the same label. A registry that rewrites the manifest cannot satisfy the expected digest.
-- The [requirements note](2026-08-25-requirements-and-architecture.md) describes GHCR publication, optional mirror delivery and the SSH archive fallback in both languages.
 
 ## Activation and verification
 
-Create a separate image repository and configure the mirror prefix and write credential before activation. Keep `POKETTO_DEPLOY_MODE=transfer` until a main commit containing the new workflow and scripts has published and copied both images successfully. Then select `mirror` and run deployment. Never change the visibility of the content repository to enable anonymous image pulls.
+Before selecting `mirror`, create a separate image repository, configure the mirror prefix and write credential, and confirm that a `main` commit has published and copied both images. Never change the visibility of the content repository to enable anonymous image pulls.
 
-`./gradlew deployScriptTests repoCheck` passes all 14 deployment script groups and repository checks. The fake-client tests exercise canonical source references, digest preservation and remote manifest readback; failed copy, authentication or digest verification produces no delivery outputs. Existing-layout tests execute the pull helper before the updater, reject configuration settings and tag references, verify temporary credential cleanup, and prevent updater invocation after login or pull failure. Existing archive and standard pull cases remain covered.
-
-[Production delivery run 34507912175](https://github.com/core607/poketto/actions/runs/34507912175) completed in `mirror` mode for revision `dd01b4e3b50d083690f43b6a460f2ceefab96d21`. Both canonical manifests retained their digests in the mirror: application `sha256:87c6f7a06b5ca6d3a4d0726cd2d20cbcb70a39c82a0cb74832312fe9b02d4462` and frontend `sha256:17ae021df82b759e7616c904d80e05347822d2d0ccd1c5a10abc119b45c180e6`. The copy step took 33 seconds; the existing-layout pull, update and health step took 42 seconds. Independent container inspection confirmed the mirror references, source revision and healthy state. This verifies registry delivery and application readiness, not final HTTPS acceptance.
+`./gradlew deployScriptTests` pins digest preservation, remote manifest readback, the absence of delivery outputs after a failed copy, and the existing-layout pull helper running before the updater. [Production delivery run 34507912175](https://github.com/core607/poketto/actions/runs/34507912175) delivered revision `dd01b4e3` in `mirror` mode with both canonical digests preserved; the copy took 33 seconds and the existing-layout pull, update and health step 42 seconds.

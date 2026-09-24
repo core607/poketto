@@ -12,7 +12,7 @@ Agents use shell, Python and Git in isolated environments; Poketto controls auth
 - Git as content authority: text, directories and media references are inspectable and versioned. Browser and agent writes share the same revision-checked path.
 - Persistent copies, isolated commands: copies are shared by account, space and reading scope, with hard disk quotas. Commands run serially per copy; each live lease retains shell state and background processes under separate resource limits.
 - Host-controlled writes: repository credentials stay outside the sandbox. The host handles selected saves, conflict checks and uncertain-result recovery.
-- Separate public and private views: directories express publication state, publishing requires permission, and public readers receive an independent projection without private files or original history.
+- Separate public and private views: directories express publication state, publishing requires permission, and public-scope agents receive an independent projection without private files or original Git history. A space may opt in to show readers the earlier public versions of its articles.
 - Separate text and originals: Git records media paths and versions; independent storage holds immutable originals, referenced through relative paths.
 - Account groups control participation and public visibility. Withdrawing an author's websites preserves their existing editing and MCP permissions so they can correct the content.
 - Community: private bookmarks, space following, likes, comments and in-site notifications, with reporting and blocking. Article identities travel with Markdown across moves.
@@ -32,7 +32,7 @@ Build on multi-user content spaces toward SaaS hosting and agent content communi
 
 Deployment requires Linux, PostgreSQL, a private Git repository and a separate execution service. The stack uses Java, Spring Boot and Next.js. The project is under active development; interfaces and repository formats may change, and operators manage backups.
 
-[Contributing](AGENTS.md) · [Client acceptance](acceptance/clients/README.md) · [Sandbox verification](executor-native/README.md) · [Delivery scope](notes/implemented/2026-09-15-multiuser-daily-use-acceptance.md)
+[Contributing](AGENTS.md) · [Client acceptance](acceptance/clients/README.md) · [Sandbox verification](executor-native/README.md) · [Delivery scope](notes/implemented/2026-09-05-phase-one-daily-use.md)
 
 ## License
 

@@ -28,7 +28,7 @@ Path and route collisions with other files are not checked. They are not the aut
 - A commit object over 1 MiB fails the read.
 - After the walk, the website switch and the history setting are checked again, and the answer stands only if the same snapshot commit still serves the route. Otherwise the request fails as repository-unavailable and the reader retries.
 
-**Pages.** `/s/{slug}/history/{route}` lists the versions oldest first, numbered from 1, and compares two selected versions line by line with [lib/source-diff.ts](../../frontend/lib/source-diff.ts), defaulting to the two newest. The diff always runs from the earlier to the later of the two, whichever box holds which, so a removed passage is never shown as added; a line above it names the two versions in that order. Long bodies fall back to side-by-side text. The page shows a retry message when history is unavailable. It is `noindex` and absent from sitemaps. While the setting is on, every article footer links 「修订历史」 without a version count, because counting would walk Git on every article view.
+**Pages.** `/s/{slug}/history/{route}` lists the versions oldest first and compares two of them line by line with [lib/source-diff.ts](../../frontend/lib/source-diff.ts). The diff always runs from the earlier to the later version, so a removed passage is never shown as added. The page is `noindex` and absent from sitemaps. While the setting is on, every article footer links 「修订历史」 without a version count, because counting would walk Git on every article view.
 
 ## Alternatives
 
@@ -47,7 +47,4 @@ Path and route collisions with other files are not checked. They are not the aut
 
 ## Verification
 
-- [JGitPublicRevisionHistoryTests](../../src/test/java/io/github/core607/poketto/content/internal/JGitPublicRevisionHistoryTests.java) builds Git histories in memory: a disabled period ends history even though the article was public before it; an exclusion and an absent file end history; identical bodies collapse to their earliest commit, including a frontmatter-only change; a route change and a future `publish_at` end history; the 51st version reports an incomplete history.
-- [PublicHistoryTests](../../src/test/java/io/github/core607/poketto/web/internal/PublicHistoryTests.java): with the setting off the request is not found and neither snapshots nor Git are read; the JSON holds only route, title, versions of time and body, and completeness; a snapshot that moved during the walk discards the answer.
-- [revision-history.test.tsx](../../frontend/tests/revision-history.test.tsx): the page selects the two newest versions and renders the line diff, keeps `noindex`, turns 404 into not-found and other failures into a retry message; the article footer links history only when the space shows it.
-- [space-publication.test.tsx](../../frontend/tests/space-publication.test.tsx): the setting changes only after confirmation and a server answer that agrees.
+[JGitPublicRevisionHistoryTests](../../src/test/java/io/github/core607/poketto/content/internal/JGitPublicRevisionHistoryTests.java) pins where history stops, version collapsing and completeness against in-memory Git histories; [PublicHistoryTests](../../src/test/java/io/github/core607/poketto/web/internal/PublicHistoryTests.java) pins the disabled-setting 404 before any read, the exposed fields and the moved-snapshot discard; [revision-history.test.tsx](../../frontend/tests/revision-history.test.tsx) and [space-publication.test.tsx](../../frontend/tests/space-publication.test.tsx) pin the page and the confirmed setting change.
