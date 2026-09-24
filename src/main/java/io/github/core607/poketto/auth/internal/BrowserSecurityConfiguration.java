@@ -120,6 +120,28 @@ class BrowserSecurityConfiguration {
         return http.build();
     }
 
+    /** A capture key held by a phone shortcut; stateless like MCP, and useless for anything else. */
+    @Bean
+    @Order(1)
+    SecurityFilterChain captureSecurity(
+            HttpSecurity http,
+            ObjectProvider<AuthService> auth,
+            @Value("${poketto.security.allowed-origins:}") String origins,
+            @Value("${poketto.oauth.issuer:}") String issuer)
+            throws Exception {
+        http.securityMatcher("/api/capture")
+                .csrf(csrf -> csrf.disable())
+                .requestCache(cache -> cache.disable())
+                .securityContext(context -> context.securityContextRepository(new NullSecurityContextRepository()))
+                .sessionManagement(sessions -> sessions.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(requests -> requests.anyRequest().authenticated())
+                .exceptionHandling(errors -> errors.authenticationEntryPoint(
+                        (request, response, exception) -> AuthHttpErrors.write(response, 401)))
+                .addFilterBefore(new OriginAndBodyFilter(origins(origins)), AnonymousAuthenticationFilter.class)
+                .addFilterBefore(new WorkspaceIdentityFilter(auth, true, issuer), AnonymousAuthenticationFilter.class);
+        return http.build();
+    }
+
     @Bean
     @Order(2)
     SecurityFilterChain browserSecurity(

@@ -3,6 +3,7 @@ package io.github.core607.poketto.content.internal;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.content.CaptureInboxPaths;
 import io.github.core607.poketto.content.ContentLimits;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
@@ -106,7 +107,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                     Set<Capability> required = patch.changes().stream()
                             .map(change -> currentPolicy.permitsPath(change.path())
                                     ? Capability.PUBLISH
-                                    : Capability.WRITE_PRIVATE)
+                                    : captured(change) ? Capability.CAPTURE : Capability.WRITE_PRIVATE)
                             .collect(Collectors.toSet());
                     auth.withAuthorization(principal, workspace, required, () -> null);
                     checkBase(repository, index, patch);
@@ -120,6 +121,11 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                                     || RepositoryPathRules.reserved(change.path()));
                     return new RepositoryCandidateChanges(replacements, Map.of(), deletions, structural);
                 });
+    }
+
+    // Private writing implies capture, so this narrows nothing for members or ordinary keys.
+    private static boolean captured(RepositoryTextChange change) {
+        return change.expectedAbsence() && change.content().isPresent() && CaptureInboxPaths.accepts(change.path());
     }
 
     @Override

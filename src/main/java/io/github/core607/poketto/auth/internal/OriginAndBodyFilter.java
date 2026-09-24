@@ -27,6 +27,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 final class OriginAndBodyFilter extends OncePerRequestFilter {
     /** Authentication body bound from the workspace identity record. */
     static final int MAX_AUTH_BODY = 16 * 1024;
+    /** A capture carries at most one managed-image original beside its text. */
+    static final int CAPTURE_BODY = 17 * 1024 * 1024;
 
     private final Set<String> origins;
 
@@ -45,6 +47,11 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
         String path = request.getServletPath();
         if (path.isEmpty()) {
             path = request.getRequestURI().substring(request.getContextPath().length());
+        }
+        if (path.equals("/api/capture")) {
+            response.setHeader("Cache-Control", "no-store");
+            filterBody(request, response, chain, CAPTURE_BODY);
+            return;
         }
         if (path.startsWith("/api/auth/") || path.startsWith("/api/admin/")) {
             response.setHeader("Cache-Control", "no-store");
@@ -254,6 +261,7 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
                     "/api/admin/repository/preview",
                     "/api/admin/repository/article-identity" -> 6 * 1024 * 1024;
             case "/api/admin/assets" -> 17 * 1024 * 1024;
+            case "/api/admin/capture" -> 128 * 1024;
             case "/api/admin/media" -> 128 * 1024 * 1024;
             default -> MAX_AUTH_BODY;
         };

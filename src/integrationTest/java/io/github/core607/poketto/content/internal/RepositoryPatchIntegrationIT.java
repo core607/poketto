@@ -3,11 +3,16 @@ package io.github.core607.poketto.content.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import io.github.core607.poketto.auth.AuthException;
+import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.RepositoryMoveRequest;
@@ -16,18 +21,26 @@ import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
+import io.github.core607.poketto.workspace.WorkspaceId;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import javax.imageio.ImageIO;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -35,6 +48,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
+import tools.jackson.databind.json.JsonMapper;
 
 @Testcontainers
 @SpringBootTest
@@ -224,6 +238,83 @@ class RepositoryPatchIntegrationIT {
         assertThatThrownBy(() -> new RepositoryMoveRequest(
                         privateMove.commit(), "public/moved-article.md", "public/../unsafe.md"))
                 .isInstanceOf(IllegalArgumentException.class);
+        verifyCaptureKeys(owner, workspace);
+    }
+
+    // A capture key adds new inbox notes over its own entrance and can do nothing else to the repository.
+    private void verifyCaptureKeys(AuthPrincipal owner, WorkspaceId workspace) throws Exception {
+        String token = auth.createApiKey(owner, workspace, owner.accountId(), Set.of(Capability.CAPTURE))
+                .token();
+        String created = mvc.perform(
+                        post("/api/capture")
+                                .header("Authorization", "Bearer " + token)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        "{\"title\":\"雨后\",\"url\":\"https://example.com/rain\",\"text\":\"一段话\",\"note\":\"备注\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String path = JsonMapper.builder().build().readTree(created).get("path").stringValue();
+        assertThat(path).startsWith("private/inbox/").endsWith("-雨后.md");
+        assertThat(files.getFile(workspace, Optional.empty(), path).source())
+                .hasValueSatisfying(value -> assertThat(value)
+                        .contains("source: \"https://example.com/rain\"")
+                        .contains("> 一段话")
+                        .endsWith("备注\n"));
+
+        mvc.perform(post("/api/capture").contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"x\"}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/capture")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"url\":\"javascript:alert(1)\"}"))
+                .andExpect(status().isBadRequest());
+
+        AuthPrincipal capture = auth.authenticateApiKey(token);
+        var current = files.getFile(workspace, Optional.empty(), path);
+        assertThatThrownBy(() -> patches.apply(
+                        capture,
+                        workspace,
+                        new RepositoryPatch(current.commit(), List.of(create("private/elsewhere.md", "# No")))))
+                .isInstanceOf(AuthException.class);
+        assertThatThrownBy(() -> patches.apply(
+                        capture,
+                        workspace,
+                        new RepositoryPatch(
+                                current.commit(),
+                                List.of(new RepositoryTextChange(
+                                        path, false, current.revision(), Optional.of("# Overwritten"))))))
+                .isInstanceOf(AuthException.class);
+        assertThatThrownBy(() -> patches.apply(
+                        capture,
+                        workspace,
+                        new RepositoryPatch(current.commit(), List.of(create("private/inbox/nested/x.md", "# No")))))
+                .isInstanceOf(AuthException.class);
+
+        var image = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", image);
+        var sent = mvc.perform(multipart("/api/capture")
+                        .file(new MockMultipartFile("image", "photo.png", "image/png", image.toByteArray()))
+                        .param("note", "照片")
+                        .header("Authorization", "Bearer " + token))
+                .andReturn()
+                .getResponse();
+        // Managed originals are stored on Linux only; elsewhere the store refuses and nothing is written.
+        if (OS.current() != OS.LINUX) {
+            assertThat(sent.getStatus()).isEqualTo(503);
+            return;
+        }
+        assertThat(sent.getStatus()).isEqualTo(201);
+        String withImage = JsonMapper.builder()
+                .build()
+                .readTree(sent.getContentAsString())
+                .get("path")
+                .stringValue();
+        assertThat(files.getFile(workspace, Optional.empty(), withImage).source())
+                .hasValueSatisfying(
+                        value -> assertThat(value).containsPattern("!\\[图片]\\(managed:[0-9a-f-]{36}:[0-9a-f]{64}\\)"));
     }
 
     private static RepositoryTextChange create(String path, String content) {
