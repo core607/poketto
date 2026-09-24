@@ -15,6 +15,8 @@ import {
   tagHref,
 } from "../../../../../lib/format";
 import { plainSummary } from "../../../../../lib/summary";
+import { readingGuide } from "../../../../../lib/reading";
+import { TableOfContents } from "../../../../../components/table-of-contents";
 import { JsonLd, absoluteUrl } from "../../../../../components/json-ld";
 import { Markdown } from "../../../../../components/markdown";
 import { Gallery } from "../../../../../components/gallery";
@@ -103,6 +105,10 @@ export default async function Article({
       : undefined;
   const returnToSearch = readingSearchReturn(parameters, space);
   const folders = route.split("/").slice(1, -1);
+  const guide = readingGuide(value.body, value.title);
+  // A short article reads fine without a table of contents.
+  const contents = guide.contents.length >= 3 ? guide.contents : [];
+  const hasCollection = hasCollectionPanel(value.navigation);
   const collection = (
     <CollectionPanel
       navigation={value.navigation}
@@ -114,7 +120,7 @@ export default async function Article({
   return (
     <div
       className={
-        hasCollectionPanel(value.navigation)
+        hasCollection || contents.length
           ? "read-layout has-rail"
           : "read-layout"
       }
@@ -162,6 +168,9 @@ export default async function Article({
               </span>
             )}
             <time dateTime={value.createdAt}>{date(value.createdAt)}</time>
+            {!value.folderPage && (
+              <span title="预计阅读时长">约 {guide.minutes} 分钟</span>
+            )}
             {value.folderPage && <span className="kind">目录</span>}
             {value.tags.length > 0 && (
               <span className="card-tags">
@@ -174,7 +183,15 @@ export default async function Article({
             )}
           </div>
         </header>
-        {hasCollectionPanel(value.navigation) && (
+        {contents.length > 0 && (
+          <details className="read-inline-toc">
+            <summary>目录</summary>
+            <nav aria-label="文章目录">
+              <TableOfContents entries={contents} />
+            </nav>
+          </details>
+        )}
+        {hasCollection && (
           <div className="read-inline-collection">{collection}</div>
         )}
         <div className="read-body">
@@ -205,9 +222,15 @@ export default async function Article({
         </footer>
         <ArticleCommunity space={space} articleId={value.articleId} />
       </article>
-      {hasCollectionPanel(value.navigation) && (
-        <aside className="read-rail" aria-label="合集">
-          {collection}
+      {(hasCollection || contents.length > 0) && (
+        <aside className="read-rail" aria-label="阅读导航">
+          {contents.length > 0 && (
+            <nav className="toc" aria-label="文章目录">
+              <p className="toc-title">目录</p>
+              <TableOfContents entries={contents} />
+            </nav>
+          )}
+          {hasCollection && collection}
         </aside>
       )}
     </div>
