@@ -2,6 +2,7 @@ package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicArticle;
+import io.github.core607.poketto.content.PublicCollections;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -13,8 +14,11 @@ import java.time.Clock;
 import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
@@ -81,8 +85,7 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
             PublicContentSnapshot renewed = new PublicContentSnapshot(
                     workspaceId, snapshot.commitId(), verifiedAt, verifiedAt.plus(lifetime), previous.articles());
             writeMarker(workspaceId, snapshot, verifiedAt, true);
-            install(workspaceId, renewed);
-            return renewed;
+            return install(workspaceId, renewed).due(verifiedAt);
         }
         // Recording CLOSED precedes parsing. A crash or a bad policy cannot resurrect the earlier
         // publication decision. Offline restoration also requires the marker and cache main to match.
@@ -90,8 +93,7 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
         writeMarker(workspaceId, snapshot, verifiedAt, false);
         PublicContentSnapshot result = build(workspaceId, snapshot, verifiedAt);
         writeMarker(workspaceId, snapshot, verifiedAt, true);
-        install(workspaceId, result);
-        return result;
+        return install(workspaceId, result).due(verifiedAt);
     }
 
     /** Caller holds the workspace authority lock before submitting a publication-affecting write. */
@@ -102,16 +104,17 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
 
     @Override
     public PublicContentSnapshot current(WorkspaceId workspaceId) {
-        Published published = snapshots.get(workspaceId);
-        return requireCurrent(published == null ? null : published.snapshot);
+        return requireCurrent(snapshots.get(workspaceId));
     }
 
-    private PublicContentSnapshot requireCurrent(PublicContentSnapshot snapshot) {
+    /** The current view: an expired snapshot is unavailable, and scheduled articles stay out until due. */
+    private PublicContentSnapshot requireCurrent(Published published) {
         Instant now = clock.instant();
+        PublicContentSnapshot snapshot = published == null ? null : published.snapshot;
         if (snapshot == null || now.isBefore(snapshot.verifiedAt()) || !now.isBefore(snapshot.expiresAt())) {
             throw unavailable();
         }
-        return snapshot;
+        return published.due(now);
     }
 
     @Override
@@ -125,22 +128,22 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
             }
             synchronized (selected) {
                 if (snapshots.get(workspaceId) == selected) {
-                    return action.apply(requireCurrent(selected.snapshot));
+                    return action.apply(requireCurrent(selected));
                 }
             }
         }
     }
 
-    private void install(WorkspaceId workspaceId, PublicContentSnapshot snapshot) {
+    private Published install(WorkspaceId workspaceId, PublicContentSnapshot snapshot) {
         var replacement = new Published(snapshot);
         while (true) {
             Published previous = snapshots.putIfAbsent(workspaceId, replacement);
             if (previous == null) {
-                return;
+                return replacement;
             }
             synchronized (previous) {
                 if (snapshots.replace(workspaceId, previous, replacement)) {
-                    return;
+                    return replacement;
                 }
             }
         }
@@ -183,8 +186,7 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
                 throw unavailable();
             }
             PublicContentSnapshot restored = build(workspaceId, cache, verifiedAt);
-            install(workspaceId, restored);
-            return restored;
+            return install(workspaceId, restored).due(clock.instant());
         } catch (IOException | IllegalArgumentException | DateTimeException exception) {
             throw new ContentRepositoryException("public snapshot cache cannot be restored", exception);
         }
@@ -210,7 +212,8 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
                             document.folderPage(),
                             document.publicAuthor(),
                             document.articleId(),
-                            document.featured()))
+                            document.featured(),
+                            document.publishAt()))
                     .sorted(Comparator.comparing(PublicArticle::createdAt)
                             .reversed()
                             .thenComparing(PublicArticle::route))
@@ -265,11 +268,48 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
         return new ContentRepositoryException("public content snapshot is unavailable");
     }
 
+    /**
+     * One installed snapshot with every publishable article, and the view readers get. The view is
+     * rebuilt only when a scheduled article becomes due, so readers that compare views between two
+     * calls see the same object until publication actually changes.
+     */
     private static final class Published {
         private final PublicContentSnapshot snapshot;
+        private PublicContentSnapshot view;
+        private Instant nextDue;
 
         private Published(PublicContentSnapshot snapshot) {
             this.snapshot = snapshot;
+        }
+
+        synchronized PublicContentSnapshot due(Instant now) {
+            if (view != null && (nextDue == null || now.isBefore(nextDue))) {
+                return view;
+            }
+            List<PublicArticle> due = new ArrayList<>();
+            Map<String, Instant> scheduled = new HashMap<>();
+            nextDue = null;
+            for (PublicArticle article : snapshot.articles()) {
+                if (!article.scheduledAfter(now)) {
+                    due.add(article);
+                    continue;
+                }
+                scheduled.put(article.repositoryPath(), article.publishAt());
+                if (nextDue == null || article.publishAt().isBefore(nextDue)) {
+                    nextDue = article.publishAt();
+                }
+            }
+            view = scheduled.isEmpty()
+                    ? snapshot
+                    : new PublicContentSnapshot(
+                            snapshot.workspaceId(),
+                            snapshot.commit(),
+                            snapshot.verifiedAt(),
+                            snapshot.expiresAt(),
+                            due,
+                            new PublicCollections(due),
+                            scheduled);
+            return view;
         }
     }
 }

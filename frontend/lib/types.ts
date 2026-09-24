@@ -86,9 +86,11 @@ export type PublicPage = {
     | "WEBSITE_DISABLED"
     | "WEBSITE_RESTRICTED"
     | "UNAVAILABLE"
+    | "SCHEDULED"
     | "AVAILABLE";
   space: string | null;
   route: string | null;
+  publishAt?: string | null;
 };
 export type RepositoryFile = {
   publicScope: boolean;
