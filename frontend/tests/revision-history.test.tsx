@@ -126,3 +126,69 @@ test("the article footer links history only where the space shows it", async (t)
     "/s/home/history/%E9%9B%A8%E5%90%8E/a%20b",
   );
 });
+
+test("reversed selections still compare from the earlier version to the later one", async () => {
+  const { Window } = await import("happy-dom");
+  const window = new Window();
+  const globals = {
+    window,
+    document: window.document,
+    HTMLElement: window.HTMLElement,
+    Event: window.Event,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  };
+  const old = new Map(
+    Object.keys(globals).map((name) => [
+      name,
+      Object.getOwnPropertyDescriptor(globalThis, name),
+    ]),
+  );
+  for (const [name, value] of Object.entries(globals))
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      writable: true,
+      value,
+    });
+  const { act } = await import("react");
+  const { createRoot } = await import("react-dom/client");
+  const { RevisionComparison } =
+    await import("../components/revision-comparison");
+  const container = window.document.createElement("div");
+  window.document.body.append(container);
+  const root = createRoot(container as unknown as HTMLDivElement);
+  try {
+    await act(async () =>
+      root.render(
+        <RevisionComparison
+          versions={[
+            { savedAt: "2026-09-01T00:00:00Z", body: "保留\n删掉的段落\n" },
+            { savedAt: "2026-09-02T00:00:00Z", body: "保留\n" },
+          ]}
+        />,
+      ),
+    );
+    const [earlier, later] = [...container.querySelectorAll("select")];
+    await act(async () => {
+      earlier.value = "1";
+      earlier.dispatchEvent(new window.Event("change", { bubbles: true }));
+      later.value = "0";
+      later.dispatchEvent(new window.Event("change", { bubbles: true }));
+    });
+    assert.match(
+      container.querySelector(".history-line.removed")!.textContent!,
+      /删掉的段落/,
+    );
+    assert.equal(container.querySelector(".history-line.added"), null);
+    assert.match(
+      container.textContent!,
+      /已按时间先后比较：从第 1 版到第 2 版。/,
+    );
+  } finally {
+    await act(async () => root.unmount());
+    await window.happyDOM.close();
+    for (const [name, descriptor] of old) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else Reflect.deleteProperty(globalThis, name);
+    }
+  }
+});
