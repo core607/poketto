@@ -17,6 +17,8 @@ type Publication = {
   enabled: boolean;
   eligible: boolean;
   effectiveEnabled: boolean;
+  /** Absent from servers older than public revision history. */
+  publicHistory?: boolean;
 };
 
 export function SpacePublication({
@@ -116,6 +118,48 @@ export function SpacePublication({
         setPublication(null);
         setError(
           "未能确认网站当前状态，请重新读取后再操作。" + message(failure),
+        );
+      }
+    } finally {
+      if (version === epoch.current) {
+        busy.current = false;
+        setPending(false);
+      }
+    }
+  }
+
+  async function changeHistory() {
+    if (!publication || busy.current) return;
+    const version = epoch.current;
+    const shown = !publication.publicHistory;
+    busy.current = true;
+    setPending(true);
+    setError("");
+    setReceipt("");
+    try {
+      const approved = await confirm({
+        title: shown ? "公开文章的修订历史？" : "隐藏文章的修订历史？",
+        description: shown
+          ? "读者可以看到每篇文章公开以来的历次正文，并比较改了什么，包括后来删掉的段落。提交说明、作者和草稿期间的内容不会公开。"
+          : "所有文章的修订历史页面会立即停止提供，已被他人保存的副本无法撤回。",
+        confirmLabel: shown ? "公开修订历史" : "隐藏修订历史",
+      });
+      if (!approved || version !== epoch.current) return;
+      const value = await api<Publication>(base + "/history", {
+        method: "PUT",
+        body: { shown },
+      });
+      if (version === epoch.current) {
+        if (value.workspaceId !== workspaceId || value.publicHistory !== shown)
+          throw new Error("修订历史状态未确认");
+        setPublication(value);
+        setReceipt(shown ? "修订历史已公开。" : "修订历史已隐藏。");
+      }
+    } catch (failure) {
+      if (version === epoch.current) {
+        setPublication(null);
+        setError(
+          "未能确认修订历史当前状态，请重新读取后再操作。" + message(failure),
         );
       }
     } finally {
@@ -260,6 +304,21 @@ export function SpacePublication({
           <button disabled={pending} onClick={() => void read()}>
             重新读取网站状态
           </button>
+        )}
+        {publication && (
+          <div className="history-setting">
+            <p>
+              修订历史：
+              <strong>{publication.publicHistory ? "公开" : "不公开"}</strong>
+              <span className="muted">
+                {" "}
+                · 公开后，文章底部会链接到它公开以来的历次正文。
+              </span>
+            </p>
+            <button disabled={pending} onClick={() => void changeHistory()}>
+              {publication.publicHistory ? "隐藏修订历史" : "公开修订历史"}
+            </button>
+          </div>
         )}
         {publication && !publication.eligible && (
           <div className="notice" role="status">

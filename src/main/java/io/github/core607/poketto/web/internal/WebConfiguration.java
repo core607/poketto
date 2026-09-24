@@ -3,6 +3,7 @@ package io.github.core607.poketto.web.internal;
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.content.PublicRevisionHistory;
 import io.github.core607.poketto.content.WebsiteContentSnapshots;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspacePublications;
@@ -26,6 +27,12 @@ class WebConfiguration {
     @Bean
     PublicSiteSearch publicSiteSearch(PublicContentSnapshots snapshots, WorkspacePublications publications) {
         return new PublicSiteSearch(publications, new WebsiteContentSnapshots(snapshots, publications));
+    }
+
+    @Bean
+    PublicHistory publicHistory(
+            PublicContentSnapshots snapshots, WorkspacePublications publications, PublicRevisionHistory history) {
+        return new PublicHistory(publications, new WebsiteContentSnapshots(snapshots, publications), history);
     }
 
     @Bean
