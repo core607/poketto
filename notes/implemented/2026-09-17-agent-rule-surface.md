@@ -1,10 +1,10 @@
-# Agent rules for a repository no human reviews
+# Agent rule surface
 
 Date: 2026-09-17
 
 ## Problem
 
-The agent rule surface had grown to nine skills totalling 455 lines plus an 83-line AGENTS.md, and much of it addressed a reviewer who does not exist. No human reads a Poketto change before it merges: branch protection requires zero approving reviews, the CI matrix runs every job for any non-documentation change, and the AI Review workflow reads `AGENTS.md` and the review skill from `main` to post its findings. Everything else in the rule surface was written as if a person would read the prose, inspect a screenshot, or grant permission for each step.
+The agent rule surface had grown to nine skills totalling 455 lines plus an 83-line AGENTS.md, and much of it assumed a per-change approval step that the repository does not have. Branch protection on `main` requires no approving review, the CI matrix runs every job for any non-documentation change, and the AI Review workflow reads `AGENTS.md` and the review skill from `main` to post its findings. Much of the rule surface was nevertheless written for an approver who inspects each screenshot or grants permission for each step.
 
 Three specific costs had accumulated.
 
@@ -20,17 +20,20 @@ Five skills are deleted: `ui-evidence`, `archive-notes`, `doc-standards`, `trim-
 
 The rules that were load-bearing moved rather than disappearing. AGENTS.md absorbs the placement routing, including the rule that machine-specific runbooks never enter this repository; the archiving mechanics and the same-topic audit, both one line; and the resolvability rule, which is what makes a note readable by an agent that lacks the authoring conversation. The prose standard absorbs the ban on change narration in current-state documents. The bilingual rule survives as the single sentence it always was in practice: when one side changes, make the smallest corresponding change to the other side.
 
-Three rule changes in AGENTS.md:
+Two rule changes in AGENTS.md:
 
 - Within an assigned task, pushing, opening the pull request, answering the review and driving it to merge need no per-step approval. Destructive actions and decisions the user must make still stop the loop.
 - A skill rule is kept only while its editor can name the real failure it prevents, and is deleted otherwise. This is the same test already applied to rejected notes.
-- The arrival guide states that no human reads a change before it merges, so prose is written for the next agent and for the AI reviewer.
+
+The same change added an arrival-guide sentence about who reads a change; [the commit a review belongs to](2026-09-17-reviewed-commit-status.md) removed it and records why.
 
 `pre-push-checks` now points at the CI workflow for the authoritative command per surface and keeps only what that file cannot say: focused-test selection, the Windows storage replay, the native isolation probe, and that a user-visible change runs the real browser entrance and reports what it showed.
 
 Screenshot evidence for user-visible changes is discontinued. The real run against the changed tree remains required; its result is stated in the pull request. The acceptance README no longer mandates screenshots alongside each browser scenario.
 
 The four-state note lifecycle and the decision-record format are unchanged, deliberately. A note's value is that a future agent, without the conversation that produced it, can reconstruct why. Compressing notes into a rule list would destroy exactly that.
+
+[Note lifecycle and document budgets](2026-09-25-note-lifecycle-and-document-budgets.md) later added ways for a note to leave the active tree without changing the record format.
 
 ## Alternatives
 

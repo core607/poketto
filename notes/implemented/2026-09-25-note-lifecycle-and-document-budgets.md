@@ -12,7 +12,7 @@ Three paths added notes and none removed them.
 - **Proposals.** Agreed work starts as a proposed note, and implementing it moved the note into implemented/. Every shipped task therefore left a permanent record, including tasks whose only content was what the feature does.
 - **Review.** The review skill required that "a non-trivial change adds or updates the owning decision record", and the AI Review workflow loads that skill from `main`.
 
-An implemented note could only stay active or be archived. The archive test, whether a note's rationale may guide a future change, is never failed while its subsystem lives, as the [agent rules record](2026-09-17-agent-rules-for-an-unreviewed-repository.md) found when it deferred the question. A fully superseded note had no way out, and a reversal added one more note. Many implemented notes also restate their tests case by case under Verification. Nothing measured document size; Java already has a 600-line file limit.
+An implemented note could only stay active or be archived. The archive test, whether a note's rationale may guide a future change, is never failed while its subsystem lives, as the [agent rule surface record](2026-09-17-agent-rule-surface.md) found when it deferred the question. A fully superseded note had no way out, and a reversal added one more note. Many implemented notes also restate their tests case by case under Verification. Nothing measured document size; Java already has a 600-line file limit.
 
 ## Decision
 
@@ -41,7 +41,7 @@ A ceiling is raised only when the words are needed, with the reason in the pull 
 
 ## Alternatives
 
-**Merge the corpus into about twenty topic notes.** One rewrite would shrink the corpus fastest. It would also decide, in a single pass, what later readers need from 900,000 characters, the misjudgment that the [agent rules record](2026-09-17-agent-rules-for-an-unreviewed-repository.md) rejected for compression into a rule list. Per-note classification keeps each surviving decision's own alternatives and merges only when one note fully supersedes another.
+**Merge the corpus into about twenty topic notes.** One rewrite would shrink the corpus fastest. It would also decide, in a single pass, what later readers need from 900,000 characters, the misjudgment that the [agent rule surface record](2026-09-17-agent-rule-surface.md) rejected for compression into a rule list. Per-note classification keeps each surviving decision's own alternatives and merges only when one note fully supersedes another.
 
 **Adopt the deepseek-harness archive whole.** Its archive seals every archived note with a hash manifest, splits notes into class folders and pairs each with a translation and metadata file. That machinery protects a corpus of over a thousand notes written by many agents; here it would add a verifier for about a hundred files. The classification and consolidation rules are adopted without the seal.
 

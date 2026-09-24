@@ -39,7 +39,7 @@ Git history keeps deleted text, but a consolidation must not rely on it: the own
 
 - [Public author names](../../../notes/implemented/2026-09-14-public-author-names.md), 422 words, is kept. It reads like card presentation but owns a privacy rule: only `public_author` or the workspace signature is displayed, and a login, email, or Git author never is.
 - [Album entrances and lightbox](../../../notes/implemented/2026-09-14-album-entrances-and-lightbox.md), 434 words, is kept. Its lightbox paragraph is local UI, but it owns the rule that `index.md` shadows `README.md` at a folder route.
-- [Agent rules for an unreviewed repository](../../../notes/implemented/2026-09-17-agent-rules-for-an-unreviewed-repository.md) is partially superseded by [note lifecycle and document budgets](../../../notes/implemented/2026-09-25-note-lifecycle-and-document-budgets.md): its deferred archive alternative is now decided, while its skill-surface decision stands. Both stay, cross-linked.
+- [Agent rule surface](../../../notes/implemented/2026-09-17-agent-rule-surface.md) is partially superseded by [note lifecycle and document budgets](../../../notes/implemented/2026-09-25-note-lifecycle-and-document-budgets.md): its deferred archive alternative is now decided, while its skill-surface decision stands. Both stay, cross-linked.
 - [Consumer accounts and personal workspaces](../../../notes/rejected/2026-09-01-consumer-accounts-and-personal-workspaces.md) is kept as a rejection. Explicit space creation shipped instead, and the note still records why creating a repository automatically at registration loses.
 
 Add an example here when an audit settles a case that these do not already calibrate.
