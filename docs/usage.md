@@ -29,6 +29,16 @@ unavailable. The workspace is part of the identity: another space cannot claim i
 history. Changing an ID starts a different history; restoring it reconnects the
 retained records. Space following also works for articles without IDs.
 
+Article pages count anonymous daily readers by space and route, with or without an
+article ID, and show **阅读 N** once N is at least one. The page reports a reader
+after five continuously visible seconds, at most once a day per browser. The
+server counts a route only while it is public, ignores common crawler user agents,
+and counts one client once per article and UTC day, using salted digests held in
+memory and replaced daily; addresses are never stored. `POST /api/public/community/spaces/{slug}/views?route=…`
+needs no session or CSRF token and always answers 204. `GET` on the same address
+returns `{ "views": n }`, or 404 when the route is not public. A moved article starts
+a new count. See [public view counts](../notes/implemented/2026-09-24-public-view-counts.md).
+
 Comments are plain text with up to 4,000 Unicode code points and one level of
 replies. Retrying the same comment request is idempotent. Deleting your comment
 cannot be undone; a root becomes a tombstone when replies remain and accepts no
