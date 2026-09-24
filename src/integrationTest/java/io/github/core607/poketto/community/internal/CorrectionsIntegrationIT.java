@@ -229,14 +229,19 @@ class CorrectionsIntegrationIT {
 
         served.snapshot = snapshot(CREATED.plusSeconds(86400), null);
         assertThat(corrections.credits(SPACE, "/essay")).isEmpty();
+        // The same article gaining a frontmatter id keeps its creation time, and so its credit.
         UUID articleId = UUID.randomUUID();
         served.snapshot = snapshot(CREATED, articleId);
-        assertThat(corrections.credits(SPACE, "/essay")).isEmpty();
+        assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display reader");
         result = ReviewedBodyEdits.Result.APPLIED;
         corrections.accept(owner, workspace, corrections.propose(other, SPACE, fixed()));
+        assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display reader", "Display other");
+        // A later date edit keeps credit recorded under the id, not the one recorded by time alone.
+        served.snapshot = snapshot(CREATED.plusSeconds(172800), articleId);
         assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display other");
-        served.snapshot = snapshot(CREATED, null);
-        assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display reader");
+        jdbc.update("update community_corrections set article_id=null,article_created=null");
+        served.snapshot = snapshot(CREATED.plusSeconds(259200), null);
+        assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display reader", "Display other");
     }
 
     @Test
