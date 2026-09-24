@@ -17,7 +17,7 @@ An article accepts interactions only when its frontmatter `id` is a unique lower
 canonical UUID. New browser drafts include one; for an existing article, choose
 **Enable article interactions** in the editor, then save and publish. A malformed
 `id` must be corrected in source. Keep the ID when renaming or moving an article and
-generate a new one when copying it; changing the ID starts a new interaction history.
+generate a new one when copying it; changing the ID starts a new interaction history, and restoring the old ID reconnects it.
 Articles without a valid ID stay readable, and their space can still be followed.
 
 Article pages show **阅读 N**, the anonymous readers of that route, once N is at least
@@ -34,7 +34,7 @@ other, or while the proposer has another open proposal for the article; the limi
 are 5 a minute and 30 a day. Members holding `PUBLISH` review proposals as a line diff
 under **读者勘误** in the studio. Accepting replaces only the body, and only while the
 remote file still has the body the proposal started from; otherwise the proposal
-becomes stale. A credited proposer is thanked in the article footer and named by
+becomes stale. While an acceptance runs, declining or withdrawing returns a conflict; one unsettled after ten minutes counts as open again. A credited proposer is thanked in the article footer and named by
 account id in a `Poketto-Suggested-By` commit trailer. Owners and proposers are
 notified, proposers can withdraw open proposals, and resolved proposal text is
 cleared after 90 days. See [reader corrections](../notes/implemented/2026-09-24-reader-corrections.md).
@@ -44,7 +44,7 @@ replies. Deleting your comment cannot be undone; a root with replies becomes a
 tombstone that accepts no new replies. Space owners and site administrators can
 remove comments, and removing a root hides its replies. Administrators handle reports
 in the studio's **Site administration** section, which grants no access to private
-Git content.
+Git content. A report reason holds at most 1,000 code points.
 
 Blocking an account hides its comments and notifications from you and prevents
 replies between you; it does not hide public articles. A root comment notifies up to
@@ -227,7 +227,7 @@ repository-relative paths and win; `AGENTS.md` in any letter case and paths with
 hidden segment stay private. A missing or disabled policy publishes nothing; an
 invalid policy closes public service. **Publish** and **Withdraw to draft** in the
 editor move a saved note between matching private and public paths; they refuse
-private dependencies and collisions, and do not enable a disabled website. Move the
+private dependencies and collisions, and do not enable a disabled website or override exclusions or account restrictions. Move the
 containing folder when media must travel with a note.
 
 Markdown metadata is optional, and unchanged source bytes are preserved. Default routes
@@ -287,7 +287,7 @@ following renames. **Restore to editor** needs write permission and only replace
 editor text; **Save** then commits it and still refuses concurrent changes. Deleted, binary, oversized
 and managed-media versions cannot be restored. **Search filenames** matches
 repository-relative paths literally, and public-only members see only
-publication-eligible paths. See [content navigation](../notes/implemented/2026-09-14-admin-content-navigation.md),
+publication-eligible paths. A scan over more than 100,000 combined Git tree and indexed media entries is refused rather than answered with partial counts. See [content navigation](../notes/implemented/2026-09-14-admin-content-navigation.md),
 the [history record](../notes/implemented/2026-09-23-browser-history-and-restoration.md)
 and [filename search](../notes/implemented/2026-09-14-administration-filename-search.md).
 
