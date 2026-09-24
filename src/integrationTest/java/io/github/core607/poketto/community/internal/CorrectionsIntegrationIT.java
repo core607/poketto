@@ -67,6 +67,8 @@ class CorrectionsIntegrationIT {
     private final List<String> written = new ArrayList<>();
     private ReviewedBodyEdits.Result result = ReviewedBodyEdits.Result.APPLIED;
     private Runnable duringWrite = () -> {};
+    private FixedSnapshots served;
+    private static final Instant CREATED = Instant.parse("2026-09-01T00:00:00Z");
 
     @BeforeEach
     void setup() {
@@ -92,7 +94,8 @@ class CorrectionsIntegrationIT {
         var communityAccounts = new CommunityAccounts(jdbc, accounts);
         var publications = CommunityPublicationFixture.publications(jdbc);
         var guard = new PublicationGuard(jdbc, publications);
-        PublicContentSnapshots snapshots = new FixedSnapshots(snapshot());
+        served = new FixedSnapshots(snapshot(CREATED, null));
+        PublicContentSnapshots snapshots = served;
         var configuration = new CommunityConfiguration();
         corrections = configuration.corrections(
                 jdbc, auth, communityAccounts, guard, publications, snapshots, transactions, this::replace);
@@ -218,6 +221,30 @@ class CorrectionsIntegrationIT {
     }
 
     @Test
+    void creditFollowsTheArticleAndARepeatedAcceptanceSaysNothingWasWritten() {
+        var id = corrections.propose(reader, SPACE, fixed());
+        result = ReviewedBodyEdits.Result.ALREADY_APPLIED;
+        assertThat(corrections.accept(owner, workspace, id)).isEqualTo(Corrections.Resolution.ALREADY_APPLIED);
+        assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display reader");
+
+        served.snapshot = snapshot(CREATED.plusSeconds(86400), null);
+        assertThat(corrections.credits(SPACE, "/essay")).isEmpty();
+        // The same article gaining a frontmatter id keeps its creation time, and so its credit.
+        UUID articleId = UUID.randomUUID();
+        served.snapshot = snapshot(CREATED, articleId);
+        assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display reader");
+        result = ReviewedBodyEdits.Result.APPLIED;
+        corrections.accept(owner, workspace, corrections.propose(other, SPACE, fixed()));
+        assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display reader", "Display other");
+        // A later date edit keeps credit recorded under the id, not the one recorded by time alone.
+        served.snapshot = snapshot(CREATED.plusSeconds(172800), articleId);
+        assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display other");
+        jdbc.update("update community_corrections set article_id=null,article_created=null");
+        served.snapshot = snapshot(CREATED.plusSeconds(259200), null);
+        assertThat(corrections.credits(SPACE, "/essay")).containsExactly("Display reader", "Display other");
+    }
+
+    @Test
     void aClaimStrandedForTenMinutesCountsAsOpenAgain() {
         var withdrawn = corrections.propose(reader, SPACE, fixed());
         strand(withdrawn);
@@ -284,7 +311,7 @@ class CorrectionsIntegrationIT {
         return auth.authenticatePassword(name, PASSWORD);
     }
 
-    private PublicContentSnapshot snapshot() {
+    private PublicContentSnapshot snapshot(Instant created, UUID articleId) {
         Instant now = Instant.now();
         return new PublicContentSnapshot(
                 workspace,
@@ -292,10 +319,26 @@ class CorrectionsIntegrationIT {
                 now,
                 now.plusSeconds(3600),
                 List.of(new PublicArticle(
-                        "public/essay.md", "/essay", "Essay", BODY, List.of(), now, now, false, "", null, false)));
+                        "public/essay.md",
+                        "/essay",
+                        "Essay",
+                        BODY,
+                        List.of(),
+                        created,
+                        now,
+                        false,
+                        "",
+                        articleId,
+                        false)));
     }
 
-    private record FixedSnapshots(PublicContentSnapshot snapshot) implements PublicContentSnapshots {
+    private static final class FixedSnapshots implements PublicContentSnapshots {
+        private PublicContentSnapshot snapshot;
+
+        FixedSnapshots(PublicContentSnapshot snapshot) {
+            this.snapshot = snapshot;
+        }
+
         @Override
         public void ensureReady(WorkspaceId workspace) {}
 

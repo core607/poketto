@@ -26,7 +26,7 @@ public interface ReviewedBodyEdits {
     enum Result {
         /** The body was written in {@link Outcome#commit()}. */
         APPLIED,
-        /** The current body already equals the proposed one; nothing was written. */
+        /** The current body already equals the proposed one; nothing was written, and the commit read is returned. */
         ALREADY_APPLIED,
         /** The article is no longer served, or its body no longer matches the base digest. */
         STALE

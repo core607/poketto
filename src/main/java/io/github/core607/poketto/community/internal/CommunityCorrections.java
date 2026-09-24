@@ -18,7 +18,9 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -92,7 +94,7 @@ final class CommunityCorrections implements Corrections {
                     "update community_corrections set proposed_body='',reason='' where status<>'OPEN' and proposed_body<>'' and resolved_at<current_timestamp - interval '90 days'");
             UUID id = UUID.randomUUID();
             jdbc.update(
-                    "insert into community_corrections(correction_id,workspace_id,route,author_id,base_digest,proposed_body,reason,credited) values (?,?,?,?,?,?,?,?)",
+                    "insert into community_corrections(correction_id,workspace_id,route,author_id,base_digest,proposed_body,reason,credited,article_id,article_created) values (?,?,?,?,?,?,?,?,?,?)",
                     id,
                     workspace.value(),
                     proposal.route(),
@@ -100,7 +102,9 @@ final class CommunityCorrections implements Corrections {
                     proposal.baseDigest(),
                     proposal.body(),
                     proposal.reason(),
-                    proposal.credited());
+                    proposal.credited(),
+                    article.articleId(),
+                    created(article));
             activity.deliver(identity.accountId(), owners, null, id, "PROPOSED");
             return id;
         });
@@ -144,12 +148,19 @@ final class CommunityCorrections implements Corrections {
     @Override
     public List<String> credits(String space, String route) {
         WorkspaceId workspace = targets.workspace(space);
-        targets.read(workspace, snapshot -> served(snapshot, route).orElseThrow(CommunityTargets::unavailable));
+        PublicArticle article =
+                targets.read(workspace, snapshot -> served(snapshot, route).orElseThrow(CommunityTargets::unavailable));
+        // Either identity carries credit, so gaining or losing a frontmatter id keeps it, while a
+        // different article later served at the same route matches neither.
         List<UUID> authors = jdbc.query(
-                "select author_id from community_corrections where workspace_id=? and route=? and status='ACCEPTED' and credited group by author_id order by min(resolved_at) limit 20",
+                "select author_id from community_corrections where workspace_id=? and route=? and status='ACCEPTED' and credited"
+                        + " and (article_id=? or article_created=? or (article_id is null and article_created is null))"
+                        + " group by author_id order by min(resolved_at) limit 20",
                 (row, number) -> row.getObject(1, UUID.class),
                 workspace.value(),
-                route);
+                route,
+                article.articleId(),
+                created(article));
         List<UUID> owners = accounts.owners(workspace);
         // Someone who has since blocked the owner, or the other way round, is no longer named.
         List<UUID> credited = authors.stream()
@@ -234,7 +245,11 @@ final class CommunityCorrections implements Corrections {
                 row,
                 stale ? "STALE" : "ACCEPTED",
                 outcome.commit().orElse(null));
-        return stale ? Resolution.STALE : Resolution.ACCEPTED;
+        return switch (outcome.result()) {
+            case APPLIED -> Resolution.ACCEPTED;
+            case ALREADY_APPLIED -> Resolution.ALREADY_APPLIED;
+            case STALE -> Resolution.STALE;
+        };
     }
 
     @Override
@@ -307,6 +322,11 @@ final class CommunityCorrections implements Corrections {
         return snapshot.articles().stream()
                 .filter(article -> article.route().equals(route))
                 .findFirst();
+    }
+
+    /** Creation time at the database's microsecond precision, so a stored value compares equal. */
+    private static Timestamp created(PublicArticle article) {
+        return Timestamp.from(article.createdAt().truncatedTo(ChronoUnit.MICROS));
     }
 
     static String digest(String body) {
