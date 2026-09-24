@@ -9,7 +9,17 @@ export function GET() {
   };
   try {
     return new Response(
-      `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\nSitemap: ${publicOrigin()}/sitemap.xml\n`,
+      [
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /admin",
+        "Disallow: /api/",
+        // Every homepage visit links a new batch; the pages it reaches are all in the sitemaps.
+        "Disallow: /?batch=",
+        "Disallow: /?afterBatch=",
+        `Sitemap: ${publicOrigin()}/sitemap.xml`,
+        "",
+      ].join("\n"),
       { headers },
     );
   } catch {
