@@ -58,7 +58,7 @@ Native Linux storage and sandbox checks remain required for changes to those bou
 
 ## Alternatives and consequences
 
-Separate public and private roots make scope visible through ordinary file tools and portable exports. A metadata-only visibility flag would require every file consumer to interpret that policy, including non-text media. The logical index keeps immutable original bytes outside Git while retaining relative authoring paths; publication remains a property of each authorized reference, not of a globally shared blob.
+Separate public and private roots make scope visible through ordinary file tools and portable exports. A metadata-only visibility flag would require every file consumer to interpret that policy, including non-text media. The logical index keeps immutable original bytes outside Git while retaining relative authoring paths; publication remains a property of each authorized reference, not of a globally shared blob. [Scheduled publishing](2026-09-24-scheduled-publishing.md) adds a narrower time gate: frontmatter `publish_at` can only delay an article already eligible under `public/`, never publish anything.
 
 A second MCP file CRUD interface would duplicate persistence and baseline rules. The isolated workspace supplies ordinary file operations; the small host CLI supplies operations that need credentials, current authorization or atomic remote writes. A single generic server shell would remove that boundary. Public-only sessions deliberately omit source history because historical private bytes cannot be made safe by filtering the current tree.
 

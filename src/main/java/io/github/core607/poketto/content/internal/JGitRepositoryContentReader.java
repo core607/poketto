@@ -364,7 +364,8 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         Scan scan = scan(workspaceId, repository, resolved, eligible);
         List<RepositoryDiagnostic> diagnostics = scan.diagnostics();
         List<String> fallbackPaths = scan.parsed().stream()
-                .filter(document -> document.metadata().createdAt().isEmpty()
+                .filter(document -> (document.metadata().createdAt().isEmpty()
+                                && document.metadata().publishAt().isEmpty())
                         || document.metadata().updatedAt().isEmpty())
                 .map(document -> document.file().path())
                 .toList();
@@ -445,8 +446,12 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
             ParsedDocument document, RepositoryHistoryDates.Dates dates, List<RepositoryDiagnostic> diagnostics) {
         RepositoryFile file = document.file();
         var metadata = document.metadata();
-        Instant createdAt = metadata.createdAt().orElseGet(() -> dates.createdAt());
-        Instant updatedAt = metadata.updatedAt().orElseGet(() -> dates.updatedAt());
+        // A scheduled article dates from its release unless it names its own creation date.
+        Instant createdAt = metadata.createdAt().or(metadata::publishAt).orElseGet(() -> dates.createdAt());
+        Instant updatedAt = metadata.updatedAt()
+                .orElseGet(() -> metadata.publishAt()
+                        .filter(release -> release.isAfter(dates.updatedAt()))
+                        .orElseGet(() -> dates.updatedAt()));
         if (metadata.invalidArticleId()) {
             diagnostics.add(
                     diagnostic(file.path(), "INVALID_ARTICLE_ID", "article id must be a canonical lowercase UUID"));
@@ -466,7 +471,8 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 RepositoryPathRules.privatePath(file.path()),
                 metadata.publicAuthor(),
                 metadata.articleId(),
-                metadata.featured());
+                metadata.featured(),
+                metadata.publishAt().orElse(null));
     }
 
     @Override

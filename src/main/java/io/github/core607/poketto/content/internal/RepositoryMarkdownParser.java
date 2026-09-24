@@ -74,7 +74,8 @@ final class RepositoryMarkdownParser {
                 metadata != null
                         && metadata.has("featured")
                         && metadata.get("featured").isBoolean()
-                        && metadata.get("featured").booleanValue());
+                        && metadata.get("featured").booleanValue(),
+                date(metadata, "publish_at"));
     }
 
     private static UUID articleId(JsonNode metadata) {
@@ -280,5 +281,6 @@ final class RepositoryMarkdownParser {
             String publicAuthor,
             UUID articleId,
             boolean invalidArticleId,
-            boolean featured) {}
+            boolean featured,
+            Optional<Instant> publishAt) {}
 }
