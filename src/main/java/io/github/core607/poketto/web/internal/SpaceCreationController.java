@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -63,15 +64,26 @@ class SpaceCreationController {
 
     @GetMapping("/{workspaceId}/repository-initialization")
     RepositoryInitialization.Status initializationStatus(
-            @AuthenticationPrincipal AuthPrincipal actor, @PathVariable String workspaceId) {
-        return creation.initializationStatus(actor, WorkspaceId.parse(workspaceId));
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable String workspaceId,
+            @RequestParam(required = false) String template) {
+        return creation.initializationStatus(
+                actor, WorkspaceId.parse(workspaceId), RepositoryInitialization.Template.parse(template));
     }
 
+    /** Without a body, only the base files are added, as when the space was created. */
     @PostMapping("/{workspaceId}/repository-initialization")
     RepositoryInitialization.Outcome initialize(
-            @AuthenticationPrincipal AuthPrincipal actor, @PathVariable String workspaceId) {
-        return creation.initialize(actor, WorkspaceId.parse(workspaceId));
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable String workspaceId,
+            @RequestBody(required = false) InitializationRequest request) {
+        return creation.initialize(
+                actor,
+                WorkspaceId.parse(workspaceId),
+                RepositoryInitialization.Template.parse(request == null ? null : request.template()));
     }
+
+    record InitializationRequest(String template) {}
 
     @PutMapping("/{workspaceId}/repository-credentials")
     @ResponseStatus(HttpStatus.NO_CONTENT)

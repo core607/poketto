@@ -107,7 +107,7 @@ Windows 下 `check` 还会在固定版本的 Linux 容器中通过临时原生�
 
 空间主人可在空间的“存储位置”分区更新托管仓库的凭据。填写 Git 用户名和新令牌，服务端验证访问权限后才替换原凭据，不能借此更改仓库地址。表单提交后会清空令牌，也不会将它保存在浏览器草稿中。确认更新成功后，再到 Git 托管平台撤销旧令牌。由部署配置管理的仓库需由站点管理员修改配置。
 
-[content-template](../content-template/AGENTS.md) 就是初始化写入的内容：根指引、各自组织的 `private/` 和 `public/` 及其指引，以及默认禁用的发布策略。初始化不修改、不移动任何已有文件，两个目录之外的内容保持私密。由部署配置管理的仓库同样可在其空间的“存储位置”分区初始化。新内容放入 `private/`；要发布选定内容，先把它及所需媒体移入 `public/`，再配置 `.poketto/publishing.yaml`：
+[content-template](../content-template/AGENTS.md) 就是初始化写入的内容：根指引、各自组织的 `private/` 和 `public/` 及其指引，以及默认禁用的发布策略。初始化不修改、不移动任何已有文件，两个目录之外的内容保持私密。由部署配置管理的仓库同样可在其空间的“存储位置”分区初始化。同一分区还提供按空间用途选择的模板：周记与日记、读书笔记、相册和新闻摘编。每套模板在 `private/` 和 `public/` 下各添加一个文件夹，附带告诉 AI 助手这类内容如何命名、组织和发布的指引。模板只新建缺少的文件，因此也可以添加到已有内容的空间；`GET …/repository-initialization?template=journal` 列出将添加的文件，`POST` 并提交 `{ "template": "journal" }` 即可添加。详见[空间模板](../notes/implemented/2026-09-24-space-templates.md)。新内容放入 `private/`；要发布选定内容，先把它及所需媒体移入 `public/`，再配置 `.poketto/publishing.yaml`：
 
 ```yaml
 enabled: true
