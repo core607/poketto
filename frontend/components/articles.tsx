@@ -1,5 +1,5 @@
 import type { ArticlePage, ArticleSummary } from "../lib/types";
-import { articleHref, date, spaceHref } from "../lib/format";
+import { articleHref, date, spaceHref, tagHref } from "../lib/format";
 import {
   searchArticleHref,
   searchPath,
@@ -76,11 +76,7 @@ export function ArticleList({
                 {item.tags.slice(0, 3).map((tag) => (
                   <a
                     className="tag"
-                    href={
-                      spaceHref(item.space ?? space) +
-                      "/tags?tag=" +
-                      encodeURIComponent(tag)
-                    }
+                    href={tagHref(tag, item.space ?? space)}
                     key={tag}
                   >
                     #{tag}

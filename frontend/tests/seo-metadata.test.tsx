@@ -7,6 +7,7 @@ import Home, { metadata } from "../app/page";
 import { GET as robots } from "../app/robots.txt/route";
 import { metadata as siteSearch } from "../app/search/page";
 import { spaceListingMetadata } from "../components/public-space";
+import { tagHref } from "../lib/format";
 import { plainSummary } from "../lib/summary";
 
 test("summaries start at the prose, skipping the heading, figure and its caption", () => {
@@ -173,10 +174,12 @@ test("space listings name their canonical page, tags read as their own pages, an
   });
   assert.equal(tag.title, "「AI 与数学」标签");
   assert.equal(tag.description, "「三里屯分部」中标记为「AI 与数学」的文章。");
+  // The canonical is spelled exactly like the tag links pages render.
   assert.equal(
     tag.alternates?.canonical,
-    "/s/home/tags?tag=AI+%E4%B8%8E%E6%95%B0%E5%AD%A6",
+    "/s/home/tags?tag=AI%20%E4%B8%8E%E6%95%B0%E5%AD%A6",
   );
+  assert.equal(tag.alternates?.canonical, tagHref("AI 与数学", "home"));
   const tooLong = await spaceListingMetadata("home", "tags", {
     tag: "长".repeat(65),
   });

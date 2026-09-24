@@ -9,7 +9,13 @@ import {
 } from "../lib/public-api";
 import type { ArticlePage } from "../lib/types";
 import type { Metadata } from "next";
-import { articleHref, date, spaceFeed, spaceHref } from "../lib/format";
+import {
+  articleHref,
+  date,
+  spaceFeed,
+  spaceHref,
+  tagHref,
+} from "../lib/format";
 import { pageOffset } from "../lib/pagination";
 import { ArticleList } from "./articles";
 import { Markdown } from "./markdown";
@@ -107,10 +113,7 @@ export async function spaceListingMetadata(
       : { title: "标签", description: `「${name}」的全部标签。` },
     search: { title: "搜索", description: `在「${name}」中搜索文章。` },
   }[view];
-  const path =
-    spaceHref(slug) +
-    `/${view}` +
-    (tag ? "?" + new URLSearchParams({ tag }) : "");
+  const path = tag ? tagHref(tag, slug) : spaceHref(slug) + `/${view}`;
   return {
     ...listing,
     alternates: {
@@ -228,7 +231,7 @@ export async function PublicSpacePage({
                 <a
                   className="chip"
                   key={value}
-                  href={base + "/tags?tag=" + encodeURIComponent(value)}
+                  href={tagHref(value, space.slug)}
                 >
                   #{value}
                 </a>

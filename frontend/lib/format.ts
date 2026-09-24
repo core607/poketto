@@ -64,6 +64,10 @@ export function coverRoute(pathname: string) {
 export function articleHref(route: string, space?: string) {
   return spaceHref(space) + "/read" + encodedRoute(route);
 }
+/** A tag's listing, in the one spelling that links and its canonical share. */
+export function tagHref(tag: string, space?: string) {
+  return spaceHref(space) + "/tags?tag=" + encodeURIComponent(tag);
+}
 function encodedRoute(route: string) {
   return route === "/"
     ? ""
