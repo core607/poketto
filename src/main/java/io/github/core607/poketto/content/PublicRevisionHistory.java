@@ -18,7 +18,10 @@ public interface PublicRevisionHistory {
     /** A body and the commit time at which it first appeared in the walked stretch. */
     record Revision(Instant savedAt, String body) {}
 
-    /** Newest first; {@code complete} is false when a bound stopped the walk before its end. */
+    /**
+     * Newest first. {@code complete} is false when a bound stopped the walk, or when it ended at an
+     * earlier version that could not be read, so earlier public text may exist.
+     */
     record Revisions(List<Revision> newestFirst, boolean complete) {
         public Revisions {
             newestFirst = List.copyOf(newestFirst);

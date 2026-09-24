@@ -51,7 +51,8 @@ export default async function History({
             {history.versions.length > 1
               ? `公开以来共 ${history.versions.length} 个版本。`
               : "公开以来正文还没有改动过。"}
-            {!history.complete && "更早的版本超出了读取范围，没有列出。"}
+            {!history.complete &&
+              "可能还有更早的版本没有列出：超出了读取范围，或那一版无法读取。"}
             只列出正文，时间取自保存它的提交。
           </p>
           {history.versions.length > 1 ? (

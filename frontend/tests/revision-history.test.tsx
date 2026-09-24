@@ -55,7 +55,7 @@ test("the history page compares the two newest versions and stays out of search"
   const html = renderToStaticMarkup(
     await page("home", [encodeURIComponent("雨后")]),
   );
-  assert.match(html, /公开以来共 2 个版本。更早的版本超出了读取范围/);
+  assert.match(html, /公开以来共 2 个版本。可能还有更早的版本没有列出/);
   assert.match(
     html,
     /<option value="0" selected="">第 1 版 · 2026年9月1日 08:00 UTC/,

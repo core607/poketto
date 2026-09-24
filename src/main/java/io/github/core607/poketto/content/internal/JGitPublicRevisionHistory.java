@@ -79,16 +79,18 @@ final class JGitPublicRevisionHistory implements PublicRevisionHistory {
                 }
                 String body = read.body().get();
                 seen = blob.get();
-                int size = body.getBytes(StandardCharsets.UTF_8).length;
                 if (!found.isEmpty() && found.getLast().body().equals(body)) {
                     found.set(found.size() - 1, new Revision(savedAt, body));
-                } else if (found.size() == MAX_VERSIONS || bytes + size > MAX_BODY_BYTES) {
-                    return new Revisions(found, false);
-                } else {
-                    bytes += size;
-                    found.add(new Revision(savedAt, body));
+                    current = parent(objects, walk, current);
+                    continue;
                 }
-                current = current.getParentCount() == 0 ? null : commit(objects, walk, current.getParent(0));
+                int size = body.getBytes(StandardCharsets.UTF_8).length;
+                if (found.size() == MAX_VERSIONS || bytes + size > MAX_BODY_BYTES) {
+                    return new Revisions(found, false);
+                }
+                bytes += size;
+                found.add(new Revision(savedAt, body));
+                current = parent(objects, walk, current);
             }
         }
         return new Revisions(found, true);
@@ -129,6 +131,10 @@ final class JGitPublicRevisionHistory implements PublicRevisionHistory {
 
     /** A body, or none together with whether the history ending here is complete. */
     private record Read(Optional<String> body, boolean complete) {}
+
+    private static RevCommit parent(ObjectReader objects, RevWalk walk, RevCommit child) throws IOException {
+        return child.getParentCount() == 0 ? null : commit(objects, walk, child.getParent(0));
+    }
 
     private static RevCommit commit(ObjectReader objects, RevWalk walk, ObjectId id) throws IOException {
         if (objects.getObjectSize(id, Constants.OBJ_COMMIT) > MAX_COMMIT_BYTES) {

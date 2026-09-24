@@ -87,7 +87,7 @@ export type PublicSpace = {
   /** Whether article pages link their revision history; older servers omit it. */
   history?: boolean;
 };
-/** Versions oldest first; complete is false when earlier versions lie beyond the read bounds. */
+/** Versions oldest first; complete is false when earlier public versions may exist but are not listed. */
 export type RevisionHistory = {
   route: string;
   title: string;

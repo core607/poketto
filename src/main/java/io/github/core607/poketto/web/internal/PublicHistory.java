@@ -73,7 +73,7 @@ final class PublicHistory {
         return new PublicResourceNotFoundException("public revision history not found");
     }
 
-    /** Oldest first; {@code complete} is false when earlier versions exist beyond the read bounds. */
+    /** Oldest first; {@code complete} is false when earlier public versions may exist but are not listed. */
     record History(String route, String title, List<Version> versions, boolean complete) {}
 
     record Version(Instant savedAt, String body) {}
