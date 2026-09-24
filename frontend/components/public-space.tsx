@@ -8,7 +8,8 @@ import {
   type PublicSpace,
 } from "../lib/public-api";
 import type { ArticlePage } from "../lib/types";
-import { articleHref, date, spaceHref } from "../lib/format";
+import type { Metadata } from "next";
+import { articleHref, date, spaceFeed, spaceHref } from "../lib/format";
 import { pageOffset } from "../lib/pagination";
 import { ArticleList } from "./articles";
 import { Markdown } from "./markdown";
@@ -78,6 +79,47 @@ export type SpaceParameters = {
   tag?: string | string[];
   offset?: string | string[];
 };
+
+/**
+ * Metadata for a space's archive, tag and search listings. Listings name their first page as
+ * canonical, each tag reads as its own page, and search results are never indexed.
+ */
+export async function spaceListingMetadata(
+  slug: string,
+  view: Exclude<View, "home">,
+  parameters: SpaceParameters,
+): Promise<Metadata> {
+  const info = await spaceInfo(slug).catch(() => null);
+  const name = info?.displayName ?? slug;
+  const tag =
+    view === "tags" &&
+    typeof parameters.tag === "string" &&
+    [...parameters.tag].length <= 64
+      ? parameters.tag
+      : "";
+  const listing = {
+    archive: { title: "归档", description: `「${name}」的全部公开文章。` },
+    tags: tag
+      ? {
+          title: `「${tag}」标签`,
+          description: `「${name}」中标记为「${tag}」的文章。`,
+        }
+      : { title: "标签", description: `「${name}」的全部标签。` },
+    search: { title: "搜索", description: `在「${name}」中搜索文章。` },
+  }[view];
+  const path =
+    spaceHref(slug) +
+    `/${view}` +
+    (tag ? "?" + new URLSearchParams({ tag }) : "");
+  return {
+    ...listing,
+    alternates: {
+      ...(view === "search" ? {} : { canonical: path }),
+      types: spaceFeed(slug, name),
+    },
+    ...(view === "search" && { robots: { index: false, follow: true } }),
+  };
+}
 
 export async function PublicSpacePage({
   slug,

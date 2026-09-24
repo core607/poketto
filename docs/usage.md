@@ -248,8 +248,10 @@ space's current approved snapshot, without sampling discovery batches. Unavailab
 snapshots or exceeded enumeration bounds return 503 instead of an incomplete list;
 disabled or unknown spaces return 404. `/robots.txt` advertises this index using
 `POKETTO_PUBLIC_URL` and discourages crawling `/admin`, `/api/` and homepage
-batch addresses (`/?batch=`, `/?afterBatch=`). These crawler
-directives do not grant or revoke content access.
+batch addresses (`/?batch=`, `/?afterBatch=`). Search result pages ask not to be
+indexed; archive and tag listings name their first page as canonical, and each tag
+listing has its own title and description. These crawler directives do not grant
+or revoke content access.
 
 The root homepage samples enabled public spaces into a stable browsing batch. Pagination and browser return keep its order; **New batch** explicitly reshuffles. Withdrawal removes cards from existing batches. A batch lasts up to 30 minutes and can expire earlier after restart or cache eviction; an expired link offers a new batch. Discovery samples at most four pages per space and 32 spaces per batch, with later batches advancing through the catalog. It is not an exhaustive search. See [discovery batches](../notes/implemented/2026-09-14-public-discovery-batches.md).
 

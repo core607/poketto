@@ -2,7 +2,11 @@ import { siteSearch } from "../../lib/public-api";
 import { ArticleList } from "../../components/articles";
 import { Icon } from "../../components/ui/icons";
 import { pageOffset } from "../../lib/pagination";
-export const metadata = { title: "搜索" };
+// Result pages are endless and thin; their links are still followed.
+export const metadata = {
+  title: "搜索",
+  robots: { index: false, follow: true },
+};
 export default async function Search({
   searchParams,
 }: {
