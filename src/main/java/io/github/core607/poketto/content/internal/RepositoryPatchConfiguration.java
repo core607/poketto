@@ -5,6 +5,7 @@ import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.content.RepositoryInitialization;
 import io.github.core607.poketto.content.RepositoryMediaValidator;
+import io.github.core607.poketto.content.ReviewedBodyEdits;
 import java.time.Clock;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -22,6 +23,15 @@ class RepositoryPatchConfiguration {
     RepositoryInitialization repositoryInitialization(
             AuthService auth, RepositoryContentReader reader, JGitRepositoryPatchService patches) {
         return new ContentRepositoryInitializer(auth, reader, patches);
+    }
+
+    @Bean
+    ReviewedBodyEdits reviewedBodyEdits(
+            AuthService auth,
+            JGitPublicContentSnapshots snapshots,
+            AuthorizedRepositoryReader reader,
+            JGitRepositoryPatchService patches) {
+        return new RepositoryReviewedBodyEdits(auth, snapshots, reader, patches);
     }
 
     @Bean

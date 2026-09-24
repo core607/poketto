@@ -4,8 +4,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Empty base commit denotes an unborn remote main, not an instruction to choose a current base. */
-public record RepositoryPatch(Optional<String> baseCommit, List<RepositoryTextChange> changes) {
+/**
+ * Empty base commit denotes an unborn remote main, not an instruction to choose a current base.
+ * {@code suggestedBy} credits the account whose reviewed text the patch applies, in a
+ * {@code Poketto-Suggested-By} trailer next to the writing principal.
+ */
+public record RepositoryPatch(
+        Optional<String> baseCommit, List<RepositoryTextChange> changes, Optional<WritePrincipal> suggestedBy) {
     /**
      * Paths one atomic patch may touch. The bound exists so a single acknowledged write
      * stays reviewable and replayable; the repository authoring record owns the value.
@@ -15,8 +20,13 @@ public record RepositoryPatch(Optional<String> baseCommit, List<RepositoryTextCh
     /** Replacement text one patch may carry across all of its changes. */
     public static final int MAX_BYTES = 4 * 1024 * 1024;
 
+    public RepositoryPatch(Optional<String> baseCommit, List<RepositoryTextChange> changes) {
+        this(baseCommit, changes, Optional.empty());
+    }
+
     public RepositoryPatch {
         Objects.requireNonNull(baseCommit, "base commit must not be null");
+        Objects.requireNonNull(suggestedBy, "suggester must not be null");
         changes = List.copyOf(changes);
         if (changes.isEmpty() || changes.size() > MAX_CHANGES) {
             throw new IllegalArgumentException("patch must contain between 1 and 64 changes");

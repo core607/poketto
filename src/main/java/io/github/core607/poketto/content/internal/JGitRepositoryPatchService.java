@@ -102,7 +102,14 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             RepositoryWriteCheckpoint checkpoint) {
         Map<String, byte[]> replacements = validate(patch);
         return writes.write(
-                principal, workspace, patch.baseCommit(), Set.of(), recovery, checkpoint, (repository, index) -> {
+                principal,
+                workspace,
+                patch.baseCommit(),
+                patch.suggestedBy(),
+                Set.of(),
+                recovery,
+                checkpoint,
+                (repository, index) -> {
                     var currentPolicy = JGitRepositoryWrites.policy(repository, index);
                     Set<Capability> required = patch.changes().stream()
                             .map(change -> currentPolicy.permitsPath(change.path())
@@ -271,6 +278,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                 principal,
                 workspace,
                 Optional.of(request.baseCommit()),
+                Optional.empty(),
                 Set.of(),
                 recovery,
                 checkpoint,

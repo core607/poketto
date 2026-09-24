@@ -103,16 +103,29 @@ class CommunityIntegrationIT {
     }
 
     private Community community(Accounts accounts, WorkspacePublications publications, TestSnapshots source) {
-        return new CommunityConfiguration()
-                .community(
+        var configuration = new CommunityConfiguration();
+        var communityAccounts = new CommunityAccounts(jdbc, accounts);
+        var guard = new PublicationGuard(jdbc, publications);
+        return configuration.community(
+                jdbc,
+                accounts,
+                communityAccounts,
+                guard,
+                publications,
+                source,
+                transactions,
+                JsonMapper.builder().findAndAddModules().build(),
+                configuration.corrections(
                         jdbc,
-                        accounts,
-                        new CommunityAccounts(jdbc, accounts),
-                        new PublicationGuard(jdbc, publications),
+                        auth,
+                        communityAccounts,
+                        guard,
                         publications,
                         source,
                         transactions,
-                        JsonMapper.builder().findAndAddModules().build());
+                        (a, w, r, d, b, s) -> {
+                            throw new UnsupportedOperationException();
+                        }));
     }
 
     @Test
