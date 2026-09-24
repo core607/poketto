@@ -21,14 +21,14 @@ One substantiated blocking finding beats a list of nitpicks. If nothing substant
 
 ## Required checks
 
-1. **Intent and decision:** the change stays inside the requested scope and settled requirements. A non-trivial change adds or updates the owning decision record, and the implementation matches that record rather than only its title.
+1. **Intent and decision:** the change stays inside the requested scope and settled requirements, and the implementation matches any decision record it implements rather than only its title. Disagreement with a record is a design question, not an automatic veto. Lasting rationale updates its owning record under the creation rule in [AGENTS.md](../../../AGENTS.md); a new record resolves its same-topic audit. A record written for a local UI or mechanical change, or an implemented proposal kept without lasting rationale, is itself a finding.
 2. **Correctness and interfaces:** trace producers and consumers, success and failure paths, empty and boundary values, cancellation, retry, idempotency, and cleanup. Defaults and public choices need current-consumer evidence.
 3. **Authority and state:** identify the authoritative source for every retained value. Derived projections, caches, events, UI echoes, and acknowledgments update only after the owning operation's commit point.
 4. **Concurrency and lifecycle:** check publication-before-ready races, cancellation during waits, callback containment, ownership transfer, rollback, complete detach, and disposal-to-quiescence where applicable.
 5. **Security:** trace enforcement to the operation that executes it, including alternate callers that bypass schemas or wrappers. For affected Poketto paths, verify capability isolation, public/private search separation, SSRF redirect and DNS handling, Markdown sanitization/CSP, budget reservation and settlement, and secret handling against the requirements note.
 6. **Bounds:** apply byte, token, item, and time limits to the complete emitted or retained result, including wrappers and metadata. Check tiny, exact, oversized-single-item, and multibyte cases.
 7. **Evidence:** tests or replayable evidence must exercise the real entry path and observe external state, durable data, rendered output, or emitted events — not trust the agent's own report. An invalid case should fail for the intended rule.
-8. **Documentation:** affected README, Javadoc, user docs, decision records, and bilingual public pairs update with the behavior. Generated artifacts change through their owner.
+8. **Documentation:** affected README, Javadoc, user docs, and bilingual public pairs update with the behavior, and new prose meets [prose-standard](../prose-standard/SKILL.md): flag change narration, restated test cases, review history, and rationale repeated outside its home. Generated artifacts change through their owner.
 
 ## Poketto invariants to trace
 

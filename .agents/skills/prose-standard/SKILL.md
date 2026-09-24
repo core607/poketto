@@ -23,7 +23,7 @@ Add prose when code and structure do not communicate a required fact. Do not wri
 - **Public API and Javadoc:** non-obvious parameters, return distinctions, exceptions, side effects, ownership, timing, cancellation, and durability.
 - **Internal comments:** non-local invariants, race ordering, resource ownership, security rules, and surprising failure behavior. Delete control-flow narration and code restatement.
 - **Tests:** explain only why a fixture, real entry path, indirect observation, or platform accommodation is necessary. The test body already shows its steps.
-- **Decision records:** rationale, alternatives, consequences, current mechanism, verification evidence, and named gaps. Implemented notes describe shipped reality in the present tense.
+- **Decision records:** rationale, alternatives, consequences, current mechanism, the tests or checks that pin the decision, and named gaps. Implemented notes describe shipped reality in the present tense without restating test cases or plans.
 - **Prompts, diagnostics, and visible strings:** wording is behavior. Name the failing subject, violated rule, and correction when it is not obvious.
 - **Skills and agent rules:** name the real failure each rule prevents. A rule that cannot name one is deleted, not reworded.
 
@@ -36,7 +36,7 @@ Add prose when code and structure do not communicate a required fact. Do not wri
 - Do not restate facts obvious from adjacent code, tables, or configuration.
 - Each fact has one authoritative home. Other surfaces retain their necessary local contract and link to that home for detail.
 - Every repository citation must resolve. Never cite a chat, uncommitted plan, review round, or private machine path as project authority.
-- Current-state documents state current behavior. Route change narration such as "used to", "no longer", or "this PR adds" to a decision record, keeping a regression fact as a present counterfactual: without the guard, X fails.
+- Current-state documents state current behavior. Route change narration such as "used to", "no longer", or "this PR adds" to the commit message or pull request, or to the decision record that owns a reversal, keeping a regression fact as a present counterfactual: without the guard, X fails.
 - When an English/Chinese pair exists, update both sides in the same change. Make the smallest counterpart edit that preserves reviewed text outside the changed passage.
 
 ## Workflow
