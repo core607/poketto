@@ -158,8 +158,11 @@ public final class GitHubSpaceCreation {
         try {
             GitHubCreationStore.Attempt bound = attempt.bound() ? attempt : bind(actor, owner, attempt);
             requireCompletionAuthority(actor, bound);
-            RepositoryInitialization.Outcome outcome =
-                    initialization.apply(actor, bound.workspace(), () -> store.requireLease(bound));
+            RepositoryInitialization.Outcome outcome = initialization.apply(
+                    actor,
+                    bound.workspace(),
+                    RepositoryInitialization.Template.GENERAL,
+                    () -> store.requireLease(bound));
             return accounts.withAccount(actor, () -> {
                 provider.requireCurrent(actor, owner);
                 return auth.withAuthorization(

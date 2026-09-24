@@ -349,11 +349,13 @@ class SpaceCreationIntegrationIT {
         final List<WorkspaceId> applied = new ArrayList<>();
         boolean fail;
 
-        public Status status(AuthPrincipal actor, WorkspaceId workspace) {
+        @Override
+        public Status status(AuthPrincipal actor, WorkspaceId workspace, Template template) {
             return new Status(true, FILES);
         }
 
-        public Outcome apply(AuthPrincipal actor, WorkspaceId workspace) {
+        @Override
+        public Outcome apply(AuthPrincipal actor, WorkspaceId workspace, Template template) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive())
                     .isFalse();
             assertThat(auth.authorize(actor, workspace).role()).isEqualTo(MembershipRole.OWNER);

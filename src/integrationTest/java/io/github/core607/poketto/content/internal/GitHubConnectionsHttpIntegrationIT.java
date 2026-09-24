@@ -438,7 +438,10 @@ class GitHubConnectionsHttpIntegrationIT {
         assertThat(ready.workspaceCreated()).isTrue();
         assertThat(ready.initializationCommit()).matches("[0-9a-f]{40}");
         var workspace = new WorkspaceId(ready.workspaceId());
-        assertThat(initialization.status(owner, workspace).missingFiles()).isEmpty();
+        assertThat(initialization
+                        .status(owner, workspace, RepositoryInitialization.Template.GENERAL)
+                        .missingFiles())
+                .isEmpty();
         assertThat(jdbc.queryForObject(
                         "select public_delivery from workspaces where workspace_id=?",
                         Boolean.class,

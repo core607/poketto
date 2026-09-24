@@ -312,3 +312,52 @@ test("an offered initialization lists the absent files, applies only on an expli
   assert.match(f.container.textContent, /已写入 2 个文件，提交 0123456789ab/);
   assert.match(f.container.textContent, /不需要初始化/);
 });
+
+test("choosing a template checks and writes only that set's files", async (t) => {
+  const f = await fixture(t);
+  const reads: string[] = [];
+  const posts: unknown[] = [];
+  globalThis.fetch = async (input, options) => {
+    const path = String(input);
+    if (path === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (path.includes("/repository-initialization")) {
+      if (options?.method === "POST") {
+        posts.push(JSON.parse(String(options.body)));
+        return Response.json({
+          commit: "0123456789abcdef0123456789abcdef01234567",
+          addedFiles: ["private/journal/AGENTS.md"],
+        });
+      }
+      reads.push(path);
+      return Response.json(
+        path.endsWith("?template=journal")
+          ? {
+              repositoryEmpty: false,
+              missingFiles: ["private/journal/AGENTS.md"],
+            }
+          : complete,
+      );
+    }
+    return Response.json(managed);
+  };
+  await f.act(async () =>
+    f.root.render(<f.RepositoryConnection workspaceId="chosen" />),
+  );
+  assert.match(f.container.textContent, /不需要初始化/);
+  const journal = f.container.querySelector<HTMLInputElement>(
+    'input[name="template"][value="journal"]',
+  )!;
+  await f.act(async () => journal.click());
+  assert.deepEqual(reads, [
+    "/api/auth/workspaces/chosen/repository-initialization",
+    "/api/auth/workspaces/chosen/repository-initialization?template=journal",
+  ]);
+  assert.match(f.container.textContent, /private\/journal\/AGENTS\.md/);
+  const button = Array.from(f.container.querySelectorAll("button")).find(
+    (item) => item.textContent === "写入这些文件",
+  )!;
+  await f.act(async () => button.click());
+  assert.deepEqual(posts, [{ template: "journal" }]);
+  assert.match(f.container.textContent, /已写入 1 个文件/);
+});
