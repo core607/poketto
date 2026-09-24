@@ -40,6 +40,11 @@ public final class SpacePublicationService {
         return asOwner(actor, workspace, () -> publications.setDescription(workspace, description));
     }
 
+    public WorkspacePublications.Publication setPublicHistory(
+            AuthPrincipal actor, WorkspaceId workspace, boolean shown) {
+        return asOwner(actor, workspace, () -> publications.setPublicHistory(workspace, shown));
+    }
+
     private <T> T asOwner(AuthPrincipal actor, WorkspaceId workspace, Supplier<T> action) {
         if (actor == null || actor.kind() != AuthPrincipal.Kind.ACCOUNT) {
             throw new AuthException(AuthException.Code.DENIED);

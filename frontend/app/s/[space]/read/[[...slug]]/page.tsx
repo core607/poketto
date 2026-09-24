@@ -11,6 +11,7 @@ import {
   articleHref,
   coverHref,
   date,
+  historyHref,
   routeFromSegments,
   spaceFeed,
   spaceHref,
@@ -99,13 +100,12 @@ export default async function Article({
     throw error;
   });
   // The space name only labels the breadcrumb; the article stays readable without it.
-  const [spaceName, views, credits] = await Promise.all([
-    spaceInfo(space)
-      .then((info) => info.displayName || space)
-      .catch(() => space),
+  const [info, views, credits] = await Promise.all([
+    spaceInfo(space).catch(() => null),
     articleViews(space, route),
     correctionCredits(space, route),
   ]);
+  const spaceName = info?.displayName || space;
   const parameters = (await searchParams) ?? {};
   const selected =
     typeof parameters.collection === "string"
@@ -230,7 +230,15 @@ export default async function Article({
           space={space}
         />
         <footer className="read-end">
-          <span>最后更新于 {date(value.updatedAt)}</span>
+          <span>
+            最后更新于 {date(value.updatedAt)}
+            {info?.history && (
+              <>
+                {" · "}
+                <a href={historyHref(value.route, space)}>修订历史</a>
+              </>
+            )}
+          </span>
           <a href={spaceHref(space)}>更多来自「{spaceName}」的记录 →</a>
           {credits.length > 0 && (
             <span className="correction-credits">

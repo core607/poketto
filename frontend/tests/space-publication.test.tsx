@@ -262,3 +262,36 @@ test("a profile save that fails part-way keeps what was saved and the unsaved ed
   );
   assert.equal(save?.disabled, false);
 });
+
+test("revision history is shown only after the owner confirms and the server agrees", async (t) => {
+  const f = await fixture(t);
+  let shown = false;
+  const writes: unknown[] = [];
+  globalThis.fetch = async (path, options) => {
+    if (String(path) === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (options?.method === "PUT") {
+      assert.equal(
+        String(path),
+        "/api/auth/workspaces/first/publication/history",
+      );
+      writes.push(JSON.parse(String(options.body)));
+      shown = true;
+    }
+    return Response.json({ ...publication(), publicHistory: shown });
+  };
+  await f.mount();
+  assert.match(f.container.textContent, /修订历史：不公开/);
+  await f.click("公开修订历史");
+  assert.match(
+    f.container.querySelector("dialog[open]")?.textContent ?? "",
+    /包括后来删掉的段落/,
+  );
+  await f.click("取消", true);
+  assert.deepEqual(writes, []);
+  await f.click("公开修订历史");
+  await f.click("公开修订历史", true);
+  assert.deepEqual(writes, [{ shown: true }]);
+  assert.match(f.container.textContent, /修订历史：公开/);
+  assert.match(f.container.textContent, /修订历史已公开。/);
+});

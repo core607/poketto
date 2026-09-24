@@ -23,7 +23,9 @@ The history API requires current `READ_PRIVATE` before the repository read and
 again before returning data. Public readers, public-scoped members and site
 administrators without workspace membership cannot read historical metadata or
 bytes. The content module owns bounded Git traversal; the web controller delegates
-through the authorized reader. No public or MCP history endpoint is added.
+through the authorized reader. There is no MCP history endpoint. The only public
+history is [public revision history](2026-09-24-public-revision-history.md), which
+an owner opts into and which returns public article bodies without commit metadata.
 
 Pages pin a remote-main commit. A continuation stays within that reachable commit's
 history; rewritten or unreachable selections fail. Limit both commits inspected

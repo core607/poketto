@@ -1508,3 +1508,38 @@ body:has(.image-lightbox[open]) {
   justify-content: flex-end;
   gap: 0.5rem;
 }
+
+.revision-history .muted {
+  line-height: 1.7;
+}
+.revision-comparison {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+.revision-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+.revision-choices label {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.revision-choices select {
+  max-width: 100%;
+}
+.revision-comparison .history-diff {
+  max-height: none;
+}
+.revision-comparison .history-sources h2 {
+  font-size: var(--text-sm);
+}
+@media (max-width: 640px) {
+  .revision-comparison .history-sources {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
