@@ -254,6 +254,10 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
 
     static int bodyLimit(String path) {
         path = WorkspaceHttpRoutes.operation(path);
+        if (path.startsWith("/api/auth/community/spaces/") && path.endsWith("/corrections")) {
+            // A proposed article body of up to 1 MiB, JSON-escaped.
+            return 3 * 1024 * 1024;
+        }
         if (path.startsWith("/api/auth/community/")) {
             return 64 * 1024;
         }

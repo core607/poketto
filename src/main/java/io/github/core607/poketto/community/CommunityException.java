@@ -18,6 +18,8 @@ public final class CommunityException extends RuntimeException {
         LIMIT_REACHED,
         REQUEST_CONFLICT,
         REPLY_UNAVAILABLE,
-        DENIED
+        DENIED,
+        /** The article's body changed after the reader started the correction. */
+        BASE_CHANGED
     }
 }

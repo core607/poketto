@@ -46,7 +46,11 @@ test("article page sends decoded route bytes to HTTP API while metadata keeps li
       );
       return;
     }
-    if (url.pathname === "/api/public/community/spaces/second-site/views") {
+    if (
+      url.pathname === "/api/public/community/spaces/second-site/views" ||
+      url.pathname ===
+        "/api/public/community/spaces/second-site/corrections/credits"
+    ) {
       response.statusCode = 404;
       response.end("{}");
       return;

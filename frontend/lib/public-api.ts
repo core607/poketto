@@ -39,6 +39,20 @@ export async function articleViews(slug: string, route: string) {
     return null;
   }
 }
+/** Readers credited for accepted corrections of a public article; empty when unknown. */
+export async function correctionCredits(slug: string, route: string) {
+  try {
+    const { names } = await get<{ names: string[] }>(
+      `/api/public/community/spaces/${encodeURIComponent(slug)}/corrections/credits?` +
+        new URLSearchParams({ route }),
+    );
+    return Array.isArray(names)
+      ? names.filter((name) => typeof name === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
 /** An article's cover thumbnail from its stable address; null when the article has no cover. */
 export async function spaceCover(slug: string, route: string) {
   const base = process.env.POKETTO_API_BASE_URL ?? "http://127.0.0.1:8080";

@@ -89,12 +89,13 @@ final class JGitRepositoryWrites {
             AuthPrincipal principal,
             WorkspaceId workspace,
             Optional<String> baseCommit,
+            Optional<WritePrincipal> suggestedBy,
             Set<Capability> capabilities,
             Optional<RepositoryWriteAttempt> recovery,
             RepositoryWriteCheckpoint checkpoint,
             Preparer preparer) {
         Objects.requireNonNull(checkpoint, "repository write checkpoint is required");
-        var write = new Write(principal, workspace, baseCommit, recovery, checkpoint, preparer);
+        var write = new Write(principal, workspace, baseCommit, suggestedBy, recovery, checkpoint, preparer);
         try {
             auth.authorize(principal, workspace, capabilities.toArray(Capability[]::new));
             return authority.withPreparedCredentials(
@@ -111,6 +112,7 @@ final class JGitRepositoryWrites {
         private final AuthPrincipal principal;
         private final WorkspaceId workspace;
         private final Optional<String> baseCommit;
+        private final Optional<WritePrincipal> suggestedBy;
         private final Optional<RepositoryWriteAttempt> recovery;
         private final RepositoryWriteCheckpoint checkpoint;
         private final Preparer preparer;
@@ -121,12 +123,14 @@ final class JGitRepositoryWrites {
                 AuthPrincipal principal,
                 WorkspaceId workspace,
                 Optional<String> baseCommit,
+                Optional<WritePrincipal> suggestedBy,
                 Optional<RepositoryWriteAttempt> recovery,
                 RepositoryWriteCheckpoint checkpoint,
                 Preparer preparer) {
             this.principal = principal;
             this.workspace = workspace;
             this.baseCommit = baseCommit;
+            this.suggestedBy = suggestedBy;
             this.recovery = recovery;
             this.checkpoint = checkpoint;
             this.preparer = preparer;
@@ -195,7 +199,10 @@ final class JGitRepositoryWrites {
             WritePrincipal attribution = new WritePrincipal(
                     principal.kind() == AuthPrincipal.Kind.ACCOUNT ? PrincipalType.ACCOUNT : PrincipalType.API_KEY,
                     principal.subjectId().toString());
-            candidate.setMessage("Apply repository changes\n\nPoketto-Principal: " + attribution.trailerValue() + "\n");
+            candidate.setMessage("Apply repository changes\n\nPoketto-Principal: " + attribution.trailerValue() + "\n"
+                    + suggestedBy
+                            .map(suggester -> "Poketto-Suggested-By: " + suggester.trailerValue() + "\n")
+                            .orElse(""));
             return candidate;
         }
 

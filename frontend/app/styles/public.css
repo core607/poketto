@@ -1451,3 +1451,55 @@ body:has(.image-lightbox[open]) {
   width: auto;
   padding: 0 0.55rem;
 }
+
+.correction-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  margin-top: 1rem;
+  font-size: var(--text-sm);
+}
+.correction-credits {
+  flex-basis: 100%;
+}
+.correction-dialog {
+  width: min(94vw, 720px);
+  max-height: 92dvh;
+  margin: auto;
+  padding: 1.25rem;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-pop);
+}
+.correction-dialog::backdrop {
+  background: rgb(20 18 14 / 45%);
+  backdrop-filter: blur(2px);
+}
+.correction-dialog form {
+  display: grid;
+  gap: 0.75rem;
+}
+.correction-dialog h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+.correction-dialog textarea {
+  width: 100%;
+  min-height: 40dvh;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+.correction-dialog label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: var(--text-sm);
+}
+.correction-dialog .dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

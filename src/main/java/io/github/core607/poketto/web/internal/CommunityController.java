@@ -203,12 +203,16 @@ class CommunityController {
 
     @ExceptionHandler(CommunityException.class)
     ProblemDetail failure(CommunityException failure) {
+        return problem(failure);
+    }
+
+    static ProblemDetail problem(CommunityException failure) {
         HttpStatus status =
                 switch (failure.code()) {
                     case UNAVAILABLE -> HttpStatus.NOT_FOUND;
                     case PARTICIPATION_REQUIRED, DENIED -> HttpStatus.FORBIDDEN;
                     case LIMIT_REACHED -> HttpStatus.TOO_MANY_REQUESTS;
-                    case REQUEST_CONFLICT, REPLY_UNAVAILABLE -> HttpStatus.CONFLICT;
+                    case REQUEST_CONFLICT, REPLY_UNAVAILABLE, BASE_CHANGED -> HttpStatus.CONFLICT;
                 };
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, "Community operation could not be completed");
         problem.setProperty("code", "COMMUNITY_" + failure.code());

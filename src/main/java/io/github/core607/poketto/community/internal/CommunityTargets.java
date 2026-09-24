@@ -60,6 +60,21 @@ final class CommunityTargets {
         }
     }
 
+    /** The card of the article currently served at {@code route}, for route-keyed interactions. */
+    Optional<ArticleCard> card(WorkspaceId workspace, String route) {
+        try {
+            WorkspacePublications.Publication publication = publications.settings(workspace);
+            return read(
+                    workspace,
+                    snapshot -> snapshot.articles().stream()
+                            .filter(article -> article.route().equals(route))
+                            .findFirst()
+                            .map(article -> card(publication, article)));
+        } catch (ContentRepositoryException | PublicationUnavailableException unavailable) {
+            return Optional.empty();
+        }
+    }
+
     WorkspacePublications.Publication publication(WorkspaceId workspace) {
         return publications.settings(workspace);
     }

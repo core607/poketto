@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
   articleViews,
+  correctionCredits,
   spaceArticle,
   spaceInfo,
   PublicApiError,
@@ -19,6 +20,7 @@ import { plainSummary } from "../../../../../lib/summary";
 import { readingGuide } from "../../../../../lib/reading";
 import { TableOfContents } from "../../../../../components/table-of-contents";
 import { ViewBeacon } from "../../../../../components/view-beacon";
+import { CorrectionProposal } from "../../../../../components/correction-proposal";
 import { JsonLd, absoluteUrl } from "../../../../../components/json-ld";
 import { Markdown } from "../../../../../components/markdown";
 import { Gallery } from "../../../../../components/gallery";
@@ -97,11 +99,12 @@ export default async function Article({
     throw error;
   });
   // The space name only labels the breadcrumb; the article stays readable without it.
-  const [spaceName, views] = await Promise.all([
+  const [spaceName, views, credits] = await Promise.all([
     spaceInfo(space)
       .then((info) => info.displayName || space)
       .catch(() => space),
     articleViews(space, route),
+    correctionCredits(space, route),
   ]);
   const parameters = (await searchParams) ?? {};
   const selected =
@@ -229,7 +232,19 @@ export default async function Article({
         <footer className="read-end">
           <span>最后更新于 {date(value.updatedAt)}</span>
           <a href={spaceHref(space)}>更多来自「{spaceName}」的记录 →</a>
+          {credits.length > 0 && (
+            <span className="correction-credits">
+              感谢 {credits.join("、")} 的勘误
+            </span>
+          )}
         </footer>
+        {!value.folderPage && (
+          <CorrectionProposal
+            space={space}
+            route={value.route}
+            body={value.body}
+          />
+        )}
         <ArticleCommunity space={space} articleId={value.articleId} />
         <ViewBeacon space={space} route={value.route} />
       </article>

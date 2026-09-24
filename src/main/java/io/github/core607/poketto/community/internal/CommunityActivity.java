@@ -2,6 +2,7 @@ package io.github.core607.poketto.community.internal;
 
 import io.github.core607.poketto.community.CommunityException;
 import java.time.Clock;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -32,6 +33,33 @@ final class CommunityActivity {
                 maximum);
         if (changed != 1) {
             throw new CommunityException(CommunityException.Code.LIMIT_REACHED);
+        }
+    }
+
+    /**
+     * Adds one notification per recipient about either a comment or a correction event, skipping
+     * the actor and anyone blocked either way, and keeps each inbox to its newest 1,000 rows.
+     */
+    void deliver(UUID actor, List<UUID> recipients, UUID comment, UUID correction, String event) {
+        for (UUID recipient : recipients) {
+            if (recipient.equals(actor) || blocked(actor, recipient)) {
+                continue;
+            }
+            // Separate from account locks: recovery may hold the recipient while awaiting this workspace.
+            jdbc.queryForObject(
+                    "select pg_advisory_xact_lock(hashtextextended('community-inbox:' || ?::text,0))",
+                    Object.class,
+                    recipient);
+            jdbc.update(
+                    "insert into community_notifications(recipient_id,comment_id,correction_id,event) values (?,?,?,?) on conflict do nothing",
+                    recipient,
+                    comment,
+                    correction,
+                    event);
+            jdbc.update(
+                    "delete from community_notifications where recipient_id=? and position < coalesce((select position from community_notifications where recipient_id=? order by position desc offset 999 limit 1),0)",
+                    recipient,
+                    recipient);
         }
     }
 

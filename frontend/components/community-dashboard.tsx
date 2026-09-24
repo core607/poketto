@@ -9,6 +9,7 @@ import {
   type CommunityPage,
   type SavedArticle,
   type FollowedSpace,
+  noticeAction,
   type CommunityNotification,
   type BlockedAccount,
   type CommunityReport,
@@ -325,18 +326,20 @@ function CommunityLists({
             <div className="personal-body">
               <div className="community-comment-meta">
                 <strong>{item.actor?.displayName || "账号用户"}</strong>
-                <span>回复了《{item.article.title}》</span>
+                <span>{noticeAction(item)}</span>
                 <time dateTime={item.createdAt}>{date(item.createdAt)}</time>
               </div>
-              <p className="community-comment-body">{item.excerpt}</p>
+              {item.excerpt && (
+                <p className="community-comment-body">{item.excerpt}</p>
+              )}
               <a
                 className="link-btn"
                 href={
                   articleHref(item.article.route, item.article.space) +
-                  "#discussion"
+                  (item.event ? "" : "#discussion")
                 }
               >
-                查看讨论
+                {item.event ? "查看文章" : "查看讨论"}
               </a>
             </div>
             {!item.read && (
