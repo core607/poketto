@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.detect.outputs.docs_only }}
+      experiment_only: ${{ steps.experiment.outputs.only }}
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -60,6 +61,54 @@ jobs:
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
           echo "docs_only=$docs_only over:"
           echo "$files"
+
+      - name: Identify an independent experiment push
+        id: experiment
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          only=false
+          if [ "$EVENT" = push ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            files="$(git diff --name-only "$BEFORE" HEAD)"
+            has_experiment=false
+            allowed=true
+            while IFS= read -r file; do
+              case "$file" in
+                experiments/retrieval-lab/*) has_experiment=true ;;
+                notes/proposed/2026-09-24-retrieval-lab.md | notes/implemented/2026-09-24-retrieval-lab.md | .github/workflows/ci.yml) ;;
+                *) allowed=false ;;
+              esac
+            done <<< "$files"
+            if [ "$has_experiment" = true ] && [ "$allowed" = true ]; then only=true; fi
+          fi
+          echo "only=$only" >> "$GITHUB_OUTPUT"
+
+  retrieval-lab:
+    name: retrieval-lab
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.19.0"
+          cache: npm
+          cache-dependency-path: experiments/retrieval-lab/package-lock.json
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12.14"
+      - name: Install experiment dependencies
+        working-directory: experiments/retrieval-lab
+        run: |
+          npm install --global npm@12.0.2
+          npm ci --ignore-scripts --no-audit --no-fund
+          python -m pip install -r python/requirements.txt
+      - name: Check retrieval experiment
+        working-directory: experiments/retrieval-lab
+        run: npm run check
 
   docs:
     name: docs
@@ -271,7 +320,7 @@ jobs:
   # lanes each classification requires rather than tolerating any skipped lane.
   verify:
     name: verify
-    needs: [changes, docs, java, database, web, image, stack]
+    needs: [changes, docs, java, database, web, image, stack, retrieval-lab]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -286,6 +335,7 @@ jobs:
           WEB: ${{ needs.web.result }}
           IMAGE: ${{ needs.image.result }}
           STACK: ${{ needs.stack.result }}
+          RETRIEVAL_LAB: ${{ needs.retrieval-lab.result }}
         run: |
           if [ "$CLASSIFICATION" != success ]; then
             echo "change classification reported $CLASSIFICATION"
@@ -294,7 +344,7 @@ jobs:
           if [ "$DOCS_ONLY" = true ]; then
             required="docs=$DOCS"
           else
-            required="java=$JAVA database=$DATABASE web=$WEB image=$IMAGE stack=$STACK"
+            required="java=$JAVA database=$DATABASE web=$WEB image=$IMAGE stack=$STACK retrieval-lab=$RETRIEVAL_LAB"
           fi
           failed=0
           for lane in $required; do
@@ -314,10 +364,10 @@ jobs:
   # Only a verified main commit of the canonical repository becomes an image. This is the only
   # job with package-write authority.
   publish:
-    needs: verify
+    needs: [verify, changes]
     # Optional lanes can be skipped upstream. Use the completed verification gate,
     # rather than the implicit success() condition over every ancestor job.
-    if: ${{ !cancelled() && needs.verify.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'core607/poketto' }}
+    if: ${{ !cancelled() && needs.verify.result == 'success' && needs.changes.outputs.experiment_only != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'core607/poketto' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:

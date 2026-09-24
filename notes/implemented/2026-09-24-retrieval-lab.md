@@ -1,14 +1,15 @@
 # Retrieval comparison laboratory
 
 Date: 2026-09-24
+Implemented: 2026-09-24
 
 ## Problem
 
-[Repository-native retrieval](../implemented/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) chooses repository tools for flexibility and ownership. It does not establish that agentic search retrieves better than a conventional embedding and reranking pipeline. A separate experiment must compare both on the same complete corpus before either becomes a product QA architecture.
+[Repository-native retrieval](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) chooses repository tools for flexibility and ownership. It does not establish that agentic search retrieves better than a conventional embedding and reranking pipeline. A separate experiment must compare both on the same complete corpus before either becomes a product QA architecture.
 
-## Proposal
+## Decision
 
-Implement an independent TypeScript service in `experiments/retrieval-lab`, with an interactive comparison page and reproducible batch evaluation. Keep its SQLite state, corpus, credentials and Linux worker separate from the application. Production content authority, caches, search and publication retain their existing contracts. Private evaluation questions, production integration, cross-space synchronization and concurrency scaling remain later work.
+The independent [TypeScript service](../../experiments/retrieval-lab/README.md) provides an interactive comparison page and reproducible batch evaluation. Its SQLite state, corpus, credentials and Linux worker are separate from the application. Production content authority, caches, search and publication retain their existing contracts. Private evaluation questions, production integration, cross-space synchronization and concurrency scaling remain later work.
 
 Use the FiQA database from [scrydb-eval](https://github.com/breuert/scrydb-eval), pinning the source and dataset revisions and verifying download hashes. Reuse its original documents and 4,096-dimensional float32 Qwen3-Embedding-8B document and query vectors. Validate integrity, identifier mappings, vector dimensions, test-label coverage and differences from standard BEIR before evaluation. Reproduce the author's float32 dense baseline across all 648 test queries before comparing systems. Precomputed embeddings avoid a new embedding bill; their original preparation cost is external, not zero.
 
@@ -37,6 +38,13 @@ Adding an index to the production application would couple an unresolved experim
 
 Flat numeric folders would remove useful navigation that the product already supplies. Each route instead gets its own corpus-only retrieval preparation, with its costs reported. Topic folders are a derived index, not new authority or ground truth. Public benchmark contamination and its financial domain limit how far results generalize; private questions remain a follow-up experiment.
 
+## Verification and remaining runs
+
+The [calibration report](../../experiments/retrieval-lab/REPORT.md) records all 648 identical top-ten rankings and the disclosed empty-document discrepancy. The TypeScript and Python checks cover mapping, metrics, clarification, restart accounting, cancellation, batch cancellation, citation validation, HTTP origin enforcement and reranker positions. Native acceptance on the complete corpus verifies host/network denial, label separation, navigation, output artifacts, fresh copies, timeout recovery and cleanup after application SIGKILL. The existing Java `ephemeral-lifecycle` native probe also passes with the installed worker sources.
+
+Chrome acceptance verifies selection, missing-configuration feedback, persisted clarification after reload, resumed paired results and original-evidence rendering. Model and command replies in that UI fixture are synthetic; the separate native probe supplies real SRT evidence. No SiliconFlow or DeepSeek API call has been made during this acceptance. Real-provider vector compatibility, development pairs, the operator-launched formal batch and human support review remain required before reporting comparative quality. They are experiment runs, not claims established by offline or synthetic acceptance.
+
 ## Related decisions
 
-[Stock PostgreSQL](../implemented/2026-09-05-stock-postgresql.md), [remote repository authority](../implemented/2026-09-01-remote-repository-authority.md), [public site search](../implemented/2026-09-14-public-site-search.md), [repository directory navigation](../implemented/2026-09-08-repository-directory-navigation.md), and the [optional serverless profile](2026-09-01-optional-serverless-deployment-profile.md) retain their scopes. This experiment neither reinstates production projections nor implements the future product QA module.
+[Stock PostgreSQL](2026-09-05-stock-postgresql.md), [remote repository authority](2026-09-01-remote-repository-authority.md), [public site search](2026-09-14-public-site-search.md), [repository directory navigation](2026-09-08-repository-directory-navigation.md), and the [optional serverless profile](../proposed/2026-09-01-optional-serverless-deployment-profile.md) retain their scopes. This experiment neither reinstates production projections nor implements the future product QA module.
+
