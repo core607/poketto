@@ -87,15 +87,12 @@ final class ContentRepositoryInitializer implements RepositoryInitialization {
     }
 
     @Override
-    public Outcome apply(AuthPrincipal actor, WorkspaceId workspace, Runnable beforeWrite) {
+    public Outcome apply(AuthPrincipal actor, WorkspaceId workspace, Template set, Runnable beforeWrite) {
         Objects.requireNonNull(beforeWrite, "Initialization ownership check is required");
         // Initialization retries inspect missing template files; this checkpoint guards ownership,
         // rather than claiming to retain a raw Git write for exact-commit recovery.
         return initialize(
-                actor,
-                workspace,
-                Template.GENERAL,
-                patch -> patches.apply(actor, workspace, patch, attempt -> beforeWrite.run()));
+                actor, workspace, set, patch -> patches.apply(actor, workspace, patch, attempt -> beforeWrite.run()));
     }
 
     private Outcome initialize(

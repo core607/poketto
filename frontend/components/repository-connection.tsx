@@ -68,6 +68,8 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
   const [initializationError, setInitializationError] = useState("");
   const [initializing, setInitializing] = useState(false);
   const [template, setTemplate] = useState("general");
+  // A slower answer for an earlier choice must not replace the list for the current one.
+  const selected = useRef("general");
   const active = useRef(false);
 
   async function load() {
@@ -86,12 +88,13 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
       const result = await api<Initialization>(
         base + "/repository-initialization" + templateQuery(chosen),
       );
-      if (active.current) {
+      if (active.current && selected.current === chosen) {
         setInitialization(result);
         setInitializationError("");
       }
     } catch (failure) {
-      if (active.current) setInitializationError(message(failure));
+      if (active.current && selected.current === chosen)
+        setInitializationError(message(failure));
     }
   }
   useEffect(() => {
@@ -276,6 +279,7 @@ export function RepositoryConnection({ workspaceId }: { workspaceId: string }) {
                   value={choice.slug}
                   checked={template === choice.slug}
                   onChange={() => {
+                    selected.current = choice.slug;
                     setTemplate(choice.slug);
                     setInitialization(null);
                     setReceipt("");

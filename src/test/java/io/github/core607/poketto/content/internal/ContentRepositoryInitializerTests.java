@@ -53,15 +53,16 @@ class ContentRepositoryInitializerTests {
     void expiredCreationLeasePreventsTheActualInitializationPush() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var initializer = initializer(fixture);
-        assertThatThrownBy(() -> initializer.apply(principal, workspace, () -> {
-                    throw new IllegalStateException("creation lease expired");
-                }))
+        assertThatThrownBy(
+                        () -> initializer.apply(principal, workspace, RepositoryInitialization.Template.GENERAL, () -> {
+                            throw new IllegalStateException("creation lease expired");
+                        }))
                 .hasMessage("creation lease expired");
         assertThat(fixture.remoteHead(workspace)).isEqualTo(ObjectId.zeroId());
-        var completed = initializer.apply(principal, workspace, () -> {});
+        var completed = initializer.apply(principal, workspace, RepositoryInitialization.Template.GENERAL, () -> {});
         assertThat(fixture.remoteHead(workspace).name()).isEqualTo(completed.commit());
         assertThat(initializer
-                        .apply(principal, workspace, () -> {
+                        .apply(principal, workspace, RepositoryInitialization.Template.GENERAL, () -> {
                             throw new AssertionError("complete template must not write");
                         })
                         .commit())
@@ -73,11 +74,11 @@ class ContentRepositoryInitializerTests {
         var fixture = new RemoteRepositoryFixture(directory);
         var initializer = initializer(fixture);
 
-        var status = initializer.status(principal, workspace);
+        var status = initializer.status(principal, workspace, RepositoryInitialization.Template.GENERAL);
         assertThat(status.repositoryEmpty()).isTrue();
         assertThat(status.missingFiles()).isEqualTo(RepositoryInitialization.FILES);
 
-        var outcome = initializer.apply(principal, workspace);
+        var outcome = initializer.apply(principal, workspace, RepositoryInitialization.Template.GENERAL);
         assertThat(outcome.addedFiles()).isEqualTo(RepositoryInitialization.FILES);
         assertThat(fixture.remoteHead(workspace).name()).isEqualTo(outcome.commit());
         assertThat(parents(fixture, outcome.commit())).isZero();
@@ -92,9 +93,9 @@ class ContentRepositoryInitializerTests {
         }
         verify(auth).authorize(principal, workspace, Capability.PUBLISH);
 
-        assertThat(initializer.status(principal, workspace))
+        assertThat(initializer.status(principal, workspace, RepositoryInitialization.Template.GENERAL))
                 .isEqualTo(new RepositoryInitialization.Status(false, List.of()));
-        var again = initializer.apply(principal, workspace);
+        var again = initializer.apply(principal, workspace, RepositoryInitialization.Template.GENERAL);
         assertThat(again.addedFiles()).isEmpty();
         assertThat(again.commit()).isEqualTo(outcome.commit());
         assertThat(fixture.remoteHead(workspace).name()).isEqualTo(outcome.commit());
@@ -109,12 +110,12 @@ class ContentRepositoryInitializerTests {
         ObjectId base = fixture.commitRemote(workspace, files);
         var initializer = initializer(fixture);
 
-        var status = initializer.status(principal, workspace);
+        var status = initializer.status(principal, workspace, RepositoryInitialization.Template.GENERAL);
         assertThat(status.repositoryEmpty()).isFalse();
         assertThat(status.missingFiles())
                 .containsExactly("private/AGENTS.md", "public/AGENTS.md", RepositoryPublishingPolicy.PATH);
 
-        var outcome = initializer.apply(principal, workspace);
+        var outcome = initializer.apply(principal, workspace, RepositoryInitialization.Template.GENERAL);
         assertThat(outcome.addedFiles()).isEqualTo(status.missingFiles());
         Map<String, byte[]> committed = tree(fixture, outcome.commit());
         assertThat(committed.keySet())
@@ -137,7 +138,7 @@ class ContentRepositoryInitializerTests {
     void aTemplateSetAddsItsFoldersOnTopWithoutTouchingExistingFiles() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var initializer = initializer(fixture);
-        var general = initializer.apply(principal, workspace);
+        var general = initializer.apply(principal, workspace, RepositoryInitialization.Template.GENERAL);
         var mine = "# My journal rules\n".getBytes(StandardCharsets.UTF_8);
         var files = new LinkedHashMap<>(tree(fixture, general.commit()));
         files.put("public/journal/AGENTS.md", mine);
@@ -172,8 +173,10 @@ class ContentRepositoryInitializerTests {
                 .authorize(principal, workspace, Capability.MANAGE_KEYS);
         var initializer = new ContentRepositoryInitializer(auth, reader, patches);
 
-        assertThatThrownBy(() -> initializer.status(principal, workspace)).isInstanceOf(AuthException.class);
-        assertThatThrownBy(() -> initializer.apply(principal, workspace)).isInstanceOf(AuthException.class);
+        assertThatThrownBy(() -> initializer.status(principal, workspace, RepositoryInitialization.Template.GENERAL))
+                .isInstanceOf(AuthException.class);
+        assertThatThrownBy(() -> initializer.apply(principal, workspace, RepositoryInitialization.Template.GENERAL))
+                .isInstanceOf(AuthException.class);
         verifyNoInteractions(reader, patches);
     }
 

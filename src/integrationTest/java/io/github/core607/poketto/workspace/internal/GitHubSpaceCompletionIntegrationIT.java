@@ -287,7 +287,7 @@ class GitHubSpaceCompletionIntegrationIT {
         }
 
         @Override
-        public Outcome apply(AuthPrincipal principal, WorkspaceId workspace, Runnable guard) {
+        public Outcome apply(AuthPrincipal principal, WorkspaceId workspace, Template template, Runnable guard) {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive())
                     .isFalse();
             if (!complete) {

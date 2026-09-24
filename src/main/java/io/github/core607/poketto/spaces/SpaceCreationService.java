@@ -254,7 +254,7 @@ public final class SpaceCreationService {
     // A failure leaves the space ready and the repository empty; the repository connection view offers the same change.
     private void initializeEmptyRepository(AuthPrincipal actor, WorkspaceId workspace) {
         try {
-            initialization.apply(actor, workspace);
+            initialization.apply(actor, workspace, RepositoryInitialization.Template.GENERAL);
         } catch (RuntimeException failure) {
             log.warn(
                     "workspace {} could not receive the content template as its first commit: {}",

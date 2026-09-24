@@ -60,24 +60,14 @@ public interface RepositoryInitialization {
         }
     }
 
-    /** What initialization would add now. The caller must be a space owner. */
-    default Status status(AuthPrincipal actor, WorkspaceId workspace) {
-        return status(actor, workspace, Template.GENERAL);
-    }
-
     /** What adding this template would add now. The caller must be a space owner. */
     Status status(AuthPrincipal actor, WorkspaceId workspace, Template template);
-
-    /** Adds the absent files on current main, or as the root commit; a repository that has them all is left alone. */
-    default Outcome apply(AuthPrincipal actor, WorkspaceId workspace) {
-        return apply(actor, workspace, Template.GENERAL);
-    }
 
     /** Adds the absent files of the base and this template; existing files are never changed or moved. */
     Outcome apply(AuthPrincipal actor, WorkspaceId workspace, Template template);
 
     /** Checks an external operation lease immediately before a remote ref advance. Already complete templates do not write. */
-    default Outcome apply(AuthPrincipal actor, WorkspaceId workspace, Runnable beforeWrite) {
+    default Outcome apply(AuthPrincipal actor, WorkspaceId workspace, Template template, Runnable beforeWrite) {
         throw new UnsupportedOperationException("Guarded repository initialization is unavailable");
     }
 
