@@ -221,6 +221,38 @@ tasks.register("repoCheck") {
             }
         }
 
+        // A word is a run of non-space characters, except that each Han character counts as one, so
+        // English and Chinese documents are measured on comparable scales.
+        val wordToken = Regex("""\p{IsHan}|[^\s\p{IsHan}]+""")
+        val markdownWords = markdownFiles.associateWith { file ->
+            wordToken.findAll(Files.readString(file, StandardCharsets.UTF_8)).count()
+        }
+        val budgetFile = repositoryRoot.resolve("config/document-budgets.properties")
+        val budgets = java.util.Properties()
+        if (!budgetFile.isRegularFile()) {
+            errors += "missing document budgets: config/document-budgets.properties"
+        } else {
+            Files.newBufferedReader(budgetFile, StandardCharsets.UTF_8).use(budgets::load)
+        }
+        budgets.stringPropertyNames().sorted().forEach { entry ->
+            val ceiling = budgets.getProperty(entry).trim().toIntOrNull()
+            val target = repositoryRoot.resolve(entry).normalize()
+            if (ceiling == null || ceiling <= 0) {
+                errors += "document budget for $entry is not a positive word count"
+            } else if (!target.startsWith(repositoryRoot) || !Files.exists(target)) {
+                errors += "document budget names a missing path: $entry"
+            } else {
+                val covered = markdownWords.filterKeys { it.startsWith(target) }
+                val words = covered.values.sum()
+                if (covered.isEmpty()) {
+                    errors += "document budget for $entry covers no Markdown file"
+                } else if (words > ceiling) {
+                    errors += "$entry has $words words, over its budget of $ceiling; move content to its " +
+                        "home, condense it, or audit the notes as AGENTS.md describes"
+                }
+            }
+        }
+
         val gitignore = repositoryRoot.resolve(".gitignore")
         if (!gitignore.isRegularFile()) {
             errors += "missing .gitignore"
@@ -245,7 +277,7 @@ tasks.register("repoCheck") {
 
         logger.lifecycle(
             "Repository checks passed: ${markdownFiles.size} Markdown files, " +
-                "${skillDirectories.size} skills.",
+                "${skillDirectories.size} skills, ${budgets.size} document budgets.",
         )
     }
 }

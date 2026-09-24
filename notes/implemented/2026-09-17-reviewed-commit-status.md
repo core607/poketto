@@ -78,7 +78,7 @@ trigger; that decision is unchanged and this record does not touch the CI trigge
 the deliberate absence of automatic rollback and the manual redeployment of the pins saved in
 `.env.previous`; also unchanged.
 
-[Agent rules for a repository no human reviews](2026-09-17-agent-rules-for-an-unreviewed-repository.md)
+[Agent rule surface](2026-09-17-agent-rule-surface.md)
 added a sentence to the arrival guide stating that no human reads a change before it merges. That
 sentence is removed here. It stated no rule: the authorization rule already tells an agent to drive
 its own pull request to merge, so nothing actionable depended on it. What it did do was reach two
