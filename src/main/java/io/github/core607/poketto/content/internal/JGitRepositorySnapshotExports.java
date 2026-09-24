@@ -107,10 +107,10 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         String authorityCommit = snapshot.commit().orElseThrow(RepositoryEmptyException::new);
         long deadline = System.nanoTime() + timeout.toNanos();
         var projection = projection(workspace, snapshot, deadline);
-        String fingerprint = PublicExecutionProjection.fingerprint(projection);
-        var revision = new PublicRevision(
-                workspace, authorityCommit, snapshot.articles().size());
-        publicFingerprints.put(revision, fingerprint);
+        String fingerprint = remember(
+                new PublicRevision(
+                        workspace, authorityCommit, snapshot.articles().size()),
+                projection);
         UUID id = UUID.randomUUID();
         Path repositoryPath = staging.resolve(id + ".projection");
         Path pending = staging.resolve(id + ".pending");
@@ -163,6 +163,12 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                 throw new ContentRepositoryException("public execution projection cleanup failed", exception);
             }
         }
+    }
+
+    private String remember(PublicRevision revision, PublicExecutionProjection.Projection projection) {
+        String fingerprint = PublicExecutionProjection.fingerprint(projection);
+        publicFingerprints.put(revision, fingerprint);
+        return fingerprint;
     }
 
     // The projection becomes one root commit with a fixed author, so equal projections hash equally.
