@@ -6,6 +6,20 @@ export function date(value: string) {
     timeZone: "UTC",
   }).format(new Date(value));
 }
+/** A saved moment on public pages, which date everything in UTC. */
+export function dateTime(value: string) {
+  return (
+    new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      timeZone: "UTC",
+    }).format(new Date(value)) + " UTC"
+  );
+}
 export function spaceHref(space?: string) {
   return space ? `/s/${encodeURIComponent(space)}` : "";
 }
@@ -63,6 +77,10 @@ export function coverRoute(pathname: string) {
 }
 export function articleHref(route: string, space?: string) {
   return spaceHref(space) + "/read" + encodedRoute(route);
+}
+/** An article's public revision history. */
+export function historyHref(route: string, space: string) {
+  return spaceHref(space) + "/history" + encodedRoute(route);
 }
 /** A tag's listing, in the one spelling that links and its canonical share. */
 export function tagHref(tag: string, space?: string) {

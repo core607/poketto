@@ -23,6 +23,9 @@ public interface WorkspacePublications {
     /** Requires the caller's owner-authorization transaction; see {@link SpaceProfiles#description}. */
     Publication setDescription(WorkspaceId workspace, String description);
 
+    /** Requires the caller's owner-authorization transaction. */
+    Publication setPublicHistory(WorkspaceId workspace, boolean shown);
+
     void requireEnabled(WorkspaceId workspace);
 
     record Publication(
@@ -32,7 +35,8 @@ public interface WorkspacePublications {
             boolean enabled,
             boolean eligible,
             String publicAuthorName,
-            String publicDescription) {
+            String publicDescription,
+            boolean publicHistory) {
         public Publication(
                 WorkspaceId workspaceId,
                 String slug,
@@ -40,7 +44,7 @@ public interface WorkspacePublications {
                 boolean enabled,
                 boolean eligible,
                 String publicAuthorName) {
-            this(workspaceId, slug, displayName, enabled, eligible, publicAuthorName, "");
+            this(workspaceId, slug, displayName, enabled, eligible, publicAuthorName, "", false);
         }
 
         public boolean publiclyEnabled() {

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -202,6 +203,7 @@ class SpacePublicationIntegrationIT {
         mvc.perform(get(publication(workspace))).andExpect(status().isUnauthorized());
         verifyAuthorNames(owner, workspace, ownerSession);
         verifySpaceProfile(workspace, ownerSession);
+        verifyPublicHistory(workspace, ownerSession);
         verifyPolicyWithdrawal(owner, workspace, ownerSession);
     }
 
@@ -299,6 +301,10 @@ class SpacePublicationIntegrationIT {
                 .isInstanceOf(AuthException.class);
         assertThatThrownBy(() -> service.setAuthorName(auth.authenticateApiKey(token), workspace, "Denied"))
                 .isInstanceOf(AuthException.class);
+        mvc.perform(csrf(session, put(publication(workspace) + "/history"))
+                        .contentType("application/json")
+                        .content("{\"shown\":true}"))
+                .andExpect(status().isForbidden());
         for (String field : new String[] {"/name", "/description"}) {
             mvc.perform(csrf(session, put(publication(workspace) + field))
                             .contentType("application/json")
@@ -307,6 +313,35 @@ class SpacePublicationIntegrationIT {
         }
         assertThatThrownBy(() -> service.setDisplayName(auth.authenticateApiKey(token), workspace, "Denied"))
                 .isInstanceOf(AuthException.class);
+    }
+
+    private void verifyPublicHistory(WorkspaceId workspace, MockHttpSession session) throws Exception {
+        String history = "/api/public/spaces/home/history";
+        mvc.perform(get(history).param("route", "/note")).andExpect(status().isNotFound());
+        mvc.perform(csrf(session, put(publication(workspace) + "/history"))
+                        .contentType("application/json")
+                        .content("{\"shown\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.publicHistory").value(true));
+        mvc.perform(get("/api/public/spaces/home"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.history").value(true));
+        String body = mvc.perform(get(history).param("route", "/note"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.versions.length()").value(1))
+                .andExpect(jsonPath("$.versions[0].body").value(startsWith("# Visible")))
+                .andExpect(jsonPath("$.complete").value(true))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        assertThat(body).doesNotContain("Seed publication", "fixture@example.invalid", "featured");
+        mvc.perform(get(history).param("route", "/missing")).andExpect(status().isNotFound());
+        mvc.perform(csrf(session, put(publication(workspace) + "/history"))
+                        .contentType("application/json")
+                        .content("{\"shown\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.publicHistory").value(false));
+        mvc.perform(get(history).param("route", "/note")).andExpect(status().isNotFound());
     }
 
     private void verifySpaceProfile(WorkspaceId workspace, MockHttpSession session) throws Exception {

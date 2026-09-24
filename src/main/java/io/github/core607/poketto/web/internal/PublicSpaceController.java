@@ -20,16 +20,19 @@ class PublicSpaceController {
     private final WorkspaceCatalog workspaces;
     private final PublicDocuments documents;
     private final AssetService assets;
+    private final PublicHistory history;
 
     PublicSpaceController(
             WorkspacePublications publications,
             WorkspaceCatalog workspaces,
             PublicDocuments documents,
-            AssetService assets) {
+            AssetService assets,
+            PublicHistory history) {
         this.publications = publications;
         this.workspaces = workspaces;
         this.documents = documents;
         this.assets = assets;
+        this.history = history;
     }
 
     @GetMapping("/api/public/default-space")
@@ -80,6 +83,11 @@ class PublicSpaceController {
                         .build());
     }
 
+    @GetMapping("/api/public/spaces/{slug}/history")
+    ResponseEntity<PublicHistory.History> history(@PathVariable String slug, @RequestParam String route) {
+        return response(history.read(slug, route));
+    }
+
     @GetMapping("/api/public/spaces/{slug}/tags")
     ResponseEntity<PublicDocuments.Tags> tags(
             @PathVariable String slug,
@@ -90,7 +98,11 @@ class PublicSpaceController {
 
     private PublicSpace space(String slug) {
         var publication = published(slug);
-        return new PublicSpace(publication.slug(), publication.displayName(), publication.publicDescription());
+        return new PublicSpace(
+                publication.slug(),
+                publication.displayName(),
+                publication.publicDescription(),
+                publication.publicHistory());
     }
 
     private WorkspacePublications.Publication published(String slug) {
@@ -103,5 +115,6 @@ class PublicSpaceController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
     }
 
-    record PublicSpace(String slug, String displayName, String description) {}
+    /** {@code history} tells article pages whether to link their revision history. */
+    record PublicSpace(String slug, String displayName, String description, boolean history) {}
 }

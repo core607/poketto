@@ -271,6 +271,11 @@ class PublicSiteSearchTests {
         }
 
         @Override
+        public Publication setPublicHistory(WorkspaceId workspace, boolean shown) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public void requireEnabled(WorkspaceId workspace) {
             if (settings(workspace).enabled() == false) {
                 throw new IllegalStateException("disabled");

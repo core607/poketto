@@ -65,7 +65,8 @@ class SpacePublicationController {
                 body.eligible(),
                 body.publiclyEnabled(),
                 body.publicAuthorName(),
-                body.publicDescription());
+                body.publicDescription(),
+                body.publicHistory());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(response);
     }
 
@@ -93,6 +94,14 @@ class SpacePublicationController {
         return response(publications.setDescription(actor, WorkspaceId.parse(workspaceId), request.text()));
     }
 
+    @PutMapping("/history")
+    ResponseEntity<PublicationResponse> updateHistory(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable String workspaceId,
+            @RequestBody UpdatePublicHistory request) {
+        return response(publications.setPublicHistory(actor, WorkspaceId.parse(workspaceId), request.shown()));
+    }
+
     record PublicationResponse(
             String workspaceId,
             String slug,
@@ -101,7 +110,8 @@ class SpacePublicationController {
             boolean eligible,
             boolean effectiveEnabled,
             String publicAuthorName,
-            String publicDescription) {}
+            String publicDescription,
+            boolean publicHistory) {}
 
     /** Validation belongs to {@link io.github.core607.poketto.workspace.SpaceProfiles}. */
     record UpdateText(String text) {
@@ -115,6 +125,14 @@ class SpacePublicationController {
     record UpdateAuthor(String name) {
         UpdateAuthor {
             name = PublicAuthorNames.normalize(name);
+        }
+    }
+
+    record UpdatePublicHistory(Boolean shown) {
+        UpdatePublicHistory {
+            if (shown == null) {
+                throw new IllegalArgumentException("Revision history choice is required");
+            }
         }
     }
 

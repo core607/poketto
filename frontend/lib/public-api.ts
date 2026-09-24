@@ -84,7 +84,22 @@ export type PublicSpace = {
   displayName: string;
   /** Owner-written plain text, possibly empty; older servers omit it. */
   description?: string;
+  /** Whether article pages link their revision history; older servers omit it. */
+  history?: boolean;
 };
+/** Versions oldest first; complete is false when earlier versions lie beyond the read bounds. */
+export type RevisionHistory = {
+  route: string;
+  title: string;
+  versions: { savedAt: string; body: string }[];
+  complete: boolean;
+};
+export function spaceHistory(slug: string, route: string) {
+  return get<RevisionHistory>(
+    `/api/public/spaces/${encodeURIComponent(slug)}/history?` +
+      new URLSearchParams({ route }),
+  );
+}
 export const defaultSpace = cache(() =>
   get<PublicSpace>("/api/public/default-space"),
 );

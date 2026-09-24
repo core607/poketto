@@ -17,7 +17,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 final class JdbcWorkspacePublications implements WorkspacePublications {
     private static final String COLUMNS =
             "w.workspace_id,w.public_slug,w.display_name,w.public_delivery,w.public_author_name,w.public_description,"
-                    + "e.eligible";
+                    + "w.public_history,e.eligible";
     private static final String SOURCES = "workspaces w join website_owner_eligibility e using(workspace_id)";
     private static final String ENABLED = "w.public_delivery and e.eligible";
     private final JdbcTemplate jdbc;
@@ -136,6 +136,14 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
                         workspace.value()));
     }
 
+    @Override
+    public Publication setPublicHistory(WorkspaceId workspace, boolean shown) {
+        requireProfileTransaction();
+        return updated(
+                workspace,
+                jdbc.update("update workspaces set public_history=? where workspace_id=?", shown, workspace.value()));
+    }
+
     private static void requireProfileTransaction() {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Space profile changes require an owner-authorization transaction");
@@ -157,6 +165,7 @@ final class JdbcWorkspacePublications implements WorkspacePublications {
                 row.getBoolean("public_delivery"),
                 row.getBoolean("eligible"),
                 row.getString("public_author_name"),
-                row.getString("public_description"));
+                row.getString("public_description"),
+                row.getBoolean("public_history"));
     }
 }

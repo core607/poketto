@@ -1000,3 +1000,9 @@ details.sub-panel[open] > summary::before {
   background: var(--bg-sunken);
   overflow-wrap: anywhere;
 }
+.history-setting {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  margin-top: 1rem;
+}
