@@ -46,8 +46,8 @@ presentation resources.
 
 ## Verification
 
-`SpacePublicationIntegrationIT` covers the per-space sitemap API over real
-PostgreSQL and HTTP; `frontend/tests/api.test.tsx` pins refusal of mixed publication
-commits and `frontend/tests/seo-metadata.test.tsx` the robots.txt directives. The
-index, canonical Chinese routes, withdrawal and outage behavior were verified once
-against a local real stack; no automated test pins the index.
+`SpacePublicationIntegrationIT` pins only that a restricted space's sitemap API
+answers 404; `frontend/tests/api.test.tsx` pins refusal of mixed publication commits
+and `frontend/tests/seo-metadata.test.tsx` the robots.txt directives. The index, route
+listing, private-content exclusion, canonical Chinese routes, withdrawal and outage
+behavior were verified once against a local real stack; no automated test pins them.

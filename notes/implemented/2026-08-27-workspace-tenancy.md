@@ -21,10 +21,10 @@ Poketto needs multiple workspaces in its core data model while keeping single-wo
 ### Data isolation
 
 - Each workspace owns a separate private remote content repository. `<data-dir>/workspaces/<workspace-id>/content` is only its disposable cache. `WorkspacePaths` derives that cache path only from an absolute data directory and a validated `WorkspaceId`; it does not accept workspace names, slugs, repository coordinates, or caller-supplied path fragments. The authority adapter resolves the remote binding from the same authorized workspace scope.
-- Every workspace-owned authoritative or derived PostgreSQL row carries `workspace_id` explicitly. Unique constraints, foreign keys, and queries include it. A projection checkpoint is keyed by its workspace, stores that workspace's last indexed commit, and is never shared across workspaces.
+- Every workspace-owned authoritative or derived PostgreSQL row carries `workspace_id` explicitly. Unique constraints, foreign keys, and queries include it.
 - Blobs use a workspace namespace. Even when two workspaces upload identical bytes, external paths, queries, and errors must not reveal that another workspace has the same hash. Physical deduplication happens only within one workspace ([storage port](2026-09-05-repository-authoring-foundations.md#managed-originals-and-image-delivery)).
 - API keys, member permissions, visitor-Q&A budgets, audit records, cache keys, and background tasks belong to a workspace. Cross-workspace administration uses a distinct instance-level authority; a workspace owner is not implicitly an instance administrator.
-- Deleting a workspace will destroy its remote repository binding and provider resource, blob namespace, authoritative database rows, and derived projection. No deletion operation may be implemented until a separate proposal defines its waiting period, ownership proof, backup boundary, and recovery behavior.
+- Deleting a workspace will destroy its remote repository binding and provider resource, blob namespace, and authoritative database rows. No deletion operation may be implemented until a separate proposal defines its waiting period, ownership proof, backup boundary, and recovery behavior.
 
 ### Context propagation and authorization
 
@@ -64,7 +64,7 @@ Content writes, public snapshots, search, MCP, and execution take a `WorkspaceId
 
 ## Consequences
 
-Explicit scope on all workspace-owned data adds parameters to keys, queries, and tests. This is the intended cost of isolation. Features that introduce documents, blobs, caches, audit rows, background tasks, or projection checkpoints must prove cross-workspace isolation for that state.
+Explicit scope on all workspace-owned data adds parameters to keys, queries, and tests. This is the intended cost of isolation. Features that introduce documents, blobs, caches, audit rows, or background tasks must prove cross-workspace isolation for that state.
 
 A repository per workspace increases repository and background-worker counts. Workspaces have no cross-repository transaction dependency, so they can be sharded and processed in parallel while writes remain serialized within each repository. Distributed locks and message queues remain unnecessary until measured scale exceeds one process.
 
