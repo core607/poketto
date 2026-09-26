@@ -9,7 +9,7 @@ owns topology, rationale and alternatives.
 
 ## Runtime
 
-The host needs Linux with cgroup v2, systemd, unprivileged user namespaces, Python 3.10+, Git and the SRT toolchain prepared by [the native spike](../executor-spike/README.md).
+The host needs Linux with cgroup v2, systemd, unprivileged user namespaces, Python 3.10+, Git and the SRT toolchain that [prepare-tools.sh](prepare-tools.sh) builds in a new directory: a checksum-verified Node.js 22.22.0, the sandbox runtime pinned by [sandbox-runtime/package-lock.json](sandbox-runtime/package-lock.json), and extracted bubblewrap, socat, ripgrep and `which`.
 
 Install [requirements.txt](requirements.txt) into a root-owned virtual environment at `/opt/poketto-executor/venv`, where [poketto-executor.service](poketto-executor.service) expects it, and the worker sources in one directory: `worker.py`, `launcher.py`, `command_channel.py`, `shell_loop.py`, `disk_pool.py`, `resource_pool.py`, `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py`, `materialize.py` and `artifacts.py`. Worker code, launcher, tools, configuration and public key must be root-owned and unwritable by the application and execution accounts. The worker receives only the PEM public key; the application holds the Ed25519 private key. Never put the signing key or a real operator configuration in this repository.
 
@@ -211,7 +211,7 @@ The root-only probes below use synthetic, disposable fixtures, and each needs `c
 
 `python3 executor-service/disk_pool_probe.py` kills allocation on a disposable 512 MiB XFS mount before identity publication, after identity fsync and after publication, and checks recovery and an existing copy. Every phase must report `PASS`.
 
-The [native probe](native_probe.py) drives the signed socket entry point against a temporary account, transient units and a 512 MiB XFS pool with per-copy quotas, under `/run` with the production `UMask=0077` ([why](../notes/implemented/2026-09-05-local-execution-supervisor.md#supervisor-and-worker)). Prepare a new disposable directory on disk with `native_probe.py`, `native_pool.py`, the worker sources listed under [runtime](#runtime) and a `tools` directory created by `prepare-native.sh NEW_TOOLS_DIRECTORY executor-spike`, with the pinned Python dependencies in `tools/python`.
+The [native probe](native_probe.py) drives the signed socket entry point against a temporary account, transient units and a 512 MiB XFS pool with per-copy quotas, under `/run` with the production `UMask=0077` ([why](../notes/implemented/2026-09-05-local-execution-supervisor.md#supervisor-and-worker)). Prepare a new disposable directory on disk with `native_probe.py`, `native_pool.py`, the worker sources listed under [runtime](#runtime) and a `tools` directory created by `prepare-tools.sh NEW_TOOLS_DIRECTORY`, with the pinned Python dependencies in `tools/python`.
 
 ```sh
 sudo env PYTHONPATH=/temporary/probe/tools/python python3 /temporary/probe/native_probe.py --root /temporary/probe
