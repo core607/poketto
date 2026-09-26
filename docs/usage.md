@@ -567,9 +567,8 @@ For an operator-owned Compose installation,
 updates only the app and frontend images and explicitly supplied identity settings.
 Install the current protected updater and set `POKETTO_DEPLOY_LAYOUT=existing`.
 `POKETTO_DEPLOY_MODE` is `pull` (the host fetches both digests from the canonical
-registry with the deployment job's package-read token), `mirror` (a configured
-delivery mirror) or `transfer` (a checksummed archive over SSH, for hosts that reach
-neither registry).
+registry with the deployment job's package-read token) or `transfer` (a checksummed
+archive over SSH, for hosts that cannot reach the registry).
 
 `transfer.sh --existing --set-stdin` accepts newline-separated `KEY=value` entries for
 `POKETTO_RESEND_API_KEY`, `POKETTO_EMAIL_FROM`, `POKETTO_EMAIL_DAILY_LIMIT`,
