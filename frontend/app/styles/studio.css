@@ -238,283 +238,148 @@ body:has(.studio) .site-footer {
   font-weight: 600;
 }
 
-/* Studio panels. Element defaults use :where() so scoped legacy rules still win. */
+/* Studio panels and dialogs. Element defaults sit under :where(), which has zero
+   specificity, so any component class rule overrides them. */
 :where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+  .studio-main,
+  .oauth-shell,
+  .confirmation-dialog,
+  .export-dialog,
+  .history-dialog,
+  .folder-picker
+) {
   h2 {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: 700;
-  line-height: 1.35;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    margin: 0;
+    font-size: var(--text-lg);
+    font-weight: 700;
+    line-height: 1.35;
+  }
   h3 {
-  margin: 0;
-  font-size: var(--text-md);
-  font-weight: 700;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    margin: 0;
+    font-size: var(--text-md);
+    font-weight: 700;
+  }
   p {
-  margin: 0;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    margin: 0;
+  }
   form {
-  display: grid;
-  gap: 1rem;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    display: grid;
+    gap: 1rem;
+  }
   fieldset {
-  display: grid;
-  gap: 0.65rem;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    display: grid;
+    gap: 0.65rem;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
   legend {
-  margin-bottom: 0.5rem;
-  font-weight: 650;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    margin-bottom: 0.5rem;
+    font-weight: 650;
+  }
   label {
-  display: grid;
-  gap: 0.4rem;
-  color: var(--ink-2);
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    display: grid;
+    gap: 0.4rem;
+    color: var(--ink-2);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
   :is(
     input:not([type="checkbox"], [type="radio"], [type="file"]),
     select,
     textarea
   ) {
-  width: 100%;
-  min-height: 40px;
-  padding: 0.5rem 0.8rem;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--bg-raised);
-  color: var(--ink);
-  font-size: var(--text-base);
-  font-weight: 400;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    width: 100%;
+    min-height: 40px;
+    padding: 0.5rem 0.8rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--bg-raised);
+    color: var(--ink);
+    font-size: var(--text-base);
+    font-weight: 400;
+  }
   textarea {
-  line-height: 1.7;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    line-height: 1.7;
+  }
   :is(input:not([type="checkbox"], [type="radio"]), select, textarea):focus {
-  border-color: var(--accent);
-  outline: none;
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    border-color: var(--accent);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
   :is([type="checkbox"], [type="radio"]) {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent);
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
-  details
-  > summary {
-  color: var(--ink-2);
-  font-weight: 600;
-  cursor: pointer;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+  }
+  details > summary {
+    color: var(--ink-2);
+    font-weight: 600;
+    cursor: pointer;
+  }
   blockquote {
-  margin: 0;
-  padding-left: 0.9rem;
-  border-left: 3px solid var(--line-strong);
-  color: var(--ink-2);
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    margin: 0;
+    padding-left: 0.9rem;
+    border-left: 3px solid var(--line-strong);
+    color: var(--ink-2);
+  }
   button:not([class]),
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
   :is(.button-primary, .button) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  justify-self: start;
-  min-height: 36px;
-  padding: 0 1rem;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--bg-raised);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    justify-self: start;
+    min-height: 36px;
+    padding: 0 1rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: var(--ink);
+    color: var(--bg-raised);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+  }
   .button-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  justify-self: start;
-  min-height: 36px;
-  padding: 0 1rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--bg-raised);
-  color: var(--ink);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    justify-self: start;
+    min-height: 36px;
+    padding: 0 1rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--bg-raised);
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+  }
   .button-danger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 36px;
-  padding: 0 1rem;
-  border: 0;
-  border-radius: 999px;
-  background: var(--danger);
-  color: var(--on-danger);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-}
-:where(
-    .studio-main,
-    .oauth-shell,
-    .confirmation-dialog,
-    .export-dialog,
-    .history-dialog,
-    .folder-picker
-  )
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 1rem;
+    border: 0;
+    border-radius: 999px;
+    background: var(--danger);
+    color: var(--on-danger);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+  }
   :is(button, .button-secondary):disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 }
 
 .management-panel {
