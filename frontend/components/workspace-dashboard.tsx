@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../lib/browser-api";
-import { message, type Identity } from "./admin";
+import { api, message } from "../lib/browser-api";
+import type { Identity } from "../lib/types";
 import { AccountPanel, type AccountProfile } from "./account-panel";
 import { useAdminPage } from "./admin-pagination";
 import { useConfirmation } from "./confirmation";
@@ -29,7 +29,6 @@ const tabs = {
   content: "内容",
   account: "账号",
   members: "成员与邀请",
-  keys: "AI 助手",
   connections: "AI 助手",
   repository: "存储位置",
   publication: "网站",
@@ -42,7 +41,6 @@ const descriptions: Record<keyof typeof tabs, string> = {
     "写笔记、整理分类和图片。保存会写进这个空间的仓库，发布后出现在网站上。",
   account: "你的登录方式和昵称，以及新建或加入空间。",
   members: "邀请别人一起整理这个空间，并决定每个人能看、能改哪些内容。",
-  keys: "让 Claude、ChatGPT 等 AI 助手读写这个空间，和你一起整理。",
   connections: "让 Claude、ChatGPT 等 AI 助手读写这个空间，和你一起整理。",
   repository:
     "这个空间的内容存放在一个 Git 仓库里，可以把它理解成会记住每次修改的云端文件夹。这里显示它连到哪里、是否正常。",
@@ -57,7 +55,6 @@ const icons: Record<Tab, IconName> = {
   content: "file",
   account: "user",
   members: "users",
-  keys: "key",
   connections: "link",
   repository: "branch",
   publication: "globe",
@@ -305,11 +302,7 @@ export function WorkspaceDashboard({
         key={key}
         type="button"
         className="studio-nav-item"
-        aria-current={
-          activeTab === key || (key === "connections" && activeTab === "keys")
-            ? "page"
-            : undefined
-        }
+        aria-current={activeTab === key ? "page" : undefined}
         onClick={async () => {
           if (!(await discard())) return;
           setDirty(false);
@@ -339,16 +332,13 @@ export function WorkspaceDashboard({
         />
       )}
       {activeTab === "members" && <Members />}
-      {(activeTab === "connections" || activeTab === "keys") && (
+      {activeTab === "connections" && (
         <div className="management-panel">
           <McpGuide />
           <Connections />
           {identity && <CaptureSetup identity={identity} />}
           {identity?.role === "OWNER" && (
-            <details
-              className="sub-panel advanced"
-              open={activeTab === "keys" || undefined}
-            >
+            <details className="sub-panel advanced">
               <summary>访问密钥（高级）</summary>
               <p className="muted">
                 给无法登录授权的脚本或工具使用。每个工具一把钥匙，可随时撤销。
@@ -437,7 +427,7 @@ export function WorkspaceDashboard({
           </span>
           <button
             type="button"
-            className="link-btn"
+            className="text-button hover-underline"
             onClick={async () => {
               if (await discard()) await onLogout();
             }}
@@ -461,7 +451,7 @@ export function WorkspaceDashboard({
             {error}{" "}
             <button
               type="button"
-              className="link-btn"
+              className="text-button hover-underline"
               onClick={() => void select(selected, tab, true, true)}
             >
               重新读取空间

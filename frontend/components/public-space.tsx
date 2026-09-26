@@ -269,7 +269,7 @@ export async function PublicSpacePage({
                   : "全部记录"}
             </h2>
             {tag ? (
-              <a className="link-btn" href={base + "/tags"}>
+              <a className="text-button hover-underline" href={base + "/tags"}>
                 所有标签
               </a>
             ) : (

@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useWorkspaceApi } from "./workspace-context";
-import { message, type Identity } from "./admin";
+import { message } from "../lib/browser-api";
+import type { Identity } from "../lib/types";
 import { Secret } from "./secret";
 
 /**

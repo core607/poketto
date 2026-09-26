@@ -118,7 +118,7 @@ export function SpaceSwitcher({
             <div className="space-switcher-pages">
               <button
                 type="button"
-                className="link-btn"
+                className="text-button hover-underline"
                 disabled={page.loading || page.offset === 0}
                 onClick={() =>
                   page.setOffset(Math.max(0, page.offset - page.limit))
@@ -128,7 +128,7 @@ export function SpaceSwitcher({
               </button>
               <button
                 type="button"
-                className="link-btn"
+                className="text-button hover-underline"
                 disabled={
                   page.loading || page.offset + page.limit >= page.total
                 }
@@ -154,7 +154,11 @@ export function SpaceSwitcher({
       {page.error && (
         <p className="studio-side-error">
           空间列表暂时无法读取，你的账号仍已登录。
-          <button type="button" className="link-btn" onClick={page.reload}>
+          <button
+            type="button"
+            className="text-button hover-underline"
+            onClick={page.reload}
+          >
             重新读取空间
           </button>
         </p>

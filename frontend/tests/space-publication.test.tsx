@@ -73,6 +73,8 @@ const publication = (workspaceId = "first", enabled = false) => ({
   slug: workspaceId,
   displayName: workspaceId,
   publicAuthorName: "",
+  publicDescription: "",
+  publicHistory: false,
 });
 
 test("restricted websites retain the owner's switch while preventing publication", async (t) => {
@@ -207,7 +209,7 @@ test("switching spaces cancels an old confirmation and ignores an old read resul
 test("a profile save that fails part-way keeps what was saved and the unsaved edits", async (t) => {
   const f = await fixture(t);
   const writes: string[] = [];
-  let current = { ...publication(), publicDescription: "" };
+  let current = publication();
   globalThis.fetch = async (path, options) => {
     if (String(path) === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });

@@ -5,6 +5,7 @@ import { communityMessage, type CommunityProfile } from "../lib/community";
 import { articleHref, date } from "../lib/format";
 import { sourceDifference } from "../lib/source-diff";
 import { useConfirmation } from "./confirmation";
+import { SourceDiff } from "./source-diff";
 
 type Review = {
   id: string;
@@ -143,20 +144,7 @@ export function CorrectionReview({ workspaceId }: { workspaceId: string }) {
                   提出这条建议之后文章又改过，不能再直接采纳。标为过期会通知读者基于新内容重新提。
                 </p>
               ) : difference.kind === "lines" ? (
-                <pre className="history-diff" aria-label="正文差异">
-                  {difference.lines.map((line, index) => (
-                    <span key={index} className={"history-line " + line.kind}>
-                      <span aria-hidden="true">
-                        {line.kind === "removed"
-                          ? "− "
-                          : line.kind === "added"
-                            ? "+ "
-                            : "  "}
-                      </span>
-                      {line.text.replace(/\r?\n$/, "")}
-                    </span>
-                  ))}
-                </pre>
+                <SourceDiff lines={difference.lines} />
               ) : (
                 <div className="history-sources">
                   <section>
