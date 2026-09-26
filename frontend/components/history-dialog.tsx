@@ -5,6 +5,7 @@ import { useConfirmation } from "./confirmation";
 import { sourceDifference } from "../lib/source-diff";
 import { message } from "../lib/browser-api";
 import type { RepositoryFile } from "../lib/types";
+import { SourceDiff } from "./source-diff";
 
 type HistoryEntry = {
   commit: string;
@@ -19,6 +20,13 @@ type HistoryPage = {
   entries: HistoryEntry[];
   nextOffset: number | null;
 };
+
+/** Shows each line ending, so CRLF and a missing final newline are visible differences. */
+function lineEnding(text: string) {
+  if (text.endsWith("\r\n")) return text.slice(0, -2) + " ⟪CRLF⟫";
+  if (text.endsWith("\n")) return text.slice(0, -1);
+  return text + " ⟪无行尾换行⟫";
+}
 
 export function HistoryDialog({
   file,
@@ -228,24 +236,7 @@ export function HistoryDialog({
               <p>
                 − 历史版本　＋ 当前编辑内容{dirty ? "（含未保存修改）" : ""}
               </p>
-              <pre className="history-diff" aria-label="正文差异">
-                {difference.lines.map((line, index) => (
-                  <span key={index} className={"history-line " + line.kind}>
-                    <span aria-hidden="true">
-                      {line.kind === "removed"
-                        ? "− "
-                        : line.kind === "added"
-                          ? "+ "
-                          : "  "}
-                    </span>
-                    {line.text.endsWith("\r\n")
-                      ? line.text.slice(0, -2) + " ⟪CRLF⟫"
-                      : line.text.endsWith("\n")
-                        ? line.text.slice(0, -1)
-                        : line.text + " ⟪无行尾换行⟫"}
-                  </span>
-                ))}
-              </pre>
+              <SourceDiff lines={difference.lines} format={lineEnding} />
             </>
           )}
           {difference?.kind === "side-by-side" && (
