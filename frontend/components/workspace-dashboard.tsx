@@ -437,7 +437,7 @@ export function WorkspaceDashboard({
           </span>
           <button
             type="button"
-            className="link-btn"
+            className="text-button hover-underline"
             onClick={async () => {
               if (await discard()) await onLogout();
             }}
@@ -461,7 +461,7 @@ export function WorkspaceDashboard({
             {error}{" "}
             <button
               type="button"
-              className="link-btn"
+              className="text-button hover-underline"
               onClick={() => void select(selected, tab, true, true)}
             >
               重新读取空间

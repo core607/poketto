@@ -850,7 +850,7 @@ label.oauth-permission {
   gap: 0.6rem;
 }
 
-:where(.studio-main) :is(.text-button, .link-btn) {
+:where(.studio-main) .text-button {
   justify-self: start;
   text-align: left;
 }
