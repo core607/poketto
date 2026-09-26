@@ -86,15 +86,20 @@ class PublicCopyRefreshTests {
     private final AuthService auth = mock(AuthService.class);
     private final AuthPrincipal principal = mock(AuthPrincipal.class);
     private final AccountCopyRecord.Owner owner;
+    private final AtomicBoolean revoked = new AtomicBoolean();
 
     PublicCopyRefreshTests() {
         when(principal.kind()).thenReturn(AuthPrincipal.Kind.API_KEY);
         when(principal.subjectId()).thenReturn(UUID.randomUUID());
         when(principal.accountId()).thenReturn(UUID.randomUUID());
         owner = new AccountCopyRecord.Owner(principal.accountId(), WORKSPACE.value(), false);
-        when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY)))
-                .thenAnswer(call -> new WorkspaceAccess(
-                        WORKSPACE, call.getArgument(0), MembershipRole.MEMBER, Set.of(Capability.EXECUTE_REPOSITORY)));
+        when(auth.authorize(any(), any(), eq(Capability.EXECUTE_REPOSITORY))).thenAnswer(call -> {
+            if (revoked.get()) {
+                throw new SecurityException("execution grant revoked");
+            }
+            return new WorkspaceAccess(
+                    WORKSPACE, call.getArgument(0), MembershipRole.MEMBER, Set.of(Capability.EXECUTE_REPOSITORY));
+        });
         // Exports and validity follow the current publication, which each test replaces to change it.
         when(exports.createPublic(any(), eq(WORKSPACE))).thenAnswer(call -> published.get());
         doAnswer(call -> !published.get().equals(call.getArgument(2)))
@@ -314,6 +319,23 @@ class PublicCopyRefreshTests {
     }
 
     @Test
+    void authorizationLostDuringTheInspectionIsDeniedBeforeAnythingIsDiscarded() throws Exception {
+        try (var worker = new Worker();
+                var executor = executor(worker)) {
+            String copy = run(executor, "new", "ls").copyId();
+            publish(SECOND);
+            worker.onInspection = () -> revoked.set(true);
+
+            assertThatThrownBy(() -> run(executor, copy, "pwd")).isInstanceOf(SecurityException.class);
+
+            assertThat(worker.operations("DISCARD")).isEmpty();
+            assertThat(worker.copies).containsExactly(entry(copy, FIRST));
+            assertThat(worker.accounts.record(owner).orElseThrow().phase()).isEqualTo(AccountCopyRecord.Phase.READY);
+            verify(exports, times(1)).createPublic(any(), any());
+        }
+    }
+
+    @Test
     void theInspectionEmbedsOnlyAnExactCommit() {
         assertThatThrownBy(() -> PublicCopyRefresh.inspection("HEAD; rm -rf ."))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -419,6 +441,7 @@ class PublicCopyRefreshTests {
         private volatile boolean holdInspection;
         private volatile boolean failNextOpen;
         private volatile String attachedGitCommit;
+        private volatile Runnable onInspection = () -> {};
 
         Worker() throws Exception {
             Path directory = Path.of(".gradle", "uds").toAbsolutePath();
@@ -570,6 +593,9 @@ class PublicCopyRefreshTests {
             boolean fresh = startedUnits.add(lease);
             commands.add(new Command(lease, commit, command, fresh));
             boolean inspection = command.equals(PublicCopyRefresh.inspection(commit));
+            if (inspection) {
+                onInspection.run();
+            }
             if (inspection && holdInspection) {
                 inspectionEntered.countDown();
                 assertThat(inspectionRelease.await(8, TimeUnit.SECONDS)).isTrue();

@@ -1,5 +1,6 @@
 package io.github.core607.poketto.executor.internal;
 
+import static io.github.core607.poketto.executor.internal.SessionWorker.requireLive;
 import static io.github.core607.poketto.executor.internal.SessionWorker.requireOk;
 
 import io.github.core607.poketto.content.RepositorySnapshotExports;
@@ -106,7 +107,11 @@ final class PublicCopyRefresh {
         held.bind(lifecycle.writer(probe));
         probe.accountRecord = held.record();
         lifecycle.attach(probe);
-        if (!probe.gitCommit.equals(saved.baseCommit()) || !inspectedClean(probe)) {
+        boolean clean = probe.gitCommit.equals(saved.baseCommit()) && inspectedClean(probe);
+        // A lease stopped by cancellation or revocation reports that, not a change of publication.
+        requireLive(probe);
+        io.authorize(probe);
+        if (!clean) {
             throw ExecutionAdmissionException.publicationChanged(session.copyId.toString());
         }
     }
