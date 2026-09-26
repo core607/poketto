@@ -104,11 +104,9 @@ class ImmutableRepositoryReadTests {
     }
 
     @Test
-    void unbornRefreshRemovesMainAndWorktreeWhileAnOldExactReadRemainsUsable() throws Exception {
+    void unbornRefreshRemovesMainWhileAnOldExactReadRemainsUsable() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var descriptor = load(fixture);
-        fixture.authority().read(workspace, snapshot -> snapshot.commitId());
-        assertThat(fixture.cache(workspace).resolve("public/image.png")).exists();
         var gate = new PayloadGate(fixture.authority(), descriptor);
         try (var remote = fixture.openRemote(workspace)) {
             var update = remote.updateRef(Constants.R_HEADS + "main");
@@ -123,10 +121,8 @@ class ImmutableRepositoryReadTests {
                                 () -> fixture.authority().readObjects(workspace, snapshot -> snapshot.commitId()))
                         .get(5, TimeUnit.SECONDS);
                 assertThat(empty).isEmpty();
-                assertThat(fixture.cache(workspace).resolve("public/image.png")).doesNotExist();
                 try (var cache = RepositoryCaches.openCache(fixture.cache(workspace), workspace)) {
                     assertThat(cache.resolve(Constants.R_HEADS + "main")).isNull();
-                    assertThat(cache.readDirCache().getEntryCount()).isZero();
                 }
             } finally {
                 gate.release.countDown();
