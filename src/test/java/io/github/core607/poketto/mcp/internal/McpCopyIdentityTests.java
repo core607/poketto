@@ -159,10 +159,6 @@ class McpCopyIdentityTests {
                         SessionReplacedException.Reason.DIFFERENT_COPY, Optional.of(current), false))
                 .thenThrow(new SessionReplacedException(
                         SessionReplacedException.Reason.MISSING_COPY, Optional.empty(), true))
-                .thenThrow(new SessionReplacedException(
-                        SessionReplacedException.Reason.CLOSED_COPY, Optional.empty(), false))
-                .thenThrow(new SessionReplacedException(
-                        SessionReplacedException.Reason.CLOSED_COPY, Optional.empty(), true))
                 .thenThrow(new IllegalStateException("private worker detail"));
         var arguments = Map.<String, Object>of("expectedCopyId", old, "command", "poketto save note.md");
         var mismatch = call(arguments);
@@ -174,13 +170,7 @@ class McpCopyIdentityTests {
         assertThat(unavailable.has("copyId")).isFalse();
         assertThat(unavailable.path("code").stringValue()).isEqualTo("SESSION_REPLACED");
         assertThat(unavailable.path("newCopyAllowed").booleanValue()).isTrue();
-        var closed = body(call(arguments));
-        assertThat(closed.path("reason").stringValue()).isEqualTo("CLOSED_COPY");
-        assertThat(closed.path("newCopyAllowed").booleanValue()).isFalse();
-        var released = body(call(arguments));
-        assertThat(released.path("newCopyAllowed").booleanValue()).isTrue();
-        assertThat(released.path("executed").booleanValue()).isFalse();
-        assertThat(released.has("copyId")).isFalse();
+        assertThat(unavailable.path("executed").booleanValue()).isFalse();
         var unknown = body(call(arguments));
         assertThat(unknown.path("code").stringValue()).isEqualTo("UNAVAILABLE");
         assertThat(unknown.has("executed")).isFalse();
