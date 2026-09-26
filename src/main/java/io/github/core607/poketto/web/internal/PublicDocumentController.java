@@ -36,12 +36,6 @@ class PublicDocumentController {
         return response(documents.find(route));
     }
 
-    @GetMapping("/tags")
-    ResponseEntity<PublicDocuments.Tags> tags(
-            @RequestParam(defaultValue = "0") int offset, @RequestParam(defaultValue = "100") int limit) {
-        return response(documents.tags(offset, limit));
-    }
-
     private static <T> ResponseEntity<T> response(T body) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
     }
