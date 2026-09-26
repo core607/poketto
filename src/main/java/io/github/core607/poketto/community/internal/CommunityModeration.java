@@ -66,12 +66,7 @@ final class CommunityModeration {
             throw new IllegalArgumentException("a block requires another account");
         }
         scope.personal(actor, identity -> {
-            boolean exists = Boolean.TRUE.equals(jdbc.queryForObject(
-                    "select exists(select 1 from community_blocks where blocker_id=? and blocked_id=?)",
-                    Boolean.class,
-                    identity.accountId(),
-                    target));
-            if (exists == enabled) {
+            if (activity.blocks(identity.accountId(), target) == enabled) {
                 return null;
             }
             if (enabled) {
@@ -105,15 +100,14 @@ final class CommunityModeration {
                 (row, number) -> new BlockRow(row.getLong(1), row.getObject(2, UUID.class)),
                 actor.accountId(),
                 CommunityActivity.before(before));
-        List<BlockRow> selected = rows.stream().limit(20).toList();
-        Set<UUID> ids = new HashSet<>();
-        selected.forEach(row -> ids.add(row.account()));
-        Map<UUID, Profile> profiles = accounts.profiles(ids);
-        return new Page<>(
-                selected.stream()
-                        .map(row -> new BlockedAccount(row.position(), profiles.get(row.account())))
-                        .toList(),
-                rows.size() > 20 ? selected.getLast().position() : null);
+        return CommunityActivity.page(rows, BlockRow::position, selected -> {
+            Set<UUID> ids = new HashSet<>();
+            selected.forEach(row -> ids.add(row.account()));
+            Map<UUID, Profile> profiles = accounts.profiles(ids);
+            return selected.stream()
+                    .map(row -> new BlockedAccount(row.position(), profiles.get(row.account())))
+                    .toList();
+        });
     }
 
     Page<Report> reports(AuthPrincipal actor, long before) {
@@ -133,26 +127,25 @@ final class CommunityModeration {
                             row.getTimestamp(7).toInstant(),
                             row.getString(8)),
                     CommunityActivity.before(before));
-            List<ReportRow> selected = rows.stream().limit(20).toList();
-            Set<UUID> ids = new HashSet<>();
-            selected.forEach(row -> {
-                ids.add(row.reporter());
-                ids.add(row.author());
+            return CommunityActivity.page(rows, ReportRow::position, selected -> {
+                Set<UUID> ids = new HashSet<>();
+                selected.forEach(row -> {
+                    ids.add(row.reporter());
+                    ids.add(row.author());
+                });
+                Map<UUID, Profile> profiles = accounts.profiles(ids);
+                return selected.stream()
+                        .map(row -> new Report(
+                                row.position(),
+                                row.comment(),
+                                profiles.get(row.reporter()),
+                                profiles.get(row.author()),
+                                row.reason(),
+                                row.body(),
+                                row.createdAt(),
+                                row.status()))
+                        .toList();
             });
-            Map<UUID, Profile> profiles = accounts.profiles(ids);
-            return new Page<>(
-                    selected.stream()
-                            .map(row -> new Report(
-                                    row.position(),
-                                    row.comment(),
-                                    profiles.get(row.reporter()),
-                                    profiles.get(row.author()),
-                                    row.reason(),
-                                    row.body(),
-                                    row.createdAt(),
-                                    row.status()))
-                            .toList(),
-                    rows.size() > 20 ? selected.getLast().position() : null);
         });
     }
 

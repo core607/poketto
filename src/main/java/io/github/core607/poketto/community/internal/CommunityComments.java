@@ -106,23 +106,25 @@ final class CommunityComments {
                 parentId,
                 cursor,
                 viewer);
-        List<Row> selected = rows.stream().limit(20).toList();
-        Set<UUID> authors =
-                selected.stream().filter(row -> !row.deleted()).map(Row::author).collect(Collectors.toSet());
-        Map<UUID, Profile> profiles = accounts.profiles(authors);
-        List<Comment> comments = selected.stream()
-                .map(row -> new Comment(
-                        row.id(),
-                        row.position(),
-                        row.parent(),
-                        row.deleted() ? null : profiles.get(row.author()),
-                        row.deleted() ? "" : row.body(),
-                        row.createdAt(),
-                        row.deleted(),
-                        row.parent() == null ? replyCount(row.id(), viewer) : 0,
-                        moderator || row.author().equals(viewer)))
-                .toList();
-        return new Page<>(comments, rows.size() > 20 ? selected.getLast().position() : null);
+        return CommunityActivity.page(rows, Row::position, selected -> {
+            Set<UUID> authors = selected.stream()
+                    .filter(row -> !row.deleted())
+                    .map(Row::author)
+                    .collect(Collectors.toSet());
+            Map<UUID, Profile> profiles = accounts.profiles(authors);
+            return selected.stream()
+                    .map(row -> new Comment(
+                            row.id(),
+                            row.position(),
+                            row.parent(),
+                            row.deleted() ? null : profiles.get(row.author()),
+                            row.deleted() ? "" : row.body(),
+                            row.createdAt(),
+                            row.deleted(),
+                            row.parent() == null ? replyCount(row.id(), viewer) : 0,
+                            moderator || row.author().equals(viewer)))
+                    .toList();
+        });
     }
 
     private long replyCount(UUID root, UUID viewer) {
@@ -144,12 +146,7 @@ final class CommunityComments {
         if (invalid) {
             throw new CommunityException(CommunityException.Code.REPLY_UNAVAILABLE);
         }
-        if (actor != null
-                && Boolean.TRUE.equals(jdbc.queryForObject(
-                        "select exists(select 1 from community_blocks where blocker_id=? and blocked_id=?)",
-                        Boolean.class,
-                        actor,
-                        root.author()))) {
+        if (activity.blocks(actor, root.author())) {
             throw CommunityTargets.unavailable();
         }
         return root;
@@ -171,23 +168,12 @@ final class CommunityComments {
         if (row.hidden() || row.deleted()) {
             return false;
         }
-        if (viewer != null
-                && Boolean.TRUE.equals(jdbc.queryForObject(
-                        "select exists(select 1 from community_blocks where blocker_id=? and blocked_id=?)",
-                        Boolean.class,
-                        viewer,
-                        row.author()))) {
+        if (activity.blocks(viewer, row.author())) {
             return false;
         }
         if (row.parent() != null) {
             Row parent = get(row.parent(), false);
-            return !parent.hidden()
-                    && (viewer == null
-                            || !Boolean.TRUE.equals(jdbc.queryForObject(
-                                    "select exists(select 1 from community_blocks where blocker_id=? and blocked_id=?)",
-                                    Boolean.class,
-                                    viewer,
-                                    parent.author())));
+            return !parent.hidden() && !activity.blocks(viewer, parent.author());
         }
         return true;
     }

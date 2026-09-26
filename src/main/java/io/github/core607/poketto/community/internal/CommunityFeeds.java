@@ -53,13 +53,14 @@ final class CommunityFeeds {
                 actor.accountId(),
                 kind.name(),
                 CommunityActivity.before(before));
-        List<SavedRow> selected = rows.stream().limit(20).toList();
-        List<SavedArticle> items = selected.stream()
-                .map(row -> new SavedArticle(
-                        row.position(),
-                        targets.card(row.workspace(), row.article()).orElse(null)))
-                .toList();
-        return new Page<>(items, rows.size() > 20 ? selected.getLast().position() : null);
+        return CommunityActivity.page(
+                rows,
+                SavedRow::position,
+                selected -> selected.stream()
+                        .map(row -> new SavedArticle(
+                                row.position(),
+                                targets.card(row.workspace(), row.article()).orElse(null)))
+                        .toList());
     }
 
     void removeSaved(AuthPrincipal actor, long position, Relation kind) {
