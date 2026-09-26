@@ -77,7 +77,7 @@ class OAuthIntegrationIT {
                 "code",
                 "repository:execute content:read_private content:publish offline_access",
                 "state",
-                OAuthService.challenge(VERIFIER),
+                CredentialTokens.challenge(VERIFIER),
                 "S256",
                 RESOURCE);
     }
@@ -219,7 +219,7 @@ class OAuthIntegrationIT {
                 "code",
                 "repository:execute",
                 "state",
-                OAuthService.challenge(VERIFIER),
+                CredentialTokens.challenge(VERIFIER),
                 "S256",
                 RESOURCE);
         jdbc.update(
@@ -243,7 +243,7 @@ class OAuthIntegrationIT {
                         "code",
                         null,
                         "state",
-                        OAuthService.challenge(VERIFIER),
+                        CredentialTokens.challenge(VERIFIER),
                         "S256",
                         RESOURCE))
                 .hasMessage("invalid_request");
@@ -421,7 +421,14 @@ class OAuthIntegrationIT {
             assertThatThrownBy(() -> oauth.register("Bad", List.of(bad))).isInstanceOf(OAuthService.Failure.class);
         }
         assertThatThrownBy(() -> oauth.prepare(
-                        client.id(), REDIRECT, "token", null, "s", OAuthService.challenge(VERIFIER), "S256", RESOURCE))
+                        client.id(),
+                        REDIRECT,
+                        "token",
+                        null,
+                        "s",
+                        CredentialTokens.challenge(VERIFIER),
+                        "S256",
+                        RESOURCE))
                 .hasMessage("unsupported_response_type");
         assertThatThrownBy(() -> oauth.prepare(client.id(), REDIRECT, "code", null, "s", VERIFIER, "plain", RESOURCE))
                 .hasMessage("invalid_request");

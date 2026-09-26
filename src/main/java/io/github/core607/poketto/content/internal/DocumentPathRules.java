@@ -5,11 +5,11 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
-final class DocumentPathRules {
+public final class DocumentPathRules {
 
     private DocumentPathRules() {}
 
-    static String collisionKey(String validatedPath) {
+    public static String collisionKey(String validatedPath) {
         return Arrays.stream(validatedPath.split("/", -1))
                 .map(segment -> Normalizer.normalize(segment, Normalizer.Form.NFC))
                 .map(DocumentPathRules::caseFold)

@@ -116,7 +116,7 @@ final class JGitRepositoryHistory {
     }
 
     private static void checkDeadline(long deadline) {
-        if (System.nanoTime() >= deadline) {
+        if (System.nanoTime() - deadline >= 0) {
             throw new ContentRepositoryException("repository history read time limit exceeded");
         }
     }

@@ -31,7 +31,7 @@ Repository failures keep their diagnostic in the server log at `WARN` and never 
 
 ### Public document API
 
-The default workspace's public content is served by `GET /api/public/documents`, `GET /api/public/document?route=...` and `GET /api/public/tags`, which the [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) define; per-space public routes live below `/api/public/spaces/{slug}` ([website delivery](2026-09-14-workspace-public-delivery.md)). Rendering to HTML, sanitization, and CSP belong to the frontend.
+The default workspace's public content is served by `GET /api/public/documents` and `GET /api/public/document?route=...`, which the [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) define; per-space public routes live below `/api/public/spaces/{slug}` ([website delivery](2026-09-14-workspace-public-delivery.md)). Rendering to HTML, sanitization, and CSP belong to the frontend.
 
 `PublicDocuments` fixes the public scope before route lookup and takes no visibility parameter, so no entrance built on it can widen the scope. Missing, private, malformed and outdated references reveal no resource details. Every request reads the public content snapshot, which a write updates immediately and a background refresh re-validates; no request contacts the remote.
 

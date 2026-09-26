@@ -42,13 +42,10 @@ import tools.jackson.databind.JsonNode;
 /** Owns account-copy admission, command execution and lease containment; the bridge handles CLI operations. */
 final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(IsolatedRepositoryExecutor.class);
-    private final RepositorySnapshotExports exports;
-    private final PortableContentExports packages;
     private final SessionWorker io;
     private final SessionRepositoryCommands repository;
     private final ExecutorBridge bridge;
     private final WorkerClient worker;
-    private final SelectedFileSaves saves;
     private final AccountCopyStore accounts;
     private final SessionRegistry registry;
     private final SessionLifecycle lifecycle;
@@ -75,9 +72,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             Duration openTimeout,
             Duration closeTimeout) {
         this.accounts = Objects.requireNonNull(accounts, "account disk journals are required");
-        this.packages = packages;
-        this.saves = saves;
-        this.exports = exports;
         this.worker = worker;
         this.io = new SessionWorker(auth, exports, worker);
         var files = new SessionFileTransfers(io);

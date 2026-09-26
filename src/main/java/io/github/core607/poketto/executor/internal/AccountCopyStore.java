@@ -7,16 +7,12 @@ import io.github.core607.poketto.content.RepositoryBaselineLimits;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -223,13 +219,7 @@ final class AccountCopyStore {
     }
 
     private static String key(AccountCopyRecord.Owner owner) {
-        String value = owner.accountId() + ":" + owner.workspaceId() + ":" + owner.fullRead();
-        try {
-            return HexFormat.of()
-                    .formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.US_ASCII)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
+        return SessionWorker.hash(owner.accountId() + ":" + owner.workspaceId() + ":" + owner.fullRead());
     }
 
     private static RetainedCopyException unavailable(IOException failure) {

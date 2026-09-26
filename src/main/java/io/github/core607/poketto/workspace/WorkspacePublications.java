@@ -37,16 +37,6 @@ public interface WorkspacePublications {
             String publicAuthorName,
             String publicDescription,
             boolean publicHistory) {
-        public Publication(
-                WorkspaceId workspaceId,
-                String slug,
-                String displayName,
-                boolean enabled,
-                boolean eligible,
-                String publicAuthorName) {
-            this(workspaceId, slug, displayName, enabled, eligible, publicAuthorName, "", false);
-        }
-
         public boolean publiclyEnabled() {
             return enabled && eligible;
         }

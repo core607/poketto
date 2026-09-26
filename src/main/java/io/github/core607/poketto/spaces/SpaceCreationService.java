@@ -24,8 +24,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Account-level repository connections, durable across response loss and process restarts. The only
@@ -35,7 +33,6 @@ public final class SpaceCreationService {
     private static final Logger log = LoggerFactory.getLogger(SpaceCreationService.class);
 
     private final JdbcTemplate jdbc;
-    private final TransactionTemplate transactions;
     private final Accounts accounts;
     private final AuthService auth;
     private final WorkspaceRegistry workspaces;
@@ -46,7 +43,6 @@ public final class SpaceCreationService {
 
     public SpaceCreationService(
             JdbcTemplate jdbc,
-            PlatformTransactionManager transactionManager,
             Accounts accounts,
             AuthService auth,
             WorkspaceRegistry workspaces,
@@ -54,7 +50,6 @@ public final class SpaceCreationService {
             RepositoryInitialization initialization,
             Clock clock) {
         this.jdbc = jdbc;
-        this.transactions = new TransactionTemplate(transactionManager);
         this.accounts = accounts;
         this.auth = auth;
         this.workspaces = workspaces;

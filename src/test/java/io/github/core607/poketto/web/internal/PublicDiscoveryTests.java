@@ -66,7 +66,8 @@ class PublicDiscoveryTests {
 
         private Fixture() {
             var workspace = new WorkspaceId(UUID.randomUUID());
-            var publication = new WorkspacePublications.Publication(workspace, "space", "Space", true, true, "");
+            var publication =
+                    new WorkspacePublications.Publication(workspace, "space", "Space", true, true, "", "", false);
             var articles = List.of(article("tagged", List.of("猫")), article("other", List.of("java")));
             var snapshot = new PublicContentSnapshot(
                     workspace, Optional.of("a".repeat(40)), NOW, NOW.plusSeconds(3600), articles);

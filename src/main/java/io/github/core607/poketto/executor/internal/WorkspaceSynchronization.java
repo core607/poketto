@@ -151,11 +151,7 @@ final class WorkspaceSynchronization {
         if (file.source().isPresent()) {
             byte[] bytes = file.source().orElseThrow().getBytes(StandardCharsets.UTF_8);
             return new RepositorySyncEntry(
-                    commit,
-                    file.path(),
-                    RepositorySyncEntry.Kind.FILE,
-                    bytes.length,
-                    DocumentRevision.sha256(bytes).value().substring(7));
+                    commit, file.path(), RepositorySyncEntry.Kind.FILE, bytes.length, SessionWorker.hash(bytes));
         }
         return saves.repository().inspectBlob(actor, workspace, commit, file.path());
     }

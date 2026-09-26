@@ -119,7 +119,7 @@ final class ApiKeys {
                             .containsAll(capabilities)) {
                 throw AuthService.failure(DENIED);
             }
-            String token = auth.randomToken("pk_");
+            String token = CredentialTokens.random("pk_");
             UUID id = UUID.randomUUID();
             jdbc.update(connection -> {
                 var statement = connection.prepareStatement(
@@ -128,7 +128,7 @@ final class ApiKeys {
                 statement.setObject(2, workspace.value());
                 statement.setObject(3, holder);
                 statement.setObject(4, actor.accountId());
-                statement.setString(5, AuthService.digest(token));
+                statement.setString(5, CredentialTokens.digest(token));
                 statement.setArray(
                         6,
                         connection.createArrayOf(

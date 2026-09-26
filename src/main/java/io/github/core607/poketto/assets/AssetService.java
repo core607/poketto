@@ -53,10 +53,8 @@ public final class AssetService {
     private final RepositoryContentReader content;
     private final RepositoryBlobReader blobs;
     private final RepositoryMarkdownInspector markdown;
-    private final PublicContentSnapshots snapshots;
     private final Supplier<ManagedBlobStore> managed;
     private final RepositoryImageCache cache;
-    private final PublicThumbnailCache thumbnails;
     private final Clock clock;
     private final ImageMemoryAdmission memory;
     private final ImageGrants grants;
@@ -79,10 +77,9 @@ public final class AssetService {
         this.content = content;
         this.blobs = blobs;
         this.markdown = markdown;
-        this.snapshots = snapshots;
         this.managed = managed;
         this.cache = new RepositoryImageCache(cacheDirectory, cacheBytes);
-        this.thumbnails = new PublicThumbnailCache(cacheDirectory.resolveSibling("public-album-thumbnails"));
+        var thumbnails = new PublicThumbnailCache(cacheDirectory.resolveSibling("public-album-thumbnails"));
         this.clock = clock;
         this.grants = new ImageGrants(blobs, clock, maxGrants);
         this.media = new MediaPreparations(blobs, managed, memory, this.cache);

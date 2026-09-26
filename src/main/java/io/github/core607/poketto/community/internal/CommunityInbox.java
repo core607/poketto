@@ -54,26 +54,28 @@ final class CommunityInbox {
                         row.getBoolean(5)),
                 actor.accountId(),
                 CommunityActivity.before(before));
-        List<Row> selected = rows.stream().limit(20).toList();
-        List<Pending> pending = new ArrayList<>();
-        for (Row row : selected) {
-            (row.comment() != null ? comment(actor, row) : correction(actor, row)).ifPresent(pending::add);
-        }
-        Map<UUID, Profile> profiles = accounts.profiles(
-                pending.stream().map(Pending::actor).filter(Objects::nonNull).collect(Collectors.toSet()));
-        List<Notification> items = pending.stream()
-                .map(item -> new Notification(
-                        item.row().position(),
-                        item.row().comment(),
-                        item.actor() == null ? null : profiles.get(item.actor()),
-                        item.excerpt(),
-                        item.card(),
-                        item.at(),
-                        item.row().read(),
-                        item.row().correction(),
-                        item.row().event()))
-                .toList();
-        return new Page<>(items, rows.size() > 20 ? selected.getLast().position() : null);
+        return CommunityActivity.page(rows, Row::position, selected -> {
+            List<Pending> pending = new ArrayList<>();
+            for (Row row : selected) {
+                (row.comment() != null ? comment(actor, row) : correction(actor, row)).ifPresent(pending::add);
+            }
+            Map<UUID, Profile> profiles = accounts.profiles(pending.stream()
+                    .map(Pending::actor)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet()));
+            return pending.stream()
+                    .map(item -> new Notification(
+                            item.row().position(),
+                            item.row().comment(),
+                            item.actor() == null ? null : profiles.get(item.actor()),
+                            item.excerpt(),
+                            item.card(),
+                            item.at(),
+                            item.row().read(),
+                            item.row().correction(),
+                            item.row().event()))
+                    .toList();
+        });
     }
 
     private Optional<Pending> comment(AuthPrincipal actor, Row row) {
