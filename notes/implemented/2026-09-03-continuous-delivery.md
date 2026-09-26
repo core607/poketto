@@ -5,8 +5,6 @@ Status: Implemented
 
 [Existing-installation delivery](2026-09-08-existing-installation-delivery.md) adds an image-only layout for operator-owned Compose installations. The standard synchronization and configuration contract below remains applicable to the generic stack.
 
-[Mirror registry delivery](2026-09-10-mirror-registry-delivery.md) adds an optional independent copy job after GHCR publication. `POKETTO_DEPLOY_MODE=mirror` pulls those same digests from the configured delivery registry in either layout; registry failure leaves canonical publication intact and does not silently fall back to archive transfer.
-
 The [blog stack delivery entrance](2026-09-05-blog-stack-delivery.md) extends this pipeline with matched application/frontend images, HTTPS routing and an independently installed executor. It owns the current stack services and deployment prerequisites.
 
 ## Problem
@@ -37,7 +35,7 @@ Without a configured target the workflow succeeds after publication. The `deploy
 
 The deployment job allows 180 minutes for archive transfer and installation, because a measured SSH transfer at roughly 38 KiB/s reached the earlier [90-minute job limit](https://github.com/core607/poketto/actions/runs/34437762983) before installation. The supplied `transfer.sh` adds no separate total transfer deadline and does not resume interrupted archives; updater command and health deadlines are separate. A slower or stalled transfer can still time out while occupying the serialized deployment slot, and a longer deadline does not repair a failed route or make an incomplete archive deployable.
 
-The environment supplies the variables `POKETTO_DEPLOY_ROOT` and optional `POKETTO_DEPLOY_MODE` (`pull` by default, `transfer`, or configured `mirror`) and the secrets `POKETTO_DEPLOY_TARGET` (`user@host`, a secret because it names the private host), `POKETTO_DEPLOY_SSH_KEY`, `POKETTO_DEPLOY_HOST_KEY` holding the pinned `known_hosts` line, and optionally `POKETTO_REPOSITORY_PASSWORD`. Missing configuration fails with the list of what is absent. The job uses `StrictHostKeyChecking=yes` and `BatchMode`, never a personal key, and never a self-hosted runner on the production host. When the repository credential secret is set, the job streams it to the entrance's standard input, which records it into the host's `.env` once the deployment is healthy; it never appears as a command-line argument or in the summary. The summary records the commit, images, mode, layout, and result.
+The environment supplies the variables `POKETTO_DEPLOY_ROOT` and optional `POKETTO_DEPLOY_MODE` (`pull` by default, or `transfer`) and the secrets `POKETTO_DEPLOY_TARGET` (`user@host`, a secret because it names the private host), `POKETTO_DEPLOY_SSH_KEY`, `POKETTO_DEPLOY_HOST_KEY` holding the pinned `known_hosts` line, and optionally `POKETTO_REPOSITORY_PASSWORD`. Missing configuration fails with the list of what is absent. The job uses `StrictHostKeyChecking=yes` and `BatchMode`, never a personal key, and never a self-hosted runner on the production host. When the repository credential secret is set, the job streams it to the entrance's standard input, which records it into the host's `.env` once the deployment is healthy; it never appears as a command-line argument or in the summary. The summary records the commit, images, mode, layout, and result.
 
 ### Compose and SSH scripts
 
@@ -62,6 +60,18 @@ The deployment account on the host is a dedicated user that belongs to the `dock
 Deployment changes only images and Compose-managed processes. It neither restores nor migrates content repositories, blobs, or authoritative PostgreSQL tables. A feature that makes an incompatible persistent change must define its own migration, failure recovery, and old-version behavior; the deployment script cannot infer compatibility from file differences.
 
 Automatic deployment has no backup gate: the [phase-one delivery boundary](2026-09-05-phase-one-daily-use.md) excludes backup prerequisites, and an operator who enables automatic deployment accepts that absence explicitly. Once the [off-host backup and restore proposal](../proposed/2026-08-27-off-host-backup-and-restore.md) supplies a machine-readable freshness signal, automatic deployment may check it; publication and manual deployment never depend on it.
+
+### Removed: registry mirror delivery
+
+From 2026-09-10 to 2026-09-26 an optional `mirror` job copied both published digests to a second registry, CNB, inside mainland China, and `POKETTO_DEPLOY_MODE=mirror` pulled them from there. The production host then sat behind an international link where the roughly 265 MB archive fell to about 9 KB/s. Two deployments hit the 180-minute job limit, and every later merge queued behind them. Pulling from GHCR was not chosen at the time: the host had seen unstable GHCR access, and the existing layout could not pull yet. A CI build on CNB would have duplicated the verified-`main` publication rule. A longer deadline, a smaller archive or a resumable one could not close a twenty-fold throughput gap.
+
+The mode stopped justifying its cost once production moved to a Singapore host. That host reaches GHCR in well under a second, and from 2026-09-14 both layouts pull canonical digests by default. The mirror job, `deploy/mirror.sh`, its tests and the mirror variables were removed on 2026-09-26. `transfer` remains the route for hosts that cannot reach GHCR.
+
+Reintroduce a registry copy only for a host that cannot pull from GHCR reliably and for which archive transfer is too slow. The copy must keep these properties:
+- GHCR stays the canonical publication.
+- The copy preserves each source digest, and a readback of the destination manifest must match before the reference is used.
+- A separate write credential never reaches the host.
+- A failed copy or pull fails the deployment and never falls back to archive transfer silently.
 
 ## Alternatives considered
 
