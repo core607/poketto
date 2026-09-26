@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -171,10 +172,6 @@ class RepositoryAdminController {
 
     @PostMapping("/patch")
     PatchResult patch(@AuthenticationPrincipal AuthPrincipal actor, @RequestBody PatchRequest request) {
-        if (request.changes() == null
-                || request.changes().stream().anyMatch(change -> change == null || change.path() == null)) {
-            throw new IllegalArgumentException("patch changes and paths are required");
-        }
         var patch = new RepositoryPatch(
                 Optional.ofNullable(request.baseCommit()),
                 request.changes().stream()
@@ -219,9 +216,21 @@ class RepositoryAdminController {
             boolean publicScope,
             PublicFilePresentation.Page publicPage) {}
 
-    record Change(String path, boolean expectedAbsence, String expectedRevision, String content) {}
+    record Change(String path, boolean expectedAbsence, String expectedRevision, String content) {
+        Change {
+            if (path == null) {
+                throw new IllegalArgumentException("patch paths are required");
+            }
+        }
+    }
 
-    record PatchRequest(String baseCommit, List<Change> changes) {}
+    record PatchRequest(String baseCommit, List<Change> changes) {
+        PatchRequest {
+            if (changes == null || changes.stream().anyMatch(Objects::isNull)) {
+                throw new IllegalArgumentException("patch changes are required");
+            }
+        }
+    }
 
     record PatchResult(String commit, boolean committed, boolean snapshotUpdated, Map<String, String> revisions) {}
 }
