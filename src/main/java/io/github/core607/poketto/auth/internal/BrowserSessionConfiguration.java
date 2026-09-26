@@ -57,7 +57,8 @@ class BrowserSessionConfiguration {
         } catch (RuntimeException unwritable) {
             log.error(
                     "A browser session attribute of type {} could not be stored and will read as absent",
-                    value.getClass().getName());
+                    value.getClass().getName(),
+                    unwritable);
             return new byte[0];
         }
     }
