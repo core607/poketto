@@ -84,9 +84,7 @@ class RepositorySnapshotExportsTests {
         assertThatThrownBy(() -> exports.requireCurrentPublic(actor, workspace, published))
                 .isInstanceOf(ContentRepositoryException.class);
         assertThat(exports.publicProjectionChanged(actor, workspace, published)).isTrue();
-        doThrow(new SecurityException("revoked"))
-                .when(auth)
-                .authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
+        doThrow(new SecurityException("revoked")).when(auth).authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
         assertThatThrownBy(() -> exports.publicProjectionChanged(actor, workspace, published))
                 .isInstanceOf(SecurityException.class);
     }
