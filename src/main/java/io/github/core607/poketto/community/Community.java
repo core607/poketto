@@ -78,16 +78,7 @@ public interface Community {
         if (value.codePointCount(0, value.length()) > maximum || value.indexOf('\0') >= 0) {
             throw new IllegalArgumentException(subject + " exceeds its text bounds");
         }
-        for (int i = 0; i < value.length(); i++) {
-            char unit = value.charAt(i);
-            if (Character.isHighSurrogate(unit)) {
-                if (++i >= value.length() || !Character.isLowSurrogate(value.charAt(i))) {
-                    throw new IllegalArgumentException(subject + " contains invalid Unicode");
-                }
-            } else if (Character.isLowSurrogate(unit)) {
-                throw new IllegalArgumentException(subject + " contains invalid Unicode");
-            }
-        }
+        CommunityText.requireWellFormed(value, subject);
         return value.strip();
     }
 
