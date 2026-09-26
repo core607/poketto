@@ -16,6 +16,7 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ArticleIdentityDrafts;
+import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryDirectoryPage;
@@ -39,9 +40,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import org.assertj.core.api.Assertions;
@@ -944,6 +949,153 @@ class RepositoryPatchServiceTests {
                 .hasMessageContaining("remote acknowledged");
         assertThat(pushes).hasValue(1);
         assertThat(fixture.remoteHead(workspace)).isNotEqualTo(ObjectId.zeroId());
+    }
+
+    @Test
+    void aRemoteRefusalWithAnUnchangedMainIsDefinite() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, rejecting(() -> {}));
+        ObjectId base = fixture.commitRemote(workspace, Map.of("private/note.md", bytes("# Original")));
+
+        assertThatThrownBy(() -> service(fixture, (id, snapshot) -> {})
+                        .apply(principal, workspace, patch(base, update("private/note.md", "# Original", "# Edit"))))
+                .isExactlyInstanceOf(ContentRepositoryException.class)
+                .hasMessageContaining("rejected by the remote")
+                .hasMessageContaining("main did not advance");
+        assertThat(fixture.remoteHead(workspace)).isEqualTo(base);
+    }
+
+    @Test
+    void aRemoteRefusalDuringACompetingAdvanceIsAConflict() throws Exception {
+        var owner = new RemoteRepositoryFixture(directory);
+        ObjectId base = owner.commitRemote(workspace, Map.of("private/note.md", bytes("# Original")));
+        var competing = new AtomicReference<ObjectId>();
+        var fixture =
+                new RemoteRepositoryFixture(directory.resolve("writer"), directory.resolve("remotes"), rejecting(() -> {
+                    try {
+                        competing.set(owner.commitRemote(workspace, Map.of("private/owner.md", bytes("# Owner"))));
+                    } catch (Exception exception) {
+                        throw new IllegalStateException(exception);
+                    }
+                }));
+
+        assertThatThrownBy(() -> service(fixture, (id, snapshot) -> {})
+                        .apply(principal, workspace, patch(base, update("private/note.md", "# Original", "# Edit"))))
+                .isInstanceOf(RepositoryConflictException.class);
+        assertThat(fixture.remoteHead(workspace)).isEqualTo(competing.get());
+    }
+
+    @Test
+    void aHeldRemoteRefLockIsADefiniteRefusal() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        Path lock = fixture.provision(workspace).resolve("refs/heads/main.lock");
+        Files.createDirectories(lock.getParent());
+        Files.writeString(lock, "fixture holds the remote ref lock");
+        try {
+            assertThatThrownBy(() -> service(fixture, (id, snapshot) -> {})
+                            .apply(
+                                    principal,
+                                    workspace,
+                                    new RepositoryPatch(Optional.empty(), List.of(create("private/new.md", "# New")))))
+                    .isExactlyInstanceOf(ContentRepositoryException.class)
+                    .hasMessageContaining("rejected by the remote")
+                    .hasMessageContaining("main did not advance");
+            assertThat(fixture.remoteHead(workspace)).isEqualTo(ObjectId.zeroId());
+        } finally {
+            Files.delete(lock);
+        }
+    }
+
+    @Test
+    void separateCachesAdvancingTheSameBaseAcknowledgeOnlyOneWriter() throws Exception {
+        var bothPushing = new CountDownLatch(2);
+        var release = new CountDownLatch(1);
+        Path remotes = directory.resolve("remotes");
+        var first = new RemoteRepositoryFixture(directory.resolve("first"), remotes, parked(bothPushing, release));
+        var second = new RemoteRepositoryFixture(directory.resolve("second"), remotes, parked(bothPushing, release));
+        first.provision(workspace);
+        var firstService = service(first, (id, snapshot) -> {});
+        var secondService = service(second, (id, snapshot) -> {});
+
+        try (var threads = Executors.newFixedThreadPool(2)) {
+            var one = threads.submit(() -> firstService.apply(
+                    principal,
+                    workspace,
+                    new RepositoryPatch(Optional.empty(), List.of(create("private/one.md", "# One")))));
+            var two = threads.submit(() -> secondService.apply(
+                    principal,
+                    workspace,
+                    new RepositoryPatch(Optional.empty(), List.of(create("private/two.md", "# Two")))));
+            try {
+                assertThat(bothPushing.await(10, TimeUnit.SECONDS)).isTrue();
+            } finally {
+                release.countDown();
+            }
+
+            List<String> acknowledged = new ArrayList<>();
+            int refusals = 0;
+            for (var outcome : List.of(one, two)) {
+                try {
+                    acknowledged.add(outcome.get(10, TimeUnit.SECONDS).commit());
+                } catch (ExecutionException exception) {
+                    Throwable cause = exception.getCause();
+                    if (!(cause instanceof RepositoryConflictException)) {
+                        // The loser can be refused while the winner still holds the remote ref lock.
+                        // Reconciliation then observes the old main: a definite refusal, not a conflict.
+                        assertThat(cause)
+                                .isExactlyInstanceOf(ContentRepositoryException.class)
+                                .hasMessageContaining("rejected by the remote")
+                                .hasMessageContaining("main did not advance");
+                    }
+                    refusals++;
+                }
+            }
+            assertThat(acknowledged)
+                    .singleElement()
+                    .isEqualTo(first.remoteHead(workspace).name());
+            assertThat(refusals).isOne();
+        }
+    }
+
+    private static RemoteGitTransport rejecting(Runnable beforeRefusal) {
+        var delegate = new JGitRemoteGitTransport();
+        return new RemoteGitTransport() {
+            @Override
+            public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
+                return delegate.fetchMain(repository, binding);
+            }
+
+            @Override
+            public PushStatus pushMain(
+                    Repository repository, RepositoryBinding binding, ObjectId expected, ObjectId candidate) {
+                beforeRefusal.run();
+                throw new RemoteGitRejectedException("ref update");
+            }
+        };
+    }
+
+    private static RemoteGitTransport parked(CountDownLatch entered, CountDownLatch release) {
+        var delegate = new JGitRemoteGitTransport();
+        return new RemoteGitTransport() {
+            @Override
+            public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
+                return delegate.fetchMain(repository, binding);
+            }
+
+            @Override
+            public PushStatus pushMain(
+                    Repository repository, RepositoryBinding binding, ObjectId expected, ObjectId candidate) {
+                entered.countDown();
+                try {
+                    if (!release.await(10, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("concurrent push fixture was not released");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+                return delegate.pushMain(repository, binding, expected, candidate);
+            }
+        };
     }
 
     @Test
