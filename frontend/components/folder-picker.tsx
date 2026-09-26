@@ -1,6 +1,6 @@
 "use client";
 import { useWorkspaceApi } from "./workspace-context";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   contentRoot,
   folderLabel,
@@ -10,6 +10,7 @@ import {
 } from "../lib/repository-directory";
 import type { RepositoryDirectory } from "../lib/types";
 import { message } from "../lib/browser-api";
+import { useModal } from "./use-modal";
 
 export function FolderPicker({
   source,
@@ -31,7 +32,7 @@ export function FolderPicker({
   onMove: (destination: string) => Promise<boolean>;
 }) {
   const api = useWorkspaceApi();
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useModal(returnFocus, fallbackFocus);
   const title = useId();
   const [folder, setFolder] = useState(
     source.includes("/") ? source.slice(0, source.lastIndexOf("/")) : "",
@@ -42,19 +43,6 @@ export function FolderPicker({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [moving, setMoving] = useState(false);
-  useLayoutEffect(() => {
-    const element = dialog.current!;
-    element.showModal();
-    return () => {
-      element.close();
-      // The same commit can re-enable or replace the trigger after layout cleanup.
-      queueMicrotask(() => {
-        if (element.isConnected && element.open) return;
-        const target = returnFocus?.isConnected ? returnFocus : fallbackFocus;
-        if (target?.isConnected) target.focus();
-      });
-    };
-  }, [returnFocus, fallbackFocus]);
   useEffect(() => {
     let active = true;
     setPage(null);

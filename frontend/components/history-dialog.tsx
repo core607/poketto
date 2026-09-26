@@ -6,6 +6,7 @@ import { sourceDifference } from "../lib/source-diff";
 import { message } from "../lib/browser-api";
 import type { RepositoryFile } from "../lib/types";
 import { SourceDiff } from "./source-diff";
+import { useModal } from "./use-modal";
 
 type HistoryEntry = {
   commit: string;
@@ -48,7 +49,7 @@ export function HistoryDialog({
   const api = useWorkspaceApi();
   const confirm = useConfirmation();
   const title = useId();
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useModal(returnFocus);
   const alive = useRef(false);
   const selection = useRef(0);
   const pagePending = useRef(false);
@@ -95,15 +96,11 @@ export function HistoryDialog({
   }
 
   useLayoutEffect(() => {
-    const element = dialog.current!;
     alive.current = true;
-    element.showModal();
     void load();
     return () => {
       alive.current = false;
       selection.current++;
-      element.close();
-      if (returnFocus?.isConnected) returnFocus.focus();
     };
   }, []);
 
