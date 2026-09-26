@@ -19,7 +19,7 @@ final class AccountPasswords {
         this.auth = auth;
         this.jdbc = jdbc;
         this.passwords = passwords;
-        this.dummyPasswordHash = passwords.encode(auth.randomToken("dummy_"));
+        this.dummyPasswordHash = passwords.encode(CredentialTokens.random("dummy_"));
     }
 
     /** Uniform credential rejection includes missing accounts; the HTTP caller must also throttle attempts. */

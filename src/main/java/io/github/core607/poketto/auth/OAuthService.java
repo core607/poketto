@@ -1,20 +1,18 @@
 package io.github.core607.poketto.auth;
 
+import static io.github.core607.poketto.auth.CredentialTokens.challenge;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.Base64;
-import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +38,6 @@ public final class OAuthService {
     private final AuthService auth;
     private final Clock clock;
     private final String issuer;
-    private final SecureRandom random = new SecureRandom();
 
     public OAuthService(
             JdbcTemplate jdbc, PlatformTransactionManager manager, AuthService auth, Clock clock, String issuer) {
@@ -87,7 +84,7 @@ public final class OAuthService {
             if (jdbc.queryForObject("select count(*) from oauth_clients", Integer.class) >= 4096) {
                 throw failure("temporarily_unavailable");
             }
-            String id = token("oc_");
+            String id = CredentialTokens.random("oc_");
             jdbc.update(connection -> {
                 var statement = connection.prepareStatement(
                         "insert into oauth_clients(client_id,client_name,redirect_uris,created_at) values (?,?,?,?)");
@@ -214,7 +211,7 @@ public final class OAuthService {
                 now(),
                 after(Duration.ofDays(90)),
                 resource());
-        String code = token("code_");
+        String code = CredentialTokens.random("code_");
         jdbc.update(
                 "insert into oauth_codes(digest,key_id,redirect_uri,challenge,expires_at) values (?,?,?,?,?)",
                 digest(code),
@@ -356,8 +353,8 @@ public final class OAuthService {
     }
 
     private Tokens issue(Connection grant) {
-        String access = token("oa_");
-        String refresh = scopes(grant.scopes()).contains("offline_access") ? token("or_") : null;
+        String access = CredentialTokens.random("oa_");
+        String refresh = scopes(grant.scopes()).contains("offline_access") ? CredentialTokens.random("or_") : null;
         Instant end = clock.instant().plus(Duration.ofMinutes(10));
         if (end.isAfter(grant.expires())) {
             end = grant.expires();
@@ -503,10 +500,6 @@ public final class OAuthService {
                 + encode(r.state()) + "&iss=" + encode(issuer);
     }
 
-    public static String challenge(String verifier) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(hash(verifier));
-    }
-
     private static boolean constantEquals(String a, String b) {
         return MessageDigest.isEqual(a.getBytes(StandardCharsets.US_ASCII), b.getBytes(StandardCharsets.US_ASCII));
     }
@@ -515,21 +508,7 @@ public final class OAuthService {
         if (value == null || value.length() > 256) {
             throw failure("invalid_grant");
         }
-        return HexFormat.of().formatHex(hash(value));
-    }
-
-    private static byte[] hash(String value) {
-        try {
-            return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
-    }
-
-    private String token(String prefix) {
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        return prefix + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        return CredentialTokens.digest(value);
     }
 
     private Timestamp now() {

@@ -7,20 +7,14 @@ import static io.github.core607.poketto.auth.AuthException.Code.INVALID_INPUT;
 import static io.github.core607.poketto.auth.AuthException.Code.LAST_OWNER;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.EnumSet;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -59,7 +53,6 @@ public final class AuthService {
     private final PasswordEncoder passwords;
     private final ApplicationEventPublisher events;
     private final Clock clock;
-    private final SecureRandom random = new SecureRandom();
     private final AccountPasswords accountPasswords;
     private final WorkspaceInvitations invitations;
     private final ApiKeys keys;
@@ -512,23 +505,8 @@ public final class AuthService {
         return normalized;
     }
 
-    String randomToken(String prefix) {
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        return prefix + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
-
     static String digestCredential(String token) {
-        return digest(token == null || token.length() > 256 ? "" : token);
-    }
-
-    static String digest(String token) {
-        try {
-            return HexFormat.of()
-                    .formatHex(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 unavailable", exception);
-        }
+        return CredentialTokens.digest(token == null || token.length() > 256 ? "" : token);
     }
 
     Timestamp timestamp() {
