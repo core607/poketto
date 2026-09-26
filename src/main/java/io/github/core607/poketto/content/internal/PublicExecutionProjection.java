@@ -11,8 +11,6 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
@@ -27,20 +25,10 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.commonmark.node.HtmlBlock;
-import org.commonmark.node.HtmlInline;
-import org.commonmark.node.Image;
-import org.commonmark.node.Link;
-import org.commonmark.node.LinkReferenceDefinition;
-import org.commonmark.node.Node;
-import org.commonmark.parser.Parser;
-import org.commonmark.renderer.markdown.MarkdownRenderer;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Builds an independent reading namespace solely from approved publication fields. */
 final class PublicExecutionProjection {
-    private static final Parser PARSER = Parser.builder().build();
-    private static final MarkdownRenderer RENDERER = MarkdownRenderer.builder().build();
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final String GUIDE = """
             # Public reading workspace
@@ -259,53 +247,11 @@ final class PublicExecutionProjection {
             String projectedPath,
             Map<String, String> articlePaths,
             Map<String, String> mediaPaths) {
-        Node document = PARSER.parse(article.body());
-        List<Node> nodes = new ArrayList<>();
-        record Visit(Node node, int depth) {}
-        var pending = new ArrayDeque<Visit>();
-        pending.push(new Visit(document, 0));
-        while (!pending.isEmpty()) {
-            var next = pending.pop();
-            if (nodes.size() >= 20_000 || next.depth() > 128) {
-                throw invalid();
-            }
-            nodes.add(next.node());
-            for (Node child = next.node().getLastChild(); child != null; child = child.getPrevious()) {
-                pending.push(new Visit(child, next.depth() + 1));
-            }
-        }
-        for (Node node : nodes) {
-            if (node instanceof HtmlBlock || node instanceof HtmlInline || node instanceof LinkReferenceDefinition) {
-                node.unlink();
-            } else if (node instanceof Link link) {
-                String destination = destination(
-                        article.repositoryPath(),
-                        projectedPath,
-                        link.getDestination(),
-                        articlePaths,
-                        mediaPaths,
-                        false);
-                if (destination == null) {
-                    flatten(node);
-                } else {
-                    link.setDestination(destination);
-                }
-            } else if (node instanceof Image image) {
-                String destination = destination(
-                        article.repositoryPath(),
-                        projectedPath,
-                        image.getDestination(),
-                        articlePaths,
-                        mediaPaths,
-                        true);
-                if (destination == null) {
-                    flatten(node);
-                } else {
-                    image.setDestination(destination);
-                }
-            }
-        }
-        return RENDERER.render(document);
+        return PublicMarkdownSanitizer.sanitize(
+                article.body(),
+                (authored, image) ->
+                        destination(article.repositoryPath(), projectedPath, authored, articlePaths, mediaPaths, image),
+                PublicExecutionProjection::invalid);
     }
 
     private static String destination(
@@ -371,13 +317,6 @@ final class PublicExecutionProjection {
                         && authored.substring(fragment).codePoints().noneMatch(Character::isISOControl)
                 ? authored.substring(fragment)
                 : "";
-    }
-
-    private static void flatten(Node node) {
-        while (node.getFirstChild() != null) {
-            node.insertBefore(node.getFirstChild());
-        }
-        node.unlink();
     }
 
     private static IllegalArgumentException invalid() {
