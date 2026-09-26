@@ -162,9 +162,7 @@ public final class AuthService {
                     and workspace_id = ? and revoked_at is null
                     and not exists (select 1 from oauth_connections c where c.key_id=auth_api_keys.key_id and (c.expires_at<=? or c.resource<>?))
                     """,
-                    (rs, row) -> Arrays.stream((String[]) rs.getArray(1).getArray())
-                            .map(Capability::valueOf)
-                            .collect(Collectors.toSet()),
+                    (rs, row) -> readCapabilities(rs, 1),
                     principal.subjectId(),
                     principal.accountId(),
                     workspace.value(),
@@ -223,7 +221,7 @@ public final class AuthService {
     }
 
     record Membership(MembershipRole role, Set<Capability> permissions) {}
-    /** Machine workspace selection comes exclusively from the durable credential binding. */
+
     /** True for the backing key of an OAuth connection, whose tokens are for the MCP entrance only. */
     public boolean connectionBacked(AuthPrincipal principal) {
         return principal != null
@@ -234,6 +232,7 @@ public final class AuthService {
                         principal.subjectId()));
     }
 
+    /** Machine workspace selection comes exclusively from the durable credential binding. */
     public WorkspaceId workspaceForKey(AuthPrincipal principal) {
         if (principal == null || principal.kind() != AuthPrincipal.Kind.API_KEY) {
             throw failure(DENIED);
@@ -559,8 +558,6 @@ public final class AuthService {
             items = List.copyOf(items);
         }
     }
-
-    public record InvitationInfo(UUID id, Instant expiresAt, boolean revoked, boolean used) {}
 
     public record WorkspaceInvitationInfo(
             UUID id, Instant expiresAt, boolean revoked, boolean used, Set<Capability> permissions) {
