@@ -1,11 +1,11 @@
 package io.github.core607.poketto.executor.internal;
 
+import static io.github.core607.poketto.executor.internal.SessionWorker.hash;
 import static io.github.core607.poketto.executor.internal.SessionWorker.requireLive;
 import static io.github.core607.poketto.executor.internal.SessionWorker.requireOk;
 
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import java.nio.charset.StandardCharsets;
@@ -236,9 +236,7 @@ final class SessionRepositoryCommands {
     private boolean installSyncFile(ExecutionSession session, String executionId, PendingWorkspaceSync.File file) {
         byte[] bytes = file.text() == null ? new byte[0] : file.text().getBytes(StandardCharsets.UTF_8);
         long size = file.blob() == null ? bytes.length : file.blob().bytes();
-        String digest = file.blob() == null
-                ? DocumentRevision.sha256(bytes).value().substring(7)
-                : file.blob().sha256();
+        String digest = file.blob() == null ? hash(bytes) : file.blob().sha256();
         return files.materialize(
                 session, executionId, file.path(), size, digest, file.expectedSha256(), file.delete(), true, output -> {
                     if (file.blob() == null) {
@@ -265,10 +263,7 @@ final class SessionRepositoryCommands {
         JsonNode begun = io.request(
                 session,
                 "MOVE_BEGIN",
-                new WorkerRequests.MoveBegin(
-                        executionId,
-                        payload.length,
-                        DocumentRevision.sha256(payload).value().substring(7)),
+                new WorkerRequests.MoveBegin(executionId, payload.length, hash(payload)),
                 Duration.ofSeconds(3));
         if (begun.path("code").asString("").equals("MOVE_REJECTED")) {
             if (recovery) {

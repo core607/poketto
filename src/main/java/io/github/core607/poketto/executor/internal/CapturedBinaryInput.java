@@ -3,7 +3,6 @@ package io.github.core607.poketto.executor.internal;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.Objects;
 
@@ -31,11 +30,7 @@ final class CapturedBinaryInput extends InputStream {
         this.size = size;
         this.expected = expected;
         this.reader = Objects.requireNonNull(reader);
-        try {
-            digest = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
+        this.digest = RetainedBaselineIo.sha256();
     }
 
     @Override

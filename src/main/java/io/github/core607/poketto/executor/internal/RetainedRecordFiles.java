@@ -16,7 +16,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Set;
 import tools.jackson.core.StreamReadConstraints;
@@ -86,7 +85,7 @@ final class RetainedRecordFiles {
     }
 
     private static void verifyDigest(FileChannel file, long length) throws IOException {
-        MessageDigest digest = sha256();
+        MessageDigest digest = RetainedBaselineIo.sha256();
         var buffer = ByteBuffer.allocate(65536);
         long remaining = length;
         while (remaining > 0) {
@@ -119,14 +118,6 @@ final class RetainedRecordFiles {
         }
     }
 
-    private static MessageDigest sha256() {
-        try {
-            return MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 is unavailable", impossible);
-        }
-    }
-
     static final class SizeLimit extends IOException {
         SizeLimit() {
             super("retained record byte limit exceeded");
@@ -136,7 +127,7 @@ final class RetainedRecordFiles {
     private static final class BoundedDigestOutput extends OutputStream {
         private final OutputStream target;
         private final long limit;
-        private final MessageDigest digest = sha256();
+        private final MessageDigest digest = RetainedBaselineIo.sha256();
         private long count;
 
         private BoundedDigestOutput(OutputStream target, long limit) {
