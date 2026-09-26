@@ -5,6 +5,12 @@ set -euo pipefail
 # global packages or changes host services; install-sandbox-tools.sh adds the content toolkit.
 target=${1:?Usage: prepare-tools.sh NEW_DIRECTORY}
 source_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+for pinned in package.json package-lock.json; do
+    if [[ ! -f $source_dir/sandbox-runtime/$pinned ]]; then
+        printf 'Run prepare-tools.sh from a repository checkout: %s is missing\n' "$source_dir/sandbox-runtime/$pinned" >&2
+        exit 1
+    fi
+done
 command -v apt >/dev/null
 test -x /usr/bin/python3
 mkdir -m 755 -- "$target"
