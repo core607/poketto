@@ -96,10 +96,10 @@ export const article = cache(function article(route: string) {
 export type PublicSpace = {
   slug: string;
   displayName: string;
-  /** Owner-written plain text, possibly empty; older servers omit it. */
-  description?: string;
-  /** Whether article pages link their revision history; older servers omit it. */
-  history?: boolean;
+  /** Owner-written plain text, possibly empty. */
+  description: string;
+  /** Whether article pages link their revision history. */
+  history: boolean;
 };
 /** Versions oldest first; complete is false when earlier public versions may exist but are not listed. */
 export type RevisionHistory = {

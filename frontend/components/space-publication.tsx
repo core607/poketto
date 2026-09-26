@@ -11,13 +11,11 @@ type Publication = {
   slug: string;
   displayName: string;
   publicAuthorName: string;
-  /** Absent from servers older than the description field. */
-  publicDescription?: string;
+  publicDescription: string;
   enabled: boolean;
   eligible: boolean;
   effectiveEnabled: boolean;
-  /** Absent from servers older than public revision history. */
-  publicHistory?: boolean;
+  publicHistory: boolean;
 };
 
 export function SpacePublication({
@@ -60,7 +58,7 @@ export function SpacePublication({
         setPublication(value);
         setAuthor(value.publicAuthorName);
         setName(value.displayName);
-        setDescription(value.publicDescription ?? "");
+        setDescription(value.publicDescription);
       }
     } catch (failure) {
       if (version === epoch.current) setError(message(failure));
@@ -182,7 +180,7 @@ export function SpacePublication({
         path: "/name",
         body: { text: name },
       },
-      description.trim() !== (publication.publicDescription ?? "") && {
+      description.trim() !== publication.publicDescription && {
         label: "空间简介",
         path: "/description",
         body: { text: description },
@@ -222,8 +220,7 @@ export function SpacePublication({
           setName(value.displayName);
           onRenamed?.();
         }
-        if (path === "/description")
-          setDescription(value.publicDescription ?? "");
+        if (path === "/description") setDescription(value.publicDescription);
         if (path === "/author") setAuthor(value.publicAuthorName);
       }
       setProfileNotice({ failed: false, text: "网站资料已保存。" });
@@ -250,7 +247,7 @@ export function SpacePublication({
   const changed =
     publication &&
     (name.trim() !== publication.displayName ||
-      description.trim() !== (publication.publicDescription ?? "") ||
+      description.trim() !== publication.publicDescription ||
       author.trim() !== publication.publicAuthorName);
   return (
     <div className="management-panel">
