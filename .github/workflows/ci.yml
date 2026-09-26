@@ -157,10 +157,6 @@ jobs:
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
         with:
           gradle-home-cache-cleanup: true
-      - name: Set up Python for executor tests
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12.14"
       - name: Unit tests, style and documents
         run: ./gradlew test spotlessCheck checkstyleMain checkstyleTest checkstyleIntegrationTest repoCheck --no-daemon
       - name: Upload verification reports
