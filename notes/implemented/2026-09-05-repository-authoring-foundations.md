@@ -11,7 +11,7 @@ This record owns repository-native reads, the public content snapshot and its fo
 
 `RepositoryContentReader` reads exact UTF-8 blobs and service-issued revisions from arbitrary paths. Explicit commits must be full lowercase Git object ids reachable from current remote `main`. Missing files return expected absence; existing unreadable files return diagnostics. Structured Markdown accepts optional frontmatter, preserves original source, falls back to a real Markdown heading or filename for title, and uses path-filtered Git history for missing dates. Malformed files and path/route collisions are isolated. Traversal, Git internals, symlinks, and submodules cannot supply structured documents.
 
-The authority's object-only read path fetches history and updates the local ref without a checkout or the legacy `documents/` validation gate. Tree scans cap entries at 100,000.
+The authority fetches history and updates the local ref without a checkout. Tree scans cap entries at 100,000.
 
 `ContentLimits` fixes the content format's resource bounds as constants; content beyond them is invalid, not a configuration matter.
 
@@ -57,6 +57,8 @@ Commits use the fixed service author and committer `Poketto <poketto@invalid>`, 
 Before a patch affecting publication can push, it closes the in-memory public view and persists the CLOSED marker. Failure to persist the marker prevents the push. A known withdrawal therefore cannot leave older public authorization available when recording the acknowledged local ref fails or the process restarts offline. A directory-synchronization failure prevents the push and leaves public memory closed. A failed OPEN publication also attempts a synchronized in-place CLOSED record without replacing the directory entry again; an I/O failure never becomes success. A later verified refresh can reopen service.
 
 Remote exact-ref acknowledgement owns success. Concurrent edits conflict. A lost response is reconciled once by reading remote `main`; unreadable authority or failed local recording after verified remote success produces an explicit indeterminate result requiring a fresh read before retry. An acknowledged patch immediately calls the public snapshot installer under the authority lock without another fetch. If installation fails, public state closes and the result still reports the Git commit with `snapshotUpdated=false`; it does not pretend the remote write failed. A database transaction completion error after the external acknowledgement also requires reconciliation.
+
+Every repository write, whatever its entrance, goes through this one writer, so the acknowledgement point, conflict behavior and attribution cannot diverge per entrance. The workspace lock that serializes writes is process-local and orders operations on one cache only: application instances must not share a cache directory, and correctness across instances comes from the exact-ref update rather than distributed locking. A refused or conflicting candidate stays unacknowledged even when its objects already reached the remote; they are unreachable, ordinary Git maintenance collects them, and no caller treats object transfer as success.
 
 Browser repository tree, file, private-search, and atomic-patch endpoints use the shared authorized reader and writer. Authentication bodies are limited to 16 KiB; patch and preview JSON to 6 MiB, with the lower domain text limits still enforced. Multipart uploads allow a 16 MiB file within a 17 MiB request.
 
@@ -114,7 +116,17 @@ Each page preparation attempt processes at most 128 MiB of image bytes, giving b
 
 **Load one blob per request instead of holding parsed articles.** Within the bounds above, memory for served content stays bounded by the workspace byte bound plus parsed overhead, and a lookup is a map read. A blob-per-request design can return if the bounds grow.
 
-The [remote authority decision](2026-09-01-remote-repository-authority.md) owns the authority model; object-only reads and patches avoid worktree mutation and cleanup. The legacy UUID write stack of [document write operations](2026-08-29-document-write-operations.md) has no production caller and awaits removal. The shipped subset of the rejected [publishing proposal](../rejected/2026-09-01-repository-native-publishing-and-assets.md) is owned here.
+**Last writer wins.** Dropping revisions would be simpler for callers, but a stale agent would silently destroy newer content; the requirements demand a conflict instead of an overwrite.
+
+**Queue writes through a background worker.** A queue decouples the response from the commit, so acknowledgement would mean "enqueued" or force the caller to poll. Synchronous writes under the short workspace lock keep remote acknowledgement in the response and suit the two-core deployment target.
+
+**Idempotency keys for creation.** The first writer assigned document identities, so a create retried after a lost response could duplicate a document, and keys would have needed a persistent deduplication store. This writer needs neither: a creation names its path with expected absence against an exact base, so a blind retry conflicts, and a retained write attempt recovers an unknown outcome.
+
+**Server-generated paths.** Deriving a location from a date or title eases creation but makes location a service policy with its own normalization and collision rules. A patch names every path; entrances may add conveniences without changing this contract.
+
+**The UUID document API.** The first writer offered create, update, delete and publish over frontmatter UUIDs below `documents/`, with a canonical serializer, a whole-tree validator and an authority mode that checked each fetched commit out into the cache, so that MCP, the administration interface and projection replay would share one commit path. Repository-native paths replaced that layout, this writer became the shared path, and the UUID API lost its last caller; it was removed together with the checkout mode only it used. A document-identity API returns only as a layer over this writer, never as a second commit path.
+
+The [remote authority decision](2026-09-01-remote-repository-authority.md) owns the authority model; reads and patches use Git objects only, which avoids worktree mutation and cleanup. The shipped subset of the rejected [publishing proposal](../rejected/2026-09-01-repository-native-publishing-and-assets.md) is owned here.
 
 ## Verification and limits
 

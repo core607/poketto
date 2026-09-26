@@ -14,9 +14,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
 import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.ResetCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.RefUpdate;
@@ -24,10 +22,10 @@ import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 
 /**
- * The authority's on-disk caches: one Git worktree per workspace below the workspace paths, opened
- * or initialized under the workspace mutex, reset or ref-updated to the authoritative commit, and
- * bounded in number by evicting the least recently used idle cache. Whether a cache is idle is the
- * authority's knowledge, supplied as a predicate.
+ * The authority's on-disk caches: one Git repository per workspace below the workspace paths,
+ * opened or initialized under the workspace mutex, whose local {@code main} is ref-updated to the
+ * authoritative commit without a checkout, and bounded in number by evicting the least recently
+ * used idle cache. Whether a cache is idle is the authority's knowledge, supplied as a predicate.
  */
 final class RepositoryCaches {
     static final String MAIN = Constants.R_HEADS + "main";
@@ -109,54 +107,18 @@ final class RepositoryCaches {
         }
     }
 
-    static void reset(Repository repository, ObjectId commit) {
-        ManagedDocumentBounds.check(repository, commit);
+    /** Opens the cache repository behind a snapshot's worktree for one authority callback. */
+    static Repository openCache(Path worktree, WorkspaceId workspaceId) {
         try {
-            if (commit.equals(ObjectId.zeroId())) {
-                // No commit exists to reset --hard to, and clean skips staged files, so a write
-                // interrupted before its root commit would leak its residue into the next
-                // candidate. Empty the index first; clean then removes the leftover files.
-                clearIndex(repository);
-                Git git = Git.wrap(repository);
-                git.clean()
-                        .setCleanDirectories(true)
-                        .setForce(true)
-                        .setIgnore(false)
-                        .call();
-                ContentWorktree.clearIntent(repository);
-                return;
+            FileRepositoryBuilder builder = new FileRepositoryBuilder();
+            builder.findGitDir(worktree.toFile());
+            if (builder.getGitDir() == null) {
+                throw failure(workspaceId, "repository cache is not a Git worktree");
             }
-            RefUpdate update = repository.updateRef(MAIN);
-            update.setNewObjectId(commit);
-            update.setForceUpdate(true);
-            RefUpdate.Result result = update.forceUpdate();
-            if (!(result == RefUpdate.Result.NEW
-                    || result == RefUpdate.Result.FORCED
-                    || result == RefUpdate.Result.FAST_FORWARD
-                    || result == RefUpdate.Result.NO_CHANGE)) {
-                throw new ContentRepositoryException("repository cache main cannot be updated");
-            }
-            Git git = Git.wrap(repository);
-            git.reset()
-                    .setMode(ResetCommand.ResetType.HARD)
-                    .setRef(commit.name())
-                    .call();
-            git.clean()
-                    .setCleanDirectories(true)
-                    .setForce(true)
-                    .setIgnore(false)
-                    .call();
-            ContentWorktree.clearIntent(repository);
-        } catch (IOException | GitAPIException exception) {
-            throw new ContentRepositoryException("repository cache cannot be materialized");
-        }
-    }
-
-    static void restore(Repository repository, ObjectId commit, boolean materialize) {
-        if (materialize) {
-            reset(repository, commit);
-        } else {
-            updateObjectRef(repository, commit);
+            return builder.build();
+        } catch (IOException exception) {
+            throw new ContentRepositoryException(
+                    "workspace " + workspaceId + " repository authority: repository cache cannot be opened", exception);
         }
     }
 
@@ -212,19 +174,6 @@ final class RepositoryCaches {
                 || result == RefUpdate.Result.NEW
                 || result == RefUpdate.Result.FAST_FORWARD)) {
             throw new ContentRepositoryException("repository object cache " + operation + " failed: " + result);
-        }
-    }
-
-    private static void clearIndex(Repository repository) throws IOException {
-        DirCache index = repository.lockDirCache();
-        try {
-            index.clear();
-            index.write();
-            if (!index.commit()) {
-                throw new ContentRepositoryException("repository cache index cannot be cleared");
-            }
-        } finally {
-            index.unlock();
         }
     }
 

@@ -12,10 +12,6 @@ public record DocumentId(UUID value) {
         Objects.requireNonNull(value, "document id must not be null");
     }
 
-    public static DocumentId random() {
-        return new DocumentId(UUID.randomUUID());
-    }
-
     public static DocumentId parse(String candidate) {
         Objects.requireNonNull(candidate, "document id must not be null");
 

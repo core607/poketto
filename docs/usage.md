@@ -80,8 +80,8 @@ The application needs PostgreSQL, an absolute `POKETTO_DATA_DIR` and one
 pre-provisioned private HTTPS Git repository. Set `SPRING_DATASOURCE_URL`, database
 credentials, `POKETTO_REPOSITORY_REMOTE_URI`, `POKETTO_REPOSITORY_USERNAME` and
 `POKETTO_REPOSITORY_PASSWORD` before `bootRun`. The default workspace follows that
-repository's `main`; its checkout below `<data-dir>/workspaces/<workspace-id>/content`
-is a disposable cache. Optional settings:
+repository's `main`; its Git objects below `<data-dir>/workspaces/<workspace-id>/content`
+are a disposable cache. Optional settings:
 
 - `POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES` (default 32) and
   `POKETTO_REPOSITORY_TIMEOUT_SECONDS` (default 30).

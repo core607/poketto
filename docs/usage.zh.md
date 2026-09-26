@@ -53,7 +53,7 @@ Poketto 的运行依赖、内容配置、MCP 接入与部署参考。
 
 构建依赖和命令见 [AGENTS.md](../AGENTS.md#commands)。Windows 上使用 `.\gradlew.bat`，用 `$env:...` 设置变量；`check` 会在固定版本的 Linux 容器中运行 Linux 执行服务测试和 `linuxStorageTest`。通过[隔离浏览器入口](../acceptance/README.md)使用合成数据操作真实应用；前端设置见 [frontend/README.md](../frontend/README.md)。
 
-应用需要 PostgreSQL、绝对路径形式的 `POKETTO_DATA_DIR`，以及一个预先建好的私有 HTTPS Git 仓库。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`、数据库认证信息、`POKETTO_REPOSITORY_REMOTE_URI`、`POKETTO_REPOSITORY_USERNAME` 与 `POKETTO_REPOSITORY_PASSWORD`。默认工作空间跟随该仓库的 `main`；`<data-dir>/workspaces/<workspace-id>/content` 下的检出只是可丢弃的缓存。可选设置：
+应用需要 PostgreSQL、绝对路径形式的 `POKETTO_DATA_DIR`，以及一个预先建好的私有 HTTPS Git 仓库。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`、数据库认证信息、`POKETTO_REPOSITORY_REMOTE_URI`、`POKETTO_REPOSITORY_USERNAME` 与 `POKETTO_REPOSITORY_PASSWORD`。默认工作空间跟随该仓库的 `main`；`<data-dir>/workspaces/<workspace-id>/content` 下的 Git 对象只是可丢弃的缓存。可选设置：
 
 - `POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES`（默认 32）与 `POKETTO_REPOSITORY_TIMEOUT_SECONDS`（默认 30）。
 - `POKETTO_REPOSITORY_REFRESH_SECONDS`（默认 30）：所服务内容多久对照远端 `main` 重新校验一次。合法的直接推送在下一次刷新后可见；经 Poketto 的写入立即可见。
