@@ -13,13 +13,18 @@ public final class MarkdownNodes {
      * reading destinations out of a document and rewriting them are separate budgets.
      */
     public static Node next(Node node) {
+        return next(node, null);
+    }
+
+    /** The node after this one in document order inside {@code root}, or null past the end of root. */
+    public static Node next(Node node, Node root) {
         if (node.getFirstChild() != null) {
             return node.getFirstChild();
         }
         Node current = node;
-        while (current != null && current.getNext() == null) {
+        while (current != root && current.getNext() == null) {
             current = current.getParent();
         }
-        return current == null ? null : current.getNext();
+        return current == root ? null : current.getNext();
     }
 }
