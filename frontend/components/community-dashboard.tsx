@@ -333,7 +333,7 @@ function CommunityLists({
                 <p className="community-comment-body">{item.excerpt}</p>
               )}
               <a
-                className="link-btn"
+                className="text-button hover-underline"
                 href={
                   articleHref(item.article.route, item.article.space) +
                   (item.event ? "" : "#discussion")

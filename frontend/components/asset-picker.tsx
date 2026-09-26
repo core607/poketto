@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useWorkspaceApi } from "./workspace-context";
 import { safeImage } from "../lib/format";
-import { message } from "./admin";
+import { message } from "../lib/browser-api";
 import {
   imageUpload,
   type ImageInsertion,

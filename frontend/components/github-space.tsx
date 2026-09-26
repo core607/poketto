@@ -1,6 +1,6 @@
 "use client";
 import { type FormEvent, useEffect, useState } from "react";
-import { api, ApiError } from "../lib/browser-api";
+import { api, ApiError, message } from "../lib/browser-api";
 import {
   githubFailures,
   githubRoot,
@@ -12,7 +12,6 @@ import {
   type GitHubResult,
   type GitHubStatus,
 } from "../lib/github-spaces";
-import { message } from "./admin";
 
 export function GitHubSpace({
   accountId,

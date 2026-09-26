@@ -1,25 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, ApiError } from "../lib/browser-api";
+import { api, ApiError, message } from "../lib/browser-api";
 import { ConfirmationProvider } from "./confirmation";
 import { type AccountProfile } from "./account-panel";
 import { WorkspaceDashboard } from "./workspace-dashboard";
 import { Login } from "./login";
 import { clearAccountDrafts, withDraftStorage } from "../lib/local-drafts";
-export { Login } from "./login";
 
-export type Identity = {
-  accountId: string;
-  displayName?: string;
-  workspaceId: string;
-  role: "OWNER" | "MEMBER";
-  capabilities: string[];
-};
-export function message(error: unknown) {
-  return error instanceof ApiError
-    ? error.message
-    : "操作未能完成，请检查连接后重试。";
-}
 export function Admin() {
   return (
     <ConfirmationProvider>

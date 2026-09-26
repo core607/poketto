@@ -56,7 +56,7 @@ export type FollowedSpace = {
   displayName: string | null;
   available: boolean;
 };
-/** A comment, or a correction event with commentId null; older servers omit the correction fields. */
+/** A comment, or a correction event with commentId null; the other subject's fields are null. */
 export type CommunityNotification = {
   position: number;
   commentId: string | null;
@@ -65,8 +65,8 @@ export type CommunityNotification = {
   article: CommunityArticle;
   createdAt: string;
   read: boolean;
-  correctionId?: string | null;
-  event?: "PROPOSED" | "ACCEPTED" | "DECLINED" | "STALE" | null;
+  correctionId: string | null;
+  event: "PROPOSED" | "ACCEPTED" | "DECLINED" | "STALE" | null;
 };
 /** What a notification says happened, after the actor's name. */
 export function noticeAction(item: CommunityNotification) {

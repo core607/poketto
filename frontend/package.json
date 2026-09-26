@@ -36,13 +36,11 @@
     "unified": "11.0.5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "4.3.3",
     "@types/node": "24.13.3",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "happy-dom": "20.14.0",
     "prettier": "3.9.6",
-    "tailwindcss": "4.3.3",
     "tsx": "4.23.13",
     "typescript": "7.0.2"
   }
