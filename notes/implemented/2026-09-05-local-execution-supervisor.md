@@ -7,7 +7,8 @@ Implemented: 2026-09-15
 
 [Phase one](2026-09-05-phase-one-daily-use.md) requires authenticated repository
 execution with independent process, filesystem, network, and resource limits.
-The [native feasibility probe](../../executor-spike/README.md) established SRT
+A native feasibility probe, since replaced by the worker's
+[native probe](../../executor-service/native_probe.py), established SRT
 isolation, but its temporary root test harness supplied no production lease,
 revocation, or restart contract.
 
