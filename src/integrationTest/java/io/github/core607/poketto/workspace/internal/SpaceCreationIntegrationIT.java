@@ -199,7 +199,7 @@ class SpaceCreationIntegrationIT {
 
     private SpaceCreationService service(Instant at) {
         return new SpaceCreationService(
-                jdbc, transactions, accounts, auth, catalog, remote, initialization, Clock.fixed(at, ZoneOffset.UTC));
+                jdbc, accounts, auth, catalog, remote, initialization, Clock.fixed(at, ZoneOffset.UTC));
     }
 
     @Test
