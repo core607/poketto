@@ -144,23 +144,6 @@ export function spaceTags(
       new URLSearchParams(parameters),
   );
 }
-export function tags(parameters: Record<string, string> = {}) {
-  return get<TagPage>("/api/public/tags?" + new URLSearchParams(parameters));
-}
-export async function allArticles() {
-  const first = await articles({ limit: "100" });
-  const items = [...first.items];
-  for (
-    let offset = 100;
-    offset < first.total && offset < 10000;
-    offset += 100
-  ) {
-    const next = await articles({ limit: "100", offset: String(offset) });
-    if (next.commit !== first.commit) throw new PublicApiError(503);
-    items.push(...next.items);
-  }
-  return items;
-}
 export function publicOrigin() {
   if (!process.env.POKETTO_PUBLIC_URL) throw new PublicApiError(503);
   const url = new URL(process.env.POKETTO_PUBLIC_URL);
