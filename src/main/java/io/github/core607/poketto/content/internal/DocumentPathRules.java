@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-final class DocumentPathRules {
+public final class DocumentPathRules {
 
     private static final String MANAGED_ROOT = "documents";
     private static final String MANAGED_PREFIX = MANAGED_ROOT + "/";
@@ -65,7 +65,7 @@ final class DocumentPathRules {
         return candidate;
     }
 
-    static String collisionKey(String validatedPath) {
+    public static String collisionKey(String validatedPath) {
         return Arrays.stream(validatedPath.split("/", -1))
                 .map(segment -> Normalizer.normalize(segment, Normalizer.Form.NFC))
                 .map(DocumentPathRules::caseFold)
