@@ -353,7 +353,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                     String head = snapshot.commitId().orElseThrow(RepositoryEmptyException::new);
                     UUID id = UUID.randomUUID();
                     Path pending = staging.resolve(id + ".pending");
-                    try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspace)) {
+                    try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspace)) {
                         long deadline = System.nanoTime() + timeout.toNanos();
                         String commit = requested.orElse(head);
                         if (!commit.matches("[0-9a-f]{40}")) {

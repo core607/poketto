@@ -31,7 +31,6 @@ import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.treewalk.TreeWalk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -118,7 +117,7 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
     private ContentSnapshot restoreLastValidated(WorkspaceId workspaceId) {
         return authority.readCache(workspaceId, cache -> {
             ValidatedMarker marker = readValidated(cache.worktree(), workspaceId);
-            try (Repository repository = openCache(cache.worktree(), workspaceId)) {
+            try (Repository repository = RepositoryCaches.openCache(cache.worktree(), workspaceId)) {
                 ObjectId commit = marker.commitId().map(ObjectId::fromString).orElseGet(ObjectId::zeroId);
                 if (!commit.equals(ObjectId.zeroId())
                         && !repository.getObjectDatabase().has(commit)) {
@@ -135,7 +134,7 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
     }
 
     List<StoredDocument> scan(RepositoryAuthority.Snapshot snapshot, WorkspaceId workspaceId) {
-        try (Repository repository = openCache(snapshot.worktree(), workspaceId)) {
+        try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspaceId)) {
             ObjectId commit = snapshot.commitId().map(ObjectId::fromString).orElseGet(ObjectId::zeroId);
             return scan(repository, commit, workspaceId);
         }
@@ -178,19 +177,6 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
             throw exception;
         } catch (IOException exception) {
             throw failure(workspaceId, "resolved main cannot be scanned", exception);
-        }
-    }
-
-    static Repository openCache(Path worktree, WorkspaceId workspaceId) {
-        try {
-            FileRepositoryBuilder builder = new FileRepositoryBuilder();
-            builder.findGitDir(worktree.toFile());
-            if (builder.getGitDir() == null) {
-                throw failure(workspaceId, "materialized cache is not a Git worktree", null);
-            }
-            return builder.build();
-        } catch (IOException exception) {
-            throw failure(workspaceId, "materialized cache cannot be opened", exception);
         }
     }
 
@@ -262,7 +248,7 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
 
     private static void recordValidated(
             Path worktree, WorkspaceId workspaceId, Optional<String> commitId, Instant validatedAt) {
-        try (Repository repository = openCache(worktree, workspaceId)) {
+        try (Repository repository = RepositoryCaches.openCache(worktree, workspaceId)) {
             // The marker is replaced atomically so an interrupted write leaves the previous
             // record readable instead of a torn one.
             Path marker = markerPath(repository);
@@ -282,7 +268,7 @@ final class JGitContentRepositoryStore implements ContentRepositoryStore {
     }
 
     private static ValidatedMarker readValidated(Path worktree, WorkspaceId workspaceId) {
-        try (Repository repository = openCache(worktree, workspaceId)) {
+        try (Repository repository = RepositoryCaches.openCache(worktree, workspaceId)) {
             Path marker = markerPath(repository);
             if (Files.notExists(marker)) {
                 throw failure(workspaceId, "no validated commit is recorded in the cache", null);

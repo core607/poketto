@@ -203,7 +203,7 @@ class ContentSnapshotTests {
         WorkspaceId workspace = WorkspaceId.random();
         first.commitRemote(workspace, Map.of("documents/note.md", document(FIRST_ID, "Note")));
         first.store().ensureReady(workspace);
-        try (Repository cache = JGitContentRepositoryStore.openCache(first.cache(workspace), workspace)) {
+        try (Repository cache = RepositoryCaches.openCache(first.cache(workspace), workspace)) {
             Files.writeString(
                     cache.getDirectory().toPath().resolve("poketto-validated-main"),
                     "0123456789012345678901234567890123456789 2026-09-01T00:00:00Z\n");

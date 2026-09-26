@@ -222,7 +222,7 @@ class RepositoryPatchServiceTests {
         assertThat(movedIndex.files()).containsExactlyEntriesOf(Map.of("private/deeper/box/scan.pdf", original));
         verify(mediaValidator).validate(workspace, List.of(original));
         verify(auth, never()).authorize(principal, workspace, Capability.PUBLISH);
-        try (Repository repository = JGitContentRepositoryStore.openCache(fixture.cache(workspace), workspace);
+        try (Repository repository = RepositoryCaches.openCache(fixture.cache(workspace), workspace);
                 var walk = new RevWalk(repository)) {
             var after = walk.parseCommit(ObjectId.fromString(result.commit()));
             assertThat(after.getParentCount()).isEqualTo(1);

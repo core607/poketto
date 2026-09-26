@@ -208,7 +208,7 @@ final class JGitDocumentWriteService implements DocumentWriteService {
     private DocumentWriteResult inRepository(WorkspaceId workspaceId, WriteAction action) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
         return authority.write(workspaceId, (snapshot, advancer) -> {
-            try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
+            try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspaceId)) {
                 ObjectId baseCommit =
                         snapshot.commitId().map(ObjectId::fromString).orElseGet(ObjectId::zeroId);
                 DocumentWriteResult result =

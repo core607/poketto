@@ -109,6 +109,21 @@ final class RepositoryCaches {
         }
     }
 
+    /** Opens the cache repository behind a snapshot's worktree for one authority callback. */
+    static Repository openCache(Path worktree, WorkspaceId workspaceId) {
+        try {
+            FileRepositoryBuilder builder = new FileRepositoryBuilder();
+            builder.findGitDir(worktree.toFile());
+            if (builder.getGitDir() == null) {
+                throw failure(workspaceId, "repository cache is not a Git worktree");
+            }
+            return builder.build();
+        } catch (IOException exception) {
+            throw new ContentRepositoryException(
+                    "workspace " + workspaceId + " repository authority: repository cache cannot be opened", exception);
+        }
+    }
+
     static void reset(Repository repository, ObjectId commit) {
         ManagedDocumentBounds.check(repository, commit);
         try {

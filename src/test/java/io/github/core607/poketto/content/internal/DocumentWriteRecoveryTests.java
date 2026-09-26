@@ -63,7 +63,7 @@ class DocumentWriteRecoveryTests {
         WorkspaceId workspace = WorkspaceId.random();
         DocumentWriteService writes = repositories.writes(new TestClock());
         repositories.store().ensureReady(workspace);
-        try (Repository cache = JGitContentRepositoryStore.openCache(repositories.cache(workspace), workspace)) {
+        try (Repository cache = RepositoryCaches.openCache(repositories.cache(workspace), workspace)) {
             // A crash between staging and the root commit leaves a journal, a staged index
             // entry, and worktree bytes behind while both refs are still unborn.
             ContentWorktree.recordIntent(cache, Set.of("documents/residue.md"));
