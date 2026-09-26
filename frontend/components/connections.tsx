@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ApiError } from "../lib/browser-api";
+import { ApiError, message } from "../lib/browser-api";
 import { useWorkspaceApi } from "./workspace-context";
-import { message } from "./admin";
 import { scopeLabels } from "./connect";
 import { useConfirmation } from "./confirmation";
 type Connection = {

@@ -48,11 +48,6 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     @Override
-    public void ensureReady(WorkspaceId workspaceId) {
-        read(workspaceId, snapshot -> null);
-    }
-
-    @Override
     public <T> T withPreparedCredentials(WorkspaceId workspace, Supplier<T> action) {
         Objects.requireNonNull(workspace, "workspace is required");
         Objects.requireNonNull(action, "credential-scoped action is required");
@@ -77,15 +72,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     private record PreparedBinding(WorkspaceId workspace, RepositoryBinding binding) {}
 
     @Override
-    public <T> T read(WorkspaceId workspaceId, SnapshotReader<T> reader) {
-        Objects.requireNonNull(reader, "snapshot reader must not be null");
-        return inCache(workspaceId, (repository, binding, commit) -> reader.read(snapshot(repository, commit)));
-    }
-
-    @Override
     public <T> T readObjects(WorkspaceId workspaceId, SnapshotReader<T> reader) {
         Objects.requireNonNull(reader, "snapshot reader must not be null");
-        return inCache(workspaceId, false, (repository, binding, commit) -> reader.read(snapshot(repository, commit)));
+        return inCache(workspaceId, (repository, binding, commit) -> reader.read(snapshot(repository, commit)));
     }
 
     @Override
@@ -192,25 +181,13 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     @Override
-    public <T> T write(WorkspaceId workspaceId, CandidateWriter<T> writer) {
-        Objects.requireNonNull(writer, "candidate writer must not be null");
-        return inCache(
-                workspaceId,
-                (repository, binding, baseCommit) -> writer.write(
-                        snapshot(repository, baseCommit),
-                        candidateCommit -> advance(
-                                workspaceId, repository, binding, baseCommit, parseCommit(candidateCommit), true)));
-    }
-
-    @Override
     public <T> T writeObjects(WorkspaceId workspaceId, CandidateWriter<T> writer) {
         Objects.requireNonNull(writer, "candidate writer must not be null");
         return inCache(
                 workspaceId,
-                false,
                 (repository, binding, baseCommit) -> writer.write(snapshot(repository, baseCommit), candidateCommit -> {
                     ObjectId candidate = parseCommit(candidateCommit);
-                    advance(workspaceId, repository, binding, baseCommit, candidate, false);
+                    advance(workspaceId, repository, binding, baseCommit, candidate);
                     try {
                         RepositoryCaches.updateObjectRef(repository, candidate);
                     } catch (ContentRepositoryException exception) {
@@ -221,10 +198,6 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     private <T> T inCache(WorkspaceId workspaceId, CacheAction<T> action) {
-        return inCache(workspaceId, true, action);
-    }
-
-    private <T> T inCache(WorkspaceId workspaceId, boolean materialize, CacheAction<T> action) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
         CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
         workspaceLock.lock.lock();
@@ -243,16 +216,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             ObjectId commit;
             try {
                 commit = transport.fetchMain(opened, binding);
-                if (commit.equals(ObjectId.zeroId())) {
-                    // Readers of already selected immutable objects may still be active. Removing
-                    // main closes the old authority binding without destroying their object store.
-                    RepositoryCaches.updateObjectRef(opened, commit);
-                    RepositoryCaches.reset(opened, commit);
-                } else if (materialize) {
-                    RepositoryCaches.reset(opened, commit);
-                } else {
-                    RepositoryCaches.updateObjectRef(opened, commit);
-                }
+                // An unborn remote removes local main. Readers of already selected immutable
+                // objects may still be active, and the object store they read is kept.
+                RepositoryCaches.updateObjectRef(opened, commit);
             } catch (RuntimeException exception) {
                 opened.close();
                 throw exception;
@@ -274,21 +240,20 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             Repository repository,
             RepositoryBinding binding,
             ObjectId baseCommit,
-            ObjectId candidateCommit,
-            boolean materialize) {
+            ObjectId candidateCommit) {
         Objects.requireNonNull(candidateCommit, "candidate commit must not be null");
         binding.requireCurrent();
         try {
             RemoteGitTransport.PushStatus result = transport.pushMain(repository, binding, baseCommit, candidateCommit);
             if (result == RemoteGitTransport.PushStatus.CONFLICT) {
-                restoreAfterConflict(repository, binding, materialize);
+                recordAfterConflict(repository, binding);
                 throw new RepositoryConflictException(
                         "workspace " + workspaceId + " remote main changed while the write was being prepared");
             }
         } catch (RemoteGitRejectedException rejected) {
-            reconcileRejection(workspaceId, repository, binding, baseCommit, rejected, materialize);
+            reconcileRejection(workspaceId, repository, binding, baseCommit, rejected);
         } catch (RemoteGitTransportException lostResponse) {
-            reconcileLostResponse(workspaceId, repository, binding, baseCommit, candidateCommit, materialize);
+            reconcileLostResponse(workspaceId, repository, binding, baseCommit, candidateCommit);
         }
     }
 
@@ -303,8 +268,7 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             Repository repository,
             RepositoryBinding binding,
             ObjectId baseCommit,
-            RemoteGitRejectedException rejected,
-            boolean materialize) {
+            RemoteGitRejectedException rejected) {
         final ObjectId remoteCommit;
         try {
             remoteCommit = transport.fetchMain(repository, binding);
@@ -312,12 +276,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             throw failure(workspaceId, rejected.getMessage() + "; main did not advance");
         }
         if (!remoteCommit.equals(baseCommit)) {
-            resetAfterConflict(repository, remoteCommit, materialize);
+            recordAfterConflict(repository, remoteCommit);
             throw new RepositoryConflictException(
                     "workspace " + workspaceId + " remote main changed while the write was being prepared");
-        }
-        if (!remoteCommit.equals(ObjectId.zeroId())) {
-            RepositoryCaches.restore(repository, remoteCommit, materialize);
         }
         throw failure(workspaceId, rejected.getMessage() + "; main did not advance");
     }
@@ -336,13 +297,16 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         }
     }
 
+    /**
+     * Local {@code main} still names the base, because the writer builds its candidate from
+     * objects alone; recording an acknowledged candidate is the caller's step.
+     */
     private void reconcileLostResponse(
             WorkspaceId workspaceId,
             Repository repository,
             RepositoryBinding binding,
             ObjectId baseCommit,
-            ObjectId candidateCommit,
-            boolean materialize) {
+            ObjectId candidateCommit) {
         final ObjectId remoteCommit;
         try {
             remoteCommit = transport.fetchMain(repository, binding);
@@ -351,39 +315,30 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
                     + " remote write response was lost and main cannot be verified; do not retry blindly");
         }
         if (remoteCommit.equals(candidateCommit)) {
-            try {
-                RepositoryCaches.restore(repository, candidateCommit, materialize);
-            } catch (ContentRepositoryException exception) {
-                throw new RepositoryWriteAmbiguousException(
-                        "remote acknowledged the patch but cache recording failed; read remote main before retrying");
-            }
             return;
         }
         if (!remoteCommit.equals(baseCommit)) {
-            resetAfterConflict(repository, remoteCommit, materialize);
+            recordAfterConflict(repository, remoteCommit);
             throw new RepositoryConflictException(
                     "workspace " + workspaceId + " remote main changed while the write was being prepared");
-        }
-        if (!remoteCommit.equals(ObjectId.zeroId())) {
-            RepositoryCaches.restore(repository, remoteCommit, materialize);
         }
         throw failure(workspaceId, "remote write failed before main advanced");
     }
 
-    private void restoreAfterConflict(Repository repository, RepositoryBinding binding, boolean materialize) {
+    private void recordAfterConflict(Repository repository, RepositoryBinding binding) {
         try {
-            resetAfterConflict(repository, transport.fetchMain(repository, binding), materialize);
+            recordAfterConflict(repository, transport.fetchMain(repository, binding));
         } catch (RemoteGitTransportException ignored) {
-            // The outcome is already definite. A later operation rebuilds the disposable cache.
+            // The outcome is already definite. The next operation fetches main again.
         }
     }
 
-    private static void resetAfterConflict(Repository repository, ObjectId commit, boolean materialize) {
+    private static void recordAfterConflict(Repository repository, ObjectId commit) {
         try {
-            RepositoryCaches.restore(repository, commit, materialize);
+            RepositoryCaches.updateObjectRef(repository, commit);
         } catch (ContentRepositoryException ignored) {
-            // A competing owner's invalid tree must neither expand into the cache nor hide the
-            // already established conflict. A later operation retries cache materialization.
+            // A local ref failure must not hide the already established conflict. The next
+            // operation fetches main and records it again.
         }
     }
 

@@ -96,10 +96,10 @@ export const article = cache(function article(route: string) {
 export type PublicSpace = {
   slug: string;
   displayName: string;
-  /** Owner-written plain text, possibly empty; older servers omit it. */
-  description?: string;
-  /** Whether article pages link their revision history; older servers omit it. */
-  history?: boolean;
+  /** Owner-written plain text, possibly empty. */
+  description: string;
+  /** Whether article pages link their revision history. */
+  history: boolean;
 };
 /** Versions oldest first; complete is false when earlier public versions may exist but are not listed. */
 export type RevisionHistory = {
@@ -143,23 +143,6 @@ export function spaceTags(
     `/api/public/spaces/${encodeURIComponent(slug)}/tags?` +
       new URLSearchParams(parameters),
   );
-}
-export function tags(parameters: Record<string, string> = {}) {
-  return get<TagPage>("/api/public/tags?" + new URLSearchParams(parameters));
-}
-export async function allArticles() {
-  const first = await articles({ limit: "100" });
-  const items = [...first.items];
-  for (
-    let offset = 100;
-    offset < first.total && offset < 10000;
-    offset += 100
-  ) {
-    const next = await articles({ limit: "100", offset: String(offset) });
-    if (next.commit !== first.commit) throw new PublicApiError(503);
-    items.push(...next.items);
-  }
-  return items;
 }
 export function publicOrigin() {
   if (!process.env.POKETTO_PUBLIC_URL) throw new PublicApiError(503);

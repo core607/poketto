@@ -14,7 +14,7 @@ export async function generateMetadata({
   const { space } = await params;
   const info = await spaceInfo(space).catch(() => null);
   const name = info?.displayName ?? space;
-  const description = info?.description?.trim() || `「${name}」的公开记录`;
+  const description = info?.description.trim() || `「${name}」的公开记录`;
   return {
     description,
     alternates: { canonical: spaceHref(space), types: spaceFeed(space, name) },

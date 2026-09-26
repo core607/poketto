@@ -53,7 +53,7 @@ Poketto 的运行依赖、内容配置、MCP 接入与部署参考。
 
 构建依赖和命令见 [AGENTS.md](../AGENTS.md#commands)。Windows 上使用 `.\gradlew.bat`，用 `$env:...` 设置变量；`check` 会在固定版本的 Linux 容器中运行 Linux 执行服务测试和 `linuxStorageTest`。通过[隔离浏览器入口](../acceptance/README.md)使用合成数据操作真实应用；前端设置见 [frontend/README.md](../frontend/README.md)。
 
-应用需要 PostgreSQL、绝对路径形式的 `POKETTO_DATA_DIR`，以及一个预先建好的私有 HTTPS Git 仓库。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`、数据库认证信息、`POKETTO_REPOSITORY_REMOTE_URI`、`POKETTO_REPOSITORY_USERNAME` 与 `POKETTO_REPOSITORY_PASSWORD`。默认工作空间跟随该仓库的 `main`；`<data-dir>/workspaces/<workspace-id>/content` 下的检出只是可丢弃的缓存。可选设置：
+应用需要 PostgreSQL、绝对路径形式的 `POKETTO_DATA_DIR`，以及一个预先建好的私有 HTTPS Git 仓库。运行 `bootRun` 前设置 `SPRING_DATASOURCE_URL`、数据库认证信息、`POKETTO_REPOSITORY_REMOTE_URI`、`POKETTO_REPOSITORY_USERNAME` 与 `POKETTO_REPOSITORY_PASSWORD`。默认工作空间跟随该仓库的 `main`；`<data-dir>/workspaces/<workspace-id>/content` 下的 Git 对象只是可丢弃的缓存。可选设置：
 
 - `POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES`（默认 32）与 `POKETTO_REPOSITORY_TIMEOUT_SECONDS`（默认 30）。
 - `POKETTO_REPOSITORY_REFRESH_SECONDS`（默认 30）：所服务内容多久对照远端 `main` 重新校验一次。合法的直接推送在下一次刷新后可见；经 Poketto 的写入立即可见。
@@ -218,7 +218,7 @@ receipt = response.json()
 
 每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录，提供域名、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。随后用 `./deploy.sh --initialize-admin` 创建首个管理员。
 
-对于自行维护 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)只更新应用与前端镜像，以及显式提供的身份配置。安装当前版本的受保护更新入口，并设置 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 可选 `pull`（主机使用部署任务的包读取令牌，从规范镜像仓库拉取两个摘要）、`mirror`（使用配置好的交付镜像站）或 `transfer`（通过 SSH 传输带校验和的归档，供两个仓库都访问不到的主机使用）。
+对于自行维护 Compose 配置的现有实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)只更新应用与前端镜像，以及显式提供的身份配置。安装当前版本的受保护更新入口，并设置 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 可选 `pull`（主机使用部署任务的包读取令牌，从规范镜像仓库拉取两个摘要）或 `transfer`（通过 SSH 传输带校验和的归档，供访问不到镜像仓库的主机使用）。
 
 `transfer.sh --existing --set-stdin` 接受按行分隔的 `KEY=value`，仅限 `POKETTO_RESEND_API_KEY`、`POKETTO_EMAIL_FROM`、`POKETTO_EMAIL_DAILY_LIMIT`、`POKETTO_GOOGLE_CLIENT_ID`、`POKETTO_GOOGLE_CLIENT_SECRET`、`POKETTO_SUPPORT_EMAIL` 和 [GitHub App 配置指南](github-app.md)中的五项设置，只通过标准输入传给受保护更新器。值按字面传递，包括 `$` 和引号。权限为 0600 的 `.deployment/images.json` 覆盖文件保留未提供的设置，显式空值清除设置；手动运行 Compose 时，将该覆盖文件放在最后。手动部署使用主机上的身份配置。启用 CI 部署前，先将 Resend 密钥、Google 凭证和 GitHub App 设置配置为 GitHub secrets，将发件地址、每日限额和联系邮箱配置为 GitHub variables。此后两种布局的这些配置均以 GitHub 为准：未设置或已删除的配置会清除主机上的值，未设置每日限额时恢复为 100。Google 两个字段须一起清空。中断后使用相同镜像和配置重试。
 

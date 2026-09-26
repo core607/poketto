@@ -168,7 +168,7 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
             throw new ContentRepositoryException(
                     "offline public snapshot restoration is disabled on Windows development hosts");
         }
-        try (Repository repository = JGitContentRepositoryStore.openCache(cache.worktree(), workspaceId)) {
+        try (Repository repository = RepositoryCaches.openCache(cache.worktree(), workspaceId)) {
             Path marker = repository.getDirectory().toPath().resolve(PublicSnapshotMarker.NAME);
             if (!Files.isRegularFile(marker) || Files.size(marker) > 256) {
                 throw unavailable();
@@ -227,7 +227,7 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
         if (snapshot.commitId().isEmpty()) {
             return RepositoryPublishingPolicy.missing();
         }
-        try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId);
+        try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspaceId);
                 ObjectReader objects = repository.newObjectReader()) {
             return policy(objects, snapshot.commitId().orElseThrow());
         }
@@ -256,7 +256,7 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
     }
 
     private void writeMarker(WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot, Instant at, boolean open) {
-        try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
+        try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspaceId)) {
             marker.write(repository.getDirectory().toPath(), snapshot.commitId().orElse("unborn"), at, open);
         } catch (IOException | UnsupportedOperationException exception) {
             remove(workspaceId);

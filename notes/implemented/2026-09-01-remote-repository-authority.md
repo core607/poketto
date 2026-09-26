@@ -17,7 +17,7 @@ Every production workspace has one private remote Git repository. Its `main` ref
 
 Every deployment uses the internal `RepositoryAuthority` port, which supports no local Git authority and never falls back to local disk; the [serverless profile](../rejected/2026-09-01-optional-serverless-deployment-profile.md) would have used the same port. `<data-dir>/workspaces/<workspace-id>/content` is a disposable workspace-scoped cache selected only from a validated `WorkspaceId`.
 
-Authoritative reads and writes first fetch and resolve remote `main` under the workspace lock. Current reads and writes are object-only: they update the cache's local ref and read or build Git objects without checking out files, so local files in the cache are never content. An empty pre-provisioned remote remains on an unborn `main` until the first write. Direct owner pushes are therefore visible on the next authoritative read or write. Public requests do not perform this read: the public snapshot of the [repository authoring foundations](2026-09-05-repository-authoring-foundations.md#repository-and-publication) refreshes on a schedule and serves the last verified commit. A materializing mode that resets the worktree to the fetched commit and removes untracked and ignored files serves only the legacy [document write operations](2026-08-29-document-write-operations.md).
+Authoritative reads and writes first fetch and resolve remote `main` under the workspace lock. Reads and writes are object-only: they update the cache's local ref and read or build Git objects without checking out files, so local files in the cache are never content. An empty pre-provisioned remote remains on an unborn `main` until the first write. Direct owner pushes are therefore visible on the next authoritative read or write. Public requests do not perform this read: the public snapshot of the [repository authoring foundations](2026-09-05-repository-authoring-foundations.md#repository-and-publication) refreshes on a schedule and serves the last verified commit.
 
 ### Writes and failure semantics
 
@@ -56,7 +56,7 @@ Before issuing or reusing a Git image grant, the asset service verifies the exac
 
 Source validation runs outside the global image-grant monitor and does not authorize publication. Grant admission rechecks time and rejects a clock rollback or an elapsed candidate expiry. A hit in the derived image cache cannot replace source validation. If source validation at grant admission fails, rendering omits that image authorization and preserves the article body. Failure after successful source protection, including capacity rejection or clock rollback, may conservatively retain the source until its existing UTC deadline. A clock rollback can therefore lengthen elapsed cache retention without issuing a new grant. Failed admission must not shorten the shared deadline because another live grant may depend on it. Expired zero-user lifecycle entries are reclaimed on repository access. Protection is process-local, like the grant table, and holds no long-lived repository handles or per-token leases.
 
-A remote ref update, including a force push or an unborn `main`, preserves already fetched objects. Transitioning to unborn `main` removes the local ref, index entries, and materialized files without deleting the object database. Existing immutable readers can finish while the new empty snapshot takes effect. Callers choose and authorize the exact commit before reading; public image grants are signed under a final snapshot installation lock after payload preparation. [Repository authoring foundations](2026-09-05-repository-authoring-foundations.md) owns these rendering and authorization boundaries.
+A remote ref update, including a force push or an unborn `main`, preserves already fetched objects. Transitioning to unborn `main` removes the local ref without deleting the object database. Existing immutable readers can finish while the new empty snapshot takes effect. Callers choose and authorize the exact commit before reading; public image grants are signed under a final snapshot installation lock after payload preparation. [Repository authoring foundations](2026-09-05-repository-authoring-foundations.md) owns these rendering and authorization boundaries.
 
 Unreachable fetched objects can accumulate until safe whole-cache eviction; the authority does not run concurrent Git garbage collection.
 
@@ -78,7 +78,7 @@ Remote availability participates in authoritative reads and writes. An already p
 
 Per-workspace connections add provisioning, not a second authority mode.
 
-The application owns disposable cache directories completely. Direct authoring happens by pushing to the private remote; edits made inside `<data-dir>/workspaces/.../content` are overwritten on the next operation.
+The application owns disposable cache directories completely. Direct authoring happens by pushing to the private remote; edits made inside `<data-dir>/workspaces/.../content` are never read as content.
 
 ## Verification
 

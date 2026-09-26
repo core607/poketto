@@ -1,7 +1,8 @@
 "use client";
 import { FormEvent, useState } from "react";
 import { useWorkspaceApi } from "./workspace-context";
-import { message, type Identity } from "./admin";
+import { message } from "../lib/browser-api";
+import type { Identity } from "../lib/types";
 import type { Member } from "./members";
 import { Secret } from "./secret";
 import { AdminPagination, useAdminPage } from "./admin-pagination";

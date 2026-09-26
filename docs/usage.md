@@ -80,8 +80,8 @@ The application needs PostgreSQL, an absolute `POKETTO_DATA_DIR` and one
 pre-provisioned private HTTPS Git repository. Set `SPRING_DATASOURCE_URL`, database
 credentials, `POKETTO_REPOSITORY_REMOTE_URI`, `POKETTO_REPOSITORY_USERNAME` and
 `POKETTO_REPOSITORY_PASSWORD` before `bootRun`. The default workspace follows that
-repository's `main`; its checkout below `<data-dir>/workspaces/<workspace-id>/content`
-is a disposable cache. Optional settings:
+repository's `main`; its Git objects below `<data-dir>/workspaces/<workspace-id>/content`
+are a disposable cache. Optional settings:
 
 - `POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES` (default 32) and
   `POKETTO_REPOSITORY_TIMEOUT_SECONDS` (default 30).
@@ -567,9 +567,8 @@ For an operator-owned Compose installation,
 updates only the app and frontend images and explicitly supplied identity settings.
 Install the current protected updater and set `POKETTO_DEPLOY_LAYOUT=existing`.
 `POKETTO_DEPLOY_MODE` is `pull` (the host fetches both digests from the canonical
-registry with the deployment job's package-read token), `mirror` (a configured
-delivery mirror) or `transfer` (a checksummed archive over SSH, for hosts that reach
-neither registry).
+registry with the deployment job's package-read token) or `transfer` (a checksummed
+archive over SSH, for hosts that cannot reach the registry).
 
 `transfer.sh --existing --set-stdin` accepts newline-separated `KEY=value` entries for
 `POKETTO_RESEND_API_KEY`, `POKETTO_EMAIL_FROM`, `POKETTO_EMAIL_DAILY_LIMIT`,

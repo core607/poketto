@@ -348,7 +348,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
 
     RepositoryTree readSnapshot(
             WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot, Predicate<String> eligible) {
-        try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
+        try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspaceId)) {
             return readTreeObjects(workspaceId, repository, snapshot.commitId(), eligible);
         } catch (IOException exception) {
             throw new ContentRepositoryException("repository snapshot objects cannot be read", exception);
@@ -541,7 +541,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
             }
         });
         return authority.readObjects(workspaceId, snapshot -> {
-            try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspaceId)) {
+            try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspaceId)) {
                 Optional<String> selected = requested.isPresent() ? requested : snapshot.commitId();
                 if (requested.isPresent()) {
                     if (currentOnly && !requested.equals(snapshot.commitId())) {

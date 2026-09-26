@@ -6,9 +6,8 @@ import {
   withDraftStorage,
   type LocalDraft,
 } from "../lib/local-drafts";
-import type { RepositoryFile } from "../lib/types";
+import type { RepositoryFile, Identity } from "../lib/types";
 import { ApiError } from "../lib/browser-api";
-import type { Identity } from "./admin";
 import { useWorkspaceApi } from "./workspace-context";
 import { useConfirmation } from "./confirmation";
 

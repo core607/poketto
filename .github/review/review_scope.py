@@ -10,7 +10,7 @@ def is_core(path):
     if any(part in {"test", "tests", "integrationtest", "testfixtures", "__tests__", "fixtures", "__fixtures__", "evidence",
                     "docs", "notes", "screenshots", "acceptance"} for part in parts):
         return False
-    if parts and parts[0] in {"executor-native", "executor-spike"}:
+    if parts and parts[0] == "executor-native":
         return False
     if (name.startswith("test_") or name in {"run_tests.py", "conftest.py", "pytest.ini", "tox.ini",
                                             "native_probe.py", "resource_pool_probe.py"}

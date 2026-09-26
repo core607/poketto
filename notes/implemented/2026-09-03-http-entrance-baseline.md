@@ -21,8 +21,7 @@ Every error leaves the HTTP boundary as an RFC 9457 `application/problem+json` d
 
 | Failure | Status | Title | Detail |
 |---|---|---|---|
-| `PublicResourceNotFoundException`, `DocumentNotFoundException` | 404 | Not found | the exception message |
-| `DocumentConflictException` | 409 | Conflict | the exception message, plus a `liveRevision` property when the conflict carries one |
+| `PublicResourceNotFoundException` | 404 | Not found | the exception message |
 | `RepositoryConflictException` | 409 | Conflict | fixed text |
 | `RepositoryWriteAmbiguousException` | 503 | Write outcome unknown | fixed text telling the caller to re-read before retrying |
 | `ContentRepositoryException` | 503 | Repository unavailable | fixed text; on an administration route called by a signed-in account, fixed recovery text and a `REPOSITORY_RETRY` or `REPOSITORY_RECONNECT` code |
@@ -44,7 +43,7 @@ The route beans share the `poketto.workspace.catalog.enabled` condition with the
 
 **Return rendered HTML.** That would select a template engine while the accepted frontend proposal moves rendering into Next.js. The JSON contract serves either frontend.
 
-**Plain status codes without a body.** Agents and browser code need a stable machine-readable error identity, and the write contracts already carry a live revision that a conflict response must be able to return.
+**Plain status codes without a body.** Agents and browser code need a stable machine-readable error identity, such as the recovery `code` a repository failure carries.
 
 **Cache scan results across requests.** It would hide a publish behind an uncoordinated cache. The frontend proposal requires an explicit freshness contract before any cross-request cache.
 
