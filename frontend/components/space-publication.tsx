@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, message } from "../lib/browser-api";
+import { spaceHref } from "../lib/format";
 import { useConfirmation } from "./confirmation";
 
 import { PublicationRestrictions } from "./site-review";
@@ -255,9 +256,7 @@ export function SpacePublication({
         <div className="panel-heading">
           <h2>公开网站</h2>
           {publication?.effectiveEnabled && (
-            <a href={`/s/${encodeURIComponent(publication.slug)}`}>
-              查看公开网站
-            </a>
+            <a href={spaceHref(publication.slug)}>查看公开网站</a>
           )}
         </div>
         <p className="muted">

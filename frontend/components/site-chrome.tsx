@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api, ApiError } from "../lib/browser-api";
+import { spaceHref } from "../lib/format";
 import { clearAccountDrafts, withDraftStorage } from "../lib/local-drafts";
 import type { AccountProfile } from "./account-panel";
 import { Avatar, BrandMark, Icon } from "./ui/icons";
@@ -188,7 +189,7 @@ export function SiteFooter() {
         </span>
         <ThemeSwitch />
         <nav aria-label="站点信息">
-          <a href={space ? `/s/${space}/rss.xml` : "/rss.xml"}>RSS</a>
+          <a href={spaceHref(space) + "/rss.xml"}>RSS</a>
           <a href="/privacy">隐私政策</a>
           <a href="/terms">服务条款</a>
         </nav>
