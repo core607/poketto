@@ -1,8 +1,7 @@
 "use client";
 import { FormEvent, useState } from "react";
-import { api } from "../lib/browser-api";
+import { api, message } from "../lib/browser-api";
 import { date } from "../lib/format";
-import { message } from "./admin";
 import { AdminPagination } from "./admin-pagination";
 
 import { useSitePage } from "./site-page";

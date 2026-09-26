@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { api, ApiError } from "../lib/browser-api";
+import { api, ApiError, message } from "../lib/browser-api";
 import { githubFailures, githubRoot } from "../lib/github-spaces";
-import { message } from "./admin";
 
 type Status = { authorizingAccount: boolean; revoked: boolean };
 

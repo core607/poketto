@@ -132,3 +132,10 @@ export type RepositoryDirectory = {
   }[];
   nextOffset: number | null;
 };
+export type Identity = {
+  accountId: string;
+  displayName?: string;
+  workspaceId: string;
+  role: "OWNER" | "MEMBER";
+  capabilities: string[];
+};

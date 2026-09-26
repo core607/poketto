@@ -7,6 +7,11 @@ export class ApiError extends Error {
     super(detail);
   }
 }
+export function message(error: unknown) {
+  return error instanceof ApiError
+    ? error.message
+    : "操作未能完成，请检查连接后重试。";
+}
 type Csrf = { headerName: string; token: string };
 export async function api<T>(
   path: string,

@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "../lib/browser-api";
+import { api, message } from "../lib/browser-api";
 import { safeImage } from "../lib/format";
-import { message } from "./admin";
 import { AdminPagination } from "./admin-pagination";
 import { Markdown } from "./markdown";
 import { useSitePage } from "./site-page";

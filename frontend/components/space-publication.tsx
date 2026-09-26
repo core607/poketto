@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api } from "../lib/browser-api";
-import { message } from "./admin";
+import { api, message } from "../lib/browser-api";
 import { useConfirmation } from "./confirmation";
 
 import { PublicationRestrictions } from "./site-review";

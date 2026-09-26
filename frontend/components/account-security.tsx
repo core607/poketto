@@ -1,7 +1,6 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
-import { api } from "../lib/browser-api";
-import { message } from "./admin";
+import { api, message } from "../lib/browser-api";
 import { GoogleLogin, GoogleReturnNotice } from "./google-login";
 import {
   EmailChallenge,

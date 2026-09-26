@@ -3,7 +3,7 @@ import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceApi } from "./workspace-context";
 import { useConfirmation } from "./confirmation";
 import { sourceDifference } from "../lib/source-diff";
-import { message } from "./admin";
+import { message } from "../lib/browser-api";
 import type { RepositoryFile } from "../lib/types";
 
 type HistoryEntry = {

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useWorkspaceApi } from "./workspace-context";
 import { date } from "../lib/format";
-import { message } from "./admin";
+import { message } from "../lib/browser-api";
 import { Secret } from "./secret";
 import { AdminPagination, useAdminPage } from "./admin-pagination";
 import { useConfirmation } from "./confirmation";

@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../lib/browser-api";
-import { message, type Identity } from "./admin";
+import { api, message } from "../lib/browser-api";
+import type { Identity } from "../lib/types";
 import { AccountPanel, type AccountProfile } from "./account-panel";
 import { useAdminPage } from "./admin-pagination";
 import { useConfirmation } from "./confirmation";

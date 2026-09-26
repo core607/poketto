@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "../lib/browser-api";
-import { message } from "./admin";
+import { api, message } from "../lib/browser-api";
 import { AdminPage } from "./admin-pagination";
 
 export function useSitePage<T>(path: string) {

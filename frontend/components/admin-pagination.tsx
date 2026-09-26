@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useWorkspaceApi } from "./workspace-context";
-import { message } from "./admin";
+import { message } from "../lib/browser-api";
 export type AdminPage<T> = {
   items: T[];
   total: number;
