@@ -157,6 +157,8 @@ public interface RepositoryExecutor {
     /**
      * Command output. {@code freshSandbox} identifies a newly started runtime for this command;
      * otherwise the lease's shell state was reused. The disk copy has an independent lifetime.
+     * {@code refreshed} means a clean public copy was rebuilt from changed publication under the
+     * same copy ID before this command ran; {@code commit} then names the new projection.
      */
     record ExecutionResult(
             String copyId,
@@ -168,6 +170,7 @@ public interface RepositoryExecutor {
             boolean stderrTruncated,
             boolean timedOut,
             boolean freshSandbox,
+            boolean refreshed,
             TerminationReason terminationReason,
             Map<String, ArtifactMetadata> artifacts,
             Map<String, String> artifactErrors,

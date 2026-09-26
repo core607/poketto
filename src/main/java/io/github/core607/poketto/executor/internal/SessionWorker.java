@@ -39,7 +39,7 @@ final class SessionWorker {
         if (session.fullRead) {
             auth.authorize(
                     session.principal, session.key.workspace(), Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
-        } else if (session.publicExport != null) {
+        } else if (session.publicExport != null && !session.projectionCheck) {
             exports.requireCurrentPublic(session.principal, session.key.workspace(), session.publicExport);
         } else {
             authorize(session.principal, session.key.workspace());

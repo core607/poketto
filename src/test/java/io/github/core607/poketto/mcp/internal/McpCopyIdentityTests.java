@@ -96,6 +96,7 @@ class McpCopyIdentityTests {
                         false,
                         false,
                         true,
+                        false,
                         RepositoryExecutor.TerminationReason.NORMAL,
                         Map.of(),
                         Map.of(),
@@ -104,6 +105,8 @@ class McpCopyIdentityTests {
         assertThat(initial.isError()).isFalse();
         assertThat(body(initial).path("copyId").stringValue()).isEqualTo(id);
         assertThat(body(initial).path("freshSandbox").booleanValue()).isTrue();
+        assertThat(body(initial).path("refreshed").isBoolean()).isTrue();
+        assertThat(body(initial).path("refreshed").booleanValue()).isFalse();
         when(executor.execute(
                         eq(principal),
                         eq(workspace),
@@ -123,6 +126,7 @@ class McpCopyIdentityTests {
                         false,
                         false,
                         true,
+                        false,
                         RepositoryExecutor.TerminationReason.NORMAL,
                         Map.of(),
                         Map.of(),
@@ -207,6 +211,30 @@ class McpCopyIdentityTests {
         assertThat(refused.has("currentGeneration")).isFalse();
         assertThat(refused.path("recoveryAvailable").booleanValue()).isTrue();
         assertThat(refused.path("message").stringValue()).contains("may have partially completed");
+        assertThat(refused.has("copyId")).isFalse();
+    }
+
+    @Test
+    void aChangedPublicationOverLocalWorkNamesTheKeptCopyAndHowToDiscardIt() {
+        String copy = UUID.randomUUID().toString();
+        when(executor.execute(
+                        any(),
+                        any(),
+                        anyString(),
+                        eq(new RepositoryExecutor.CopyRequest("new")),
+                        any(),
+                        anyString(),
+                        any(),
+                        any()))
+                .thenThrow(ExecutionAdmissionException.publicationChanged(copy));
+        JsonNode refused = body(call(Map.of("expectedCopyId", "new", "command", "ls")));
+        assertThat(refused.path("code").stringValue()).isEqualTo("EXECUTION_REFUSED");
+        assertThat(refused.path("reason").stringValue()).isEqualTo("PUBLICATION_CHANGED");
+        assertThat(refused.path("executed").booleanValue()).isFalse();
+        assertThat(refused.path("recoveryAvailable").booleanValue()).isTrue();
+        assertThat(refused.path("copyId").stringValue()).isEqualTo(copy);
+        assertThat(refused.path("message").stringValue())
+                .contains("Published content changed", "left untouched", "repo_discard", "expectedCopyId=new");
     }
 
     @Test
@@ -242,6 +270,7 @@ class McpCopyIdentityTests {
                         false,
                         false,
                         true,
+                        false,
                         RepositoryExecutor.TerminationReason.NORMAL,
                         Map.of(),
                         Map.of(),

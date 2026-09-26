@@ -53,6 +53,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final SessionRegistry registry;
     private final SessionLifecycle lifecycle;
     private final CopyDisposal disposal;
+    private final PublicCopyRefresh refresh;
     private final SessionArtifacts artifacts;
     private final Duration closeTimeout;
     private final ThreadPoolExecutor commandIo = new ThreadPoolExecutor(
@@ -89,6 +90,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 registry, io, worker, exports, packages, saves, accounts, openTimeout, closeTimeout);
         this.closeTimeout = closeTimeout;
         this.disposal = new CopyDisposal(registry, io, lifecycle, worker, accounts, closeTimeout);
+        this.refresh = new PublicCopyRefresh(registry, io, lifecycle, disposal, exports, worker);
         this.artifacts = new SessionArtifacts(registry, io, lifecycle, accounts);
     }
 
@@ -109,9 +111,12 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         try (var held = new AccountCommand(accounts, accounts.ownerFor(owner, expected.id()), cancellation)) {
             acquireExecution(cancellation);
             try {
-                ExecutionSession session = accountSession(principal, workspace, expected, held, cancellation);
+                var admitted = refresh.current(
+                        accountSession(principal, workspace, expected, held, cancellation), held, cancellation);
+                ExecutionSession session = admitted.session();
                 try {
-                    return executeAccount(session, held, requested, command, timeout, cancellation);
+                    return executeAccount(
+                            session, held, requested, command, timeout, cancellation, admitted.refreshed());
                 } finally {
                     session.busy.set(false);
                 }
@@ -234,7 +239,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             Optional<String> requested,
             String command,
             Duration timeout,
-            ExecutionCancellation cancellation) {
+            ExecutionCancellation cancellation,
+            boolean refreshed) {
         boolean attempted = false;
         try (var registration = cancellation.onCancel(() -> lifecycle.stopAndAwait(session, "cancelled"))) {
             requireLive(session);
@@ -274,11 +280,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             requireOk(response, session);
             io.authorize(session);
             // Decode before acknowledging the journal, so malformed completion stays unconfirmed.
-            result(response.path("result"), session.copyId.toString(), session.commit, session.gitCommit, held.view());
+            result(response.path("result"), session, refreshed, held.view());
             held.complete(session.saveState.snapshot());
             session.accountRecord = held.record();
-            ExecutionResult result = result(
-                    response.path("result"), session.copyId.toString(), session.commit, session.gitCommit, held.view());
+            ExecutionResult result = result(response.path("result"), session, refreshed, held.view());
             if (!response.path("state").asString("").equals("READY")) {
                 lifecycle.stopAndAwait(session, "cancelled");
             }
@@ -513,7 +518,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private static ExecutionResult result(
-            JsonNode result, String copyId, String commit, String gitCommit, CopyRetention retention) {
+            JsonNode result, ExecutionSession session, boolean refreshed, CopyRetention retention) {
+        String commit = session.commit;
         try {
             var finished = WorkerResponses.read(result, WorkerResponses.Execution.class);
             // The commit is an echo of what this session pinned, so it is compared here.
@@ -545,8 +551,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 artifactErrors.put(entry.getKey(), entry.getValue().stringValue());
             }
             return new ExecutionResult(
-                    copyId,
-                    gitCommit,
+                    session.copyId.toString(),
+                    session.gitCommit,
                     finished.exitCode(),
                     finished.stdout(),
                     finished.stderr(),
@@ -554,6 +560,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     finished.stderrTruncated(),
                     finished.timedOut(),
                     finished.freshSandbox(),
+                    refreshed,
                     reason,
                     artifacts,
                     artifactErrors,

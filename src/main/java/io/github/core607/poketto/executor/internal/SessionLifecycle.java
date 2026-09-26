@@ -78,6 +78,12 @@ final class SessionLifecycle {
     }
 
     void initializeCopy(ExecutionSession session, Optional<String> requested, AccountCommand held) {
+        initializeCopy(session, requested, held, AccountCopyRecord.Phase.INITIALIZING);
+    }
+
+    /** Exports and opens a new copy; {@code phase} is the journal phase recorded until it is ready. */
+    void initializeCopy(
+            ExecutionSession session, Optional<String> requested, AccountCommand held, AccountCopyRecord.Phase phase) {
         if (!session.fullRead && requested.isPresent()) {
             throw new IllegalArgumentException("Public execution starts from current publication; omit commit");
         }
@@ -93,18 +99,7 @@ final class SessionLifecycle {
         session.commit = export.commit();
         session.saveState = new SelectedFileSaves.State(session.commit);
         try {
-            held.initialize(
-                    session.copyId,
-                    writer(session),
-                    session.saveState.snapshot(),
-                    session.publicExport,
-                    sink -> saves.visitOriginal(
-                            session.principal,
-                            session.key.workspace(),
-                            session.commit,
-                            accounts.traversalLimits(),
-                            sink));
-            session.accountRecord = held.record();
+            record(session, held, phase);
             requireLive(session);
             io.authorize(session);
             synchronized (session) {
@@ -136,6 +131,19 @@ final class SessionLifecycle {
         } finally {
             exports.release(export.exportId());
         }
+    }
+
+    /** Journals the new copy, and a full copy's original files, before the worker creates it. */
+    private void record(ExecutionSession session, AccountCommand held, AccountCopyRecord.Phase phase) {
+        held.initialize(
+                session.copyId,
+                writer(session),
+                session.saveState.snapshot(),
+                session.publicExport,
+                sink -> saves.visitOriginal(
+                        session.principal, session.key.workspace(), session.commit, accounts.traversalLimits(), sink),
+                phase);
+        session.accountRecord = held.record();
     }
 
     /** Only OPEN/ATTACH replies reach this boundary; no user command has been submitted. */
@@ -185,6 +193,14 @@ final class SessionLifecycle {
             previous.principal = principal;
             return previous;
         }
+        return replaceLease(previous, principal);
+    }
+
+    /**
+     * Contains the previous lease and registers an unopened successor that will attach the same
+     * copy, so its first command starts a fresh sandbox. The successor takes over the busy claim.
+     */
+    ExecutionSession replaceLease(ExecutionSession previous, AuthPrincipal principal) {
         WorkerClient.Hello hello = worker.hello();
         if (previous.hello != null && !previous.hello.workerBootId().equals(hello.workerBootId())) {
             previous.stopping.set(true);
