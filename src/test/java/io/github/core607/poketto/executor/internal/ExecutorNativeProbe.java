@@ -114,6 +114,11 @@ public final class ExecutorNativeProbe {
             }
 
             @Override
+            public boolean publicProjectionChanged(AuthPrincipal actor, WorkspaceId selected, PublicExport exported) {
+                throw new UnsupportedOperationException("native fixture provides full repository exports only");
+            }
+
+            @Override
             public void release(UUID id) {
                 try {
                     Files.delete(path("exports").resolve(id + ".bundle"));
