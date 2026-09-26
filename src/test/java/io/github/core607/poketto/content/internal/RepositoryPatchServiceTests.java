@@ -493,6 +493,42 @@ class RepositoryPatchServiceTests {
     }
 
     @Test
+    void commitsUnderTheServiceIdentityWithTheActorOnlyInTheTrailer() throws Exception {
+        UUID account = UUID.fromString("7c1d3a52-0f4e-4b8a-9e61-2d5c8b0a4f13");
+        for (AuthPrincipal.Kind kind : AuthPrincipal.Kind.values()) {
+            var fixture = new RemoteRepositoryFixture(directory.resolve(kind.name()));
+            var service = service(fixture, (id, snapshot) -> {});
+            when(principal.kind()).thenReturn(kind);
+            when(principal.accountId()).thenReturn(account);
+            String subject = principal.subjectId().toString();
+
+            var result = service.apply(
+                    principal,
+                    workspace,
+                    new RepositoryPatch(Optional.empty(), List.of(create("private/new.md", "# New"))));
+
+            try (var remote = fixture.openRemote(workspace);
+                    var walk = new RevWalk(remote)) {
+                var commit = walk.parseCommit(ObjectId.fromString(result.commit()));
+                for (var identity : List.of(commit.getAuthorIdent(), commit.getCommitterIdent())) {
+                    assertThat(identity.getName()).as(kind + " identity name").isEqualTo("Poketto");
+                    assertThat(identity.getEmailAddress())
+                            .as(kind + " identity email")
+                            .isEqualTo("poketto@invalid");
+                    assertThat(identity.toExternalString())
+                            .as(kind + " identity")
+                            .doesNotContain(subject)
+                            .doesNotContain(account.toString());
+                }
+                String token = (kind == AuthPrincipal.Kind.ACCOUNT ? "account:" : "api-key:") + subject;
+                assertThat(commit.getFullMessage())
+                        .isEqualTo("Apply repository changes\n\nPoketto-Principal: " + token + "\n")
+                        .doesNotContain(account.toString());
+            }
+        }
+    }
+
+    @Test
     @EnabledOnOs(OS.LINUX)
     void atomicMoveToQuestionMarkFolderPreservesTextAndDistinctEncodedNames() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
