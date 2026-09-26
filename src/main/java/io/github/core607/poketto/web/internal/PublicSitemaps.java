@@ -2,17 +2,13 @@ package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicContentSnapshots;
-import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 
 /** Enumerates public metadata; each space is delivered from one currently approved snapshot. */
 final class PublicSitemaps {
-    private static final int CATALOG_PAGE_SIZE = 100;
     private static final int MAX_SPACES = 10_000;
     private static final int MAX_ARTICLES = 49_999;
     private final WorkspacePublications publications;
@@ -50,19 +46,7 @@ final class PublicSitemaps {
     }
 
     private List<WorkspacePublications.Publication> catalog() {
-        List<WorkspacePublications.Publication> result = new ArrayList<>();
-        Optional<WorkspaceId> after = Optional.empty();
-        while (true) {
-            var page = publications.publishedAfter(after, CATALOG_PAGE_SIZE);
-            if (result.size() + page.size() > MAX_SPACES) {
-                throw unavailable();
-            }
-            result.addAll(page);
-            if (page.size() < CATALOG_PAGE_SIZE) {
-                return List.copyOf(result);
-            }
-            after = Optional.of(page.getLast().workspaceId());
-        }
+        return PublishedSpaces.all(publications, MAX_SPACES, () -> {}, PublicSitemaps::unavailable);
     }
 
     private WorkspacePublications.Publication published(String slug) {
