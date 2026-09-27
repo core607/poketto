@@ -68,8 +68,8 @@ final class AccountCommand implements AutoCloseable {
      * {@code REFRESHING} instead of {@code INITIALIZING}, so an interrupted rebuild resumes under the
      * same copy ID rather than being refused as an incomplete initialization.
      *
-     * <p>A rebuild replaces the refreshing record of the same copy here, after its export exists, so
-     * the journal is without a record only between these local writes. The caller passes
+     * <p>A rebuild replaces the refreshing record of the same public copy here in one journal write,
+     * after its export exists, so the copy ID never leaves the journal. The caller passes
      * {@code REFRESHING} only after the worker confirmed that the old copy's files are gone.
      */
     void initialize(
@@ -84,8 +84,21 @@ final class AccountCommand implements AutoCloseable {
                 "initial copy phase",
                 "must be initializing or refreshing");
         if (record() != null && replacesRefreshing(copy, phase)) {
-            beginDiscard();
-            remove();
+            var current = record();
+            lease.write(new AccountCopyRecord(
+                    1,
+                    owner,
+                    copy,
+                    current.revision() + 1,
+                    Math.max(current.expiresAt(), store.nextExpiry()),
+                    writer,
+                    phase,
+                    null,
+                    null,
+                    state,
+                    projection,
+                    null));
+            return;
         }
         if (record() != null) {
             throw new RetainedCopyException(RetainedCopyException.Reason.STALE);
@@ -112,7 +125,8 @@ final class AccountCommand implements AutoCloseable {
     }
 
     private boolean replacesRefreshing(UUID copy, AccountCopyRecord.Phase phase) {
-        return phase == AccountCopyRecord.Phase.REFRESHING
+        return !owner.fullRead()
+                && phase == AccountCopyRecord.Phase.REFRESHING
                 && record().phase() == AccountCopyRecord.Phase.REFRESHING
                 && record().copyId().equals(copy);
     }

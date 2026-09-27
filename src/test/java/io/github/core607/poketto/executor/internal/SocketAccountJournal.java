@@ -23,6 +23,7 @@ final class SocketAccountJournal {
     private final ConcurrentHashMap<AccountCopyRecord.Owner, Entry> entries = new ConcurrentHashMap<>();
     private final AccountCopyStore store = mock(AccountCopyStore.class);
     private final AtomicInteger contended = new AtomicInteger();
+    private final AtomicInteger removed = new AtomicInteger();
 
     SocketAccountJournal() throws IOException {
         when(store.nextExpiry())
@@ -54,6 +55,11 @@ final class SocketAccountJournal {
     /** How many acquisitions found the account lock held by another request. */
     int contended() {
         return contended.get();
+    }
+
+    /** How many records were deleted, which leaves their copy ID absent from the journal. */
+    int removed() {
+        return removed.get();
     }
 
     Optional<AccountCopyRecord> record(AccountCopyRecord.Owner owner) {
@@ -92,6 +98,7 @@ final class SocketAccountJournal {
                             "discard identity",
                             "must match the held copy");
                     entry.record.set(null);
+                    removed.incrementAndGet();
                     return null;
                 })
                 .when(lease)
