@@ -362,10 +362,7 @@ class PublicCopyRefreshTests {
 
     @Test
     void theRebuiltCopyKeepsTheAdmissionSlotWhileTheWorkerDiscards() throws Exception {
-        var other = mock(AuthPrincipal.class);
-        when(other.kind()).thenReturn(AuthPrincipal.Kind.API_KEY);
-        when(other.subjectId()).thenReturn(UUID.randomUUID());
-        when(other.accountId()).thenReturn(UUID.randomUUID());
+        var other = otherAccount();
         try (var callers = Executors.newVirtualThreadPerTaskExecutor();
                 var worker = new Worker();
                 var executor = executor(worker, 1)) {
@@ -385,6 +382,45 @@ class PublicCopyRefreshTests {
             var refreshed = refreshing.get(10, TimeUnit.SECONDS);
             assertThat(refreshed.refreshed()).isTrue();
             assertThat(worker.operations("OPEN")).hasSize(2);
+        }
+    }
+
+    @Test
+    void aSlotReleasedBeforeTheHandOverStopsTheRebuildBeforeAnythingIsDiscarded() throws Exception {
+        var other = otherAccount();
+        try (var worker = new Worker();
+                var executor = executor(worker, 1)) {
+            String copy = run(executor, "new", "ls").copyId();
+            publish(SECOND);
+            var cancellation = new Cancellation();
+            var fired = new AtomicBoolean();
+            var admitted = new AtomicReference<RepositoryExecutor.ExecutionResult>();
+            // Once the clean copy is journaled for refresh, cancellation closes the inspection lease
+            // and another account takes the slot that lease released.
+            worker.accounts.afterWrite(record -> {
+                if (record.owner().equals(owner)
+                        && record.phase() == AccountCopyRecord.Phase.REFRESHING
+                        && fired.compareAndSet(false, true)) {
+                    cancellation.cancel();
+                    admitted.set(run(executor, other, "new", "pwd"));
+                }
+            });
+
+            assertThatThrownBy(() -> run(executor, principal, copy, "pwd", cancellation))
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            refused -> assertThat(refused.reason())
+                                    .isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE));
+
+            assertThat(admitted.get().exitCode()).isZero();
+            assertThat(worker.operations("DISCARD")).isEmpty();
+            assertThat(worker.copies).containsEntry(copy, FIRST);
+            assertThat(worker.accounts.record(owner).orElseThrow().phase())
+                    .isEqualTo(AccountCopyRecord.Phase.REFRESHING);
+            var resumed = run(executor, copy, "pwd");
+            assertThat(resumed.refreshed()).isTrue();
+            assertThat(resumed.copyId()).isEqualTo(copy);
+            assertThat(resumed.commit()).isEqualTo(SECOND);
         }
     }
 
@@ -467,6 +503,15 @@ class PublicCopyRefreshTests {
 
     private static RepositoryExecutor.ExecutionResult run(
             IsolatedRepositoryExecutor executor, AuthPrincipal caller, String copy, String command) {
+        return run(executor, caller, copy, command, NOT_CANCELLED);
+    }
+
+    private static RepositoryExecutor.ExecutionResult run(
+            IsolatedRepositoryExecutor executor,
+            AuthPrincipal caller,
+            String copy,
+            String command,
+            ExecutionCancellation cancellation) {
         return executor.execute(
                 caller,
                 WORKSPACE,
@@ -475,7 +520,41 @@ class PublicCopyRefreshTests {
                 Optional.empty(),
                 command,
                 Duration.ofSeconds(5),
-                NOT_CANCELLED);
+                cancellation);
+    }
+
+    private static AuthPrincipal otherAccount() {
+        var other = mock(AuthPrincipal.class);
+        when(other.kind()).thenReturn(AuthPrincipal.Kind.API_KEY);
+        when(other.subjectId()).thenReturn(UUID.randomUUID());
+        when(other.accountId()).thenReturn(UUID.randomUUID());
+        return other;
+    }
+
+    /** Runs registered terminations on the thread that cancels, as the MCP cancellation does. */
+    private static final class Cancellation implements ExecutionCancellation {
+        private final List<Runnable> callbacks = new CopyOnWriteArrayList<>();
+        private volatile boolean cancelled;
+
+        @Override
+        public boolean isCancelled() {
+            return cancelled;
+        }
+
+        @Override
+        public Registration onCancel(Runnable terminate) {
+            if (cancelled) {
+                terminate.run();
+                return () -> {};
+            }
+            callbacks.add(terminate);
+            return () -> callbacks.remove(terminate);
+        }
+
+        void cancel() {
+            cancelled = true;
+            callbacks.forEach(Runnable::run);
+        }
     }
 
     /** Keeps each disk copy's pinned commit and each lease's commit, as the worker's disk pool does. */

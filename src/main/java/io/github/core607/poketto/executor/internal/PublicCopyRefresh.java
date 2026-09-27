@@ -172,7 +172,9 @@ final class PublicCopyRefresh {
 
     // The journal holds REFRESHING from here on. The rebuilt session takes the old lease's admission
     // slot before that lease closes, so no other request can claim the slot while the worker
-    // discards the files. The rebuilt record replaces the old one in one journal write once its
+    // discards the files. If cancellation or revocation already released that slot, the rebuild
+    // stops before anything is discarded and the next admission resumes it. The rebuilt record replaces the old one in
+    // one journal write once its
     // export exists, so every interruption leaves a record that the next admission resumes.
     private void rebuild(AtomicReference<ExecutionSession> active, AccountCommand held) {
         ExecutionSession previous = active.get();

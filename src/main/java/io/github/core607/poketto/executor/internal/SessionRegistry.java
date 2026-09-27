@@ -126,15 +126,16 @@ final class SessionRegistry {
     /**
      * Gives the predecessor's admission slot to its successor before the predecessor closes, so no
      * other request can claim the slot in between. Until its close is confirmed, the predecessor is
-     * tracked as a closing lease, which the heartbeat reconciles if that close fails.
+     * tracked as a closing lease, which the heartbeat reconciles if that close fails. False when the
+     * table moved on or the predecessor's slot was already released.
      */
     synchronized boolean handOver(ExecutionSession previous, ExecutionSession current) {
-        if (closed || !sessions.replace(previous.key, previous, current)) {
+        // A predecessor that already released its slot has nothing to hand over: another request may
+        // hold that slot now, and installing the successor would admit one session too many.
+        if (closed || previous.capacityReleased || !sessions.replace(previous.key, previous, current)) {
             return false;
         }
-        if (!previous.capacityReleased) {
-            closingLeases.put(previous.leaseId, previous);
-        }
+        closingLeases.put(previous.leaseId, previous);
         return true;
     }
 

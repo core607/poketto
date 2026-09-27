@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
 /**
@@ -24,6 +25,7 @@ final class SocketAccountJournal {
     private final AccountCopyStore store = mock(AccountCopyStore.class);
     private final AtomicInteger contended = new AtomicInteger();
     private final AtomicInteger removed = new AtomicInteger();
+    private volatile Consumer<AccountCopyRecord> afterWrite = record -> {};
 
     SocketAccountJournal() throws IOException {
         when(store.nextExpiry())
@@ -57,6 +59,11 @@ final class SocketAccountJournal {
         return contended.get();
     }
 
+    /** Runs on the writing thread after each durable write, to interleave events at a journal step. */
+    void afterWrite(Consumer<AccountCopyRecord> hook) {
+        afterWrite = hook;
+    }
+
     /** How many records were deleted, which leaves their copy ID absent from the journal. */
     int removed() {
         return removed.get();
@@ -85,6 +92,7 @@ final class SocketAccountJournal {
                     AccountCopyRecord next = call.getArgument(0);
                     AccountCopyStore.requireTransition(owner, entry.record.get(), next, store.nextExpiry());
                     entry.record.set(next);
+                    afterWrite.accept(next);
                     return null;
                 })
                 .when(lease)
