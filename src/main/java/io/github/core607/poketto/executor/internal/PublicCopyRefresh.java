@@ -147,7 +147,8 @@ final class PublicCopyRefresh {
      * can write to three persistent places, the repository, its parent {@code work} directory and
      * {@code $HOME}, and the worker discards all of them with the copy. A fresh copy's home is empty
      * and its work directory holds only the repository, so any other entry there, a tool cache
-     * included, makes the copy not clean.
+     * included, makes the copy not clean. The listings print control characters as {@code ?}, so a
+     * name made only of newlines, which command substitution would strip, still counts.
      *
      * <p>In the repository, HEAD and every ref and reflog entry must reach nothing but the projection
      * commit, no index entry may carry an assume-unchanged or skip-worktree flag that would hide a
@@ -159,8 +160,8 @@ final class PublicCopyRefresh {
         return "( g() { command git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false"
                 + " -c core.fileMode=true -c core.autocrlf=false -c core.symlinks=true"
                 + " --git-dir=.git --work-tree=. \"$@\"; };"
-                + " [ -n \"$HOME\" ] && home=$(command ls -A -- \"$HOME\") && [ -z \"$home\" ]"
-                + " && work=$(command ls -A -- ..) && [ \"$work\" = repository ]"
+                + " [ -n \"$HOME\" ] && home=$(command ls -Aq -- \"$HOME\") && [ -z \"$home\" ]"
+                + " && work=$(command ls -Aq -- ..) && [ \"$work\" = repository ]"
                 + " && head=$(g rev-parse --verify HEAD) && reach=$(g rev-list --all --reflog --max-count=2)"
                 + " && flags=$(g ls-files -v)"
                 + " && changes=$(g status --porcelain=v1 --untracked-files=all --ignored)"

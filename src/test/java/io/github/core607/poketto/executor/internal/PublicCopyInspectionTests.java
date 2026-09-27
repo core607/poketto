@@ -50,6 +50,8 @@ class PublicCopyInspectionTests {
                 "git config core.fileMode false && chmod +x AGENTS.md",
                 "git init -q inner",
                 "printf x > \"$HOME/report.md\"",
+                "printf x > \"$HOME/\n\n\"",
+                "printf x > \"../\n\"",
                 "mkdir -p \"$HOME/.cache/fontconfig\"",
                 "printf x > ../draft.md",
                 "mkdir ../notes",
