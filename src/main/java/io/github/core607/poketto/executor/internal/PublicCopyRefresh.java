@@ -128,6 +128,9 @@ final class PublicCopyRefresh {
                         inspection(probe.commit),
                         INSPECTION_TIMEOUT.toMillis()),
                 INSPECTION_TIMEOUT.plusSeconds(5));
+        if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.CAPACITY, true);
+        }
         requireOk(response, probe);
         JsonNode result = response.path("result");
         var finished = WorkerResponses.read(result, WorkerResponses.Execution.class);
