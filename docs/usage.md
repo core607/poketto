@@ -457,8 +457,8 @@ sessions get the current public projection without history or private metadata,
 report `PUBLIC_PROJECTION` with a synthetic commit, and cannot save. When publication
 changes, a public copy without local changes is rebuilt under the same `copyId` before
 the next command, which reports `refreshed: true` and the new commit; a copy with local
-changes is left untouched and refused with `PUBLICATION_CHANGED` until `repo_discard`
-removes it.
+changes, including any file in `$HOME` or beside the repository, is left untouched and
+refused with `PUBLICATION_CHANGED` until `repo_discard` removes it.
 
 `poketto edit PATH --old TEXT --new TEXT` replaces one exact occurrence in an existing
 local text file, refusing missing or ambiguous text. `poketto create PATH --text TEXT`
