@@ -26,6 +26,7 @@ import io.github.core607.poketto.workspace.WorkspacePublications;
 import io.github.core607.poketto.workspace.internal.CommunityPublicationFixture;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -103,7 +104,10 @@ class CommunityIntegrationIT {
     }
 
     private Community community(Accounts accounts, WorkspacePublications publications, TestSnapshots source) {
-        var configuration = new CommunityConfiguration();
+        // Rate limits count per wall-clock minute; a real clock let the ten-post limit test cross a
+        // minute boundary and see its eleventh post accepted.
+        var configuration =
+                new CommunityConfiguration(Clock.fixed(Instant.parse("2026-09-26T12:00:30Z"), ZoneOffset.UTC));
         var communityAccounts = new CommunityAccounts(jdbc, accounts);
         var guard = new PublicationGuard(jdbc, publications);
         return configuration.community(
