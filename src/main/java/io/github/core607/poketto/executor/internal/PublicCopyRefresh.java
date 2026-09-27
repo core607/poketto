@@ -140,18 +140,25 @@ final class PublicCopyRefresh {
     }
 
     /**
-     * The fixed inspection, run in a subshell of a fresh sandbox at the repository root. The copy is
-     * clean only when HEAD and every ref and reflog entry reach nothing but the projection commit,
-     * no index entry carries an assume-unchanged or skip-worktree flag that would hide a change, and
-     * status reports no staged, unstaged, untracked or ignored path. Options pin the repository and
-     * disable the configuration that could hide changes or write the index.
+     * The fixed inspection, run in a subshell of a fresh sandbox at the repository root. A command
+     * can write to three persistent places, the repository, its parent {@code work} directory and
+     * {@code $HOME}, and the worker discards all of them with the copy. A fresh copy's home is empty
+     * and its work directory holds only the repository, so any other entry there, a tool cache
+     * included, makes the copy not clean.
+     *
+     * <p>In the repository, HEAD and every ref and reflog entry must reach nothing but the projection
+     * commit, no index entry may carry an assume-unchanged or skip-worktree flag that would hide a
+     * change, and status must report no staged, unstaged, untracked or ignored path. Options pin the
+     * repository and disable the configuration that could hide changes or write the index.
      */
     static String inspection(String commit) {
         ProtocolValues.hex(commit, 40, "projection commit");
         return "( g() { command git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false"
                 + " -c core.fileMode=true -c core.autocrlf=false -c core.symlinks=true"
                 + " --git-dir=.git --work-tree=. \"$@\"; };"
-                + " head=$(g rev-parse --verify HEAD) && reach=$(g rev-list --all --reflog --max-count=2)"
+                + " [ -n \"$HOME\" ] && home=$(command ls -A -- \"$HOME\") && [ -z \"$home\" ]"
+                + " && work=$(command ls -A -- ..) && [ \"$work\" = repository ]"
+                + " && head=$(g rev-parse --verify HEAD) && reach=$(g rev-list --all --reflog --max-count=2)"
                 + " && flags=$(g ls-files -v)"
                 + " && changes=$(g status --porcelain=v1 --untracked-files=all --ignored)"
                 + " && [ \"$head\" = " + commit + " ] && [ \"$reach\" = " + commit + " ] && [ -z \"$changes\" ]"
