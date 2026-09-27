@@ -19,6 +19,13 @@ public interface RepositorySnapshotExports {
     /** Revalidates the current public projection; unrelated private changes do not revoke it. */
     void requireCurrentPublic(AuthPrincipal actor, WorkspaceId workspace, PublicExport exported);
 
+    /**
+     * Runs every check of {@link #requireCurrentPublic} but reports a changed projection instead of
+     * throwing: true only when authorization, the workspace and one unmoved current snapshot all
+     * hold and that snapshot's fingerprint differs from the export. Any other failure still throws.
+     */
+    boolean publicProjectionChanged(AuthPrincipal actor, WorkspaceId workspace, PublicExport exported);
+
     void release(UUID exportId);
 
     record Export(UUID exportId, String commit, String bundleSha256, long bundleBytes) {}

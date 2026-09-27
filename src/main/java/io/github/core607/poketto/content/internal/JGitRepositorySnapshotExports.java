@@ -283,6 +283,13 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
 
     @Override
     public void requireCurrentPublic(AuthPrincipal actor, WorkspaceId workspace, PublicExport exported) {
+        if (publicProjectionChanged(actor, workspace, exported)) {
+            throw unavailable();
+        }
+    }
+
+    @Override
+    public boolean publicProjectionChanged(AuthPrincipal actor, WorkspaceId workspace, PublicExport exported) {
         auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
         if (!workspace.equals(exported.workspaceId())) {
             throw unavailable();
@@ -296,9 +303,8 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                     projection(workspace, current, System.nanoTime() + timeout.toNanos()));
             publicFingerprints.put(revision, fingerprint);
         }
-        if (!fingerprint.equals(exported.projectionSha256())) {
-            throw unavailable();
-        }
+        boolean changed = !fingerprint.equals(exported.projectionSha256());
+        // A change is reported only for a snapshot that stayed current and an actor still authorized.
         auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
         snapshots.withCurrent(workspace, latest -> {
             if (!latest.commit().equals(current.commit())
@@ -307,6 +313,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
             }
             return null;
         });
+        return changed;
     }
 
     private void removeProjection(Path path) throws IOException {

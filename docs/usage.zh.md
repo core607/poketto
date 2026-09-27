@@ -173,7 +173,7 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 同一运行租约中的命令共享工作目录、环境变量、shell 函数、别名、私有 `/tmp` 和后台进程。超时、输出超限、shell 退出、空闲清理或租约替换会清除这些运行状态，但保留副本文件和已完成的部分工作；下一条命令会报告 `freshSandbox: true`。空闲清理由 worker 的 `idleUnitSeconds` 决定（1 到 86400，示例配置为 1800）。后台进程随沙箱停止，命令结束后不能再执行 `poketto` 操作。
 
-完整读取的会话包含授权范围内的当前文件和 Git 历史。仅公开读取的会话获得当前公开投影，不含历史或私密元数据，返回 `PUBLIC_PROJECTION` 和合成提交 ID，且不能保存。
+完整读取的会话包含授权范围内的当前文件和 Git 历史。仅公开读取的会话获得当前公开投影，不含历史或私密元数据，返回 `PUBLIC_PROJECTION` 和合成提交 ID，且不能保存。发布内容变化后，没有本地修改的公开副本会在下一条命令前以同一 `copyId` 重建，该命令报告 `refreshed: true` 和新的提交；有本地修改（包括 `$HOME` 中或仓库旁的任何文件）的副本保持不变，请求以 `PUBLICATION_CHANGED` 拒绝，直到用 `repo_discard` 删除该副本。
 
 `poketto edit PATH --old TEXT --new TEXT` 替换已有本地文本文件中唯一、完全匹配的一段原文，原文不存在或匹配多处时拒绝。`poketto create PATH --text TEXT` 仅在路径不存在时新建文件。长文本可用 `create` 的 `--stdin` 或 `--text-file FILE`，以及 `edit` 的 `--old-file FILE`（代替 `--old`）和 `--new-stdin` 或 `--new-file FILE`（代替 `--new`）。输入为 UTF-8，保留末尾换行；输入文件路径按当前 shell 目录解析，目标路径仍相对于仓库根。这些选项不提高命令或桥接帧上限。两个命令写入前都会再次核对本地内容，普通 shell 写入没有这项检查；在 `poketto save` 之前都不改变远端。
 

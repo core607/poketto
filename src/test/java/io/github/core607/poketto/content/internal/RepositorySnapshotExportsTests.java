@@ -73,12 +73,44 @@ class RepositorySnapshotExportsTests {
         fixture.commitRemote(workspace, tree);
         snapshots.refresh(workspace);
         exports.requireCurrentPublic(actor, workspace, published);
+        assertThat(exports.publicProjectionChanged(actor, workspace, published)).isFalse();
         assertThatThrownBy(() -> exports.requireCurrentPublic(actor, WorkspaceId.random(), published))
+                .isInstanceOf(ContentRepositoryException.class);
+        assertThatThrownBy(() -> exports.publicProjectionChanged(actor, WorkspaceId.random(), published))
                 .isInstanceOf(ContentRepositoryException.class);
         tree.put("public/article.md", text("# Public\nChanged publication"));
         fixture.commitRemote(workspace, tree);
         snapshots.refresh(workspace);
         assertThatThrownBy(() -> exports.requireCurrentPublic(actor, workspace, published))
+                .isInstanceOf(ContentRepositoryException.class);
+        assertThat(exports.publicProjectionChanged(actor, workspace, published)).isTrue();
+        doThrow(new SecurityException("revoked")).when(auth).authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
+        assertThatThrownBy(() -> exports.publicProjectionChanged(actor, workspace, published))
+                .isInstanceOf(SecurityException.class);
+    }
+
+    @Test
+    void withdrawnPublicationIsUnavailableRatherThanAChangedProjection() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var tree = new LinkedHashMap<String, byte[]>();
+        tree.put(RepositoryPublishingPolicy.PATH, text("enabled: true\nmode: public-root\n"));
+        tree.put("public/article.md", text("# Public\nContent"));
+        fixture.commitRemote(workspace, tree);
+        var snapshots = new JGitPublicContentSnapshots(fixture.authority(), Clock.systemUTC(), Duration.ofHours(1));
+        snapshots.refresh(workspace);
+        var exports = new JGitRepositorySnapshotExports(
+                fixture.authority(),
+                auth,
+                directory.toRealPath().resolve("exports"),
+                1024 * 1024,
+                Duration.ofSeconds(5),
+                snapshots);
+        var published = exports.createPublic(actor, workspace);
+        exports.release(published.export().exportId());
+        tree.put(RepositoryPublishingPolicy.PATH, text("enabled: false\nmode: public-root\n"));
+        fixture.commitRemote(workspace, tree);
+        snapshots.refresh(workspace);
+        assertThatThrownBy(() -> exports.publicProjectionChanged(actor, workspace, published))
                 .isInstanceOf(ContentRepositoryException.class);
     }
 

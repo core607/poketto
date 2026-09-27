@@ -226,6 +226,50 @@ final class AccountCopyStore {
         return new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE, failure);
     }
 
+    /** The journal's transition rules; the socket tests' in-memory journal applies the same ones. */
+    static void requireTransition(
+            AccountCopyRecord.Owner owner, AccountCopyRecord current, AccountCopyRecord next, long nextExpiry) {
+        ProtocolValues.require(next.owner().equals(owner), "copy owner", "must match the held account");
+        ProtocolValues.require(
+                next.revision() == (current == null ? 0 : current.revision() + 1),
+                "copy revision",
+                "must advance the held journal");
+        ProtocolValues.require(
+                current == null || current.copyId().equals(next.copyId()),
+                "copy identity",
+                "must not replace existing work");
+        if (current != null) {
+            ProtocolValues.require(
+                    current.phase() != AccountCopyRecord.Phase.DISCARDING
+                            || next.phase() == AccountCopyRecord.Phase.DISCARDING,
+                    "discarded copy",
+                    "must not become executable again");
+            // Only a public copy's rebuild re-pins its commit and projection, in one write from
+            // REFRESHING to REFRESHING, so the copy ID never leaves the journal.
+            boolean rebuilt = !owner.fullRead()
+                    && current.phase() == AccountCopyRecord.Phase.REFRESHING
+                    && next.phase() == AccountCopyRecord.Phase.REFRESHING;
+            ProtocolValues.require(
+                    rebuilt
+                            || current.state()
+                                    .originalCommit()
+                                    .equals(next.state().originalCommit()),
+                    "original commit",
+                    "must remain pinned");
+            ProtocolValues.require(
+                    current.original() == null || current.original().equals(next.original()),
+                    "original archive",
+                    "must remain immutable");
+            ProtocolValues.require(
+                    rebuilt || Objects.equals(current.publicExport(), next.publicExport()),
+                    "public projection",
+                    "must remain pinned");
+            ProtocolValues.require(next.expiresAt() >= current.expiresAt(), "copy expiry", "must not move backwards");
+        }
+        long latest = Math.max(nextExpiry, current == null ? 0 : current.expiresAt());
+        ProtocolValues.require(next.expiresAt() <= latest, "copy expiry", "exceeds idle retention");
+    }
+
     final class Lease implements OriginalFileLookup, AutoCloseable {
         private final AccountCopyRecord.Owner owner;
         private final RetainedFileLocks.Held held;
@@ -334,38 +378,7 @@ final class AccountCopyStore {
         }
 
         private void requireNext(AccountCopyRecord next) {
-            ProtocolValues.require(next.owner().equals(owner), "copy owner", "must match the held account");
-            ProtocolValues.require(
-                    next.revision() == (current == null ? 0 : current.revision() + 1),
-                    "copy revision",
-                    "must advance the held journal");
-            ProtocolValues.require(
-                    current == null || current.copyId().equals(next.copyId()),
-                    "copy identity",
-                    "must not replace existing work");
-            if (current != null) {
-                ProtocolValues.require(
-                        current.phase() != AccountCopyRecord.Phase.DISCARDING
-                                || next.phase() == AccountCopyRecord.Phase.DISCARDING,
-                        "discarded copy",
-                        "must not become executable again");
-                ProtocolValues.require(
-                        current.state().originalCommit().equals(next.state().originalCommit()),
-                        "original commit",
-                        "must remain pinned");
-                ProtocolValues.require(
-                        current.original() == null || current.original().equals(next.original()),
-                        "original archive",
-                        "must remain immutable");
-                ProtocolValues.require(
-                        Objects.equals(current.publicExport(), next.publicExport()),
-                        "public projection",
-                        "must remain pinned");
-                ProtocolValues.require(
-                        next.expiresAt() >= current.expiresAt(), "copy expiry", "must not move backwards");
-            }
-            long latest = Math.max(nextExpiry(), current == null ? 0 : current.expiresAt());
-            ProtocolValues.require(next.expiresAt() <= latest, "copy expiry", "exceeds idle retention");
+            requireTransition(owner, current, next, nextExpiry());
         }
 
         /** Caller first confirms worker disposal; deleting metadata does not delete disk work. */

@@ -51,8 +51,11 @@ final class AccountCommand implements AutoCloseable {
         return lease.record().orElse(null);
     }
 
+    /** A discarding copy is gone, and a refreshing one is usable only through its rebuild. */
     void requireLive() {
-        if (record() != null && record().phase() == AccountCopyRecord.Phase.DISCARDING) {
+        if (record() != null
+                && (record().phase() == AccountCopyRecord.Phase.DISCARDING
+                        || record().phase() == AccountCopyRecord.Phase.REFRESHING)) {
             throw new RetainedCopyException(RetainedCopyException.Reason.STALE);
         }
         if (record() != null && store.expired(record())) {
@@ -60,28 +63,48 @@ final class AccountCommand implements AutoCloseable {
         }
     }
 
+    /**
+     * Records a new copy before the worker creates it. A rebuild after a changed publication records
+     * {@code REFRESHING} instead of {@code INITIALIZING}, so an interrupted rebuild resumes under the
+     * same copy ID rather than being refused as an incomplete initialization.
+     *
+     * <p>A rebuild replaces the refreshing record of the same public copy here in one journal write,
+     * after its export exists, so the copy ID never leaves the journal. The caller passes
+     * {@code REFRESHING} only after the worker confirmed that the old copy's files are gone.
+     */
     void initialize(
             UUID copy,
             AccountCopyRecord.Writer writer,
             RetainedSaveState state,
             RepositorySnapshotExports.PublicExport projection,
-            Consumer<Consumer<RepositoryFile>> source) {
+            Consumer<Consumer<RepositoryFile>> source,
+            AccountCopyRecord.Phase phase) {
+        ProtocolValues.require(
+                phase == AccountCopyRecord.Phase.INITIALIZING || phase == AccountCopyRecord.Phase.REFRESHING,
+                "initial copy phase",
+                "must be initializing or refreshing");
+        if (record() != null && replacesRefreshing(copy, phase)) {
+            var current = record();
+            lease.write(new AccountCopyRecord(
+                    1,
+                    owner,
+                    copy,
+                    current.revision() + 1,
+                    Math.max(current.expiresAt(), store.nextExpiry()),
+                    writer,
+                    phase,
+                    null,
+                    null,
+                    state,
+                    projection,
+                    null));
+            return;
+        }
         if (record() != null) {
             throw new RetainedCopyException(RetainedCopyException.Reason.STALE);
         }
         lease.write(new AccountCopyRecord(
-                1,
-                owner,
-                copy,
-                0,
-                store.nextExpiry(),
-                writer,
-                AccountCopyRecord.Phase.INITIALIZING,
-                null,
-                null,
-                state,
-                projection,
-                null));
+                1, owner, copy, 0, store.nextExpiry(), writer, phase, null, null, state, projection, null));
         if (owner.fullRead()) {
             var original = lease.captureOriginal(source);
             var current = record();
@@ -101,6 +124,13 @@ final class AccountCommand implements AutoCloseable {
         }
     }
 
+    private boolean replacesRefreshing(UUID copy, AccountCopyRecord.Phase phase) {
+        return !owner.fullRead()
+                && phase == AccountCopyRecord.Phase.REFRESHING
+                && record().phase() == AccountCopyRecord.Phase.REFRESHING
+                && record().copyId().equals(copy);
+    }
+
     /** Called only after the previous lease is confirmed contained. */
     void bind(AccountCopyRecord.Writer writer) {
         requireLive();
@@ -113,6 +143,28 @@ final class AccountCommand implements AutoCloseable {
 
     SelectedFileSaves.State state() {
         return SelectedFileSaves.State.restore(record().state(), this::retain, owner.fullRead() ? lease : null);
+    }
+
+    /** Called only after a fresh lease found the copy clean; from here the copy's files are disposable. */
+    void beginRefresh() {
+        requireLive();
+        var current = record();
+        write(
+                current.state(),
+                current.writer(),
+                AccountCopyRecord.Phase.REFRESHING,
+                null,
+                current.lastInterruptedCommand(),
+                current.expiresAt());
+    }
+
+    /** Called only after the rebuilt copy's worker lease reported READY. */
+    void finishRefresh(AccountCopyRecord.Writer writer) {
+        var current = record();
+        if (current == null || current.phase() != AccountCopyRecord.Phase.REFRESHING) {
+            throw new RetainedCopyException(RetainedCopyException.Reason.STALE);
+        }
+        write(current.state(), writer, AccountCopyRecord.Phase.READY, null, null, current.expiresAt());
     }
 
     void begin(UUID executionId) {

@@ -10,13 +10,22 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 
-/** Socket tests stub storage only; the Linux account probes cover persistence, quotas and recovery. */
+/**
+ * Socket tests stub storage only, applying the store's journal transition rules in memory; the Linux
+ * account probes cover persistence, quotas and recovery.
+ */
 final class SocketAccountJournal {
     private final ConcurrentHashMap<AccountCopyRecord.Owner, Entry> entries = new ConcurrentHashMap<>();
     private final AccountCopyStore store = mock(AccountCopyStore.class);
+    private final AtomicInteger contended = new AtomicInteger();
+    private final AtomicInteger removed = new AtomicInteger();
+    private volatile Consumer<AccountCopyRecord> afterWrite = record -> {};
 
     SocketAccountJournal() throws IOException {
         when(store.nextExpiry())
@@ -45,22 +54,59 @@ final class SocketAccountJournal {
         return store;
     }
 
+    /** How many acquisitions found the account lock held by another request. */
+    int contended() {
+        return contended.get();
+    }
+
+    /** Runs on the writing thread after each durable write, to interleave events at a journal step. */
+    void afterWrite(Consumer<AccountCopyRecord> hook) {
+        afterWrite = hook;
+    }
+
+    /** How many records were deleted, which leaves their copy ID absent from the journal. */
+    int removed() {
+        return removed.get();
+    }
+
+    Optional<AccountCopyRecord> record(AccountCopyRecord.Owner owner) {
+        Entry entry = entries.get(owner);
+        return entry == null ? Optional.empty() : Optional.ofNullable(entry.record.get());
+    }
+
+    /** Stands in for journal state that only an interrupted host operation could have left. */
+    void rewrite(AccountCopyRecord.Owner owner, UnaryOperator<AccountCopyRecord> change) {
+        entries.get(owner).record.updateAndGet(change);
+    }
+
     private AccountCopyStore.Lease acquire(AccountCopyRecord.Owner owner) throws IOException {
         Entry entry = entries.computeIfAbsent(owner, ignored -> new Entry());
         if (!entry.lock.tryLock()) {
+            contended.incrementAndGet();
             throw new RetainedCopyException(RetainedCopyException.Reason.BUSY);
         }
         var lease = mock(AccountCopyStore.Lease.class);
         when(lease.record()).thenAnswer(call -> Optional.ofNullable(entry.record.get()));
         when(lease.captureOriginal(any())).thenReturn(new AccountCopyRecord.Original("b".repeat(64), 64, 0));
         doAnswer(call -> {
-                    entry.record.set(call.getArgument(0));
+                    AccountCopyRecord next = call.getArgument(0);
+                    AccountCopyStore.requireTransition(owner, entry.record.get(), next, store.nextExpiry());
+                    entry.record.set(next);
+                    afterWrite.accept(next);
                     return null;
                 })
                 .when(lease)
                 .write(any());
         doAnswer(call -> {
+                    var current = entry.record.get();
+                    ProtocolValues.require(
+                            current != null
+                                    && current.copyId().equals(call.getArgument(0))
+                                    && current.phase() == AccountCopyRecord.Phase.DISCARDING,
+                            "discard identity",
+                            "must match the held copy");
                     entry.record.set(null);
+                    removed.incrementAndGet();
                     return null;
                 })
                 .when(lease)

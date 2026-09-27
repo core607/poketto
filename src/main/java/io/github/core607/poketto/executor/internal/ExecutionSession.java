@@ -40,6 +40,13 @@ final class ExecutionSession {
     boolean attaching;
     volatile boolean capacityReleased;
     volatile boolean detached;
+    /**
+     * Set only on the internal lease that inspects a public copy whose publication changed. It runs
+     * no caller command and returns no content, so it needs execution permission, not a current
+     * projection; a caller's command always runs on a lease without this flag.
+     */
+    volatile boolean projectionCheck;
+
     boolean auxiliary;
     UUID retainedAppBoot;
     UUID priorPrincipal;

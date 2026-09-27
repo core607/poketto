@@ -33,6 +33,8 @@ record AccountCopyRecord(
                 "execution identity",
                 "must match the command phase");
         RetainedPublicProjection.validate(owner.workspaceId(), owner.fullRead(), publicExport, state.originalCommit());
+        ProtocolValues.require(
+                phase != Phase.REFRESHING || !owner.fullRead(), "refreshing copy", "must be a public projection");
         if (!owner.fullRead()) {
             ProtocolValues.require(original == null, "public baseline", "must not contain a private archive");
         } else if (phase != Phase.INITIALIZING && phase != Phase.DISCARDING) {
@@ -84,11 +86,18 @@ record AccountCopyRecord(
         }
     }
 
+    /**
+     * {@code REFRESHING} marks a clean public copy whose publication changed: its files are
+     * disposable, and the next admission discards them and rebuilds the copy under the same ID from
+     * current publication. It stays set until the rebuilt copy's first lease is ready, so an
+     * interruption anywhere in the rebuild resumes it instead of losing the copy ID.
+     */
     enum Phase {
         INITIALIZING,
         READY,
         RUNNING,
         INTERRUPTED,
-        DISCARDING
+        DISCARDING,
+        REFRESHING
     }
 }

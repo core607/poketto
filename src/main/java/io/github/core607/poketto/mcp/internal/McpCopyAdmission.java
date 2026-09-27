@@ -47,7 +47,7 @@ final class McpCopyAdmission {
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private record AdmissionRefusal(
-            String code, String reason, boolean executed, boolean recoveryAvailable, String message) {}
+            String code, String reason, boolean executed, boolean recoveryAvailable, String message, String copyId) {}
 
     static McpSchema.CallToolResult admissionRefused(ObjectMapper json, ExecutionAdmissionException exception) {
         var body = new AdmissionRefusal(
@@ -55,7 +55,10 @@ final class McpCopyAdmission {
                 exception.reason().name(),
                 false,
                 exception.recoveryAvailable(),
-                "This command did not execute. Inspect the reason and retry a read-only command against the intended copy ID when available. Earlier interrupted commands may have partially completed; inspect local and remote state before retrying writes.");
+                exception.reason() == ExecutionAdmissionException.Reason.PUBLICATION_CHANGED
+                        ? "This command did not execute. Published content changed after this public copy was opened, and the copy has local changes or pending operations, or could not be confirmed clean, so it was left untouched. Public copies cannot save or run commands against outdated publication: run repo_discard with copyId to drop the local changes, then retry with expectedCopyId=new."
+                        : "This command did not execute. Inspect the reason and retry a read-only command against the intended copy ID when available. Earlier interrupted commands may have partially completed; inspect local and remote state before retrying writes.",
+                exception.copyId().orElse(null));
         return McpSchema.CallToolResult.builder()
                 .addTextContent(json.writeValueAsString(body))
                 .isError(true)
