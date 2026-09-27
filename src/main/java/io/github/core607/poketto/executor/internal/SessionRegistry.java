@@ -123,6 +123,21 @@ final class SessionRegistry {
         return !closed && sessions.replace(previous.key, previous, current);
     }
 
+    /**
+     * Gives the predecessor's admission slot to its successor before the predecessor closes, so no
+     * other request can claim the slot in between. Until its close is confirmed, the predecessor is
+     * tracked as a closing lease, which the heartbeat reconciles if that close fails.
+     */
+    synchronized boolean handOver(ExecutionSession previous, ExecutionSession current) {
+        if (closed || !sessions.replace(previous.key, previous, current)) {
+            return false;
+        }
+        if (!previous.capacityReleased) {
+            closingLeases.put(previous.leaseId, previous);
+        }
+        return true;
+    }
+
     /** Every session and closing lease, for the heartbeat that renews and reconciles them. */
     synchronized List<ExecutionSession> all() {
         var current = new ArrayList<>(sessions.values());

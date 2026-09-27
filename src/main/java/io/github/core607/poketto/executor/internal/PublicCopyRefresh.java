@@ -166,21 +166,22 @@ final class PublicCopyRefresh {
                 + " && printf '%s\\n' " + CLEAN + " )";
     }
 
-    // The journal holds REFRESHING from here on. The old lease is contained before the worker
-    // discards the files, and the rebuilt copy's record replaces the old one only once its export
-    // exists, so every interruption leaves a record that the next admission resumes.
+    // The journal holds REFRESHING from here on. The rebuilt session takes the old lease's admission
+    // slot before that lease closes, so no other request can claim the slot while the worker
+    // discards the files. The rebuilt record replaces the old one in one journal write once its
+    // export exists, so every interruption leaves a record that the next admission resumes.
     private void rebuild(AtomicReference<ExecutionSession> active, AccountCommand held) {
         ExecutionSession previous = active.get();
         AccountCopyRecord record = held.record();
-        lifecycle.stopAndAwait(previous, "session_closed");
-        disposal.discardDisk(previous.principal.subjectId(), record, previous.key, worker.hello());
         var rebuilt = new ExecutionSession(previous.key, previous.principal, false, record.copyId(), UUID.randomUUID());
         rebuilt.busy.set(true);
-        if (!registry.replace(previous, rebuilt)) {
+        if (!registry.handOver(previous, rebuilt)) {
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, true);
         }
         previous.busy.set(false);
         active.set(rebuilt);
+        lifecycle.stopAndAwait(previous, "session_closed");
+        disposal.discardDisk(previous.principal.subjectId(), record, previous.key, worker.hello());
         lifecycle.initializeCopy(rebuilt, Optional.empty(), held, AccountCopyRecord.Phase.REFRESHING);
         held.finishRefresh(lifecycle.writer(rebuilt));
         rebuilt.accountRecord = held.record();
