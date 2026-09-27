@@ -22,6 +22,17 @@ import tools.jackson.databind.ObjectMapper;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class CommunityConfiguration {
+    /** Rate-limit windows and reader days follow this clock; tests fix it so a window cannot roll over mid-test. */
+    private final Clock clock;
+
+    CommunityConfiguration() {
+        this(Clock.systemUTC());
+    }
+
+    CommunityConfiguration(Clock clock) {
+        this.clock = clock;
+    }
+
     @Bean
     CommunityCorrections corrections(
             JdbcTemplate jdbc,
@@ -38,7 +49,7 @@ class CommunityConfiguration {
                 communityAccounts,
                 new CommunityScope(transactions, communityAccounts, publicationGuard, snapshots),
                 new CommunityTargets(publications, snapshots),
-                new CommunityActivity(jdbc, Clock.systemUTC()),
+                new CommunityActivity(jdbc, clock),
                 edits);
     }
 
@@ -55,7 +66,7 @@ class CommunityConfiguration {
             CommunityCorrections corrections) {
         var scope = new CommunityScope(transactions, communityAccounts, publicationGuard, snapshots);
         var targets = new CommunityTargets(publications, snapshots);
-        var activity = new CommunityActivity(jdbc, Clock.systemUTC());
+        var activity = new CommunityActivity(jdbc, clock);
         var relations = new CommunityRelations(jdbc, scope, targets, activity);
         var comments = new CommunityComments(jdbc, communityAccounts, scope, targets, activity);
         var feeds = new CommunityFeeds(jdbc, scope, targets, json);
@@ -77,6 +88,6 @@ class CommunityConfiguration {
             random.nextBytes(salt);
             return salt;
         });
-        return new JdbcReadership(jdbc, new CommunityTargets(publications, snapshots), seen, Clock.systemUTC());
+        return new JdbcReadership(jdbc, new CommunityTargets(publications, snapshots), seen, clock);
     }
 }
