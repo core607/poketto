@@ -309,6 +309,8 @@ class PublicCopyRefreshTests {
             }
             assertThat(worker.copies).containsExactly(entry(copy, THIRD));
             assertThat(worker.discarded).containsExactly("DISCARDED", "ABSENT", "DISCARDED");
+            // Each rebuild re-pinned the record in one write, so the copy ID never left the journal.
+            assertThat(worker.accounts.removed()).isZero();
             assertThat(worker.commands())
                     .extracting(Worker.Command::commit, Worker.Command::command)
                     .containsExactly(
@@ -332,6 +334,57 @@ class PublicCopyRefreshTests {
             assertThat(worker.copies).containsExactly(entry(copy, FIRST));
             assertThat(worker.accounts.record(owner).orElseThrow().phase()).isEqualTo(AccountCopyRecord.Phase.READY);
             verify(exports, times(1)).createPublic(any(), any());
+        }
+    }
+
+    @Test
+    void aWorkerCapacityRefusalOfTheInspectionIsReportedAsCapacity() throws Exception {
+        try (var worker = new Worker();
+                var executor = executor(worker)) {
+            String copy = run(executor, "new", "ls").copyId();
+            publish(SECOND);
+            worker.inspectionCapacity = true;
+
+            assertThatThrownBy(() -> run(executor, copy, "pwd"))
+                    .isInstanceOfSatisfying(ExecutionAdmissionException.class, refused -> {
+                        assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.CAPACITY);
+                        assertThat(refused.recoveryAvailable()).isTrue();
+                    });
+
+            assertThat(worker.operations("DISCARD")).isEmpty();
+            assertThat(worker.copies).containsExactly(entry(copy, FIRST));
+            worker.inspectionCapacity = false;
+            var refreshed = run(executor, copy, "pwd");
+            assertThat(refreshed.refreshed()).isTrue();
+            assertThat(refreshed.copyId()).isEqualTo(copy);
+        }
+    }
+
+    @Test
+    void theRebuiltCopyKeepsTheAdmissionSlotWhileTheWorkerDiscards() throws Exception {
+        var other = mock(AuthPrincipal.class);
+        when(other.kind()).thenReturn(AuthPrincipal.Kind.API_KEY);
+        when(other.subjectId()).thenReturn(UUID.randomUUID());
+        when(other.accountId()).thenReturn(UUID.randomUUID());
+        try (var callers = Executors.newVirtualThreadPerTaskExecutor();
+                var worker = new Worker();
+                var executor = executor(worker, 1)) {
+            String copy = run(executor, "new", "ls").copyId();
+            publish(SECOND);
+            worker.holdDiscard = true;
+            var refreshing = callers.submit(() -> run(executor, copy, "pwd"));
+            assertThat(worker.discardEntered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            assertThatThrownBy(() -> run(executor, other, "new", "pwd"))
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            refused -> assertThat(refused.reason())
+                                    .isEqualTo(ExecutionAdmissionException.Reason.CAPACITY));
+
+            worker.discardRelease.countDown();
+            var refreshed = refreshing.get(10, TimeUnit.SECONDS);
+            assertThat(refreshed.refreshed()).isTrue();
+            assertThat(worker.operations("OPEN")).hasSize(2);
         }
     }
 
@@ -391,6 +444,10 @@ class PublicCopyRefreshTests {
     }
 
     private IsolatedRepositoryExecutor executor(Worker worker) {
+        return executor(worker, 8);
+    }
+
+    private IsolatedRepositoryExecutor executor(Worker worker, int maxSessions) {
         return new IsolatedRepositoryExecutor(
                 worker.accounts.store(),
                 mock(PortableContentExports.class),
@@ -399,14 +456,19 @@ class PublicCopyRefreshTests {
                 auth,
                 exports,
                 worker.client(),
-                8,
+                maxSessions,
                 Duration.ofSeconds(8),
                 Duration.ofSeconds(3));
     }
 
     private RepositoryExecutor.ExecutionResult run(IsolatedRepositoryExecutor executor, String copy, String command) {
+        return run(executor, principal, copy, command);
+    }
+
+    private static RepositoryExecutor.ExecutionResult run(
+            IsolatedRepositoryExecutor executor, AuthPrincipal caller, String copy, String command) {
         return executor.execute(
-                principal,
+                caller,
                 WORKSPACE,
                 "transport",
                 new RepositoryExecutor.CopyRequest(copy),
@@ -437,8 +499,12 @@ class PublicCopyRefreshTests {
         private final Set<String> startedUnits = ConcurrentHashMap.newKeySet();
         private final CountDownLatch inspectionEntered = new CountDownLatch(1);
         private final CountDownLatch inspectionRelease = new CountDownLatch(1);
+        private final CountDownLatch discardEntered = new CountDownLatch(1);
+        private final CountDownLatch discardRelease = new CountDownLatch(1);
         private volatile boolean dirty;
         private volatile boolean holdInspection;
+        private volatile boolean inspectionCapacity;
+        private volatile boolean holdDiscard;
         private volatile boolean failNextOpen;
         private volatile String attachedGitCommit;
         private volatile Runnable onInspection = () -> {};
@@ -600,6 +666,10 @@ class PublicCopyRefreshTests {
                 inspectionEntered.countDown();
                 assertThat(inspectionRelease.await(8, TimeUnit.SECONDS)).isTrue();
             }
+            if (inspection && inspectionCapacity) {
+                refuse(response, "EXECUTION_CAPACITY");
+                return;
+            }
             boolean clean = inspection && !dirty;
             var result = new LinkedHashMap<String, Object>();
             result.put("commit", commit);
@@ -616,7 +686,11 @@ class PublicCopyRefreshTests {
             response.put("result", result);
         }
 
-        private void discard(JsonNode data, Map<String, Object> response) {
+        private void discard(JsonNode data, Map<String, Object> response) throws InterruptedException {
+            if (holdDiscard) {
+                discardEntered.countDown();
+                assertThat(discardRelease.await(8, TimeUnit.SECONDS)).isTrue();
+            }
             String copy = data.path("copyId").stringValue();
             String commit = data.path("commit").stringValue();
             String state = copies.remove(copy, commit) ? "DISCARDED" : "ABSENT";
