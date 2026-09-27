@@ -1,7 +1,6 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
-import { api } from "../lib/browser-api";
-import { message } from "./admin";
+import { api, message } from "../lib/browser-api";
 import { AccountSecurity } from "./account-security";
 import { CreateWorkspace } from "./create-workspace";
 import { GitHubSpace } from "./github-space";

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Identity } from "./admin";
+import type { Identity } from "../lib/types";
 import type { RepositoryFile } from "../lib/types";
 import {
   localDrafts,

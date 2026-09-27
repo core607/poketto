@@ -52,10 +52,12 @@ public interface Corrections {
                     || body.getBytes(StandardCharsets.UTF_8).length > MAX_BODY_BYTES) {
                 throw new IllegalArgumentException("correction body must be non-blank text of at most 1 MiB");
             }
+            CommunityText.requireWellFormed(body, "correction body");
             reason = reason == null ? "" : reason.strip();
             if (reason.codePointCount(0, reason.length()) > 500 || reason.indexOf('\0') >= 0) {
                 throw new IllegalArgumentException("correction reason exceeds 500 characters");
             }
+            CommunityText.requireWellFormed(reason, "correction reason");
         }
     }
 

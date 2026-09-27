@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, ApiError } from "../lib/browser-api";
-import { message } from "./admin";
+import { api, ApiError, message } from "../lib/browser-api";
 import { GitHubRepositoryReconnection } from "./github-repository-reconnection";
 
 type ConnectionInfo = {

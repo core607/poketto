@@ -7,20 +7,14 @@ import static io.github.core607.poketto.auth.AuthException.Code.INVALID_INPUT;
 import static io.github.core607.poketto.auth.AuthException.Code.LAST_OWNER;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.EnumSet;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -59,7 +53,6 @@ public final class AuthService {
     private final PasswordEncoder passwords;
     private final ApplicationEventPublisher events;
     private final Clock clock;
-    private final SecureRandom random = new SecureRandom();
     private final AccountPasswords accountPasswords;
     private final WorkspaceInvitations invitations;
     private final ApiKeys keys;
@@ -162,9 +155,7 @@ public final class AuthService {
                     and workspace_id = ? and revoked_at is null
                     and not exists (select 1 from oauth_connections c where c.key_id=auth_api_keys.key_id and (c.expires_at<=? or c.resource<>?))
                     """,
-                    (rs, row) -> Arrays.stream((String[]) rs.getArray(1).getArray())
-                            .map(Capability::valueOf)
-                            .collect(Collectors.toSet()),
+                    (rs, row) -> readCapabilities(rs, 1),
                     principal.subjectId(),
                     principal.accountId(),
                     workspace.value(),
@@ -223,7 +214,7 @@ public final class AuthService {
     }
 
     record Membership(MembershipRole role, Set<Capability> permissions) {}
-    /** Machine workspace selection comes exclusively from the durable credential binding. */
+
     /** True for the backing key of an OAuth connection, whose tokens are for the MCP entrance only. */
     public boolean connectionBacked(AuthPrincipal principal) {
         return principal != null
@@ -234,6 +225,7 @@ public final class AuthService {
                         principal.subjectId()));
     }
 
+    /** Machine workspace selection comes exclusively from the durable credential binding. */
     public WorkspaceId workspaceForKey(AuthPrincipal principal) {
         if (principal == null || principal.kind() != AuthPrincipal.Kind.API_KEY) {
             throw failure(DENIED);
@@ -513,23 +505,8 @@ public final class AuthService {
         return normalized;
     }
 
-    String randomToken(String prefix) {
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        return prefix + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
-
     static String digestCredential(String token) {
-        return digest(token == null || token.length() > 256 ? "" : token);
-    }
-
-    static String digest(String token) {
-        try {
-            return HexFormat.of()
-                    .formatHex(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 unavailable", exception);
-        }
+        return CredentialTokens.digest(token == null || token.length() > 256 ? "" : token);
     }
 
     Timestamp timestamp() {
@@ -559,8 +536,6 @@ public final class AuthService {
             items = List.copyOf(items);
         }
     }
-
-    public record InvitationInfo(UUID id, Instant expiresAt, boolean revoked, boolean used) {}
 
     public record WorkspaceInvitationInfo(
             UUID id, Instant expiresAt, boolean revoked, boolean used, Set<Capability> permissions) {

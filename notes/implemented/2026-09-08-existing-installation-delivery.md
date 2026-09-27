@@ -8,13 +8,13 @@ protected overlay and reconciliation rules supersede this record's image-only
 restriction when that extension is enabled; unrelated settings retain this
 record's boundary.
 
-[Mirror registry delivery](2026-09-10-mirror-registry-delivery.md) adds `POKETTO_DEPLOY_MODE=mirror` to this layout. Both canonical digests are pulled before invoking the updater. Optional registry credentials are used only for those pulls and are deleted afterwards; application settings remain operator-owned.
+In pull mode both canonical digests are pulled before invoking the updater. Registry credentials are used only for those pulls and are deleted afterwards; application settings remain operator-owned.
 
 ## Problem and decision
 
 An existing installation can use operator-owned Compose files, private environment files and a separately installed worker. Synchronizing the generic deployment stack into that directory replaces those choices. Streaming a repository password from an older CI configuration can also invalidate the application's current content authority.
 
-Keep the [standard deployment entrance](2026-09-03-continuous-delivery.md) for installations managed by the supplied Compose templates. Add an `existing` layout for updating only the `app` and `frontend` images of an already configured Compose project. This layout uses verified-main publication with a canonical registry pull, a configured mirror pull, or a checksummed archive transfer. Pull mode is the default: the host authenticates to the canonical registry with the deployment job's own package-read token, which no operator credential has to carry. A host that cannot reach that registry selects mirror mode, and one that can reach neither keeps the archive transfer. Mode selection is operator configuration; the updater's behavior is identical once both image digests are present on the host. It does not synchronize Compose, forward application settings, restart dependencies or update the external worker.
+Keep the [standard deployment entrance](2026-09-03-continuous-delivery.md) for installations managed by the supplied Compose templates. Add an `existing` layout for updating only the `app` and `frontend` images of an already configured Compose project. This layout uses verified-main publication with a canonical registry pull or a checksummed archive transfer. Pull mode is the default: the host authenticates to the canonical registry with the deployment job's own package-read token, which no operator credential has to carry. A host that cannot reach that registry selects mirror mode, and one that can reach neither keeps the archive transfer. Mode selection is operator configuration; the updater's behavior is identical once both image digests are present on the host. It does not synchronize Compose, forward application settings, restart dependencies or update the external worker.
 
 ## Operator setup
 
@@ -24,7 +24,7 @@ Place a root-owned `deployment.json` in the deployment root using [existing.exam
 
 Use `--check` with the same image and revision arguments to validate the target without changing containers. The updater requires loaded images whose revision labels match the requested full commit. It refuses a declared environment that disagrees with the running app or frontend.
 
-Set production environment variables `POKETTO_DEPLOY_LAYOUT=existing` and `POKETTO_DEPLOY_ROOT` to the configured root; `POKETTO_DEPLOY_MODE` selects `pull` (the default), `mirror` or `transfer` as described above. Existing SSH target, key and host-key secrets remain in use. After target validation, `POKETTO_DEPLOY_ENABLED=true` enables the GitHub deployment job. The existing-layout step does not receive the repository-password secret. Application-code delivery remains on GitHub; the content repository's provider is an independent runtime setting.
+Set production environment variables `POKETTO_DEPLOY_LAYOUT=existing` and `POKETTO_DEPLOY_ROOT` to the configured root; `POKETTO_DEPLOY_MODE` selects `pull` (the default) or `transfer` as described above. Existing SSH target, key and host-key secrets remain in use. After target validation, `POKETTO_DEPLOY_ENABLED=true` enables the GitHub deployment job. The existing-layout step does not receive the repository-password secret. Application-code delivery remains on GitHub; the content repository's provider is an independent runtime setting.
 
 ## Update and recovery
 

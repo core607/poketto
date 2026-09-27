@@ -1,10 +1,11 @@
 package io.github.core607.poketto.executor.internal;
 
+import static io.github.core607.poketto.executor.internal.SessionWorker.hash;
+
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositoryMovePlan;
@@ -157,10 +158,6 @@ final class SessionMoves {
 
     private static boolean inside(String path, String parent) {
         return path.equals(parent) || path.startsWith(parent + "/");
-    }
-
-    private static String hash(byte[] bytes) {
-        return DocumentRevision.sha256(bytes).value().substring(7);
     }
 
     BridgeReplies.Reply commit(

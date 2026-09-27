@@ -123,7 +123,7 @@ class OAuthHttpIntegrationIT {
                 .param("response_type", "code")
                 .param("state", "browser-state")
                 .param("scope", "repository:execute content:publish offline_access")
-                .param("code_challenge", OAuthService.challenge(VERIFIER))
+                .param("code_challenge", CredentialTokens.challenge(VERIFIER))
                 .param("code_challenge_method", "S256");
         if (requestedResource != null) {
             authorizationRequest.param("resource", requestedResource);
@@ -251,7 +251,7 @@ class OAuthHttpIntegrationIT {
                             .param("redirect_uri", "https://client.example/callback")
                             .param("response_type", "code")
                             .param("state", "browser-state")
-                            .param("code_challenge", OAuthService.challenge(VERIFIER))
+                            .param("code_challenge", CredentialTokens.challenge(VERIFIER))
                             .param("code_challenge_method", "S256")
                             .param("resource", invalid))
                     .andExpect(status().isBadRequest())

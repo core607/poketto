@@ -1,7 +1,7 @@
 "use client";
 import { useConfirmation } from "./confirmation";
 import { useEffect, useRef, useState } from "react";
-import { ApiError } from "../lib/browser-api";
+import { ApiError, message } from "../lib/browser-api";
 import { useWorkspaceApi } from "./workspace-context";
 import { EditorPublicPage } from "./editor-public-page";
 import { DraftRecovery, useEditorRecovery } from "./editor-recovery";
@@ -17,10 +17,10 @@ import type {
   RepositoryFile,
   RepositoryTree,
   PatchResult,
+  Identity,
 } from "../lib/types";
 import { saveRepositoryFile } from "../lib/repository-write";
 import { Markdown } from "./markdown";
-import { message, type Identity } from "./admin";
 import { AssetPicker } from "./asset-picker";
 import { Gallery } from "./gallery";
 import { FileTree } from "./file-tree";

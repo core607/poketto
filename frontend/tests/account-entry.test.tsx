@@ -31,7 +31,8 @@ async function fixture(t: TestContext, url = "https://site.example/admin") {
     });
   const { act } = await import("react");
   const { createRoot } = await import("react-dom/client");
-  const { Admin, Login } = await import("../components/admin");
+  const { Admin } = await import("../components/admin");
+  const { Login } = await import("../components/login");
   const container = window.document.createElement("div");
   window.document.body.append(container);
   const root = scopedRoot(createRoot(container as unknown as HTMLDivElement));

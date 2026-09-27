@@ -37,7 +37,8 @@ class PublicFilePresentationTests {
                 Map.of("public/later.md", release));
         var publications = mock(WorkspacePublications.class);
         when(publications.settings(workspace))
-                .thenReturn(new WorkspacePublications.Publication(workspace, "home", "Home", true, true, ""));
+                .thenReturn(
+                        new WorkspacePublications.Publication(workspace, "home", "Home", true, true, "", "", false));
         var presentation = new PublicFilePresentation(publications, new FixedSnapshots(view));
 
         var scheduled = presentation.page(file("public/later.md"));

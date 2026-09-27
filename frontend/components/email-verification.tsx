@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, ApiError } from "../lib/browser-api";
-import { message } from "./admin";
+import { api, ApiError, message } from "../lib/browser-api";
 
 export type EmailChallenge = {
   challengeId: string;

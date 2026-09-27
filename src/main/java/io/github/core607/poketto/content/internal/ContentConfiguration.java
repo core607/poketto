@@ -1,7 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.DocumentWriteService;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryContentReader;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
@@ -30,11 +29,6 @@ class ContentConfiguration {
     @Bean
     WorkspacePaths workspacePaths(ContentProperties properties) {
         return new WorkspacePaths(properties.dataDir());
-    }
-
-    @Bean
-    CanonicalDocumentCodec canonicalDocumentCodec() {
-        return new CanonicalDocumentCodec();
     }
 
     @Bean
@@ -82,11 +76,6 @@ class ContentConfiguration {
     }
 
     @Bean
-    JGitContentRepositoryStore contentRepositoryStore(RepositoryAuthority authority, CanonicalDocumentCodec codec) {
-        return new JGitContentRepositoryStore(authority, codec, Clock.systemUTC());
-    }
-
-    @Bean
     RepositoryContentReader repositoryContentReader(RepositoryAuthority authority) {
         return new JGitRepositoryContentReader(authority);
     }
@@ -95,12 +84,6 @@ class ContentConfiguration {
     JGitPublicContentSnapshots publicContentSnapshots(RepositoryAuthority authority, RepositoryProperties properties) {
         return new JGitPublicContentSnapshots(
                 authority, Clock.systemUTC(), Duration.ofSeconds(properties.staleAfterSeconds()));
-    }
-
-    @Bean
-    DocumentWriteService documentWriteService(
-            RepositoryAuthority authority, CanonicalDocumentCodec codec, JGitContentRepositoryStore store) {
-        return new JGitDocumentWriteService(authority, codec, store, Clock.systemUTC());
     }
 
     /**

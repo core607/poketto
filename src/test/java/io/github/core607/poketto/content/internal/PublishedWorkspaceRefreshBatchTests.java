@@ -19,13 +19,14 @@ class PublishedWorkspaceRefreshBatchTests {
         var publications = mock(WorkspacePublications.class);
         var page = IntStream.range(0, 8)
                 .mapToObj(index -> new WorkspacePublications.Publication(
-                        WorkspaceId.random(), "space-" + index, "Space", true, true, ""))
+                        WorkspaceId.random(), "space-" + index, "Space", true, true, "", "", false))
                 .toList();
         WorkspaceId defaultId = page.getFirst().workspaceId();
         WorkspaceId last = WorkspaceId.random();
         when(publications.publishedAfter(Optional.empty(), 8)).thenReturn(page);
         when(publications.publishedAfter(Optional.of(page.getLast().workspaceId()), 8))
-                .thenReturn(List.of(new WorkspacePublications.Publication(last, "last", "Last", true, true, "")));
+                .thenReturn(List.of(
+                        new WorkspacePublications.Publication(last, "last", "Last", true, true, "", "", false)));
         var batch = new PublishedWorkspaceRefreshBatch(publications, () -> defaultId);
         var refreshed = new ArrayList<WorkspaceId>();
         try (var refresher = new ContentSnapshotRefresher(refreshed::add, batch, Duration.ofSeconds(30))) {
@@ -49,7 +50,7 @@ class PublishedWorkspaceRefreshBatchTests {
         WorkspaceId defaultId = WorkspaceId.random();
         var page = IntStream.range(0, 8)
                 .mapToObj(index -> new WorkspacePublications.Publication(
-                        WorkspaceId.random(), "space-" + index, "Space", true, true, ""))
+                        WorkspaceId.random(), "space-" + index, "Space", true, true, "", "", false))
                 .toList();
         when(publications.publishedAfter(Optional.empty(), 8)).thenReturn(page, List.of());
         when(publications.publishedAfter(Optional.of(page.getLast().workspaceId()), 8))

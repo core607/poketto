@@ -1,5 +1,7 @@
 package io.github.core607.poketto.content;
 
+import static io.github.core607.poketto.content.internal.MarkdownNodes.next;
+
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -119,16 +121,5 @@ public final class MarkdownText {
             node = next(node, root);
         }
         return result.toString().replaceAll("(?U)\\s+", " ").strip();
-    }
-
-    private static Node next(Node node, Node root) {
-        if (node.getFirstChild() != null) {
-            return node.getFirstChild();
-        }
-        Node current = node;
-        while (current != root && current.getNext() == null) {
-            current = current.getParent();
-        }
-        return current == root ? null : current.getNext();
     }
 }

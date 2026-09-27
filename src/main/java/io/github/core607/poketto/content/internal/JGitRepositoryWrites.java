@@ -141,7 +141,7 @@ final class JGitRepositoryWrites {
                 throw new RepositoryConflictException(
                         "repository base commit changed; read current files before retrying");
             }
-            try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspace);
+            try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspace);
                     RevWalk walk = new RevWalk(repository);
                     var reader = repository.newObjectReader();
                     ObjectInserter inserter = repository.newObjectInserter()) {

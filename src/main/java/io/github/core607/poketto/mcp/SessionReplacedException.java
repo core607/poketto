@@ -6,8 +6,7 @@ import java.util.Optional;
 public final class SessionReplacedException extends RuntimeException {
     public enum Reason {
         MISSING_COPY,
-        DIFFERENT_COPY,
-        CLOSED_COPY
+        DIFFERENT_COPY
     }
 
     private final Reason reason;

@@ -4,8 +4,6 @@ import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.ContentExportException;
 import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.DocumentConflictException;
-import io.github.core607.poketto.content.DocumentNotFoundException;
 import io.github.core607.poketto.content.RepositoryConflictException;
 import io.github.core607.poketto.content.RepositoryMoveDependencyException;
 import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
@@ -66,16 +64,9 @@ class ProblemResponses extends ResponseEntityExceptionHandler {
         return problem(status, "Image unavailable", exception.getMessage());
     }
 
-    @ExceptionHandler({PublicResourceNotFoundException.class, DocumentNotFoundException.class})
-    ProblemDetail notFound(RuntimeException exception) {
+    @ExceptionHandler(PublicResourceNotFoundException.class)
+    ProblemDetail notFound(PublicResourceNotFoundException exception) {
         return problem(HttpStatus.NOT_FOUND, "Not found", exception.getMessage());
-    }
-
-    @ExceptionHandler(DocumentConflictException.class)
-    ProblemDetail documentConflict(DocumentConflictException exception) {
-        ProblemDetail problem = problem(HttpStatus.CONFLICT, "Conflict", exception.getMessage());
-        exception.liveRevision().ifPresent(revision -> problem.setProperty("liveRevision", revision.value()));
-        return problem;
     }
 
     @ExceptionHandler(RepositoryConflictException.class)

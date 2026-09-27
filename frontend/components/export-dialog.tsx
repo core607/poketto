@@ -2,6 +2,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ApiError } from "../lib/browser-api";
 import { useWorkspaceApi, useWorkspacePath } from "./workspace-context";
+import { useModal } from "./use-modal";
 
 type Receipt = {
   handle: string;
@@ -24,7 +25,7 @@ export function ExportDialog({
 }) {
   const api = useWorkspaceApi();
   const workspacePath = useWorkspacePath();
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useModal(returnFocus, fallbackFocus);
   const alive = useRef(true);
   const pending = useRef(false);
   const title = useId();
@@ -35,19 +36,11 @@ export function ExportDialog({
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [now, setNow] = useState(Date.now());
   useLayoutEffect(() => {
-    const element = dialog.current!;
     alive.current = true;
-    element.showModal();
     return () => {
       alive.current = false;
-      element.close();
-      queueMicrotask(() => {
-        if (element.isConnected && element.open) return;
-        const target = returnFocus?.isConnected ? returnFocus : fallbackFocus;
-        if (target?.isConnected) target.focus();
-      });
     };
-  }, [returnFocus, fallbackFocus]);
+  }, []);
   useEffect(() => {
     if (!receipt) return;
     const timer = window.setInterval(() => setNow(Date.now()), 1000);

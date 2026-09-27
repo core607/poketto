@@ -1,12 +1,12 @@
 package io.github.core607.poketto.content;
 
+import static io.github.core607.poketto.content.internal.DocumentPathRules.collisionKey;
+
 import io.github.core607.poketto.content.internal.RepositoryPathRules;
 import io.github.core607.poketto.content.internal.StrictText;
 import java.nio.charset.StandardCharsets;
-import java.text.Normalizer;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -178,11 +178,6 @@ public record RepositoryMediaIndex(Map<String, Media> files) {
             throw invalid();
         }
         return node.stringValue();
-    }
-
-    private static String collisionKey(String path) {
-        String normalized = Normalizer.normalize(path, Normalizer.Form.NFC);
-        return Normalizer.normalize(normalized.toUpperCase(Locale.ROOT).toLowerCase(Locale.ROOT), Normalizer.Form.NFC);
     }
 
     private static IllegalArgumentException invalid() {

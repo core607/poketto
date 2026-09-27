@@ -58,6 +58,9 @@ class PublicDocumentControllerTests {
     @Autowired
     FakeSnapshots snapshots;
 
+    @Autowired
+    PublicDocuments documents;
+
     @BeforeEach
     void reset() {
         snapshots.failure = null;
@@ -133,12 +136,8 @@ class PublicDocumentControllerTests {
     }
 
     @Test
-    void tagsComeFromTheSamePublicSnapshot() throws Exception {
-        mvc.perform(get("/api/public/tags"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tags.length()").value(2))
-                .andExpect(jsonPath("$.tags[0]").value("notes"))
-                .andExpect(jsonPath("$.tags[1]").value("知识"));
+    void tagsComeFromTheSamePublicSnapshot() {
+        assertThat(documents.tags(DEFAULT.id(), 0, 100).tags()).containsExactly("notes", "知识");
         assertThat(snapshots.calls).isOne();
     }
 
@@ -146,7 +145,7 @@ class PublicDocumentControllerTests {
     void expiredOrInvalidSnapshotsReturnGenericServiceUnavailableEverywhere() throws Exception {
         snapshots.failure = new ContentRepositoryException(
                 "private workspace or policy diagnostic", ContentRepositoryException.Recovery.RECONNECT, null);
-        for (String path : List.of("/api/public/documents", "/api/public/tags", "/api/public/document?route=/城市/雨")) {
+        for (String path : List.of("/api/public/documents", "/api/public/document?route=/城市/雨")) {
             String body = mvc.perform(get(path))
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
@@ -283,7 +282,7 @@ class PublicDocumentControllerTests {
             var publications = Mockito.mock(WorkspacePublications.class);
             Mockito.when(publications.settings(DEFAULT.id()))
                     .thenReturn(new WorkspacePublications.Publication(
-                            DEFAULT.id(), "home", DEFAULT.displayName(), true, true, ""));
+                            DEFAULT.id(), "home", DEFAULT.displayName(), true, true, "", "", false));
             return new PublicDocuments(snapshots, workspaces, assets, publications);
         }
     }

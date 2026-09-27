@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { api, ApiError } from "../lib/browser-api";
-import { allArticles, articles, PublicApiError } from "../lib/public-api";
+import { articles } from "../lib/public-api";
 
 test("workspace invitation rejection gives an actionable message without rendering server diagnostics", async () => {
   const previous = globalThis.fetch;
@@ -220,27 +220,6 @@ test("server public reads are uncached and never forward a browser identity", as
   };
   try {
     assert.equal((await articles()).total, 0);
-  } finally {
-    globalThis.fetch = previous;
-  }
-});
-
-test("sitemap enumeration fails instead of mixing publication commits", async () => {
-  const previous = globalThis.fetch;
-  let calls = 0;
-  globalThis.fetch = async () =>
-    Response.json({
-      commit: ++calls === 1 ? "before" : "after",
-      items: [],
-      total: 101,
-      offset: 0,
-      limit: 100,
-    });
-  try {
-    await assert.rejects(
-      allArticles(),
-      (error) => error instanceof PublicApiError && error.status === 503,
-    );
   } finally {
     globalThis.fetch = previous;
   }

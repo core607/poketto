@@ -94,7 +94,6 @@ def main():
     parser.add_argument('--environment', type=Path)
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--suite', action='store_true')
-    parser.add_argument('--wheelhouse', type=Path)
     args = parser.parse_args()
     if not sys.platform.startswith('linux'):
         raise SystemExit('executorServiceTests requires Linux; Windows must use the required Docker gate')
@@ -111,10 +110,9 @@ def main():
     if not python.exists():
         venv.EnvBuilder(with_pip=True).create(environment)
     if not marker.exists() or marker.read_text() != identity:
-        index = ['--no-index', '--find-links', str(args.wheelhouse.resolve())] if args.wheelhouse else ['--index-url', 'https://pypi.org/simple']
         subprocess.run([str(python), '-I', '-m', 'pip', '--isolated', '--require-virtualenv',
             '--disable-pip-version-check', 'install', '--no-deps', '--only-binary=:all:',
-            *index, '--timeout', '30', '--retries', '2',
+            '--index-url', 'https://pypi.org/simple', '--timeout', '30', '--retries', '2',
             '-r', str(source / 'requirements.txt')], check=True, timeout=180)
         marker.write_text(identity)
     result = subprocess.run([str(python), '-I', str(source / 'run_tests.py'), '--suite', '--report', str(report)],

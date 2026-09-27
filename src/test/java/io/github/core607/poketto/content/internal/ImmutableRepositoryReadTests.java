@@ -104,11 +104,9 @@ class ImmutableRepositoryReadTests {
     }
 
     @Test
-    void unbornRefreshRemovesMainAndWorktreeWhileAnOldExactReadRemainsUsable() throws Exception {
+    void unbornRefreshRemovesMainWhileAnOldExactReadRemainsUsable() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var descriptor = load(fixture);
-        fixture.authority().read(workspace, snapshot -> snapshot.commitId());
-        assertThat(fixture.cache(workspace).resolve("public/image.png")).exists();
         var gate = new PayloadGate(fixture.authority(), descriptor);
         try (var remote = fixture.openRemote(workspace)) {
             var update = remote.updateRef(Constants.R_HEADS + "main");
@@ -123,10 +121,8 @@ class ImmutableRepositoryReadTests {
                                 () -> fixture.authority().readObjects(workspace, snapshot -> snapshot.commitId()))
                         .get(5, TimeUnit.SECONDS);
                 assertThat(empty).isEmpty();
-                assertThat(fixture.cache(workspace).resolve("public/image.png")).doesNotExist();
-                try (var cache = JGitContentRepositoryStore.openCache(fixture.cache(workspace), workspace)) {
+                try (var cache = RepositoryCaches.openCache(fixture.cache(workspace), workspace)) {
                     assertThat(cache.resolve(Constants.R_HEADS + "main")).isNull();
-                    assertThat(cache.readDirCache().getEntryCount()).isZero();
                 }
             } finally {
                 gate.release.countDown();
@@ -217,7 +213,7 @@ class ImmutableRepositoryReadTests {
     void immutableReadsDoNotMaterializeFilesOrReattachHead() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var descriptor = load(fixture);
-        try (var cache = JGitContentRepositoryStore.openCache(fixture.cache(workspace), workspace)) {
+        try (var cache = RepositoryCaches.openCache(fixture.cache(workspace), workspace)) {
             var detached = cache.updateRef(Constants.HEAD, true);
             detached.setNewObjectId(ObjectId.fromString(descriptor.commit()));
             detached.forceUpdate();
@@ -262,7 +258,7 @@ class ImmutableRepositoryReadTests {
         Path cache = fixture.cache(workspace);
         Path moved = cache.resolveSibling("moved-cache");
         assertThat(moved.toAbsolutePath().normalize().startsWith(directory)).isTrue();
-        Repository opened = spy(JGitContentRepositoryStore.openCache(cache, workspace));
+        Repository opened = spy(RepositoryCaches.openCache(cache, workspace));
         var gitDirectory = opened.getDirectory();
         var closed = new AtomicBoolean();
         var closeFailure = new IllegalStateException("injected close failure after real closure");
@@ -306,7 +302,7 @@ class ImmutableRepositoryReadTests {
         for (String operation : new String[] {"HEAD detach", "main delete", "HEAD relink"}) {
             var fixture = new RemoteRepositoryFixture(directory.resolve(operation.replace(' ', '-')));
             load(fixture);
-            try (Repository repository = JGitContentRepositoryStore.openCache(fixture.cache(workspace), workspace)) {
+            try (Repository repository = RepositoryCaches.openCache(fixture.cache(workspace), workspace)) {
                 Repository observed = spy(repository);
                 Path headLock = repository.getDirectory().toPath().resolve("HEAD.lock");
                 Path mainLock = repository.getDirectory().toPath().resolve("refs/heads/main.lock");
@@ -336,7 +332,7 @@ class ImmutableRepositoryReadTests {
         for (boolean ioFailure : new boolean[] {false, true}) {
             var fixture = new RemoteRepositoryFixture(directory.resolve("suppressed-" + ioFailure));
             load(fixture);
-            try (Repository repository = JGitContentRepositoryStore.openCache(fixture.cache(workspace), workspace)) {
+            try (Repository repository = RepositoryCaches.openCache(fixture.cache(workspace), workspace)) {
                 Repository observed = spy(repository);
                 Path headLock = repository.getDirectory().toPath().resolve("HEAD.lock");
                 Path mainLock = repository.getDirectory().toPath().resolve("refs/heads/main.lock");

@@ -1,11 +1,8 @@
 "use client";
 import { FormEvent, useState } from "react";
-import { api } from "../lib/browser-api";
+import { api, message } from "../lib/browser-api";
 import { date } from "../lib/format";
-import { message } from "./admin";
-import { AdminPagination } from "./admin-pagination";
-
-import { useSitePage } from "./site-page";
+import { AdminPagination, useAdminPage } from "./admin-pagination";
 import { SiteAccountSpaces } from "./site-review";
 
 export const siteGroups = {
@@ -57,7 +54,7 @@ export function SiteAccounts() {
 }
 
 function Accounts({ query }: { query: string }) {
-  const page = useSitePage<Account>(
+  const page = useAdminPage<Account>(
     "/api/auth/site/accounts?query=" + encodeURIComponent(query),
   );
   const [selected, setSelected] = useState<Account | null>(null);
@@ -123,7 +120,7 @@ function AccountGroup({
   const [group, setGroup] = useState<SiteGroup>(account.group);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const history = useSitePage<Change>(
+  const history = useAdminPage<Change>(
     `/api/auth/site/accounts/${account.accountId}/group-history`,
   );
   async function save(event: FormEvent<HTMLFormElement>) {

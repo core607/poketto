@@ -81,10 +81,6 @@ final class PublicDocuments {
                 .orElseThrow(PublicDocuments::notFound);
     }
 
-    Tags tags(int offset, int limit) {
-        return tags(workspaces.defaultWorkspace().id(), offset, limit);
-    }
-
     Tags tags(WorkspaceId workspace, int offset, int limit) {
         if (offset < 0 || offset > 320_000 || limit < 1 || limit > 200) {
             throw new IllegalArgumentException("tag page exceeds its bounds");

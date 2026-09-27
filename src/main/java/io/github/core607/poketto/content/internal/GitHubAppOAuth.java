@@ -5,17 +5,15 @@ import static io.github.core607.poketto.content.GitHubConnectionException.Code.U
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.github.core607.poketto.auth.CredentialTokens;
 import io.github.core607.poketto.content.GitHubConnectionException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.Objects;
 
 /** OAuth protocol only. The callback owner binds and consumes Flow with the Poketto browser session. */
@@ -25,7 +23,6 @@ final class GitHubAppOAuth {
     private final String clientSecret;
     private final URI callback;
     private final Clock clock;
-    private final SecureRandom random = new SecureRandom();
 
     GitHubAppOAuth(GitHubAppHttp http, String clientId, String clientSecret, URI callback, Clock clock) {
         if (clientId == null || !clientId.matches("[A-Za-z0-9._-]{1,128}")) {
@@ -44,14 +41,14 @@ final class GitHubAppOAuth {
     }
 
     Flow begin() {
-        return new Flow(randomValue(), randomValue(), clock.instant());
+        return new Flow(CredentialTokens.random(""), CredentialTokens.random(""), clock.instant());
     }
 
     URI authorization(Flow flow) {
         return URI.create("https://github.com/login/oauth/authorize?client_id=" + encoded(clientId)
                 + "&redirect_uri=" + encoded(callback.toString())
                 + "&state=" + encoded(flow.state())
-                + "&code_challenge=" + challenge(flow.verifier())
+                + "&code_challenge=" + CredentialTokens.challenge(flow.verifier())
                 + "&code_challenge_method=S256&prompt=select_account");
     }
 
@@ -122,23 +119,6 @@ final class GitHubAppOAuth {
 
     private String clientForm() {
         return "client_id=" + encoded(clientId) + "&client_secret=" + encoded(clientSecret);
-    }
-
-    private String randomValue() {
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
-
-    private static String challenge(String verifier) {
-        try {
-            return Base64.getUrlEncoder()
-                    .withoutPadding()
-                    .encodeToString(
-                            MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
-        } catch (NoSuchAlgorithmException failure) {
-            throw new IllegalStateException("SHA-256 is required for GitHub PKCE", failure);
-        }
     }
 
     private static String encoded(String value) {

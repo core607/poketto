@@ -248,10 +248,8 @@ final class GitHubAppGrantStore {
                 row.getLong("version"),
                 State.valueOf(row.getString("state")),
                 row.getBytes("sealed_tokens"),
-                instant(row, "access_expires_at"),
                 instant(row, "refresh_expires_at"),
-                row.getObject("refresh_lease", UUID.class),
-                instant(row, "refresh_deadline"));
+                row.getObject("refresh_lease", UUID.class));
     }
 
     enum State {
@@ -269,10 +267,8 @@ final class GitHubAppGrantStore {
             long version,
             State state,
             byte[] sealedTokens,
-            Instant accessExpiresAt,
             Instant refreshExpiresAt,
-            UUID refreshLease,
-            Instant refreshDeadline) {
+            UUID refreshLease) {
         Grant {
             sealedTokens = sealedTokens == null ? null : sealedTokens.clone();
         }

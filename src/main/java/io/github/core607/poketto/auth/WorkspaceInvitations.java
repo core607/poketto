@@ -41,13 +41,13 @@ final class WorkspaceInvitations {
             auth.lockWorkspace(workspace);
             auth.requireHumanOwner(actor, workspace);
             UUID id = UUID.randomUUID();
-            String token = auth.randomToken("invite_");
+            String token = CredentialTokens.random("invite_");
             jdbc.update(connection -> {
                 var statement = connection.prepareStatement(
                         "insert into auth_invitations (invitation_id,workspace_id,token_digest,created_by,expires_at,permissions) values (?,?,?,?,?,?)");
                 statement.setObject(1, id);
                 statement.setObject(2, workspace.value());
-                statement.setString(3, AuthService.digest(token));
+                statement.setString(3, CredentialTokens.digest(token));
                 statement.setObject(4, actor.accountId());
                 statement.setTimestamp(5, Timestamp.from(clock.instant().plus(Duration.ofDays(7))));
                 statement.setArray(

@@ -12,12 +12,9 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -181,19 +178,17 @@ final class SessionFileTransfers {
             bytes.writeBytes(block);
         }
         byte[] content = bytes.toByteArray();
+        if (!hash(content).equals(file.sha256())) {
+            throw new WorkerUnavailableException();
+        }
         try {
-            if (!HexFormat.of()
-                    .formatHex(MessageDigest.getInstance("SHA-256").digest(content))
-                    .equals(file.sha256())) {
-                throw new WorkerUnavailableException();
-            }
             return StandardCharsets.UTF_8
                     .newDecoder()
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(content))
                     .toString();
-        } catch (NoSuchAlgorithmException | CharacterCodingException invalid) {
+        } catch (CharacterCodingException invalid) {
             throw new WorkerUnavailableException(invalid);
         }
     }

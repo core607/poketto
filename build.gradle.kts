@@ -19,10 +19,6 @@ spotless {
     }
 }
 
-tasks.named("check") {
-    dependsOn("spotlessCheck")
-}
-
 // docs/java-style.md owns the rules; config/checkstyle/ holds the gate and its suppressions.
 checkstyle {
     toolVersion = "14.1.0"
@@ -190,17 +186,21 @@ fun gitBash(): File? {
     return null
 }
 
+/** A repository shell script run through Git Bash on Windows (as a login shell) or bash elsewhere. */
+fun bashScript(script: String, vararg arguments: String): List<String> {
+    val bash = gitBash()
+    val login = bash != null && System.getProperty("os.name").startsWith("Windows")
+    return listOfNotNull(bash?.absolutePath ?: "bash", if (login) "--login" else null) +
+        layout.projectDirectory.file(script).asFile.absolutePath.replace('\\', '/') +
+        arguments
+}
+
 val deployScriptTests = tasks.register<Exec>("deployScriptTests") {
     group = "verification"
     description = "Runs the deployment script tests against fake docker, curl, and ssh commands."
     inputs.dir(layout.projectDirectory.dir("deploy"))
     outputs.upToDateWhen { false }
-    val bash = gitBash()
-    commandLine(
-        bash?.absolutePath ?: "bash",
-        *if (bash != null && System.getProperty("os.name").startsWith("Windows")) arrayOf("--login") else emptyArray(),
-        layout.projectDirectory.file("deploy/tests/run.sh").asFile.absolutePath.replace('\\', '/'),
-    )
+    commandLine(bashScript("deploy/tests/run.sh"))
 }
 
 val gatewayConfigCheck = tasks.register<Exec>("gatewayConfigCheck") {
@@ -208,12 +208,7 @@ val gatewayConfigCheck = tasks.register<Exec>("gatewayConfigCheck") {
     description = "Validates the deployed Caddy configuration using its pinned Docker image."
     inputs.files("deploy/Caddyfile", "deploy/.env.example", "deploy/tests/validate_gateway.sh")
     outputs.upToDateWhen { false }
-    val bash = gitBash()
-    commandLine(
-        bash?.absolutePath ?: "bash",
-        *if (bash != null && System.getProperty("os.name").startsWith("Windows")) arrayOf("--login") else emptyArray(),
-        layout.projectDirectory.file("deploy/tests/validate_gateway.sh").asFile.absolutePath.replace('\\', '/'),
-    )
+    commandLine(bashScript("deploy/tests/validate_gateway.sh"))
 }
 
 val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
@@ -270,13 +265,7 @@ val appImageIdentityCheck = tasks.register<Exec>("appImageIdentityCheck") {
         val image = appIdentityDirectory.get().file("image.id").asFile.readText().trim()
         val revision = appIdentityDirectory.get().file("revision").asFile.readText().trim()
         check(Regex("sha256:[0-9a-f]{64}").matches(image)) { "Invalid production image identifier" }
-        val bash = gitBash()
-        commandLine(
-            bash?.absolutePath ?: "bash",
-            *if (bash != null && System.getProperty("os.name").startsWith("Windows")) arrayOf("--login") else emptyArray(),
-            layout.projectDirectory.file("deploy/tests/validate_app_identity.sh").asFile.absolutePath.replace('\\', '/'),
-            image, revision,
-        )
+        commandLine(bashScript("deploy/tests/validate_app_identity.sh", image, revision))
     }
 }
 

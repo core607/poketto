@@ -14,7 +14,6 @@ public record RepositoryDocument(
         Instant updatedAt,
         String route,
         boolean folderPage,
-        boolean privatePath,
         String publicAuthor,
         UUID articleId,
         boolean featured,

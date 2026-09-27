@@ -11,9 +11,9 @@ Poketto 必须先建立稳定的内容边界，才能实现写入、投影、检
 
 如果这些细节分别在后续功能中自行成形，同一份文档就会在 content、projection、web 和 MCP 模块中得到互不兼容的表示。
 
-[远程仓库权威](2026-09-01-remote-repository-authority.md)取代了本文最初的本地初始化边界，并持有当前的物化与确认语义。下文的 revision 决策仍然有效。
+[远程仓库权威](2026-09-01-remote-repository-authority.md)取代了本文最初的本地初始化边界，并持有当前的缓存与确认语义。下文的 revision 决策仍然有效。
 
-[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现不依赖 `documents/` 布局与 frontmatter 标识的任意路径读取和原子补丁；下文的 UUID 写入路径是没有生产调用方、等待移除的过渡性内部实现。路径安全规则、归一化碰撞检测与精确 blob revision 仍然有效。
+[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现不依赖 `documents/` 布局与 frontmatter 标识的任意路径读取和原子补丁，并记录了下文 UUID 写入路径、规范序列化与 `documents/` 扫描被移除的原因。归一化碰撞检测、可选文章 `id` 的规范 UUID 形式与精确 blob revision 仍然有效。
 
 ## 决策
 
@@ -22,8 +22,8 @@ Poketto 必须先建立稳定的内容边界，才能实现写入、投影、检
 - `poketto.data-dir` 必须显式配置为绝对路径，不得默认指向应用源码目录或容器文件系统内的路径。
 - 每个工作空间的一次性内容缓存固定在 `<data-dir>/workspaces/<workspace-id>/content`。路径只能从已经校验的 `WorkspaceId` 解析；工作空间名称、slug、仓库坐标和调用者提供的路径都不能选择目录。其他工作空间数据以后可以使用同级目录，但除非决策明确规定，否则不得放进仓库缓存。
 - 必须提供 secret-backed 远程绑定。绑定缺失或无效时直接失败，绝不能把本地缓存误当权威。
-- 缓存不存在或为空时，创建非裸 `main` 工作树，抓取远端 `main` 并物化该精确提交。预先建好的空远端保持 unborn；第一次精确 ref 文档写入创建根提交。
-- 所有缓存文件都由机器拥有且可随时丢弃。每次读写把 tracked 状态重置到解析出的提交，并移除 untracked 与 ignored 文件。直接创作必须通过私有远端，不能修改缓存。
+- 缓存不存在或为空时，在 `main` 上创建非裸仓库，抓取远端 `main`，把该精确提交记录为本地 `main`，不检出文件。预先建好的空远端保持 unborn；第一次精确 ref 写入创建根提交。
+- 所有缓存文件都由机器拥有且可随时丢弃。读写只使用解析出的提交中的 Git 对象，从不读取工作树文件。直接创作必须通过私有远端，不能修改缓存。
 - 路径不是目录、非空路径不是预期工作树或仓库元数据不可读时拒绝使用。按工作空间计数的配置上限约束常驻缓存，而且只淘汰空闲条目。
 
 仓库与传输错误会指出工作空间，但不暴露仓库坐标或凭据。测试各自使用临时绝对数据目录和一次性裸远端。本地运行说明解释各项必需配置。
@@ -56,7 +56,7 @@ Markdown 正文。
 - `title` 必填；去除首尾空白后不得为空，也不得包含控制字符。
 - `visibility` 只能是 `private` 或 `public`。
 - `tags` 必须是显式 YAML 序列。每项去除首尾空白后必须是非空字符串；经 Unicode 规范化和大小写折叠后重复的标签无效，但保留原始显示拼写。
-- `created_at` 与 `updated_at` 是必填的 RFC 3339 UTC 时间。过渡性 UUID 写入路径保留 `created_at`；序列化后的文档发生变化时推进 `updated_at`。这条规则由本层的规范序列化持有，[文档写操作](2026-08-29-document-write-operations.md)复用它。当前的仓库写入服务不维护这两个字段：它提交调用方给出的字节；读取时作者填写的日期字段优先，缺失的日期由 Git 历史补足（[第一阶段交付](2026-09-05-phase-one-daily-use.md)）。
+- `created_at` 与 `updated_at` 是必填的 RFC 3339 UTC 时间。已移除的 UUID 写入路径曾保留 `created_at`，并在序列化后的文档发生变化时推进 `updated_at`。当前的仓库写入服务不维护这两个字段：它提交调用方给出的字节；读取时作者填写的日期字段优先，缺失的日期由 Git 历史补足（[第一阶段交付](2026-09-05-phase-one-daily-use.md)）。
 - `published_at` 可选。第一次 publish 操作设置它；后续编辑或把 visibility 改回 private 都不得清除它。
 - 机器写入不得包含未知字段、重复 YAML key、alias、自定义 tag、多份 YAML 文档、错误的分隔符、无效 UTF-8 或字节顺序标记。
 - 正文可以为空。本层只把它作为文本保存，不负责渲染 Markdown、清理 HTML、抓取链接或解释其中的指令。
@@ -65,16 +65,16 @@ Markdown 正文。
 
 ### 身份与 revision 类型
 
-- content 模块操作必须接收 `WorkspaceId`，并对外提供不可变的文档 ID、revision、visibility、metadata 和文档内容值类型。JGit 与 YAML 实现类放在 `content.internal` 下。
+- content 模块操作必须接收 `WorkspaceId`，并对外提供不可变的文档 ID 与 revision 值类型。JGit 与 YAML 实现类放在 `content.internal` 下。
 - revision 是所选 git tree 中原始 blob 字节的 SHA-256，编码为 `sha256:<lowercase-hex>`；content 模块之外必须把整个值视为不透明 token。
 - 不得根据解析后的字段或 commit SHA 生成 revision。格式或换行变化也是编辑，必须产生新的 revision。
 - 扫描 git tree 时检测重复的文档 UUID。仓库完整性错误必须列出所有冲突路径，绝不能擅自选择其中一份文档。
 
 ### 已实现范围
 
-content 模块绑定数据目录，把各工作空间的远程权威解析为一次性缓存，解析并规范序列化文档，对外提供内容值类型，并扫描 commit-pinned `main` tree。过渡性 UUID 写入路径建立在本边界之上；HTTP 与 MCP 写入使用仓库创作基础的补丁服务。
+content 模块绑定数据目录，把各工作空间的远程权威解析为一次性缓存，对外提供文档 ID 与 revision 类型，并读取 commit-pinned `main` tree。HTTP 与 MCP 写入使用仓库创作基础的补丁服务；最初实现本文的 UUID 写入路径与规范序列化已被移除。
 
-[仓库原生发布与图片](../rejected/2026-09-01-repository-native-publishing-and-assets.md)提议把目标中的 `documents/`、UUID、逐文件可见性和仅按 hash 引用图片的要求，改为任意层级 Markdown、仓库发布策略、不可变受管引用与只读同目录图片图库。[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现这一替换；本文记录过渡期的 UUID 布局以及沿用至今的规则。
+[仓库原生发布与图片](../rejected/2026-09-01-repository-native-publishing-and-assets.md)提议把目标中的 `documents/`、UUID、逐文件可见性和仅按 hash 引用图片的要求，改为任意层级 Markdown、仓库发布策略、不可变受管引用与只读同目录图片图库。[仓库创作基础](2026-09-05-repository-authoring-foundations.md)已实现这一替换；本文记录已移除的 UUID 布局以及沿用至今的规则。
 
 ## 备选方案
 
@@ -94,7 +94,7 @@ content 模块绑定数据目录，把各工作空间的远程权威解析为一
 
 ## 验证
 
-`ContentRepositoryBootstrapTests`、`CanonicalDocumentCodecTests`、`DocumentValueTests`、`DocumentPathRulesTests`、`ContentRepositoryScanTests` 与 `ModularityTests` 固定这些规则。集成测试验证工作空间 catalog 初始化与仓库引导能在 PostgreSQL 环境中共同完成。
+`ContentRepositoryBootstrapTests`、`DocumentValueTests`、`DocumentPathRulesTests` 与 `ModularityTests` 固定仍然有效的规则。集成测试验证工作空间 catalog 初始化与仓库引导能在 PostgreSQL 环境中共同完成。
 
 ## 风险
 
@@ -104,6 +104,6 @@ content 模块绑定数据目录，把各工作空间的远程权威解析为一
 
 全仓扫描的复杂度与文档数量线性相关。这是最简单且正确的基础；后续可以增加内存 catalog 或派生索引，但不得改变 git 的权威地位。
 
-按工作空间拆仓会增加 Git 句柄、缓存和扫描数量。仓库资源只为作用域操作打开并确定性关闭；配置的缓存上限阻止已物化工作空间无限增长。
+按工作空间拆仓会增加 Git 句柄、缓存和扫描数量。仓库资源只为作用域操作打开并确定性关闭；配置的缓存上限阻止缓存无限增长。
 
-任一受管文件无效都会让 `scan` 对整个仓库失败，一次带坏文档的 break-glass 提交就会阻塞过渡性 UUID 路径上的所有文档。[第一阶段交付](2026-09-05-phase-one-daily-use.md)的仓库读取服务则按文件报告诊断，只排除受影响的文件。
+已移除的 `documents/` 扫描在任一受管文件无效时会对整个仓库失败，一次带坏文档的 break-glass 提交就会阻塞 UUID 路径上的所有文档。[第一阶段交付](2026-09-05-phase-one-daily-use.md)的仓库读取服务则按文件报告诊断，只排除受影响的文件。

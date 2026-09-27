@@ -151,7 +151,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                     if (!snapshot.commitId().equals(Optional.of(request.baseCommit()))) {
                         throw new RepositoryConflictException("repository base changed before preparing move");
                     }
-                    try (Repository repository = JGitContentRepositoryStore.openCache(snapshot.worktree(), workspace);
+                    try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspace);
                             RevWalk walk = new RevWalk(repository);
                             var reader = repository.newObjectReader()) {
                         ObjectId base = ObjectId.fromString(request.baseCommit());

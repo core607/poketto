@@ -19,8 +19,6 @@ import io.github.core607.poketto.content.RepositoryOriginalTransfers;
 import io.github.core607.poketto.content.RepositoryTree;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -36,14 +34,6 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
-import org.commonmark.node.HtmlBlock;
-import org.commonmark.node.HtmlInline;
-import org.commonmark.node.Image;
-import org.commonmark.node.Link;
-import org.commonmark.node.LinkReferenceDefinition;
-import org.commonmark.node.Node;
-import org.commonmark.parser.Parser;
-import org.commonmark.renderer.markdown.MarkdownRenderer;
 import tools.jackson.databind.json.JsonMapper;
 
 /** Selects one committed content package. Retained plans and their source coordinates are host-only. */
@@ -501,55 +491,20 @@ final class PortableContentPlanner {
     }
 
     private static String publicBody(String body, UnaryOperator<String> destination) {
-        Node root = Parser.builder().build().parse(body);
-        var nodes = new ArrayList<Node>();
-        record Visit(Node node, int depth) {}
-        var pending = new ArrayDeque<Visit>();
-        pending.push(new Visit(root, 0));
-        while (!pending.isEmpty()) {
-            var visit = pending.pop();
-            if (nodes.size() >= 20_000 || visit.depth() > 128) {
-                throw unavailable();
-            }
-            nodes.add(visit.node());
-            for (Node child = visit.node().getLastChild(); child != null; child = child.getPrevious()) {
-                pending.push(new Visit(child, visit.depth() + 1));
-            }
-        }
-        for (Node node : nodes) {
-            if (node instanceof HtmlBlock || node instanceof HtmlInline || node instanceof LinkReferenceDefinition) {
-                node.unlink();
-            } else if (node instanceof Link link) {
-                if (link.getDestination().startsWith("managed:")) {
-                    throw unavailable();
-                }
-                String target = destination.apply(link.getDestination());
-                if (safeDestination(target)) {
-                    link.setDestination(target);
-                } else {
-                    flatten(node);
-                }
-            } else if (node instanceof Image image) {
-                String target = destination.apply(image.getDestination());
-                if (safeDestination(target)) {
-                    image.setDestination(target);
-                } else {
-                    flatten(node);
-                }
-            }
-        }
-        return MarkdownRenderer.builder().build().render(root);
+        return PublicMarkdownSanitizer.sanitize(
+                body,
+                (authored, image) -> {
+                    if (!image && authored.startsWith("managed:")) {
+                        throw unavailable();
+                    }
+                    String target = destination.apply(authored);
+                    return safeDestination(target) ? target : null;
+                },
+                PortableContentPlanner::unavailable);
     }
 
     private static boolean safeDestination(String value) {
         return !value.matches("(?s)^[A-Za-z][A-Za-z0-9+.-]*:.*") || value.matches("(?is)^(https?|mailto):.*");
-    }
-
-    private static void flatten(Node node) {
-        while (node.getFirstChild() != null) {
-            node.insertBefore(node.getFirstChild());
-        }
-        node.unlink();
     }
 
     private static ContentRepositoryException unavailable() {

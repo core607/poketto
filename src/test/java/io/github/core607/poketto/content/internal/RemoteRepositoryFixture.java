@@ -2,8 +2,6 @@ package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.github.core607.poketto.content.ContentRepositoryStore;
-import io.github.core607.poketto.content.DocumentWriteService;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.nio.file.Files;
@@ -34,11 +32,9 @@ final class RemoteRepositoryFixture {
 
     private final Path remotes;
     private final WorkspacePaths paths;
-    private final CanonicalDocumentCodec codec = new CanonicalDocumentCodec();
     private final RepositoryBindingSource bindings;
     private final Map<WorkspaceId, Path> remoteByWorkspace = new ConcurrentHashMap<>();
     private final JGitRemoteRepositoryAuthority authority;
-    private final JGitContentRepositoryStore store;
 
     RemoteRepositoryFixture(Path root) {
         this(root, new JGitRemoteGitTransport());
@@ -86,27 +82,14 @@ final class RemoteRepositoryFixture {
             }
         };
         authority = new JGitRemoteRepositoryAuthority(paths, bindings, transport, maxCachedWorkspaces, clock);
-        store = new JGitContentRepositoryStore(authority, codec, Clock.systemUTC());
     }
 
     WorkspacePaths paths() {
         return paths;
     }
 
-    CanonicalDocumentCodec codec() {
-        return codec;
-    }
-
     RepositoryAuthority authority() {
         return authority;
-    }
-
-    ContentRepositoryStore store() {
-        return store;
-    }
-
-    DocumentWriteService writes(Clock clock) {
-        return new JGitDocumentWriteService(authority, codec, store, clock);
     }
 
     Path cache(WorkspaceId workspaceId) {

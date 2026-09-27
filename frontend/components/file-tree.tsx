@@ -8,7 +8,7 @@ import {
   readDirectory,
 } from "../lib/repository-directory";
 import type { RepositoryDirectory } from "../lib/types";
-import { message } from "./admin";
+import { message } from "../lib/browser-api";
 
 type Props = {
   commit: string | null;

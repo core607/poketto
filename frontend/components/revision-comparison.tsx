@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { dateTime } from "../lib/format";
 import { sourceDifference } from "../lib/source-diff";
+import { SourceDiff } from "./source-diff";
 
 type Version = { savedAt: string; body: string };
 
@@ -50,22 +51,7 @@ export function RevisionComparison({ versions }: { versions: Version[] }) {
         </p>
       </div>
       {difference.kind === "unchanged" && <p>两个版本的正文相同。</p>}
-      {difference.kind === "lines" && (
-        <pre className="history-diff" aria-label="正文差异">
-          {difference.lines.map((line, index) => (
-            <span key={index} className={"history-line " + line.kind}>
-              <span aria-hidden="true">
-                {line.kind === "removed"
-                  ? "− "
-                  : line.kind === "added"
-                    ? "+ "
-                    : "  "}
-              </span>
-              {line.text.replace(/\r?\n$/, "")}
-            </span>
-          ))}
-        </pre>
-      )}
+      {difference.kind === "lines" && <SourceDiff lines={difference.lines} />}
       {difference.kind === "side-by-side" && (
         <>
           <p>正文较长，改为并排显示两个版本。</p>

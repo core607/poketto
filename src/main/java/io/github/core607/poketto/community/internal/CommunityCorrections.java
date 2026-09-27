@@ -11,7 +11,6 @@ import io.github.core607.poketto.community.Corrections;
 import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.PrincipalType;
 import io.github.core607.poketto.content.PublicArticle;
-import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.ReviewedBodyEdits;
 import io.github.core607.poketto.content.WritePrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -69,7 +68,8 @@ final class CommunityCorrections implements Corrections {
     public UUID propose(AuthPrincipal actor, String space, Proposal proposal) {
         WorkspaceId workspace = targets.workspace(space);
         return scope.published(actor, workspace, true, (identity, snapshot) -> {
-            PublicArticle article = served(snapshot, proposal.route()).orElseThrow(CommunityTargets::unavailable);
+            PublicArticle article =
+                    CommunityTargets.served(snapshot, proposal.route()).orElseThrow(CommunityTargets::unavailable);
             if (!digest(article.body()).equals(proposal.baseDigest())) {
                 throw new CommunityException(CommunityException.Code.BASE_CHANGED);
             }
@@ -148,8 +148,9 @@ final class CommunityCorrections implements Corrections {
     @Override
     public List<String> credits(String space, String route) {
         WorkspaceId workspace = targets.workspace(space);
-        PublicArticle article =
-                targets.read(workspace, snapshot -> served(snapshot, route).orElseThrow(CommunityTargets::unavailable));
+        PublicArticle article = targets.read(
+                workspace,
+                snapshot -> CommunityTargets.served(snapshot, route).orElseThrow(CommunityTargets::unavailable));
         // Either identity carries credit, so gaining or losing a frontmatter id keeps it, while a
         // different article later served at the same route matches neither.
         List<UUID> authors = jdbc.query(
@@ -184,33 +185,34 @@ final class CommunityCorrections implements Corrections {
                 CommunityCorrections::row,
                 workspace.value(),
                 CommunityActivity.before(before));
-        List<Row> selected = rows.stream().limit(20).toList();
-        Map<UUID, Profile> profiles =
-                accounts.profiles(selected.stream().map(Row::author).collect(Collectors.toSet()));
-        String space = targets.publication(workspace).slug();
-        List<Review> reviews = targets.read(
-                workspace,
-                snapshot -> selected.stream()
-                        .map(row -> {
-                            Optional<PublicArticle> article = served(snapshot, row.route());
-                            return new Review(
-                                    row.id(),
-                                    row.position(),
-                                    space,
-                                    row.route(),
-                                    article.map(PublicArticle::title).orElse(row.route()),
-                                    profiles.get(row.author()),
-                                    row.reason(),
-                                    row.body(),
-                                    article.map(PublicArticle::body).orElse(""),
-                                    article.map(PublicArticle::body)
-                                            .map(CommunityCorrections::digest)
-                                            .filter(row.base()::equals)
-                                            .isEmpty(),
-                                    row.createdAt());
-                        })
-                        .toList());
-        return new Page<>(reviews, rows.size() > 20 ? selected.getLast().position() : null);
+        return CommunityActivity.page(rows, Row::position, selected -> {
+            Map<UUID, Profile> profiles =
+                    accounts.profiles(selected.stream().map(Row::author).collect(Collectors.toSet()));
+            String space = targets.publication(workspace).slug();
+            return targets.read(
+                    workspace,
+                    snapshot -> selected.stream()
+                            .map(row -> review(row, space, profiles, CommunityTargets.served(snapshot, row.route())))
+                            .toList());
+        });
+    }
+
+    private static Review review(Row row, String space, Map<UUID, Profile> profiles, Optional<PublicArticle> article) {
+        return new Review(
+                row.id(),
+                row.position(),
+                space,
+                row.route(),
+                article.map(PublicArticle::title).orElse(row.route()),
+                profiles.get(row.author()),
+                row.reason(),
+                row.body(),
+                article.map(PublicArticle::body).orElse(""),
+                article.map(PublicArticle::body)
+                        .map(CommunityCorrections::digest)
+                        .filter(row.base()::equals)
+                        .isEmpty(),
+                row.createdAt());
     }
 
     @Override
@@ -315,12 +317,6 @@ final class CommunityCorrections implements Corrections {
                         CommunityCorrections::row,
                         correctionId)
                 .stream()
-                .findFirst();
-    }
-
-    static Optional<PublicArticle> served(PublicContentSnapshot snapshot, String route) {
-        return snapshot.articles().stream()
-                .filter(article -> article.route().equals(route))
                 .findFirst();
     }
 

@@ -6,10 +6,10 @@ import {
   useContext,
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
 } from "react";
+import { useModal } from "./use-modal";
 
 type Confirmation = {
   title: string;
@@ -88,17 +88,9 @@ function ConfirmationDialog({
   request: Confirmation & { returnFocus: HTMLElement | null };
   onDecision: (confirmed: boolean) => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useModal(request.returnFocus);
   const titleId = useId();
   const descriptionId = useId();
-  useLayoutEffect(() => {
-    const element = dialog.current!;
-    element.showModal();
-    return () => {
-      element.close();
-      if (request.returnFocus?.isConnected) request.returnFocus.focus();
-    };
-  }, [request.returnFocus]);
   return (
     <dialog
       ref={dialog}

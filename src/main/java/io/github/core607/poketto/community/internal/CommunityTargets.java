@@ -46,30 +46,30 @@ final class CommunityTargets {
                 .orElseThrow(CommunityTargets::unavailable);
     }
 
-    Optional<ArticleCard> card(WorkspaceId workspace, UUID articleId) {
-        try {
-            WorkspacePublications.Publication publication = publications.settings(workspace);
-            return read(
-                    workspace,
-                    snapshot -> snapshot.articles().stream()
-                            .filter(article -> articleId.equals(article.articleId()))
-                            .findFirst()
-                            .map(article -> card(publication, article)));
-        } catch (ContentRepositoryException | PublicationUnavailableException unavailable) {
-            return Optional.empty();
-        }
+    /** The article currently served at {@code route}, for route-keyed interactions. */
+    static Optional<PublicArticle> served(PublicContentSnapshot snapshot, String route) {
+        return snapshot.articles().stream()
+                .filter(article -> article.route().equals(route))
+                .findFirst();
     }
 
-    /** The card of the article currently served at {@code route}, for route-keyed interactions. */
+    Optional<ArticleCard> card(WorkspaceId workspace, UUID articleId) {
+        return card(
+                workspace,
+                snapshot -> snapshot.articles().stream()
+                        .filter(article -> articleId.equals(article.articleId()))
+                        .findFirst());
+    }
+
     Optional<ArticleCard> card(WorkspaceId workspace, String route) {
+        return card(workspace, snapshot -> served(snapshot, route));
+    }
+
+    private Optional<ArticleCard> card(
+            WorkspaceId workspace, Function<PublicContentSnapshot, Optional<PublicArticle>> find) {
         try {
             WorkspacePublications.Publication publication = publications.settings(workspace);
-            return read(
-                    workspace,
-                    snapshot -> snapshot.articles().stream()
-                            .filter(article -> article.route().equals(route))
-                            .findFirst()
-                            .map(article -> card(publication, article)));
+            return read(workspace, snapshot -> find.apply(snapshot).map(article -> card(publication, article)));
         } catch (ContentRepositoryException | PublicationUnavailableException unavailable) {
             return Optional.empty();
         }

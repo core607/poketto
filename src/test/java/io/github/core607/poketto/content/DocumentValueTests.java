@@ -4,28 +4,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 class DocumentValueTests {
 
     @Test
-    void acceptsOnlyCanonicalDocumentIdsAndVisibilityValues() {
+    void acceptsOnlyCanonicalDocumentIds() {
         String canonical = "550e8400-e29b-41d4-a716-446655440000";
 
         assertThat(DocumentId.parse(canonical).toString()).isEqualTo(canonical);
-        assertThat(DocumentVisibility.parse("private")).isEqualTo(DocumentVisibility.PRIVATE);
-        assertThat(DocumentVisibility.parse("public")).isEqualTo(DocumentVisibility.PUBLIC);
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> DocumentId.parse(canonical.toUpperCase()))
                 .withMessageContaining("canonical lowercase UUID");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> DocumentVisibility.parse("PUBLIC"))
-                .withMessageContaining("exactly private or public");
     }
 
     @Test
@@ -38,76 +28,5 @@ class DocumentValueTests {
                 .isNotEqualTo(DocumentRevision.sha256("line\r\n".getBytes(StandardCharsets.UTF_8)));
         assertThat(DocumentRevision.sha256("line\n".getBytes(StandardCharsets.UTF_8)))
                 .isEqualTo(DocumentRevision.sha256("line\n".getBytes(StandardCharsets.UTF_8)));
-    }
-
-    @Test
-    void metadataTrimsDisplayValuesAndRejectsNormalizedTagDuplicates() {
-        DocumentMetadata metadata = metadata("  Title  ", List.of("  Example ", "中文"));
-
-        assertThat(metadata.title()).isEqualTo("Title");
-        assertThat(metadata.tags()).containsExactly("Example", "中文");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> metadata("Title", List.of("CAFÉ", "cafe\u0301")))
-                .withMessageContaining("Unicode normalization and case folding");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> metadata("Title\nInjected", List.of()))
-                .withMessageContaining("control characters");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> new DocumentMetadata(
-                        DocumentId.parse("550e8400-e29b-41d4-a716-446655440000"),
-                        "Title",
-                        DocumentVisibility.PRIVATE,
-                        List.of(),
-                        Instant.parse("2026-08-27T00:00:00Z"),
-                        Instant.parse("2026-08-26T00:00:00Z"),
-                        Optional.empty()))
-                .withMessageContaining("must not precede creation");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> new DocumentMetadata(
-                        DocumentId.parse("550e8400-e29b-41d4-a716-446655440000"),
-                        "Title",
-                        DocumentVisibility.PUBLIC,
-                        List.of(),
-                        Instant.parse("2026-08-26T00:00:00Z"),
-                        Instant.parse("2026-08-27T00:00:00Z"),
-                        Optional.of(Instant.parse("2026-08-28T00:00:00Z"))))
-                .withMessageContaining("must not follow the last update");
-    }
-
-    @Test
-    void metadataBoundsTitleAndTagSizes() {
-        String longestTitle = "t".repeat(ContentLimits.MAX_TITLE_LENGTH);
-        String longestTag = "g".repeat(ContentLimits.MAX_TAG_LENGTH);
-        List<String> mostTags = IntStream.range(0, ContentLimits.MAX_TAGS)
-                .mapToObj(index -> "tag" + index)
-                .toList();
-
-        assertThat(metadata(longestTitle, mostTags).tags()).hasSize(ContentLimits.MAX_TAGS);
-        assertThat(metadata("Title", List.of(longestTag)).tags()).containsExactly(longestTag);
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> metadata(longestTitle + "t", List.of()))
-                .withMessageContaining("title must not exceed");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> metadata("Title", List.of(longestTag + "g")))
-                .withMessageContaining("tag must not exceed");
-        List<String> oneTooMany =
-                Stream.concat(mostTags.stream(), Stream.of("one-too-many")).toList();
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> metadata("Title", oneTooMany))
-                .withMessageContaining("more than " + ContentLimits.MAX_TAGS + " tags");
-        assertThatIllegalArgumentException()
-                .isThrownBy(() -> metadata("Title", List.of("tab\there")))
-                .withMessageContaining("tag must not contain control characters");
-    }
-
-    private static DocumentMetadata metadata(String title, List<String> tags) {
-        return new DocumentMetadata(
-                DocumentId.parse("550e8400-e29b-41d4-a716-446655440000"),
-                title,
-                DocumentVisibility.PRIVATE,
-                tags,
-                Instant.parse("2026-08-26T09:00:00Z"),
-                Instant.parse("2026-08-26T09:00:00Z"),
-                Optional.empty());
     }
 }

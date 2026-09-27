@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.UUID;
 
@@ -34,7 +35,7 @@ final class ExportStaging {
         if (lock != null) {
             return;
         }
-        createRoot();
+        protectedDirectory(root);
         FileChannel channel = FileChannel.open(
                 root.resolve(".owner.lock"),
                 StandardOpenOption.CREATE,
@@ -46,6 +47,7 @@ final class ExportStaging {
             if (acquired == null) {
                 throw failure(ContentExportException.Reason.UNAVAILABLE);
             }
+            // Unconditional: portable exports refuse a file system without POSIX permissions.
             Files.setPosixFilePermissions(root.resolve(".owner.lock"), PosixFilePermissions.fromString("rw-------"));
             clearStale();
             ownership = channel;
@@ -57,22 +59,6 @@ final class ExportStaging {
             channel.close();
             throw error;
         }
-    }
-
-    // Every ancestor of the staging root is a real directory, never a symlink.
-    private void createRoot() throws IOException {
-        Path ancestor = root.getRoot();
-        for (Path segment : root) {
-            ancestor = ancestor.resolve(segment);
-            if (!Files.exists(ancestor, LinkOption.NOFOLLOW_LINKS)) {
-                Files.createDirectory(ancestor);
-            }
-            if (!Files.isDirectory(ancestor, LinkOption.NOFOLLOW_LINKS)
-                    || !ancestor.toRealPath().equals(ancestor)) {
-                throw failure(ContentExportException.Reason.UNAVAILABLE);
-            }
-        }
-        protectedDirectory(root);
     }
 
     // The root may hold only workspace directories of ZIP or pending files from an earlier owner; those
@@ -104,15 +90,32 @@ final class ExportStaging {
         }
     }
 
+    /**
+     * Creates each missing component of an absolute, normalized directory path and refuses any
+     * component that is not a real directory, so a symlink planted at any depth is caught before a
+     * write follows it. The directory itself becomes owner-only wherever the file system has POSIX
+     * permissions; elsewhere the walk still applies.
+     */
     static void protectedDirectory(Path directory) throws IOException {
-        if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
-            Files.createDirectory(directory);
+        Path component = directory.getRoot();
+        for (Path segment : directory) {
+            component = component.resolve(segment);
+            if (!Files.exists(component, LinkOption.NOFOLLOW_LINKS)) {
+                Files.createDirectory(component);
+            }
+            if (!realDirectory(component)) {
+                throw new IOException("staging path component is not a real directory");
+            }
         }
-        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)
-                || !directory.toRealPath().equals(directory)) {
-            throw failure(ContentExportException.Reason.UNAVAILABLE);
+        if (Files.getFileAttributeView(directory, PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS) != null) {
+            Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("rwx------"));
         }
-        Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("rwx------"));
+    }
+
+    /** A directory itself: not a symlink, and not a name that resolves elsewhere. */
+    static boolean realDirectory(Path path) throws IOException {
+        return Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)
+                && path.toRealPath().equals(path);
     }
 
     private static boolean uuid(String value) {

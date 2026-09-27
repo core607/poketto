@@ -26,23 +26,20 @@ existing_step="$(sed -n '/- name: Update existing installation/,/- name: Deploy/
 assert_not_contains "$existing_step" 'POKETTO_REPOSITORY_PASSWORD'
 assert_not_contains "$existing_step" '--sync'
 assert_contains "$existing_step" '--pull --set-stdin'
-assert_contains "$existing_step" 'POKETTO_MIRROR_PULL_PASSWORD'
-# Existing installations accept all three delivery modes. Pull reaches the canonical registry with
+# Existing installations accept both delivery modes. Pull reaches the canonical registry with
 # the job's own package-read token, so the archive path is no longer the only credential-free route.
 assert_contains "$existing_step" 'secrets.GITHUB_TOKEN'
 assert_contains "$existing_step" 'transfer)'
 grep -Fq 'standard|existing) ;;' "$workflow" \
     || { echo "the workflow still restricts which modes an existing installation accepts"; exit 1; }
 
-publication="$(sed -n '/^  publish:/,/^  mirror:/p' "$workflow")"
-assert_not_contains "$publication" 'MIRROR_PASSWORD'
-assert_not_contains "$publication" 'deploy/mirror.sh'
-grep -Fq 'needs: [publish, mirror]' "$workflow"
+# Deployment waits only for publication; no mirror copy or mirror credential remains.
 grep -Fq "needs.publish.result == 'success'" "$workflow"
-grep -Fq 'mirror mode requires a successful configured mirror job' "$workflow"
-mirror_step="$(sed -n '/^  mirror:/,/^  # Production deployment/p' "$workflow")"
-assert_contains "$mirror_step" 'quay.io/skopeo/stable@sha256:'
-assert_not_contains "$mirror_step" 'apt-get'
+grep -Fq 'must be pull or transfer' "$workflow"
+if grep -qi 'mirror' "$workflow"; then
+    echo "the workflow still references a delivery mirror"
+    exit 1
+fi
 
 grep -Fq 'dependsOn(gatewayConfigCheck)' "$DEPLOY_DIR/../build.gradle.kts"
 grep -Fq 'deploy/tests/validate_gateway.sh' "$DEPLOY_DIR/../build.gradle.kts"
@@ -60,7 +57,7 @@ for step in 'Update existing installation' 'Deploy'; do
         body { sub(/^          /, ""); print }
     ' "$workflow" > workflow-step.sh
     [ -s workflow-step.sh ]
-    for mode in transfer pull mirror; do
+    for mode in transfer pull; do
         for values in empty configured; do
             (
                 for key in POKETTO_RESEND_API_KEY POKETTO_EMAIL_FROM POKETTO_GOOGLE_CLIENT_ID POKETTO_GOOGLE_CLIENT_SECRET POKETTO_SUPPORT_EMAIL \
@@ -72,7 +69,6 @@ for step in 'Update existing installation' 'Deploy'; do
                 [ "$values" = empty ] || POKETTO_EMAIL_DAILY_LIMIT=250
                 DEPLOY_TARGET=ops@host DEPLOY_ROOT=/srv/poketto DEPLOY_MODE="$mode"
                 IMAGE="$DIGEST_IMAGE" REPOSITORY_PASSWORD=''
-                MIRROR_USERNAME=mirror MIRROR_PULL_PASSWORD=synthetic-mirror
                 GITHUB_ACTOR=actor GITHUB_TOKEN=synthetic-registry
                 bash() {
                     [ "$1" = deploy/transfer.sh ] || exit 1

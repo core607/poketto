@@ -7,8 +7,6 @@ import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
 import org.slf4j.Logger;
@@ -86,11 +84,11 @@ final class SessionWorker {
     }
 
     static String hash(String text) {
-        try {
-            return HexFormat.of()
-                    .formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 is required for worker content verification", exception);
-        }
+        return hash(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Lowercase hexadecimal SHA-256, the bare digest form worker messages and account records carry. */
+    static String hash(byte[] bytes) {
+        return HexFormat.of().formatHex(RetainedBaselineIo.sha256().digest(bytes));
     }
 }

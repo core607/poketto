@@ -15,22 +15,20 @@ import org.eclipse.jgit.lib.ObjectReader;
  */
 interface RepositoryAuthority {
 
-    void ensureReady(WorkspaceId workspaceId);
-
     /** Prepares remote credentials before the action acquires relational authorization locks. */
     default <T> T withPreparedCredentials(WorkspaceId workspace, Supplier<T> action) {
         return action.get();
     }
 
-    /** Resolves current remote {@code main}, materializes it in the cache, and reads it. */
-    <T> T read(WorkspaceId workspaceId, SnapshotReader<T> reader);
-
-    /** Fetches remote main under the workspace lock without checking files out or validating a content format. */
+    /**
+     * Fetches remote {@code main} under the workspace lock and records it as the cache's local
+     * {@code main}. Files are never checked out, so nothing in the cache's worktree is content.
+     */
     <T> T readObjects(WorkspaceId workspaceId, SnapshotReader<T> reader);
 
     /**
      * Reads the cache as it stands without contacting the remote. The snapshot commit is the last
-     * locally recorded main, which may lag or differ from remote main and need not be checked out.
+     * locally recorded main, which may lag or differ from remote main.
      */
     <T> T readCache(WorkspaceId workspaceId, SnapshotReader<T> reader);
 
@@ -49,12 +47,8 @@ interface RepositoryAuthority {
      */
     void protectImmutableObjects(WorkspaceId workspaceId, Instant expiresAt, ObjectReaderAction<Void> validation);
 
-    <T> T write(WorkspaceId workspaceId, CandidateWriter<T> writer);
-
     /** Writes Git objects and advances the exact remote ref without checking out repository files. */
-    default <T> T writeObjects(WorkspaceId workspaceId, CandidateWriter<T> writer) {
-        throw new UnsupportedOperationException("object-only repository writes are unavailable");
-    }
+    <T> T writeObjects(WorkspaceId workspaceId, CandidateWriter<T> writer);
 
     @FunctionalInterface
     interface SnapshotReader<T> {

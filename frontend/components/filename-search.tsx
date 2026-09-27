@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useWorkspaceApi } from "./workspace-context";
-import { message } from "./admin";
+import { message } from "../lib/browser-api";
 import { SearchHighlight } from "./search-highlight";
 
 type Page = {

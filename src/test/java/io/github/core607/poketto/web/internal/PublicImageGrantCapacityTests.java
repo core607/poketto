@@ -54,7 +54,7 @@ class PublicImageGrantCapacityTests {
         var publications = mock(WorkspacePublications.class);
         when(publications.settings(workspace.id()))
                 .thenReturn(new WorkspacePublications.Publication(
-                        workspace.id(), "home", workspace.displayName(), true, true, ""));
+                        workspace.id(), "home", workspace.displayName(), true, true, "", "", false));
         return publications;
     }
 

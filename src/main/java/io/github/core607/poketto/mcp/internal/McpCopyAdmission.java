@@ -30,10 +30,6 @@ final class McpCopyAdmission {
                         "Expected copy is unavailable for this account and workspace; this command did not execute. Earlier unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write.";
                     case DIFFERENT_COPY ->
                         "Expected copy ID does not match the account working copy; this command did not execute. Use the available copyId only if you intend that copy. Do not assume earlier edits survived or replay an uncertain write.";
-                    case CLOSED_COPY ->
-                        exception.newCopyAllowed()
-                                ? "This copy has closed and its lease is released; this command did not execute. Unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write."
-                                : "This copy is closing or its lease release is unconfirmed; this command did not execute. New admission remains unavailable until command exit and lease release are confirmed. Do not replay an uncertain write.";
                 };
         var body = new CopyReplacement(
                 "SESSION_REPLACED",

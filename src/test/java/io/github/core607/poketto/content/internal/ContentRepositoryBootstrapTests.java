@@ -2,12 +2,19 @@ package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.ContentRepositoryException;
-import io.github.core607.poketto.content.ContentRepositoryStore;
-import io.github.core607.poketto.content.DocumentDraft;
-import io.github.core607.poketto.content.PrincipalType;
-import io.github.core607.poketto.content.WritePrincipal;
+import io.github.core607.poketto.content.RepositoryMediaValidator;
+import io.github.core607.poketto.content.RepositoryPatch;
+import io.github.core607.poketto.content.RepositoryPatchResult;
+import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.nio.charset.StandardCharsets;
@@ -17,7 +24,10 @@ import java.nio.file.attribute.DosFileAttributeView;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
+import java.util.UUID;
+import java.util.function.Supplier;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
@@ -29,17 +39,15 @@ import org.springframework.util.FileSystemUtils;
 
 class ContentRepositoryBootstrapTests {
 
-    private static final WritePrincipal OWNER = new WritePrincipal(PrincipalType.ACCOUNT, "acct-test");
-
     @TempDir
     Path root;
 
     @Test
-    void materializesAnEmptyPreProvisionedRemoteAsAnUnbornDisposableCache() throws Exception {
+    void anEmptyPreProvisionedRemoteBecomesAnUnbornDisposableCache() throws Exception {
         RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root);
         WorkspaceId workspace = WorkspaceId.random();
 
-        repositories.store().ensureReady(workspace);
+        assertThat(fetch(repositories, workspace)).isEmpty();
 
         Path cache = repositories.cache(workspace);
         try (Repository repository = new FileRepositoryBuilder()
@@ -55,35 +63,37 @@ class ContentRepositoryBootstrapTests {
     void deletingTheCacheAndReplacingTheAuthorityPreservesAcknowledgedContent() throws Exception {
         RemoteRepositoryFixture firstProcess = new RemoteRepositoryFixture(root);
         WorkspaceId workspace = WorkspaceId.random();
-        var created = firstProcess
-                .writes(new TestClock())
-                .create(workspace, OWNER, new DocumentDraft("documents/note.md", "Note", List.of(), "Body"));
+        RepositoryPatchResult created = writer(firstProcess)
+                .apply(
+                        principal(),
+                        workspace,
+                        new RepositoryPatch(
+                                Optional.empty(),
+                                List.of(new RepositoryTextChange(
+                                        "private/note.md", true, Optional.empty(), Optional.of("# Note\n\nBody")))));
         assertThat(created.committed()).isTrue();
         clearReadOnly(firstProcess.cache(workspace));
         FileSystemUtils.deleteRecursively(firstProcess.cache(workspace));
 
         RemoteRepositoryFixture secondProcess = new RemoteRepositoryFixture(root);
 
-        assertThat(secondProcess.store().scan(workspace))
-                .singleElement()
-                .satisfies(document -> assertThat(document.content().body()).isEqualTo("Body"));
+        assertThat(source(secondProcess, workspace, "private/note.md")).contains("# Note\n\nBody");
     }
 
     @Test
-    void observesDirectOwnerPushesAndDiscardsLocalCacheEdits() throws Exception {
+    void observesDirectOwnerPushesAndNeverReadsLocalCacheFiles() throws Exception {
         RemoteRepositoryFixture repositories = new RemoteRepositoryFixture(root);
         WorkspaceId workspace = WorkspaceId.random();
-        repositories.store().ensureReady(workspace);
-        Path localOnly = repositories.cache(workspace).resolve("local-only.txt");
+        fetch(repositories, workspace);
+        Path localOnly = repositories.cache(workspace).resolve("local-only.md");
         Files.writeString(localOnly, "not authority");
-        repositories.commitRemote(
-                workspace,
-                Map.of("documents/note.md", document("550e8400-e29b-41d4-a716-446655440000", "Owner", "Remote")));
+        repositories.commitRemote(workspace, Map.of("private/note.md", document("Owner", "Remote")));
 
-        assertThat(repositories.store().scan(workspace))
-                .singleElement()
-                .satisfies(document -> assertThat(document.content().body()).isEqualTo("Remote"));
-        assertThat(localOnly).doesNotExist();
+        assertThat(source(repositories, workspace, "private/note.md")).contains("# Owner\n\nRemote\n");
+        assertThat(new JGitRepositoryContentReader(repositories.authority())
+                        .getFile(workspace, Optional.empty(), "local-only.md")
+                        .expectedAbsence())
+                .isTrue();
     }
 
     @Test
@@ -98,10 +108,8 @@ class ContentRepositoryBootstrapTests {
                 new JGitRemoteGitTransport(),
                 2,
                 Clock.systemUTC());
-        ContentRepositoryStore store =
-                new JGitContentRepositoryStore(authority, new CanonicalDocumentCodec(), Clock.systemUTC());
 
-        assertThatThrownBy(() -> store.ensureReady(workspace))
+        assertThatThrownBy(() -> authority.readObjects(workspace, RepositoryAuthority.Snapshot::commitId))
                 .isInstanceOf(ContentRepositoryException.class)
                 .hasMessageContaining("no provisioned remote binding");
         assertThat(paths.contentDirectory(workspace)).doesNotExist();
@@ -120,7 +128,7 @@ class ContentRepositoryBootstrapTests {
                 2,
                 Clock.systemUTC());
 
-        assertThatThrownBy(() -> authority.ensureReady(workspace))
+        assertThatThrownBy(() -> authority.readObjects(workspace, RepositoryAuthority.Snapshot::commitId))
                 .hasMessageNotContaining(address)
                 .hasMessageNotContaining("secret-user")
                 .hasMessageNotContaining("secret-token")
@@ -135,7 +143,7 @@ class ContentRepositoryBootstrapTests {
         Path remote = repositories.provision(workspace);
         repositories.commitRemote(workspace, Map.of("README.md", "fixture".getBytes(StandardCharsets.UTF_8)));
 
-        repositories.store().ensureReady(workspace);
+        fetch(repositories, workspace);
 
         String uri = remote.toUri().toString();
         String nativePath = remote.toAbsolutePath().toString();
@@ -154,25 +162,25 @@ class ContentRepositoryBootstrapTests {
         WorkspaceId workspace = WorkspaceId.random();
         byte[] image = new byte[256 * 1024];
         new Random(607).nextBytes(image);
-        byte[] note = document("550e8400-e29b-41d4-a716-446655440000", "Nested", "Body");
+        byte[] note = document("Nested", "Body");
         repositories.commitRemote(
                 workspace,
                 Map.of(
-                        "documents/nested/note.md", note,
+                        "private/nested/note.md", note,
                         "images/nested/image.png", image));
-        repositories.store().scan(workspace);
+        fetch(repositories, workspace);
         long coldObjectBytes = directoryBytes(repositories.cache(workspace).resolve(".git/objects"));
 
         repositories.commitRemote(
                 workspace,
                 Map.of(
-                        "documents/nested/note.md",
+                        "private/nested/note.md",
                         note,
-                        "documents/second.md",
-                        document("650e8400-e29b-41d4-a716-446655440111", "Second", "Tiny"),
+                        "private/second.md",
+                        document("Second", "Tiny"),
                         "images/nested/image.png",
                         image));
-        repositories.store().scan(workspace);
+        fetch(repositories, workspace);
 
         // Fetch negotiation reports the cache's refs as haves, so an advanced remote sends the
         // new commit without resending the unchanged image or history.
@@ -193,8 +201,8 @@ class ContentRepositoryBootstrapTests {
         WorkspaceId first = WorkspaceId.random();
         WorkspaceId second = WorkspaceId.random();
 
-        repositories.store().ensureReady(first);
-        repositories.store().ensureReady(second);
+        fetch(repositories, first);
+        fetch(repositories, second);
 
         assertThat(repositories.cache(first)).doesNotExist();
         assertThat(repositories.cache(second)).isDirectory();
@@ -207,9 +215,9 @@ class ContentRepositoryBootstrapTests {
         WorkspaceId first = WorkspaceId.random();
         WorkspaceId second = WorkspaceId.random();
 
-        repositories.store().ensureReady(first);
+        fetch(repositories, first);
         assertThat(repositories.cache(first)).isDirectory();
-        repositories.store().ensureReady(second);
+        fetch(repositories, second);
 
         assertThat(repositories.cache(first)).doesNotExist();
         assertThat(repositories.cache(second)).isDirectory();
@@ -223,16 +231,12 @@ class ContentRepositoryBootstrapTests {
         new Random(607).nextBytes(image);
         repositories.commitRemote(
                 workspace,
-                Map.of(
-                        "documents/nested/note.md",
-                        document("550e8400-e29b-41d4-a716-446655440000", "Nested", "Body"),
-                        "images/nested/image.png",
-                        image));
+                Map.of("private/nested/note.md", document("Nested", "Body"), "images/nested/image.png", image));
         Runtime runtime = Runtime.getRuntime();
         long memoryBefore = runtime.totalMemory() - runtime.freeMemory();
         long coldStarted = System.nanoTime();
 
-        repositories.store().scan(workspace);
+        fetch(repositories, workspace);
 
         long coldMillis = (System.nanoTime() - coldStarted) / 1_000_000;
         long coldObjectBytes = directoryBytes(repositories.cache(workspace).resolve(".git/objects"));
@@ -240,7 +244,7 @@ class ContentRepositoryBootstrapTests {
         long memoryAfterCold = runtime.totalMemory() - runtime.freeMemory();
         long warmStarted = System.nanoTime();
 
-        repositories.store().scan(workspace);
+        fetch(repositories, workspace);
 
         long warmMillis = (System.nanoTime() - warmStarted) / 1_000_000;
         long warmObjectBytes = directoryBytes(repositories.cache(workspace).resolve(".git/objects"));
@@ -261,19 +265,39 @@ class ContentRepositoryBootstrapTests {
         assertThat(warmMillis).isNotNegative();
     }
 
-    private static byte[] document(String id, String title, String body) {
-        return ("""
-                ---
-                id: %s
-                title: %s
-                visibility: private
-                tags: []
-                created_at: 2026-09-01T09:00:00Z
-                updated_at: 2026-09-01T09:00:00Z
-                ---
+    private static Optional<String> fetch(RemoteRepositoryFixture repositories, WorkspaceId workspace) {
+        return repositories.authority().readObjects(workspace, RepositoryAuthority.Snapshot::commitId);
+    }
 
-                %s
-                """).formatted(id, title, body).getBytes(StandardCharsets.UTF_8);
+    private static Optional<String> source(RemoteRepositoryFixture repositories, WorkspaceId workspace, String path) {
+        return new JGitRepositoryContentReader(repositories.authority())
+                .getFile(workspace, Optional.empty(), path)
+                .source();
+    }
+
+    private static byte[] document(String title, String body) {
+        return ("# " + title + "\n\n" + body + "\n").getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static AuthPrincipal principal() {
+        AuthPrincipal principal = mock(AuthPrincipal.class);
+        when(principal.kind()).thenReturn(AuthPrincipal.Kind.ACCOUNT);
+        when(principal.subjectId()).thenReturn(UUID.fromString("bf562fc1-f15b-4adb-80d2-b0fdab1a568d"));
+        return principal;
+    }
+
+    private static JGitRepositoryPatchService writer(RemoteRepositoryFixture repositories) {
+        AuthService auth = mock(AuthService.class);
+        doAnswer(invocation -> ((Supplier<?>) invocation.getArgument(3)).get())
+                .when(auth)
+                .withAuthorization(any(), any(), anySet(), any());
+        return new JGitRepositoryPatchService(
+                repositories.authority(),
+                auth,
+                Clock.systemUTC(),
+                (workspace, snapshot) -> {},
+                (workspace, snapshot) -> {},
+                mock(RepositoryMediaValidator.class));
     }
 
     private static void clearReadOnly(Path root) throws Exception {

@@ -145,6 +145,8 @@ class RepositoryAdminIntegrationIT {
                         .contentType("application/json")
                         .content(json.writeValueAsString(create)))
                 .andExpect(status().isForbidden());
+        mvc.perform(request(editor, Map.of("changes", List.of(Map.of("expectedAbsence", true)))))
+                .andExpect(status().isBadRequest());
         JsonNode created = body(mvc.perform(request(editor, create))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))

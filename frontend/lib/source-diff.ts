@@ -1,10 +1,8 @@
+export type DiffLine = { kind: "same" | "removed" | "added"; text: string };
 export type SourceDifference =
   | { kind: "unchanged" }
   | { kind: "side-by-side" }
-  | {
-      kind: "lines";
-      lines: { kind: "same" | "removed" | "added"; text: string }[];
-    };
+  | { kind: "lines"; lines: DiffLine[] };
 
 /** Keep exact line endings; expensive comparisons fall back to bounded source views. */
 export function sourceDifference(
@@ -27,7 +25,7 @@ export function sourceDifference(
         left[i] === right[j]
           ? lengths[(i + 1) * width + j + 1] + 1
           : Math.max(lengths[(i + 1) * width + j], lengths[i * width + j + 1]);
-  const lines: Extract<SourceDifference, { kind: "lines" }>["lines"] = [];
+  const lines: DiffLine[] = [];
   let i = 0;
   let j = 0;
   while (i < left.length || j < right.length) {

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api } from "../lib/browser-api";
-import { message } from "./admin";
+import { api, message } from "../lib/browser-api";
+import { spaceHref } from "../lib/format";
 import { useConfirmation } from "./confirmation";
 
 import { PublicationRestrictions } from "./site-review";
@@ -12,13 +12,11 @@ type Publication = {
   slug: string;
   displayName: string;
   publicAuthorName: string;
-  /** Absent from servers older than the description field. */
-  publicDescription?: string;
+  publicDescription: string;
   enabled: boolean;
   eligible: boolean;
   effectiveEnabled: boolean;
-  /** Absent from servers older than public revision history. */
-  publicHistory?: boolean;
+  publicHistory: boolean;
 };
 
 export function SpacePublication({
@@ -61,7 +59,7 @@ export function SpacePublication({
         setPublication(value);
         setAuthor(value.publicAuthorName);
         setName(value.displayName);
-        setDescription(value.publicDescription ?? "");
+        setDescription(value.publicDescription);
       }
     } catch (failure) {
       if (version === epoch.current) setError(message(failure));
@@ -183,7 +181,7 @@ export function SpacePublication({
         path: "/name",
         body: { text: name },
       },
-      description.trim() !== (publication.publicDescription ?? "") && {
+      description.trim() !== publication.publicDescription && {
         label: "空间简介",
         path: "/description",
         body: { text: description },
@@ -223,8 +221,7 @@ export function SpacePublication({
           setName(value.displayName);
           onRenamed?.();
         }
-        if (path === "/description")
-          setDescription(value.publicDescription ?? "");
+        if (path === "/description") setDescription(value.publicDescription);
         if (path === "/author") setAuthor(value.publicAuthorName);
       }
       setProfileNotice({ failed: false, text: "网站资料已保存。" });
@@ -251,7 +248,7 @@ export function SpacePublication({
   const changed =
     publication &&
     (name.trim() !== publication.displayName ||
-      description.trim() !== (publication.publicDescription ?? "") ||
+      description.trim() !== publication.publicDescription ||
       author.trim() !== publication.publicAuthorName);
   return (
     <div className="management-panel">
@@ -259,9 +256,7 @@ export function SpacePublication({
         <div className="panel-heading">
           <h2>公开网站</h2>
           {publication?.effectiveEnabled && (
-            <a href={`/s/${encodeURIComponent(publication.slug)}`}>
-              查看公开网站
-            </a>
+            <a href={spaceHref(publication.slug)}>查看公开网站</a>
           )}
         </div>
         <p className="muted">

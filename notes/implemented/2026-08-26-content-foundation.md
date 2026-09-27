@@ -11,9 +11,9 @@ Poketto needs a durable content boundary before it can implement writes, project
 
 If those details emerge independently inside later features, the same document will acquire incompatible representations across the content, projection, web, and MCP modules.
 
-[Remote repository authority](2026-09-01-remote-repository-authority.md) supersedes this note's original local-bootstrap boundary and owns current materialization and acknowledgement behavior. The revision decisions below remain in force.
+[Remote repository authority](2026-09-01-remote-repository-authority.md) supersedes this note's original local-bootstrap boundary and owns current cache and acknowledgement behavior. The revision decisions below remain in force.
 
-[Repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement arbitrary-path reads and atomic patches without the `documents/` layout or frontmatter identifiers; the UUID write path below is a transitional internal implementation with no production caller, awaiting removal. The path safety rules, normalized collision detection and exact-blob revisions remain in force.
+[Repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement arbitrary-path reads and atomic patches without the `documents/` layout or frontmatter identifiers, and record why the UUID writer, canonical serializer and `documents/` scan described below were removed. Normalized collision detection, the canonical UUID form of the optional article `id` and exact-blob revisions remain in force.
 
 ## Decision
 
@@ -22,8 +22,8 @@ If those details emerge independently inside later features, the same document w
 - Require an absolute `poketto.data-dir` configuration value. Do not default to a path inside the application checkout or container filesystem.
 - Own each workspace's disposable content cache at `<data-dir>/workspaces/<workspace-id>/content`. Resolve the path only from a validated `WorkspaceId`; workspace names, slugs, repository coordinates, and caller-supplied paths never select a directory. Other workspace data may gain sibling directories later, but it does not belong inside the repository cache unless a decision explicitly says so.
 - Require a secret-backed remote binding. An absent or invalid binding fails closed before a local cache can be mistaken for authority.
-- When the cache is absent or empty, create a non-bare `main` worktree, fetch remote `main`, and materialize that exact commit. A pre-provisioned empty remote stays unborn; the first exact-ref document write creates its root commit.
-- Treat every cache file as machine-owned and disposable. Each read or write resets tracked state to the resolved commit and removes untracked or ignored files. Direct authoring happens through the private remote, never in the cache.
+- When the cache is absent or empty, create a non-bare repository on `main`, fetch remote `main`, and record that exact commit as local `main` without checking files out. A pre-provisioned empty remote stays unborn; the first exact-ref write creates its root commit.
+- Treat every cache file as machine-owned and disposable. Reads and writes use Git objects at the resolved commit and never read worktree files. Direct authoring happens through the private remote, never in the cache.
 - Refuse a non-directory, a non-empty path that is not the expected worktree, or unreadable repository metadata. A configured workspace bound limits resident caches and evicts only idle entries.
 
 Repository and transport failures identify the workspace without exposing repository coordinates or credentials. Tests provide their own temporary absolute data directories and disposable bare remotes. The local run documentation explains the required settings.
@@ -56,7 +56,7 @@ Markdown body.
 - `title` is required, trimmed, non-empty, and contains no control characters.
 - `visibility` is exactly `private` or `public`.
 - `tags` is an explicit YAML sequence. Values are trimmed, non-empty strings; duplicates after Unicode normalization and case folding are invalid while original display spelling is preserved.
-- `created_at` and `updated_at` are required RFC 3339 UTC instants. The transitional UUID writer preserves `created_at` and advances `updated_at` whenever the serialized document changes; this layer's canonical serialization owns that rule, and [document write operations](2026-08-29-document-write-operations.md) reuse it. The live repository writer does not maintain these fields: it commits the submitted bytes, and on read authored date fields take precedence while Git history supplies missing dates ([phase-one delivery](2026-09-05-phase-one-daily-use.md)).
+- `created_at` and `updated_at` are required RFC 3339 UTC instants. The removed UUID writer preserved `created_at` and advanced `updated_at` whenever the serialized document changed. The live repository writer does not maintain these fields: it commits the submitted bytes, and on read authored date fields take precedence while Git history supplies missing dates ([phase-one delivery](2026-09-05-phase-one-daily-use.md)).
 - `published_at` is optional. The first publish operation sets it; later edits or a visibility change back to private do not erase it.
 - Unknown fields, duplicate YAML keys, aliases, custom tags, multiple YAML documents, malformed delimiters, invalid UTF-8, and a byte-order mark are invalid for machine writes.
 - The body may be empty. This layer preserves it as text and does not render Markdown, sanitize HTML, fetch links, or interpret instructions.
@@ -65,16 +65,16 @@ Machine writes serialize frontmatter in the field order shown above, add `publis
 
 ### Identity and revision types
 
-- Require `WorkspaceId` on content-module operations and expose immutable value types for document ID, revision, visibility, metadata, and document content. Keep JGit and YAML implementation classes below `content.internal`.
+- Require `WorkspaceId` on content-module operations and expose immutable value types for document ID and revision. Keep JGit and YAML implementation classes below `content.internal`.
 - Calculate a revision as SHA-256 over the exact blob bytes at the selected git tree. Encode it as `sha256:<lowercase-hex>` and treat the whole value as opaque outside the content module.
 - Do not derive revisions from parsed fields or commit SHAs. Formatting and line-ending changes are edits and therefore produce new revisions.
 - Detect duplicate document UUIDs while scanning a tree. Return a repository-integrity error naming every conflicting path; never choose one document implicitly.
 
 ### Implemented scope
 
-The content module binds the data directory, resolves per-workspace remote authority into disposable caches, parses and canonically serializes documents, exposes the content value types, and scans commit-pinned `main` trees. The transitional UUID writer builds on this boundary; HTTP and MCP writes use the patch service of the repository authoring foundations.
+The content module binds the data directory, resolves per-workspace remote authority into disposable caches, exposes the document ID and revision types, and reads commit-pinned `main` trees. HTTP and MCP writes use the patch service of the repository authoring foundations; the UUID writer and canonical serializer that first implemented this note are removed.
 
-[Repository-native publishing and images](../rejected/2026-09-01-repository-native-publishing-and-assets.md) proposes replacing the target `documents/`, UUID, per-file visibility, and hash-only image-reference requirements with arbitrary nested Markdown, repository publishing policy, immutable managed references, and read-only sibling-image galleries. The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement that replacement; this note records the transitional UUID layout and the rules that outlived it.
+[Repository-native publishing and images](../rejected/2026-09-01-repository-native-publishing-and-assets.md) proposes replacing the target `documents/`, UUID, per-file visibility, and hash-only image-reference requirements with arbitrary nested Markdown, repository publishing policy, immutable managed references, and read-only sibling-image galleries. The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) implement that replacement; this note records the removed UUID layout and the rules that outlived it.
 
 ## Alternatives
 
@@ -94,7 +94,7 @@ Allowing arbitrary frontmatter fields would make extensions easy, but misspellin
 
 ## Verification
 
-`ContentRepositoryBootstrapTests`, `CanonicalDocumentCodecTests`, `DocumentValueTests`, `DocumentPathRulesTests`, `ContentRepositoryScanTests` and `ModularityTests` pin these rules. The integration suite checks that workspace catalog initialization and repository bootstrap complete together against PostgreSQL.
+`ContentRepositoryBootstrapTests`, `DocumentValueTests`, `DocumentPathRulesTests` and `ModularityTests` pin the rules still in force. The integration suite checks that workspace catalog initialization and repository bootstrap complete together against PostgreSQL.
 
 ## Risks
 
@@ -104,6 +104,6 @@ Exact-byte revisions make manual line-ending or formatting changes visible as co
 
 Repository-wide scanning is linear in document count. It is the simplest correct foundation; later work may add an in-memory catalog or derived index without changing git's authority.
 
-Per-workspace repositories increase the number of Git handles, caches, and scans. Repository resources open only for the scoped operation and close deterministically; the configured cache bound prevents unbounded materialized workspace growth.
+Per-workspace repositories increase the number of Git handles, caches, and scans. Repository resources open only for the scoped operation and close deterministically; the configured cache bound prevents unbounded cache growth.
 
-`scan` fails the whole repository when any managed file is invalid, so one malformed break-glass commit blocks every document on the transitional UUID path. The repository reader of the [phase-one delivery](2026-09-05-phase-one-daily-use.md) instead reports per-file diagnostics and excludes only the affected files.
+The removed `documents/` scan failed the whole repository when any managed file was invalid, so one malformed break-glass commit blocked every document on the UUID path. The repository reader of the [phase-one delivery](2026-09-05-phase-one-daily-use.md) instead reports per-file diagnostics and excludes only the affected files.

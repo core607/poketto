@@ -1,16 +1,14 @@
 package io.github.core607.poketto.auth.internal;
 
 import io.github.core607.poketto.auth.AuthException;
+import io.github.core607.poketto.auth.CredentialTokens;
 import io.github.core607.poketto.auth.EmailChallengeException;
 import io.github.core607.poketto.auth.GoogleAccounts;
 import io.github.core607.poketto.auth.GoogleIdentityProvider;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.time.Duration;
-import java.util.Base64;
 import org.springframework.security.config.oauth2.client.CommonOAuth2Provider;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest;
@@ -30,7 +28,6 @@ final class GoogleOidcProvider implements GoogleIdentityProvider {
     private final ClientRegistration client;
     private final OAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> tokens;
     private final JwtDecoder decoder;
-    private final SecureRandom random = new SecureRandom();
 
     GoogleOidcProvider(String id, String secret, String origin) {
         client = id.isBlank() || secret.isBlank() || origin.isBlank() ? null : registration(id, secret, origin);
@@ -55,9 +52,9 @@ final class GoogleOidcProvider implements GoogleIdentityProvider {
     @Override
     public Authorization begin() {
         requireAvailable();
-        String state = randomToken();
-        String nonce = randomToken();
-        String verifier = randomToken();
+        String state = CredentialTokens.random("");
+        String nonce = CredentialTokens.random("");
+        String verifier = CredentialTokens.random("");
         return new Authorization(request(state, nonce, verifier).getAuthorizationRequestUri(), state, nonce, verifier);
     }
 
@@ -105,7 +102,7 @@ final class GoogleOidcProvider implements GoogleIdentityProvider {
                 .attributes(values -> values.put("code_verifier", verifier))
                 .additionalParameters(values -> {
                     values.put("nonce", nonce);
-                    values.put("code_challenge", challenge(verifier));
+                    values.put("code_challenge", CredentialTokens.challenge(verifier));
                     values.put("code_challenge_method", "S256");
                     values.put("prompt", "select_account");
                 })
@@ -124,23 +121,6 @@ final class GoogleOidcProvider implements GoogleIdentityProvider {
     private void requireAvailable() {
         if (!available()) {
             throw new AuthException(AuthException.Code.DENIED);
-        }
-    }
-
-    private String randomToken() {
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
-
-    private static String challenge(String verifier) {
-        try {
-            return Base64.getUrlEncoder()
-                    .withoutPadding()
-                    .encodeToString(
-                            MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 is required for PKCE", impossible);
         }
     }
 

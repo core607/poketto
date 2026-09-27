@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useWorkspaceApi } from "./workspace-context";
-import { message } from "./admin";
+import { message } from "../lib/browser-api";
 export type AdminPage<T> = {
   items: T[];
   total: number;
@@ -24,7 +24,9 @@ export function useAdminPage<T>(path: string) {
     let active = true;
     setLoading(true);
     setError("");
-    api<AdminPage<T>>(`${path}?offset=${offset}&limit=30`)
+    api<AdminPage<T>>(
+      `${path}${path.includes("?") ? "&" : "?"}offset=${offset}&limit=30`,
+    )
       .then((result) => {
         if (active) setPage(result);
       })

@@ -1,11 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "../lib/browser-api";
+import { api, message } from "../lib/browser-api";
 import { safeImage } from "../lib/format";
-import { message } from "./admin";
-import { AdminPagination } from "./admin-pagination";
+import { AdminPagination, useAdminPage } from "./admin-pagination";
 import { Markdown } from "./markdown";
-import { useSitePage } from "./site-page";
 
 type Space = {
   workspaceId: string;
@@ -27,7 +25,7 @@ type Review = {
 };
 
 export function SiteAccountSpaces({ accountId }: { accountId: string }) {
-  const spaces = useSitePage<Space>(
+  const spaces = useAdminPage<Space>(
     `/api/auth/site/accounts/${accountId}/workspaces`,
   );
   const [selected, setSelected] = useState<Space | null>(null);
@@ -64,7 +62,7 @@ export function SiteAccountSpaces({ accountId }: { accountId: string }) {
 
 function SiteReview({ space, onClose }: { space: Space; onClose: () => void }) {
   const base = `/api/auth/site/workspaces/${space.workspaceId}/review`;
-  const articles = useSitePage<Article>(base);
+  const articles = useAdminPage<Article>(base);
   const [selected, setSelected] = useState<Article | null>(null);
   return (
     <section
@@ -151,7 +149,7 @@ function ReviewDocument({ base, route }: { base: string; route: string }) {
 }
 
 export function PublicationRestrictions({ base }: { base: string }) {
-  const page = useSitePage<{ ownerName: string; reason: string | null }>(
+  const page = useAdminPage<{ ownerName: string; reason: string | null }>(
     `${base}/restrictions`,
   );
   return (

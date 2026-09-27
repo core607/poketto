@@ -43,7 +43,7 @@ final class JGitRepositoryBlobReader implements RepositoryBlobReader {
             if (cache.commitId().isEmpty()) {
                 throw unavailable();
             }
-            try (Repository repository = JGitContentRepositoryStore.openCache(cache.worktree(), workspace);
+            try (Repository repository = RepositoryCaches.openCache(cache.worktree(), workspace);
                     RevWalk walk = new RevWalk(repository)) {
                 walk.markStart(
                         walk.parseCommit(ObjectId.fromString(cache.commitId().orElseThrow())));

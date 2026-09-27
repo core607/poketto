@@ -5,13 +5,11 @@ import io.github.core607.poketto.content.DocumentSearch;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
-import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.concurrent.Semaphore;
 import java.util.function.LongSupplier;
@@ -106,20 +104,7 @@ final class PublicSiteSearch {
     }
 
     private List<WorkspacePublications.Publication> catalogue(Budget budget) {
-        var result = new ArrayList<WorkspacePublications.Publication>();
-        Optional<WorkspaceId> after = Optional.empty();
-        while (true) {
-            budget.checkTime();
-            List<WorkspacePublications.Publication> page = publications.publishedAfter(after, 100);
-            if (result.size() + page.size() > limits.spaces()) {
-                throw capacity();
-            }
-            result.addAll(page);
-            if (page.size() < 100) {
-                return List.copyOf(result);
-            }
-            after = Optional.of(page.getLast().workspaceId());
-        }
+        return PublishedSpaces.all(publications, limits.spaces(), budget::checkTime, PublicSiteSearch::capacity);
     }
 
     private void validate(List<Source> sources, List<WorkspacePublications.Publication> spaces, Budget budget) {
