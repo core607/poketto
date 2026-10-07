@@ -15,17 +15,22 @@ def openssl(*arguments, payload=None):
         ["openssl", *arguments], input=payload, capture_output=True, check=True, timeout=30).stdout
 
 
+def openssl_pem(*arguments, payload=None):
+    """PEM output with LF line endings; Windows builds of OpenSSL write CRLF."""
+    return openssl(*arguments, payload=payload).replace(b"\r\n", b"\n")
+
+
 class GitHubKeyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.rsa = openssl("genrsa", "2048")
+        cls.rsa = openssl_pem("genrsa", "2048")
 
     def convert(self, payload):
         return subprocess.run(
             [sys.executable, str(CONVERTER)], input=payload, capture_output=True, timeout=60)
 
     def test_pkcs1_and_pkcs8_produce_the_same_single_line_pkcs8_key(self):
-        traditional = openssl("rsa", "-traditional", payload=self.rsa)
+        traditional = openssl_pem("rsa", "-traditional", payload=self.rsa)
         expected = openssl("pkcs8", "-topk8", "-nocrypt", "-outform", "DER", payload=self.rsa)
         for pem in (self.rsa, traditional, traditional.replace(b"\n", b"\r\n")):
             with self.subTest(header=pem.splitlines()[0]):
