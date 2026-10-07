@@ -201,6 +201,23 @@ final class SessionLifecycle {
      * copy, so its first command starts a fresh sandbox. The successor takes over the busy claim.
      */
     ExecutionSession replaceLease(ExecutionSession previous, AuthPrincipal principal) {
+        return replaceLease(previous, principal, false);
+    }
+
+    /**
+     * Registers the dedicated lease that inspects a public copy in place of the caller's lease. The
+     * inspection must be the first command of a fresh sandbox, so an opened caller lease is contained
+     * first; an unopened one holds no worker lease and only yields its slot and busy claim. The
+     * returned lease carries the projection-check flag, so it is closed, never handed to a command.
+     */
+    ExecutionSession inspectionLease(ExecutionSession previous) {
+        if (previous.openAttempted) {
+            return replaceLease(previous, previous.principal, true);
+        }
+        return install(previous, successor(previous, previous.principal, previous.hello, true));
+    }
+
+    private ExecutionSession replaceLease(ExecutionSession previous, AuthPrincipal principal, boolean projectionCheck) {
         WorkerClient.Hello hello = worker.hello();
         if (previous.hello != null && !previous.hello.workerBootId().equals(hello.workerBootId())) {
             previous.stopping.set(true);
@@ -212,8 +229,13 @@ final class SessionLifecycle {
         if (previous.commit == null || previous.saveState == null) {
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, false);
         }
-        var current =
-                new ExecutionSession(previous.key, principal, previous.fullRead, previous.copyId, UUID.randomUUID());
+        return install(previous, successor(previous, principal, hello, projectionCheck));
+    }
+
+    private static ExecutionSession successor(
+            ExecutionSession previous, AuthPrincipal principal, WorkerClient.Hello hello, boolean projectionCheck) {
+        var current = new ExecutionSession(
+                previous.key, principal, previous.fullRead, previous.copyId, UUID.randomUUID(), projectionCheck);
         current.busy.set(true);
         current.attaching = true;
         current.hello = hello;
@@ -221,6 +243,10 @@ final class SessionLifecycle {
         current.saveState = previous.saveState;
         current.publicExport = previous.publicExport;
         current.accountRecord = previous.accountRecord;
+        return current;
+    }
+
+    private ExecutionSession install(ExecutionSession previous, ExecutionSession current) {
         if (!registry.replace(previous, current)) {
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, true);
         }

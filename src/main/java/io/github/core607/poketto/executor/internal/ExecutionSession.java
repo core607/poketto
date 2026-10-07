@@ -41,11 +41,12 @@ final class ExecutionSession {
     volatile boolean capacityReleased;
     volatile boolean detached;
     /**
-     * Set only on the internal lease that inspects a public copy whose publication changed. It runs
-     * no caller command and returns no content, so it needs execution permission, not a current
-     * projection; a caller's command always runs on a lease without this flag.
+     * Fixed at construction, and true only for the dedicated lease that inspects a public copy whose
+     * publication changed. That lease runs no caller command and returns no content, so it needs
+     * execution permission, not a current projection. No other lease can acquire the flag, and the
+     * refresh closes the inspection lease on every path instead of returning it to the caller.
      */
-    volatile boolean projectionCheck;
+    final boolean projectionCheck;
 
     boolean auxiliary;
     UUID retainedAppBoot;
@@ -54,11 +55,22 @@ final class ExecutionSession {
     volatile long nextRenew;
 
     ExecutionSession(ExecutionSession.Key key, AuthPrincipal principal, boolean fullRead, UUID copyId, UUID leaseId) {
+        this(key, principal, fullRead, copyId, leaseId, false);
+    }
+
+    ExecutionSession(
+            ExecutionSession.Key key,
+            AuthPrincipal principal,
+            boolean fullRead,
+            UUID copyId,
+            UUID leaseId,
+            boolean projectionCheck) {
         this.key = key;
         this.principal = principal;
         this.fullRead = fullRead;
         this.copyId = copyId;
         this.leaseId = leaseId;
+        this.projectionCheck = projectionCheck;
     }
 
     WorkerClient.Identity identity() {
