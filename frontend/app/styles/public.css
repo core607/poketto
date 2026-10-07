@@ -7,6 +7,13 @@
   background: color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter: saturate(1.4) blur(14px);
 }
+/* For Firefox 111–112, which lack color-mix(): its var() arguments defer validation past
+   the cascade, so a preceding fallback declaration would never apply. */
+@supports not (color: color-mix(in srgb, red, red)) {
+  .site-bar {
+    background: var(--bg);
+  }
+}
 .site-bar-inner {
   display: flex;
   align-items: center;
@@ -773,6 +780,11 @@
   text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
   text-decoration-thickness: 1px;
   text-underline-offset: 4px;
+}
+@supports not (color: color-mix(in srgb, red, red)) {
+  .markdown a {
+    text-decoration-color: var(--accent);
+  }
 }
 .markdown a:hover {
   text-decoration-color: currentColor;

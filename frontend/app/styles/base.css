@@ -144,6 +144,12 @@
       color: color-mix(in oklab, currentcolor 50%, transparent);
     }
   }
+  /* Firefox 111–112 lack color-mix(); the build drops a preceding fallback declaration. */
+  @supports not (color: color-mix(in srgb, red, red)) {
+    ::placeholder {
+      color: var(--faint);
+    }
+  }
   textarea {
     resize: vertical;
   }
