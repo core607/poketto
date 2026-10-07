@@ -32,6 +32,13 @@
 .btn-primary:hover:not(:disabled) {
   background: color-mix(in srgb, var(--ink) 84%, var(--bg));
 }
+/* For browsers without color-mix(), Firefox 111–112 in the Next.js default target: its var()
+   arguments defer validation past the cascade, so a preceding fallback would never apply. */
+@supports not (color: color-mix(in srgb, red, red)) {
+  .btn-primary:hover:not(:disabled) {
+    background: var(--ink-2);
+  }
+}
 .btn-secondary {
   border-color: var(--line-strong);
   background: var(--bg-raised);
@@ -240,6 +247,14 @@ a.tag:hover {
   border-color: color-mix(in srgb, var(--moss) 30%, var(--bg-raised));
   background: var(--moss-soft);
   color: var(--moss);
+}
+@supports not (color: color-mix(in srgb, red, red)) {
+  .notice.danger {
+    border-color: var(--danger-soft);
+  }
+  .notice.success {
+    border-color: var(--moss-soft);
+  }
 }
 .muted {
   color: var(--muted);

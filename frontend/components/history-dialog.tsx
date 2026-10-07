@@ -5,7 +5,7 @@ import { useConfirmation } from "./confirmation";
 import { sourceDifference } from "../lib/source-diff";
 import { message } from "../lib/browser-api";
 import type { RepositoryFile } from "../lib/types";
-import { SourceDiff } from "./source-diff";
+import { SourceDiff, lineEnding } from "./source-diff";
 import { useModal } from "./use-modal";
 
 type HistoryEntry = {
@@ -21,13 +21,6 @@ type HistoryPage = {
   entries: HistoryEntry[];
   nextOffset: number | null;
 };
-
-/** Shows each line ending, so CRLF and a missing final newline are visible differences. */
-function lineEnding(text: string) {
-  if (text.endsWith("\r\n")) return text.slice(0, -2) + " ⟪CRLF⟫";
-  if (text.endsWith("\n")) return text.slice(0, -1);
-  return text + " ⟪无行尾换行⟫";
-}
 
 export function HistoryDialog({
   file,

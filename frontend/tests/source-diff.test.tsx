@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SourceDiff, lineEnding } from "../components/source-diff";
 import { sourceDifference } from "../lib/source-diff";
 
 test("source differences retain exact before and after bytes including line endings", () => {
@@ -30,6 +32,39 @@ test("source differences retain exact before and after bytes including line endi
       after,
     );
   }
+});
+
+test("the history diff marks CRLF and a missing final newline but not LF", () => {
+  const rendered = (before: string, after: string) => {
+    const difference = sourceDifference(before, after);
+    if (difference.kind !== "lines")
+      throw new Error("line difference required");
+    const html = renderToStaticMarkup(
+      <SourceDiff lines={difference.lines} format={lineEnding} />,
+    );
+    return [
+      ...html.matchAll(
+        /class="history-line (\w+)"><span aria-hidden="true">[^<]*<\/span>([^<]*)</g,
+      ),
+    ].map(([, kind, text]) => [kind, text]);
+  };
+  assert.deepEqual(rendered("a\r\nb\r\n", "a\nb\n"), [
+    ["removed", "a ⟪CRLF⟫"],
+    ["removed", "b ⟪CRLF⟫"],
+    ["added", "a"],
+    ["added", "b"],
+  ]);
+  assert.deepEqual(
+    rendered("same\r\nlf\nedit\r\nlast", "same\r\nlf\nedited\nlast\n"),
+    [
+      ["same", "same ⟪CRLF⟫"],
+      ["same", "lf"],
+      ["removed", "edit ⟪CRLF⟫"],
+      ["removed", "last ⟪无行尾换行⟫"],
+      ["added", "edited"],
+      ["added", "last"],
+    ],
+  );
 });
 
 test("comparison work and UTF-8 size have a side-by-side fallback", () => {

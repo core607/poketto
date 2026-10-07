@@ -35,7 +35,7 @@ Poketto needs two rendering modes. Public articles, tag and archive pages, RSS a
 
 **Increase deployment resources before implementation.** Headroom without evidence that the frontend needs it. Build work stays outside the production runtime and each process receives explicit limits instead.
 
-**Tailwind.** Part of the original stack and removed on 2026-09-26. Components style themselves with classes in `app/styles/`, and no element used a Tailwind utility, so Tailwind supplied only its preflight reset plus utilities generated from ordinary words in the source. That reset did not justify 40 lockfile packages, among them native oxide and lightningcss builds for every platform. Its optimizer also added `@supports` fallbacks for `color-mix()`, which the Next.js build does not emit, so browsers without `color-mix()` ignore those declarations. Reintroducing a utility framework requires components that use its utilities.
+**Tailwind.** Part of the original stack and removed on 2026-09-26. Components style themselves with classes in `app/styles/`, and no element used a Tailwind utility, so Tailwind supplied only its preflight reset plus utilities generated from ordinary words in the source. That reset did not justify 40 lockfile packages, among them native oxide and lightningcss builds for every platform. Its optimizer also added `@supports` fallbacks for `color-mix()`, which the Next.js build does not emit, so the stylesheets write their own for Firefox 111–112, inside the default Next.js target. Reintroducing a utility framework requires components that use its utilities.
 
 ## Consequences
 
