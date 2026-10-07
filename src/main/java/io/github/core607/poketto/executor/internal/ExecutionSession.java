@@ -29,7 +29,6 @@ final class ExecutionSession {
     final AtomicBoolean stopping = new AtomicBoolean();
     final AtomicBoolean renewing = new AtomicBoolean();
     final CompletableFuture<Void> stopped = new CompletableFuture<>();
-    final CompletableFuture<Void> contained = new CompletableFuture<>();
     volatile WorkerClient.Hello hello;
     volatile String commit;
     String gitCommit;

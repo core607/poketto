@@ -215,12 +215,10 @@ final class SessionLifecycle {
             return replaceLease(previous, previous.principal, true);
         }
         ExecutionSession current = install(previous, successor(previous, previous.principal, previous.hello, true));
-        // The reservation has no worker lease to close and its slot now belongs to the successor, so
-        // it is contained without releasing capacity. Retiring it makes a stale handle fail
-        // requireLive instead of opening a lease.
+        // The reservation has no worker lease to close and its slot now belongs to the successor.
+        // Retiring it still makes a stale handle fail requireLive instead of opening a lease.
         previous.stopping.set(true);
         previous.stopped.complete(null);
-        previous.contained.complete(null);
         return current;
     }
 
