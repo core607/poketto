@@ -496,7 +496,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     }
 
     private static void checkDeadline(long deadline) {
-        if (System.nanoTime() > deadline || Thread.currentThread().isInterrupted()) {
+        if (System.nanoTime() - deadline > 0 || Thread.currentThread().isInterrupted()) {
             throw unavailable();
         }
     }
@@ -559,7 +559,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
 
         @Override
         public boolean isCancelled() {
-            return System.nanoTime() > deadline || Thread.currentThread().isInterrupted();
+            return System.nanoTime() - deadline > 0 || Thread.currentThread().isInterrupted();
         }
 
         @Override

@@ -29,7 +29,7 @@ final class AccountCommand implements AutoCloseable {
             try {
                 return store.acquire(owner);
             } catch (RetainedCopyException busy) {
-                if (busy.reason() != RetainedCopyException.Reason.BUSY || System.nanoTime() >= deadline) {
+                if (busy.reason() != RetainedCopyException.Reason.BUSY || System.nanoTime() - deadline >= 0) {
                     throw busy;
                 }
                 try {

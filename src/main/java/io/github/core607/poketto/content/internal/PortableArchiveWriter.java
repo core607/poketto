@@ -71,7 +71,7 @@ final class PortableArchiveWriter {
         }
         long deadline = System.nanoTime() + limits.timeout().toNanos();
         Runnable deadlineCheck = () -> {
-            if (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline) {
+            if (Thread.currentThread().isInterrupted() || System.nanoTime() - deadline >= 0) {
                 throw new IllegalStateException("export deadline exceeded");
             }
         };

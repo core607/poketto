@@ -156,6 +156,39 @@ class PublicCopyRefreshTests {
     }
 
     @Test
+    void theCommandAfterARefreshIsStillHeldToTheCurrentPublication() throws Exception {
+        try (var worker = new Worker()) {
+            String copy;
+            try (var executor = executor(worker)) {
+                copy = run(executor, "new", "ls").copyId();
+            }
+            var second = publish(SECOND);
+            // Publication moves on once the rebuilt copy is journaled. Only the inspection lease skips
+            // the current-publication check, so a command that ran on it would reach a stale copy.
+            var moved = new AtomicBoolean();
+            worker.accounts.afterWrite(record -> {
+                if (record.phase() == AccountCopyRecord.Phase.READY
+                        && second.equals(record.publicExport())
+                        && moved.compareAndSet(false, true)) {
+                    publish(THIRD);
+                }
+            });
+
+            // A fresh executor reserves a session that has not opened, so the inspection lease
+            // replaces that reservation instead of a lease that already ran commands.
+            try (var executor = executor(worker)) {
+                assertThatThrownBy(() -> run(executor, copy, "cat article/index.md"))
+                        .isInstanceOf(ContentRepositoryException.class);
+            }
+
+            assertThat(moved).isTrue();
+            assertThat(worker.commands())
+                    .extracting(Worker.Command::command)
+                    .containsExactly("ls", PublicCopyRefresh.inspection(FIRST));
+        }
+    }
+
+    @Test
     void aStaleCopyWithLocalChangesIsRefusedAndLeftUntouched() throws Exception {
         try (var worker = new Worker()) {
             String copy;

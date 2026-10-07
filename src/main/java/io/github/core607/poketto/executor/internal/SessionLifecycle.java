@@ -174,7 +174,7 @@ final class SessionLifecycle {
                 session.ready = true;
                 return;
             }
-            if (!state.equals("INITIALIZING") || System.nanoTime() >= deadline) {
+            if (!state.equals("INITIALIZING") || System.nanoTime() - deadline >= 0) {
                 throw new WorkerUnavailableException();
             }
             pause();
@@ -201,6 +201,28 @@ final class SessionLifecycle {
      * copy, so its first command starts a fresh sandbox. The successor takes over the busy claim.
      */
     ExecutionSession replaceLease(ExecutionSession previous, AuthPrincipal principal) {
+        return replaceLease(previous, principal, false);
+    }
+
+    /**
+     * Registers the dedicated lease that inspects a public copy in place of the caller's lease. The
+     * inspection must be the first command of a fresh sandbox, so an opened caller lease is contained
+     * first; an unopened one holds no worker lease and only yields its slot and busy claim. The
+     * returned lease carries the projection-check flag, so it is closed, never handed to a command.
+     */
+    ExecutionSession inspectionLease(ExecutionSession previous) {
+        if (previous.openAttempted) {
+            return replaceLease(previous, previous.principal, true);
+        }
+        ExecutionSession current = install(previous, successor(previous, previous.principal, previous.hello, true));
+        // The reservation has no worker lease to close and its slot now belongs to the successor.
+        // Retiring it still makes a stale handle fail requireLive instead of opening a lease.
+        previous.stopping.set(true);
+        previous.stopped.complete(null);
+        return current;
+    }
+
+    private ExecutionSession replaceLease(ExecutionSession previous, AuthPrincipal principal, boolean projectionCheck) {
         WorkerClient.Hello hello = worker.hello();
         if (previous.hello != null && !previous.hello.workerBootId().equals(hello.workerBootId())) {
             previous.stopping.set(true);
@@ -212,8 +234,13 @@ final class SessionLifecycle {
         if (previous.commit == null || previous.saveState == null) {
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, false);
         }
-        var current =
-                new ExecutionSession(previous.key, principal, previous.fullRead, previous.copyId, UUID.randomUUID());
+        return install(previous, successor(previous, principal, hello, projectionCheck));
+    }
+
+    private static ExecutionSession successor(
+            ExecutionSession previous, AuthPrincipal principal, WorkerClient.Hello hello, boolean projectionCheck) {
+        var current = new ExecutionSession(
+                previous.key, principal, previous.fullRead, previous.copyId, UUID.randomUUID(), projectionCheck);
         current.busy.set(true);
         current.attaching = true;
         current.hello = hello;
@@ -221,6 +248,10 @@ final class SessionLifecycle {
         current.saveState = previous.saveState;
         current.publicExport = previous.publicExport;
         current.accountRecord = previous.accountRecord;
+        return current;
+    }
+
+    private ExecutionSession install(ExecutionSession previous, ExecutionSession current) {
         if (!registry.replace(previous, current)) {
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.UNAVAILABLE, true);
         }
@@ -265,7 +296,7 @@ final class SessionLifecycle {
             }
             if (!session.openAttempted
                     || session.stopping.get()
-                    || System.nanoTime() < session.nextRenew
+                    || System.nanoTime() - session.nextRenew < 0
                     || !session.renewing.compareAndSet(false, true)) {
                 continue;
             }
@@ -304,7 +335,7 @@ final class SessionLifecycle {
         if (!session.openAttempted
                 || session.capacityReleased
                 || !session.stopped.isCompletedExceptionally()
-                || System.nanoTime() < session.nextRenew
+                || System.nanoTime() - session.nextRenew < 0
                 || !session.renewing.compareAndSet(false, true)) {
             return;
         }
@@ -387,7 +418,7 @@ final class SessionLifecycle {
 
     private void closeWorker(ExecutionSession session, String reason) {
         long deadline = System.nanoTime() + closeTimeout.toNanos();
-        while (System.nanoTime() < deadline) {
+        while (System.nanoTime() - deadline < 0) {
             JsonNode response = session.auxiliary
                     ? worker.closeRetainedLease(
                             session.hello, session.identity(), session.retainedAppBoot, reason, Duration.ofSeconds(3))

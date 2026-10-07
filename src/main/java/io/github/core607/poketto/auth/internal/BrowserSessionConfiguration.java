@@ -2,7 +2,9 @@ package io.github.core607.poketto.auth.internal;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InvalidClassException;
 import java.io.ObjectInputFilter;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
@@ -28,6 +30,8 @@ class BrowserSessionConfiguration {
     private static final ObjectInputFilter ATTRIBUTE_CLASSES =
             ObjectInputFilter.Config.createFilter("maxdepth=32;maxrefs=10000;maxbytes=1048576;"
                     + "io.github.core607.poketto.**;org.springframework.security.**;java.**;!*");
+    /** A class name and the JDK's reason it no longer reads: bounded, with no control characters. */
+    private static final Pattern CLASS_MISMATCH = Pattern.compile("[\\w.$\\[;:=, -]{1,300}");
 
     @Bean
     SessionRepositoryCustomizer<JdbcIndexedSessionRepository> postgresSessionStatements() {
@@ -68,8 +72,24 @@ class BrowserSessionConfiguration {
             input.setObjectInputFilter(ATTRIBUTE_CLASSES);
             return input.readObject();
         } catch (IOException | ClassNotFoundException | RuntimeException unreadable) {
-            log.warn("A stored browser session attribute could not be read and is treated as absent");
+            log.warn(
+                    "A stored browser session attribute could not be read and is treated as absent: {}",
+                    unreadableReason(unreadable));
             return null;
         }
+    }
+
+    /**
+     * The failure without its stack trace or causes, which can carry attribute data. Only a class
+     * mismatch keeps its message, which names the class and why it no longer reads, and only while
+     * it has that shape: the class name comes from the stored bytes, so a damaged or altered record
+     * cannot put other text in the log. Other messages can quote the stored bytes or the arguments a
+     * constructor rejected, so they give only their type.
+     */
+    private static String unreadableReason(Exception unreadable) {
+        String type = unreadable.getClass().getName();
+        String message = unreadable.getMessage();
+        boolean mismatch = unreadable instanceof InvalidClassException || unreadable instanceof ClassNotFoundException;
+        return mismatch && message != null && CLASS_MISMATCH.matcher(message).matches() ? type + ": " + message : type;
     }
 }

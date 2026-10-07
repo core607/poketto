@@ -152,7 +152,7 @@ final class CopyDisposal {
                 key.scopeHash(),
                 record.writer().leaseId());
         long deadline = System.nanoTime() + closeTimeout.toNanos();
-        while (System.nanoTime() < deadline) {
+        while (System.nanoTime() - deadline < 0) {
             JsonNode response = worker.closeRetainedLease(
                     hello, identity, record.writer().appBootId(), "session_closed", Duration.ofSeconds(3));
             if (!response.path("ok").asBoolean()

@@ -61,7 +61,7 @@ final class McpArtifactResults {
         int received = initial.length;
         long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
         while (received < content.length) {
-            if (System.nanoTime() >= deadline) {
+            if (System.nanoTime() - deadline >= 0) {
                 throw new IllegalStateException("Artifact transfer deadline exceeded");
             }
             RepositoryExecutor.ArtifactChunk next = pages.read(received, Math.min(65536, content.length - received))

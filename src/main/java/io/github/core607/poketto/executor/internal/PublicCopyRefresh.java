@@ -101,8 +101,8 @@ final class PublicCopyRefresh {
         }
         // A lease that already ran commands may keep shell state or background processes, so the
         // inspection always runs as the first command of a new lease: a fresh sandbox at the root.
-        ExecutionSession probe = session.openAttempted ? lifecycle.replaceLease(session, session.principal) : session;
-        probe.projectionCheck = true;
+        // That lease is never the caller's: a clean copy is rebuilt on another, a failure contains it.
+        ExecutionSession probe = lifecycle.inspectionLease(session);
         active.set(probe);
         held.bind(lifecycle.writer(probe));
         probe.accountRecord = held.record();

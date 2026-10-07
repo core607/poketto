@@ -7,6 +7,7 @@ import io.github.core607.poketto.auth.GoogleIdentityProvider;
 import io.github.core607.poketto.auth.OAuthService;
 import io.github.core607.poketto.content.GitHubConnections;
 import java.lang.reflect.Constructor;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -14,6 +15,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -21,6 +25,7 @@ import org.springframework.security.core.context.SecurityContextImpl;
 import org.springframework.security.web.csrf.DefaultCsrfToken;
 import org.springframework.util.LinkedMultiValueMap;
 
+@ExtendWith(OutputCaptureExtension.class)
 class BrowserSessionConfigurationTests {
     private final ConversionService conversion =
             BrowserSessionConfiguration.attributeConversion(getClass().getClassLoader());
@@ -69,11 +74,37 @@ class BrowserSessionConfigurationTests {
     }
 
     @Test
-    void classesOutsideTheAllowListAndDamagedBytesReadAsAbsent() {
+    void classesOutsideTheAllowListAndDamagedBytesReadAsAbsent(CapturedOutput output) {
         byte[] foreign = conversion.convert(new LinkedMultiValueMap<String, String>(), byte[].class);
 
         assertThat(conversion.convert(foreign, Object.class)).isNull();
         assertThat(conversion.convert(new byte[] {1, 2, 3}, Object.class)).isNull();
+        assertThat(conversion.convert("DATA".getBytes(StandardCharsets.US_ASCII), Object.class))
+                .isNull();
+        // A class mismatch is named with its reason; damaged bytes give only the failure type,
+        // because that message would quote them.
+        assertThat(output)
+                .contains("treated as absent: java.io.InvalidClassException: filter status: REJECTED")
+                .contains("treated as absent: java.io.EOFException")
+                .contains("treated as absent: java.io.StreamCorruptedException")
+                .doesNotContain("44415441")
+                .doesNotContain("\tat ");
+    }
+
+    @Test
+    void aMissingClassIsNamedOnlyWhileItsNameHasTheShapeOfAClassName(CapturedOutput output) throws Exception {
+        byte[] stored = conversion.convert(principal(), byte[].class);
+
+        assertThat(conversion.convert(renamed(stored, "AuthPrincipaX"), Object.class))
+                .isNull();
+        assertThat(conversion.convert(renamed(stored, "Auth\nrincipal"), Object.class))
+                .isNull();
+
+        assertThat(output)
+                .contains("treated as absent: java.lang.ClassNotFoundException: "
+                        + "io.github.core607.poketto.auth.AuthPrincipaX")
+                .contains("treated as absent: java.lang.ClassNotFoundException" + System.lineSeparator())
+                .doesNotContain("rincipal");
     }
 
     @Test
@@ -82,6 +113,13 @@ class BrowserSessionConfigurationTests {
 
         assertThat(stored).isEmpty();
         assertThat(conversion.convert(stored, Object.class)).isNull();
+    }
+
+    /** Renames the stored class to a name of the same length, so only class resolution fails. */
+    private static byte[] renamed(byte[] stored, String name) {
+        return new String(stored, StandardCharsets.ISO_8859_1)
+                .replace("AuthPrincipal", name)
+                .getBytes(StandardCharsets.ISO_8859_1);
     }
 
     private Object roundTrip(Object value) {

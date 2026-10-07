@@ -221,7 +221,7 @@ final class WorkerClient {
     }
 
     private static void deadline(long deadline) throws IOException {
-        if (Thread.currentThread().isInterrupted() || System.nanoTime() >= deadline) {
+        if (Thread.currentThread().isInterrupted() || System.nanoTime() - deadline >= 0) {
             throw new IOException("worker exchange deadline elapsed");
         }
     }

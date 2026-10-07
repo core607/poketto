@@ -163,7 +163,6 @@ final class SessionRegistry {
             releasedCopies.increment();
         }
         session.capacityReleased = true;
-        session.contained.complete(null);
         closingLeases.remove(session.leaseId, session);
         if (session.detached) {
             sessions.remove(session.key, session);

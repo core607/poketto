@@ -63,7 +63,7 @@ final class JGitPublicRevisionHistory implements PublicRevisionHistory {
             walk.setRetainBody(false);
             RevCommit current = commit(objects, walk, start);
             for (int scanned = 0; current != null; scanned++) {
-                if (scanned >= MAX_COMMITS || System.nanoTime() >= deadline) {
+                if (scanned >= MAX_COMMITS || System.nanoTime() - deadline >= 0) {
                     return new Revisions(found, false);
                 }
                 Optional<ObjectId> blob = admitted(objects, current, path);

@@ -229,7 +229,7 @@ final class LocalPortableContentExports implements PortableContentExports, AutoC
                     throw failure(ContentExportException.Reason.NOT_FOUND);
                 }
             }
-            if (System.nanoTime() >= deadline || Thread.currentThread().isInterrupted()) {
+            if (System.nanoTime() - deadline >= 0 || Thread.currentThread().isInterrupted()) {
                 throw failure(ContentExportException.Reason.UNAVAILABLE);
             }
             plan.authorize().run();

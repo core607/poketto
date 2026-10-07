@@ -412,7 +412,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     // ends the loop and leaves the command's own reply to decide the outcome.
     private Optional<JsonNode> pollBridge(ExecutionSession session, long deadline) {
         io.authorize(session);
-        if (System.nanoTime() >= deadline) {
+        if (System.nanoTime() - deadline >= 0) {
             throw new WorkerUnavailableException();
         }
         try {
@@ -480,7 +480,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 if (state.equals("CLOSED")) {
                     break;
                 }
-                if (!state.equals("CLOSING") || System.nanoTime() >= deadline) {
+                if (!state.equals("CLOSING") || System.nanoTime() - deadline >= 0) {
                     throw new WorkerUnavailableException();
                 }
                 SessionLifecycle.pause();
