@@ -214,7 +214,12 @@ final class SessionLifecycle {
         if (previous.openAttempted) {
             return replaceLease(previous, previous.principal, true);
         }
-        return install(previous, successor(previous, previous.principal, previous.hello, true));
+        ExecutionSession current = install(previous, successor(previous, previous.principal, previous.hello, true));
+        // The reservation has no worker lease to close and its slot now belongs to the successor.
+        // Retiring it still makes a stale handle fail requireLive instead of opening a lease.
+        previous.stopping.set(true);
+        previous.stopped.complete(null);
+        return current;
     }
 
     private ExecutionSession replaceLease(ExecutionSession previous, AuthPrincipal principal, boolean projectionCheck) {
