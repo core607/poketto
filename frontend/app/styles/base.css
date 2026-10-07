@@ -144,7 +144,8 @@
       color: color-mix(in oklab, currentcolor 50%, transparent);
     }
   }
-  /* Firefox 111–112 lack color-mix(); the build drops a preceding fallback declaration. */
+  /* For browsers without color-mix(), Firefox 111–112 in the Next.js default target; the
+     build drops a preceding fallback declaration. */
   @supports not (color: color-mix(in srgb, red, red)) {
     ::placeholder {
       color: var(--faint);

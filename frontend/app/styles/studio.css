@@ -562,8 +562,8 @@ label.capability small {
   border-radius: var(--radius);
   background: color-mix(in srgb, var(--accent-soft) 50%, var(--bg-raised));
 }
-/* For Firefox 111–112, which lack color-mix(): its var() arguments defer validation past
-   the cascade, so a preceding fallback declaration would never apply. */
+/* For browsers without color-mix(), Firefox 111–112 in the Next.js default target: its var()
+   arguments defer validation past the cascade, so a preceding fallback would never apply. */
 @supports not (color: color-mix(in srgb, red, red)) {
   .secret-panel {
     background: var(--accent-soft);
