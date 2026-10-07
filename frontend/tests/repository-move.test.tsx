@@ -92,7 +92,14 @@ test("folder selection cancels without writing and moves via the host service be
     )
       return Response.json({
         commit,
-        entries: [{ path, title: "Note" }],
+        entries: [
+          {
+            path,
+            title: "Note",
+            updatedAt: "2026-09-01T00:00:00Z",
+            folderPage: false,
+          },
+        ],
         diagnostics: [],
       });
     if (

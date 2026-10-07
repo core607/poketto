@@ -110,9 +110,9 @@ export type RepositoryTree = {
   entries: {
     path: string;
     title: string;
-    /** Absent for unparsable files and from servers that predate it. */
-    updatedAt?: string | null;
-    folderPage?: boolean;
+    /** Null for files that did not parse as documents. */
+    updatedAt: string | null;
+    folderPage: boolean;
   }[];
   diagnostics: Diagnostic[];
 };
