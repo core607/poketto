@@ -2,6 +2,7 @@ package io.github.core607.poketto.auth.internal;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InvalidClassException;
 import java.io.ObjectInputFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,8 +69,21 @@ class BrowserSessionConfiguration {
             input.setObjectInputFilter(ATTRIBUTE_CLASSES);
             return input.readObject();
         } catch (IOException | ClassNotFoundException | RuntimeException unreadable) {
-            log.warn("A stored browser session attribute could not be read and is treated as absent");
+            log.warn(
+                    "A stored browser session attribute could not be read and is treated as absent: {}",
+                    unreadableReason(unreadable));
             return null;
         }
+    }
+
+    /**
+     * The failure without its stack trace or causes, which can carry attribute data. Only a class
+     * mismatch keeps its message, which names the class and why it no longer reads; other messages
+     * can quote the stored bytes or the arguments a constructor rejected, so they give their type.
+     */
+    private static String unreadableReason(Exception unreadable) {
+        return unreadable instanceof InvalidClassException || unreadable instanceof ClassNotFoundException
+                ? unreadable.toString()
+                : unreadable.getClass().getName();
     }
 }
