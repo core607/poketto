@@ -174,7 +174,7 @@ final class SessionLifecycle {
                 session.ready = true;
                 return;
             }
-            if (!state.equals("INITIALIZING") || System.nanoTime() >= deadline) {
+            if (!state.equals("INITIALIZING") || System.nanoTime() - deadline >= 0) {
                 throw new WorkerUnavailableException();
             }
             pause();
@@ -291,7 +291,7 @@ final class SessionLifecycle {
             }
             if (!session.openAttempted
                     || session.stopping.get()
-                    || System.nanoTime() < session.nextRenew
+                    || System.nanoTime() - session.nextRenew < 0
                     || !session.renewing.compareAndSet(false, true)) {
                 continue;
             }
@@ -330,7 +330,7 @@ final class SessionLifecycle {
         if (!session.openAttempted
                 || session.capacityReleased
                 || !session.stopped.isCompletedExceptionally()
-                || System.nanoTime() < session.nextRenew
+                || System.nanoTime() - session.nextRenew < 0
                 || !session.renewing.compareAndSet(false, true)) {
             return;
         }
@@ -413,7 +413,7 @@ final class SessionLifecycle {
 
     private void closeWorker(ExecutionSession session, String reason) {
         long deadline = System.nanoTime() + closeTimeout.toNanos();
-        while (System.nanoTime() < deadline) {
+        while (System.nanoTime() - deadline < 0) {
             JsonNode response = session.auxiliary
                     ? worker.closeRetainedLease(
                             session.hello, session.identity(), session.retainedAppBoot, reason, Duration.ofSeconds(3))

@@ -38,7 +38,7 @@ final class RetainedFileLocks {
             try {
                 return acquire(path, opener);
             } catch (RetainedCopyException busy) {
-                if (busy.reason() != RetainedCopyException.Reason.BUSY || System.nanoTime() >= deadline) {
+                if (busy.reason() != RetainedCopyException.Reason.BUSY || System.nanoTime() - deadline >= 0) {
                     throw busy;
                 }
                 try {

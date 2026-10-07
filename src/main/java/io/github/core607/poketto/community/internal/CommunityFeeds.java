@@ -156,7 +156,7 @@ final class CommunityFeeds {
 
         void consume(int count) {
             documents += count;
-            if (documents > 100_000 || System.nanoTime() >= deadline) {
+            if (documents > 100_000 || System.nanoTime() - deadline >= 0) {
                 throw new CommunityException(CommunityException.Code.LIMIT_REACHED);
             }
         }
