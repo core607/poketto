@@ -92,11 +92,34 @@ class BrowserSessionConfigurationTests {
     }
 
     @Test
+    void aMissingClassIsNamedOnlyWhileItsNameHasTheShapeOfAClassName(CapturedOutput output) throws Exception {
+        byte[] stored = conversion.convert(principal(), byte[].class);
+
+        assertThat(conversion.convert(renamed(stored, "AuthPrincipaX"), Object.class))
+                .isNull();
+        assertThat(conversion.convert(renamed(stored, "Auth\nrincipal"), Object.class))
+                .isNull();
+
+        assertThat(output)
+                .contains("treated as absent: java.lang.ClassNotFoundException: "
+                        + "io.github.core607.poketto.auth.AuthPrincipaX")
+                .contains("treated as absent: java.lang.ClassNotFoundException" + System.lineSeparator())
+                .doesNotContain("rincipal");
+    }
+
+    @Test
     void aValueThatCannotBeSerializedIsStoredAsAbsentInsteadOfFailing() {
         byte[] stored = conversion.convert(new Object(), byte[].class);
 
         assertThat(stored).isEmpty();
         assertThat(conversion.convert(stored, Object.class)).isNull();
+    }
+
+    /** Renames the stored class to a name of the same length, so only class resolution fails. */
+    private static byte[] renamed(byte[] stored, String name) {
+        return new String(stored, StandardCharsets.ISO_8859_1)
+                .replace("AuthPrincipal", name)
+                .getBytes(StandardCharsets.ISO_8859_1);
     }
 
     private Object roundTrip(Object value) {
