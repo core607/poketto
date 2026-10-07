@@ -192,7 +192,7 @@ class RepositoryAdminController {
         return new PatchResult(result.commit(), result.committed(), result.snapshotUpdated(), revisions);
     }
 
-    /** The update time is absent for files that did not parse as documents. */
+    /** The update time is null for files that did not parse as documents. */
     record Entry(String path, String title, Instant updatedAt, boolean folderPage) {}
 
     record Directory(

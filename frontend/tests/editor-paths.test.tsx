@@ -79,7 +79,14 @@ test("editor inserts and previews new images relative to a new draft destination
     )
       return Response.json({
         commit: "before",
-        entries: [{ path: "notes/a.md", title: "Existing" }],
+        entries: [
+          {
+            path: "notes/a.md",
+            title: "Existing",
+            updatedAt: "2026-09-01T00:00:00Z",
+            folderPage: false,
+          },
+        ],
         diagnostics: [],
       });
     if (
