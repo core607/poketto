@@ -8,6 +8,8 @@ import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.MachineAccounts;
+import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
 import io.github.core607.poketto.mcp.McpSessionClosed;
@@ -128,6 +130,9 @@ class McpProtocolIntegrationIT {
     AuthService auth;
 
     @Autowired
+    MachineAccounts machineAccounts;
+
+    @Autowired
     WorkspaceRegistry registry;
 
     @Autowired
@@ -203,7 +208,8 @@ class McpProtocolIntegrationIT {
         assertThat(tools.valueStream()
                         .map(tool -> tool.path("name").stringValue())
                         .toList())
-                .containsExactlyInAnyOrder("get_asset", "put_asset");
+                .containsExactlyInAnyOrder("get_asset", "put_asset", "wander");
+        assertPlazaWithoutAnExecutor(owner, key.id(), key.token(), first, second);
         assertRemovedFileTools(key.token(), first);
         assertRequestErrorBoundary(key.token(), first);
         assertImageTransferEntrance(owner, workspace, key.token(), first, other.token());
@@ -412,6 +418,30 @@ class McpProtocolIntegrationIT {
         assertThat(post(privateKey.token(), privateSession, rpc("tools/list", Map.of()))
                         .statusCode())
                 .isEqualTo(401);
+    }
+
+    private void assertPlazaWithoutAnExecutor(AuthPrincipal owner, UUID key, String token, String first, String second)
+            throws Exception {
+        JsonNode denied = call(token, first, "wander", Map.of("command", "pocket"));
+        assertThat(denied.path("structuredContent").path("status").path("code").stringValue())
+                .isEqualTo("OWNER_CONSENT_REQUIRED");
+        machineAccounts.set(owner, key, Set.of(MachinePermission.POCKET));
+        String command = "note \"PRIVATE_POCKET_PROTOCOL_SENTINEL\" " + UUID.randomUUID();
+        JsonNode written = call(token, first, "wander", Map.of("command", command));
+        assertThat(written.path("isError").booleanValue()).isFalse();
+        assertThat(written.path("content").get(0).path("text").stringValue()).endsWith("\n[ok] OK");
+        JsonNode resumed = call(token, second, "wander", Map.of("command", "pocket"));
+        assertThat(resumed.path("structuredContent")
+                        .path("data")
+                        .get(0)
+                        .path("body")
+                        .stringValue())
+                .isEqualTo("PRIVATE_POCKET_PROTOCOL_SENTINEL");
+        machineAccounts.set(owner, key, Set.of());
+        JsonNode revoked = call(token, first, "wander", Map.of("command", "pocket"));
+        assertThat(revoked.path("structuredContent").path("status").path("code").stringValue())
+                .isEqualTo("OWNER_CONSENT_REQUIRED");
+        assertThat(revoked.toString()).doesNotContain("PRIVATE_POCKET_PROTOCOL_SENTINEL");
     }
 
     private void assertRemovedFileTools(String token, String session) throws Exception {

@@ -163,6 +163,8 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 ## MCP 与隔离执行
 
+[公共广场](plaza.md)提供 `wander`，供创作者账号发现和阅读已发布空间，无需 worker。在账号设置中单独授予私人口袋纸条权限。设置 `POKETTO_PLAZA_ENABLED=false` 可关闭该入口。
+
 `/mcp` 通过 Streamable HTTP 提供 MCP，以工作空间 Bearer 凭据（API key 或 OAuth 访问令牌）认证，独立于浏览器会话。工具目录始终包含 `get_asset` 和 `put_asset`；启用执行器后还包含 `repo_exec`、`repo_discard` 和 `get_artifact`。没有独立的文件工具：通过 `repo_exec` 查看目录、搜索、读取和编辑文件，用 `poketto` CLI 持久化修改，并按需逐层读取仓库的 `AGENTS.md`。详见 [CodeAct 入口记录](../notes/implemented/2026-09-10-codeact-mcp-entrance.md)。
 
 `repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证 root supervisor 和低权限 SRT 账号。应用默认接纳四个会话（`POKETTO_EXECUTOR_MAX_SESSIONS`）、最多 128 MiB bundle，这些值不能超过 worker 的限制。worker 缺失或隔离能力不受支持时，不会降级为普通子进程。

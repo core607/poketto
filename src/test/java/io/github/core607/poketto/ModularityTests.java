@@ -21,6 +21,7 @@ class ModularityTests {
                         "content",
                         "executor",
                         "mcp",
+                        "plaza",
                         "qa",
                         "spaces",
                         "workspace",

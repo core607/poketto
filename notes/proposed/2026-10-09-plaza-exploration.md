@@ -14,48 +14,15 @@ account-owned exploration state, or untrusted games. The independent
 
 ## Proposal
 
-### One street, not a shell
+The [plaza foundation](../implemented/2026-10-09-plaza-foundation.md) owns the
+implemented public-reading entrance, personal pocket consent, notes and discovery
+state. The remaining targets below extend that entrance. Help lists unavailable
+actions until their capabilities are implemented; it must then reflect current
+consent, balances, daily state and operational availability.
 
-Add one MCP tool, `wander`, taking one bounded action string. Parse its arguments
-in the application and dispatch only registered platform actions; never evaluate
-shell syntax, spawn a process, or acquire a repository execution lease for ordinary
-exploration. Require an authenticated, currently authorized creator or administrator.
-
-List every action and its syntax in contextual help: `look`, `stall`, `rumor`,
-`read`, `pocket`, `knock`, `wish`, `scribble`, `sign`, `note`, `mirror`, `play`,
-`peek`, and `press`. Names and short scene descriptions evoke a street of other
-people's pockets. Mystery belongs to discoverable content, not hidden syntax or
-puzzle-based permission gates. Locks describe actual authorization, capacity,
-balance, and daily state. Each response ends with a platform-generated status line
-and carries the same authoritative status separately as MCP structured content.
-Article text and game output cannot manufacture that status.
-
-Return useful continuations with results: search includes snippets and article
-references; starting or advancing a game includes the resulting observation.
-Only explicit help expands the full command list. Repository template guidance
-adds a discoverable hint, not a mandatory walkthrough.
-
-### Public authority and durable atmosphere
-
-Reuse the enabled-space catalogue and verified, unexpired public snapshots.
-Expose only public presentation fields, current article text, and canonical site
-links; never private paths, raw Git history, or account login metadata. Recheck
-publication before delivering prepared results. Capacity or unavailable snapshots
-refuse a complete search rather than silently returning a sampled total. Platform
-withdrawal affects the next operation; external Git changes take effect after
-observation. Already delivered copies cannot be recalled.
-
-Tags become stalls. Recent updates light them; low-traffic stalls can conceal their
-display name until the account reads an associated article. A stable stall handle
-still permits entry, and keyword search never hides those articles. Daily well
-decoration is deterministic and does not consume models. The wall shows bounded,
-currently visible machine-comment excerpts using existing moderation rules.
-
-Pocket notes, discovered stalls, balances, signatures and game saves belong to the
-account and survive transport replacement. Notes are private, bounded plain text;
-only an authorized command writes them. Label their source with sanitized,
-self-reported MCP client names, not a verified agent identity. The same names may
-select decorative candy flavors; neither names nor flavors confer authority.
+The wall will show bounded, currently visible machine-comment excerpts through
+existing moderation rules. Starting and advancing a game will include its new
+observation so the caller need not spend an extra call to see the result.
 
 ### Account actions and candy
 
@@ -141,11 +108,6 @@ uses the same budget system. Do not launch the FiQA 100-question experiment.
 
 ## Alternatives
 
-Running all exploration inside a shell needlessly consumes creation capacity and
-exposes broader execution state. A separate MCP tool for each street action loses
-the single discoverable entrance. Full corpus materialization adds storage and
-withdrawal problems without evidence that this deployment needs it.
-
 Remote browsers increase the single host's resource cost. Separate CLI and web
 game implementations can diverge. Pure browser games cannot be played by an MCP
 client without a browser. Shared rule modules retain both entrances, at the cost
@@ -161,8 +123,9 @@ remain unchanged. PostgreSQL stores account state, not article bodies. Follow th
 as each capability lands: move implemented rationale to its owner while keeping
 remaining targets proposed.
 
-Deliver four separately reviewable changes: exploration and notes; account grants,
-candy and comments; game validation/runtimes/saves; creator QA and evaluation.
+The foundation is implemented separately. Deliver the remaining capabilities as
+three separately reviewable changes: candy and comments; game validation, runtimes
+and saves; creator QA and evaluation.
 Operations retain feature kill switches without per-call approval prompts.
 
 ## Acceptance
