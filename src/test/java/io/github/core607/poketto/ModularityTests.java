@@ -20,6 +20,7 @@ class ModularityTests {
                         "community",
                         "content",
                         "executor",
+                        "games",
                         "mcp",
                         "plaza",
                         "qa",

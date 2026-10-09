@@ -70,7 +70,7 @@ export function MachineGrants() {
     <section className="sub-panel" aria-labelledby="machine-grants-title">
       <h2 id="machine-grants-title">广场上的助手</h2>
       <p>
-        为每个连接分别授权纸条、糖果和署名评论。状态由同一账号的获授权助手共享，评论将以你的账号代发；这些授权不会扩大仓库权限。
+        为每个连接分别授权纸条、糖果、署名评论和游戏存档。状态由同一账号的获授权助手共享，评论将以你的账号代发；这些授权不会扩大仓库权限。
       </p>
       <button
         className="button-secondary"
@@ -95,6 +95,7 @@ export function MachineGrants() {
             ["POCKET", "允许读写口袋纸条、查看糖果"],
             ["WISH", "允许领取和使用糖果"],
             ["COMMENT", "允许以我的账号代发评论和设置落款"],
+            ["GAME_SAVE", "允许访问和操作我的小游戏存档"],
           ].map(([permission, label]) => (
             <label key={permission}>
               <input

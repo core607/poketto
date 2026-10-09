@@ -202,6 +202,10 @@ final class RepositoryMarkdownParser {
             if (value.isEmpty() || value.codePointCount(0, value.length()) > ContentLimits.MAX_TAG_LENGTH) {
                 throw new IllegalArgumentException("tag exceeds its length limit or is empty");
             }
+            // This capability marker comes from current game validation, never authored metadata.
+            if (value.equals("小游戏")) {
+                continue;
+            }
             if (!tags.contains(value)) {
                 tags.add(value);
             }

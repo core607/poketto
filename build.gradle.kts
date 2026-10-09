@@ -134,6 +134,7 @@ tasks.register<Sync>("stageAcceptanceRuntime") {
     into(layout.buildDirectory.dir("acceptance/runtime"))
     from(sourceSets.main.get().output) { into("classes") }
     from(integrationTestSourceSet.output) { into("classes") }
+    from(layout.projectDirectory.dir("examples/pocket-game")) { into("game-example") }
     from(configurations[integrationTestSourceSet.runtimeClasspathConfigurationName]) { into("jars") }
 }
 

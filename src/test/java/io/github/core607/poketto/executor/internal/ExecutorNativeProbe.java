@@ -159,6 +159,8 @@ public final class ExecutorNativeProbe {
             probe.publicProjection();
         } else if (args[1].equals("peer-only")) {
             probe.rejectNonRootPeer();
+        } else if (args[1].equals("games")) {
+            probe.games();
         } else if (args[1].equals("ephemeral-lifecycle")) {
             probe.ephemeralLifecycle();
         } else if (args[1].startsWith("cli-")) {
@@ -171,6 +173,26 @@ public final class ExecutorNativeProbe {
             probe.passed("account-state-consume");
         } else {
             throw new IllegalArgumentException();
+        }
+    }
+
+    private void games() throws Exception {
+        rejectNonRootPeer();
+        try (var executor = adapter(path("socket"))) {
+            new GameNativeProbe(config)
+                    .run(
+                            () -> {
+                                long started = System.nanoTime();
+                                assertThat(execute(
+                                                        executor,
+                                                        "games-parallel-repository",
+                                                        "printf repo-ready",
+                                                        new Cancellation())
+                                                .stdout())
+                                        .contains("repo-ready");
+                                return millis(started);
+                            },
+                            this::control);
         }
     }
 

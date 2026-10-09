@@ -117,7 +117,8 @@ class PlazaIntegrationIT {
                 new PlazaStreet(plazaClock),
                 new PlazaWallet(jdbc, plazaClock),
                 mock(MachineCommunity.class),
-                true);
+                true,
+                null);
     }
 
     @Test

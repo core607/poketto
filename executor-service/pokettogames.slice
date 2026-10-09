@@ -1,0 +1,9 @@
+[Unit]
+Description=Independent Poketto game budget
+
+[Slice]
+MemoryAccounting=yes
+MemoryMax=384M
+MemorySwapMax=0
+CPUQuota=100%
+TasksMax=128

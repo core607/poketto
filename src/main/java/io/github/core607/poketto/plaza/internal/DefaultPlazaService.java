@@ -9,6 +9,8 @@ import io.github.core607.poketto.community.CommunityException;
 import io.github.core607.poketto.community.MachineCommunity;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentSearch;
+import io.github.core607.poketto.games.GameException;
+import io.github.core607.poketto.games.GameSaves;
 import io.github.core607.poketto.plaza.PlazaCommand;
 import io.github.core607.poketto.plaza.PlazaException;
 import io.github.core607.poketto.plaza.PlazaResult;
@@ -28,6 +30,7 @@ final class DefaultPlazaService implements PlazaService {
     private final PlazaWallet wallet;
     private final MachineCommunity interactions;
     private final boolean interactionsEnabled;
+    private final PlazaGames games;
 
     DefaultPlazaService(
             MachineAccounts accounts,
@@ -36,7 +39,8 @@ final class DefaultPlazaService implements PlazaService {
             PlazaStreet street,
             PlazaWallet wallet,
             MachineCommunity interactions,
-            boolean interactionsEnabled) {
+            boolean interactionsEnabled,
+            GameSaves games) {
         this.accounts = accounts;
         this.reads = reads;
         this.pocket = pocket;
@@ -44,6 +48,7 @@ final class DefaultPlazaService implements PlazaService {
         this.wallet = wallet;
         this.interactions = interactions;
         this.interactionsEnabled = interactionsEnabled;
+        this.games = games == null ? null : new PlazaGames(games);
     }
 
     @Override
@@ -51,6 +56,9 @@ final class DefaultPlazaService implements PlazaService {
         try {
             PlazaCommand command = PlazaCommand.parse(input);
             String client = clientName(clientName);
+            if (games != null && Set.of("play", "peek", "press").contains(command.name())) {
+                return games.execute(actor, workspace, command);
+            }
             if (command.name().equals("scribble") || command.name().equals("sign")) {
                 return interact(actor, workspace, command, client);
             }
@@ -58,6 +66,11 @@ final class DefaultPlazaService implements PlazaService {
                 return publicRead(actor, workspace, command);
             }
             return accounts.withCreator(actor, workspace, identity -> dispatch(identity, workspace, command, client));
+        } catch (GameException refused) {
+            return PlazaResult.refused(
+                    refused.code(),
+                    refused.getMessage(),
+                    refused.code().equals("OWNER_CONSENT_REQUIRED") ? "--help" : "peek");
         } catch (CommunityException refused) {
             return PlazaResult.refused(
                     refused.code().name(),
@@ -124,6 +137,9 @@ final class DefaultPlazaService implements PlazaService {
         command.count(0, 0);
         String lock = identity.permissions().contains(MachinePermission.POCKET) ? "" : "OWNER_CONSENT_REQUIRED";
         String commentLock = interactionLock(identity, MachinePermission.COMMENT);
+        String gameLock = games == null
+                ? "UNAVAILABLE"
+                : identity.permissions().contains(MachinePermission.GAME_SAVE) ? "" : "OWNER_CONSENT_REQUIRED";
         String candyLock = interactionLock(identity, MachinePermission.WISH);
         if (candyLock.isEmpty() && wallet.read(identity.accountId(), client).claimedToday()) {
             candyLock = "ALREADY_CLAIMED";
@@ -155,9 +171,19 @@ final class DefaultPlazaService implements PlazaService {
                                 "The wall recognizes those allowed to write.",
                                 commentLock),
                         new Help("sign <quoted-signature>", "Leave a name at the bottom of your paper.", commentLock),
-                        new Help("play <game>", "Start a machine glowing at a stall.", "UNAVAILABLE"),
-                        new Help("peek <session>", "Look at your game.", "UNAVAILABLE"),
-                        new Help("press <session> <action>", "Make one move.", "UNAVAILABLE")),
+                        new Help(
+                                "play <space/route> <nextCreationRequest>",
+                                "Start a glowing machine; peek holds the next creation number.",
+                                gameLock),
+                        new Help(
+                                "peek [save-UUID]",
+                                "Look at a game, or list your saves and next creation number.",
+                                gameLock),
+                        new Help("peek --remove <save-UUID>", "Remove one of your saved games.", gameLock),
+                        new Help(
+                                "press <save-UUID> <quoted-action> <revision>",
+                                "Make one move and see its new screen.",
+                                gameLock)),
                 "look");
     }
 

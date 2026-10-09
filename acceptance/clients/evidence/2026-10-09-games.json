@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-09",
+  "scope": "Real Spring account authorization, PostgreSQL, HTTP MCP and native SRT; synthetic public example; browser iframe not tested",
+  "runtimeManifestSha256": "d41bf4bdb9b7dcc619258bd33cf2bb71611392ffe8994d56905aee081f3e4dd2",
+  "controllerSha256": "347213be10cd331fd128c4651920e5d04413cf80040dd6b2b1e3324bed3bb3b3",
+  "workerSources": {
+    "disk_pool.py": "a674b65203864ec7d43b03fe4f12f0633493030e0bb7fce8083bf1552f60c09a",
+    "worker.py": "7d086b25cee76683b8a4aaee1bf43fbb8f0ca50876fa330ec2fc0077744db83f",
+    "command_channel.py": "cb590bfd42a66370c451ccfe071a6a01e127de995446809db3f3712c65785655",
+    "shell_loop.py": "3996e9f3c619d4be9e0398837c44d2b1b8750fa1b69d8210e58346311855e029",
+    "launcher.py": "5d78de271eec93446e5c8c79894ab95d60f400522371d2804386e66c5fc872f0",
+    "resource_pool.py": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+    "bridge.py": "a5ef1d64394149310c66752d8eae5df6086f3b79caeee5b15bdbf1af875d63be",
+    "cli.py": "1d954975d69677ce38593cc5dc7ddba0ca71b4e616714898602f3535986f19d8",
+    "session_files.py": "2d87db3faca2978f42ca3aa21912a967a5957a5290a8b1736f58632e246a9a42",
+    "binary_capture.py": "a63463b05997c6b0a595822759a3efc9ba4ede93a2653ae8b712932659efb62e",
+    "materialize.py": "f1f6697a4e661859e3ea8749524de1af4147443e32fc5932019719d4eece2334",
+    "artifacts.py": "0ab2cd12280b4c2791f37a650641cf9babd0e12f4859bbd04ffe54f4e4476799"
+  },
+  "gameFixtureSha256": "5bb3bbf44282d1597320de0adc02db3d23c37830b26b07af1c9c2760a2b92fad",
+  "clientSha256": "64b357980a5ef358dc2a5067bfb10586da11f11a908f132a6c76f5d209616ebb",
+  "observations": [
+    {
+      "test": "games-http-anonymous-delivery-never-executes-a-server-job",
+      "result": "PASS",
+      "source": "real-auth-PG-HTTP-MCP-native-SRT"
+    },
+    {
+      "test": "games-http-agent-start-binds-article-and-deduplicates-creation",
+      "result": "PASS",
+      "source": "real-auth-PG-HTTP-MCP-native-SRT"
+    },
+    {
+      "test": "games-http-web-agent-web-handoff-and-exact-retry-do-not-overwrite-newer-progress",
+      "result": "PASS",
+      "source": "real-auth-PG-HTTP-MCP-native-SRT"
+    },
+    {
+      "test": "games-http-current-consent-package-and-publication-guard-saves-and-execution",
+      "result": "PASS",
+      "source": "real-auth-PG-HTTP-MCP-native-SRT"
+    },
+    {
+      "gamesHttp": "PASS",
+      "browserExecution": "NOT_TESTED"
+    }
+  ],
+  "cleanup": "PASS"
+}

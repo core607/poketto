@@ -5,9 +5,21 @@ val executorServiceBuild = layout.buildDirectory.dir("executor-service")
 val executorServiceReports = layout.buildDirectory.dir("test-results/executorServiceTests")
 val executorServiceWindows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
 
+tasks.register<Sync>("stageGameWorker") {
+    group = "build"
+    description = "Stage the independent game worker with the exact shared browser rule runtime."
+    from(executorServiceSource) {
+        include("*.py", "requirements.txt", "game-entry.mjs", "game-config.example.json", "poketto-games.service", "pokettogames.slice")
+        exclude("test_*.py", "native_*.py", "disk_pool_probe.py", "run_tests.py")
+    }
+    from(layout.projectDirectory.file("frontend/public/games/runtime.mjs")) { rename { "game-runtime.mjs" } }
+    from(layout.projectDirectory.file("examples/pocket-game/rules.mjs")) { rename { "game-example.mjs" } }
+    into(layout.buildDirectory.dir("game-worker"))
+}
+
 val stageExecutorServiceTests = tasks.register<Sync>("stageExecutorServiceTests") {
     from(executorServiceSource) {
-        include("worker.py", "command_channel.py", "shell_loop.py", "disk_pool.py", "resource_pool.py", "session_files.py", "binary_capture.py", "materialize.py", "artifacts.py", "bridge.py", "cli.py", "test_*.py", "run_tests.py", "requirements.txt", "Dockerfile.tests", "java-frames.json", "config.example.json", "README.md")
+        include("worker.py", "game_worker.py", "command_channel.py", "shell_loop.py", "disk_pool.py", "resource_pool.py", "session_files.py", "binary_capture.py", "materialize.py", "artifacts.py", "bridge.py", "cli.py", "test_*.py", "run_tests.py", "requirements.txt", "Dockerfile.tests", "java-frames.json", "config.example.json", "README.md")
     }
     into(executorServiceBuild.map { it.dir("source") })
 }

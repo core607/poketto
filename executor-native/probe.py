@@ -35,7 +35,7 @@ def main():
     cli_scenarios = ('cli-save', 'cli-save-recovery', 'cli-media-import', 'cli-media-link',
                      'cli-move', 'cli-move-installation', 'cli-move-recovery')
     parser.add_argument('--scenario', choices=('all', 'exports', 'media', 'retained-process', 'ephemeral-lifecycle',
-                                              'account-state', 'public-scope', 'admission', 'peer-only') + cli_scenarios, default='all')
+                                              'account-state', 'public-scope', 'admission', 'peer-only', 'games') + cli_scenarios, default='all')
     parser.add_argument('--process-case', choices=('acknowledged', 'interrupted', 'uncertain', 'beforepublish', 'afterpublish', 'discarding', 'expired'))
     args = parser.parse_args()
     assert args.process_case is None or args.scenario == 'retained-process'
@@ -67,6 +67,7 @@ def main():
     worker_config = None
     disk_mounted = False
     disk_pool = root / 'copy-pool'
+    game_fixture = None
     evidence = []
     for name in ('worker.py', 'command_channel.py', 'shell_loop.py', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
         shutil.copy2(worker_source / name, root / name)
@@ -130,7 +131,10 @@ with socket.socket(socket.AF_UNIX) as connection:
 
     def control(request):
         operation = request['operation']
-        if operation == 'await-descendant':
+        if operation.startswith('game-'):
+            assert game_fixture is not None
+            game_fixture.control(operation)
+        elif operation == 'await-descendant':
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
                 if subprocess.run(['pgrep', '-u', str(exec_account.pw_uid), '-x', 'sleep'], capture_output=True).returncode == 0:
@@ -245,6 +249,8 @@ with socket.socket(socket.AF_UNIX) as connection:
         elif mode == 'peer-only':
             assert any(item.get('test') == 'root-owned-socket-rejects-non-root-peer'
                        and item.get('result') == 'PASS' for item in parsed)
+        elif mode == 'games':
+            assert any(item.get('gameNative') == 'PASS' for item in parsed)
         elif mode in ('account-state-produce', 'account-state-consume'):
             assert any(item.get('test') == mode and item.get('result') == 'PASS' for item in parsed)
         else:
@@ -313,12 +319,17 @@ with socket.socket(socket.AF_UNIX) as connection:
         os.chown(fake_socket, 0, app_account.pw_gid)
         os.chmod(fake_socket, 0o660)
         java_config = root / 'java.json'
-        java_config.write_text(json.dumps({'socket': worker_config['socketPath'], 'fakeSocket': str(fake_socket),
+        java_settings = {'socket': worker_config['socketPath'], 'fakeSocket': str(fake_socket),
             'fakeObservation': str(fake_observation),
             'privateKey': str(private), 'exports': str(root / 'exports'), 'bundle': str(master),
             'publicFixture': str(root / 'public-fixture'),
             'accountMetadata': str(disk_pool / 'metadata'),
-            'commit': commit, 'control': str(root / 'control')}))
+            'commit': commit, 'control': str(root / 'control')}
+        if args.scenario == 'games':
+            from game_fixture import GameFixture
+            game_fixture = GameFixture(root, worker_source, tools, app_account, exec_user, resource_pool.name)
+            java_settings.update(game_fixture.start())
+        java_config.write_text(json.dumps(java_settings))
         os.chmod(java_config, 0o600)
         os.chown(java_config, app_account.pw_uid, app_account.pw_gid)
         if args.scenario == 'retained-process':
@@ -353,6 +364,12 @@ with socket.socket(socket.AF_UNIX) as connection:
             'binaryCaptureSha256': digest(root / 'binary_capture.py'),
             'artifactsSha256': digest(root / 'artifacts.py'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
+            'games': None if game_fixture is None else {
+                'workerSha256': digest(root / 'game_worker.py'),
+                'runtimeSha256': digest(root / 'game-runtime.mjs'),
+                'entrySha256': digest(root / 'game-entry.mjs'),
+                'exampleSha256': digest(root / 'game-example.mjs'),
+                'fixtureSha256': digest(Path(__file__).with_name('game_fixture.py'))},
             'source': 'synthetic-only', 'scenario': args.scenario, 'processCase': args.process_case}), flush=True)
     finally:
         try:
@@ -364,6 +381,8 @@ with socket.socket(socket.AF_UNIX) as connection:
             if process is not None and process.poll() is None:
                 process.kill()
                 process.wait(timeout=10)
+            if game_fixture is not None:
+                game_fixture.close()
             for unit in (app_unit, fake_unit, supervisor):
                 subprocess.run(['systemctl', 'stop', unit], capture_output=True, timeout=25)
                 subprocess.run(['systemctl', 'reset-failed', unit], capture_output=True, timeout=10)
