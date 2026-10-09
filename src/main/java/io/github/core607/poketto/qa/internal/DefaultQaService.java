@@ -25,7 +25,7 @@ final class DefaultQaService implements QaService, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(DefaultQaService.class);
     private final QaAuthority authority;
     private final QaLedger ledger;
-    private final QaModel model;
+    private final QaModels models;
     private final QaSources sources;
     private final QaPolicy policy;
     private final ObjectMapper json;
@@ -39,7 +39,7 @@ final class DefaultQaService implements QaService, AutoCloseable {
     DefaultQaService(
             QaAuthority authority,
             QaLedger ledger,
-            QaModel model,
+            QaModels models,
             QaSources sources,
             QaPolicy policy,
             ObjectMapper json,
@@ -47,7 +47,7 @@ final class DefaultQaService implements QaService, AutoCloseable {
             boolean configured) {
         this.authority = authority;
         this.ledger = ledger;
-        this.model = model;
+        this.models = models;
         this.sources = sources;
         this.policy = policy;
         this.json = json;
@@ -61,14 +61,16 @@ final class DefaultQaService implements QaService, AutoCloseable {
 
     @Override
     public boolean available() {
-        return configured && !closed;
+        return configured && models.available() && !closed;
     }
 
     @Override
     public Reply ask(AuthPrincipal actor, WorkspaceId connection, Question input) {
         requireAvailable();
         QaLedger.Start started = authority.with(
-                actor, connection, account -> ledger.begin(account, input.requestId(), credential(actor, connection)));
+                actor,
+                connection,
+                account -> ledger.begin(account, input.requestId(), credential(actor, connection), input.provider()));
         if (!started.created()) {
             return state(started.run());
         }
@@ -135,20 +137,7 @@ final class DefaultQaService implements QaService, AutoCloseable {
                 requireAvailable();
                 QaLedger.Run current = current(actor, connection, initial.request());
                 QaLedger.requireRunning(current);
-                model.validate(session.conversation.messages());
-                authority.with(
-                        actor,
-                        connection,
-                        account -> ledger.dispatch(
-                                ledger.require(account, initial.request(), credential(actor, connection))));
-                QaModel.Completion completion = model.complete(
-                        session.conversation.messages(), Duration.between(clock.instant(), current.expires()));
-                record(
-                        initial,
-                        () -> ledger.settle(
-                                ledger.find(initial.account(), initial.request()),
-                                completion.inputTokens(),
-                                completion.outputTokens()));
+                QaModel.Completion completion = modelTurn(actor, connection, initial, current, session);
                 QaConversation.Outcome outcome = session.conversation.accept(
                         completion, () -> QaLedger.requireRunning(current(actor, connection, initial.request())));
                 if (outcome instanceof QaConversation.Waiting) {
@@ -163,16 +152,26 @@ final class DefaultQaService implements QaService, AutoCloseable {
                     return reply;
                 }
                 if (outcome instanceof QaConversation.Finished finished) {
-                    return complete(actor, connection, initial.request(), finished);
+                    return complete(
+                            actor,
+                            connection,
+                            initial.request(),
+                            finished,
+                            session.conversation.activity().snapshot());
                 }
             }
         } catch (QaException failure) {
+            session.conversation.activity().fail(failure.code());
+            if (failure.code().equals("OWNER_CONSENT_REQUIRED")) {
+                sessions.remove(new QaLedger.Key(initial.account(), initial.request()), session);
+            }
             return failed(initial, failure.code());
         } catch (AuthException revoked) {
             failed(initial, "AUTHORIZATION_CHANGED");
             throw revoked;
         } catch (RuntimeException failure) {
             log.warn("QA run failed outside the model protocol boundary", failure);
+            session.conversation.activity().fail("QA_FAILED");
             return failed(initial, "QA_FAILED");
         } finally {
             if (!waitingForUser) {
@@ -181,8 +180,30 @@ final class DefaultQaService implements QaService, AutoCloseable {
         }
     }
 
+    private QaModel.Completion modelTurn(
+            AuthPrincipal actor, WorkspaceId connection, QaLedger.Run initial, QaLedger.Run current, Session session) {
+        QaModel model = models.require(current.selection().provider()).client();
+        model.validate(session.conversation.messages());
+        int thinking = session.conversation
+                .activity()
+                .start("thinking", current.selection().model(), "");
+        authority.with(
+                actor,
+                connection,
+                account -> ledger.dispatch(ledger.require(account, initial.request(), credential(actor, connection))));
+        QaModel.Completion completion =
+                model.complete(session.conversation.messages(), Duration.between(clock.instant(), current.expires()));
+        record(initial, () -> ledger.settle(ledger.find(initial.account(), initial.request()), completion));
+        session.conversation.activity().finish(thinking, completion.reasoning(), "COMPLETED");
+        return completion;
+    }
+
     private Reply complete(
-            AuthPrincipal actor, WorkspaceId connection, UUID request, QaConversation.Finished finished) {
+            AuthPrincipal actor,
+            WorkspaceId connection,
+            UUID request,
+            QaConversation.Finished finished,
+            List<Activity> activity) {
         QaLedger.Run completed = authority.with(actor, connection, account -> {
             QaLedger.Run active = ledger.require(account, request, credential(actor, connection));
             QaLedger.requireRunning(active);
@@ -196,7 +217,9 @@ final class DefaultQaService implements QaService, AutoCloseable {
                 finished.paragraphs(),
                 null,
                 finished.notice(),
-                completed.usage());
+                completed.usage(),
+                completed.selection(),
+                activity);
     }
 
     private Reply failed(QaLedger.Run run, String code) {
@@ -218,10 +241,10 @@ final class DefaultQaService implements QaService, AutoCloseable {
 
     private Reply state(QaLedger.Run run) {
         var key = new QaLedger.Key(run.account(), run.request());
+        Session session = sessions.get(key);
         if (!run.pending()) {
             sessions.remove(key);
         }
-        Session session = sessions.get(key);
         Clarification clarification = null;
         QaConversation.Clarify value = session == null ? null : session.conversation.clarification();
         if (run.status().equals("WAITING") && value != null) {
@@ -237,7 +260,18 @@ final class DefaultQaService implements QaService, AutoCloseable {
                 };
         String code = run.error() == null ? run.status() : run.error();
         return new Reply(
-                run.request(), run.status(), code, run.revision(), List.of(), clarification, notice, run.usage());
+                run.request(),
+                run.status(),
+                code,
+                run.revision(),
+                List.of(),
+                clarification,
+                notice,
+                run.usage(),
+                run.selection(),
+                session == null || run.status().equals("COMPLETED")
+                        ? List.of()
+                        : session.conversation.activity().snapshot());
     }
 
     private void expireSafely() {

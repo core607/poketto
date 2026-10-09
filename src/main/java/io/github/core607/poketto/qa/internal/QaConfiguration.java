@@ -11,6 +11,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Clock;
 import java.time.Duration;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -28,21 +29,63 @@ class QaConfiguration {
             @Value("${poketto.qa.daily-usd:2}") BigDecimal dollars,
             @Value("${poketto.qa.max-concurrency:2}") int concurrency,
             @Value("${poketto.qa.max-rounds:6}") int rounds,
-            @Value("${poketto.qa.max-output-tokens:2048}") int output,
-            @Value("${poketto.qa.input-usd-per-million:0.30}") BigDecimal inputPrice,
-            @Value("${poketto.qa.output-usd-per-million:1.20}") BigDecimal outputPrice,
+            @Value("${poketto.qa.max-output-tokens:8192}") int output,
+            @Value("${poketto.qa.anthropic.monthly-usd:20}") BigDecimal monthly,
             @Value("${poketto.qa.timeout-seconds:90}") int seconds,
             @Value("${poketto.qa.personality:}") String personality) {
         return new QaPolicy(
                 daily,
-                dollars.movePointRight(6).setScale(0, RoundingMode.DOWN).longValueExact(),
+                micros(dollars),
                 concurrency,
                 rounds,
                 output,
-                inputPrice,
-                outputPrice,
+                micros(monthly),
                 Duration.ofSeconds(seconds),
                 personality);
+    }
+
+    @Bean
+    QaProvider deepseekQaProvider(
+            HttpClient qaHttpClient,
+            QaPolicy policy,
+            ObjectMapper json,
+            @Value("${poketto.qa.deepseek.api-key:${DEEPSEEK_API_KEY:}}") String key,
+            @Value("${poketto.qa.deepseek.base-url:${DEEPSEEK_BASE_URL:https://api.deepseek.com}}") String base,
+            @Value("${poketto.qa.deepseek.model:deepseek-flash}") String model,
+            @Value("${poketto.qa.deepseek.input-usd-per-million:0.30}") BigDecimal input,
+            @Value("${poketto.qa.deepseek.output-usd-per-million:1.20}") BigDecimal output) {
+        return new QaProvider(
+                "deepseek",
+                model,
+                new QaPrices(input, output),
+                new DeepSeekQaModel(qaHttpClient, endpoint(base, "/chat/completions"), key, model, policy, json),
+                !key.isBlank());
+    }
+
+    @Bean
+    QaProvider anthropicQaProvider(
+            HttpClient qaHttpClient,
+            QaPolicy policy,
+            ObjectMapper json,
+            @Value("${poketto.qa.anthropic.api-key:${ANTHROPIC_API_KEY:}}") String key,
+            @Value("${poketto.qa.anthropic.base-url:https://api.anthropic.com/v1}") String base,
+            @Value("${poketto.qa.anthropic.model:claude-haiku-5-5}") String model,
+            @Value("${poketto.qa.anthropic.input-usd-per-million:0.10}") BigDecimal input,
+            @Value("${poketto.qa.anthropic.output-usd-per-million:0.50}") BigDecimal output) {
+        return new QaProvider(
+                "anthropic",
+                model,
+                new QaPrices(input, output),
+                new AnthropicQaModel(qaHttpClient, endpoint(base, "/messages"), key, model, policy, json),
+                !key.isBlank());
+    }
+
+    @Bean
+    QaModels qaModels(
+            @Qualifier("anthropicQaProvider") QaProvider anthropic,
+            @Qualifier("deepseekQaProvider") QaProvider deepseek,
+            @Value("${poketto.qa.default-provider:anthropic}") String selected) {
+        return new QaModels(anthropic, deepseek, selected);
     }
 
     @Bean(destroyMethod = "shutdownNow")
@@ -64,23 +107,22 @@ class QaConfiguration {
             QaSources sources,
             QaCandy candy,
             ObjectMapper json,
-            HttpClient qaHttpClient,
-            @Value("${poketto.qa.enabled:true}") boolean enabled,
-            @Value("${poketto.qa.api-key:${DEEPSEEK_API_KEY:}}") String key,
-            @Value("${poketto.qa.base-url:${DEEPSEEK_BASE_URL:https://api.deepseek.com}}") String base,
-            @Value("${poketto.qa.model:deepseek-flash}") String model) {
+            QaModels models,
+            @Value("${poketto.qa.enabled:true}") boolean enabled) {
         Clock clock = Clock.systemUTC();
         var authority = new QaAuthority(people, machines, jdbc, transactions);
-        var ledger = new QaLedger(jdbc, policy, candy, clock);
-        var provider = new DeepSeekQaModel(qaHttpClient, endpoint(base), key, model, policy, json);
-        var service = new DefaultQaService(
-                authority, ledger, provider, sources, policy, json, clock, enabled && !key.isBlank());
+        var ledger = new QaLedger(jdbc, policy, candy, clock, models);
+        var service = new DefaultQaService(authority, ledger, models, sources, policy, json, clock, enabled);
         service.start();
         return service;
     }
 
-    private static URI endpoint(String base) {
-        URI uri = URI.create(base.replaceAll("/+$", "") + "/chat/completions");
+    private static long micros(BigDecimal dollars) {
+        return dollars.movePointRight(6).setScale(0, RoundingMode.DOWN).longValueExact();
+    }
+
+    private static URI endpoint(String base, String path) {
+        URI uri = URI.create(base.replaceAll("/+$", "") + path);
         if (!"https".equals(uri.getScheme())
                 || uri.getHost() == null
                 || uri.getUserInfo() != null

@@ -18,12 +18,15 @@ public interface QaService {
 
     Allowance allowance(AuthPrincipal actor);
 
-    record Question(UUID requestId, String question) {
+    record Question(UUID requestId, String question, String provider) {
         public Question {
             if (requestId == null) {
                 throw new IllegalArgumentException("Question request ID is required");
             }
             text(question, 4000, "Question");
+            if (provider != null && !provider.matches("[a-z]{1,32}")) {
+                throw new IllegalArgumentException("Invalid QA provider selection");
+            }
         }
     }
 
@@ -44,9 +47,12 @@ public interface QaService {
             List<Paragraph> paragraphs,
             Clarification clarification,
             String notice,
-            Usage usage) {
+            Usage usage,
+            Selection selection,
+            List<Activity> activity) {
         public Reply {
             paragraphs = List.copyOf(paragraphs);
+            activity = List.copyOf(activity);
         }
     }
 
@@ -66,7 +72,25 @@ public interface QaService {
 
     record Usage(int calls, long inputTokens, long outputTokens, String costUpperUsd, boolean uncertain) {}
 
-    record Allowance(int remaining, int dailyLimit, String resetsAt, String runCostUpperUsd) {}
+    record Selection(String requestedProvider, String provider, String model, String fallbackReason) {}
+
+    record Activity(int id, String kind, String name, String state, String input, String output, long elapsedMillis) {}
+
+    record ModelOption(String provider, String model, boolean configured, String runCostUpperUsd) {}
+
+    record MonthBudget(String limitUsd, String spentUsd, String reservedUsd, String remainingUsd, String resetsAt) {}
+
+    record Allowance(
+            int remaining,
+            int dailyLimit,
+            String resetsAt,
+            String defaultProvider,
+            List<ModelOption> models,
+            MonthBudget anthropicBudget) {
+        public Allowance {
+            models = List.copyOf(models);
+        }
+    }
 
     static void text(String value, int maximumBytes, String name) {
         if (value == null || value.isBlank() || value.getBytes(StandardCharsets.UTF_8).length > maximumBytes) {

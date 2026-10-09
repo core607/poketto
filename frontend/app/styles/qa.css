@@ -1,0 +1,137 @@
+.qa-panel {
+  max-width: 52rem;
+  margin-inline: auto;
+}
+.qa-page .page-header {
+  max-width: 52rem;
+  margin: 1.5rem auto 2rem;
+}
+.qa-page .page-header h1 {
+  font-size: 2rem;
+  font-weight: 650;
+  margin-bottom: 0.6rem;
+}
+.qa-panel > form {
+  display: grid;
+  gap: 1rem;
+  padding: 1.1rem;
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  border-radius: 1rem;
+  margin-block: 1.5rem;
+}
+.qa-panel > form > .btn {
+  justify-self: end;
+}
+.qa-panel textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 7rem;
+  margin-top: 0.7rem;
+  padding: 0.85rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font: inherit;
+  resize: vertical;
+}
+.qa-panel fieldset > label {
+  display: block;
+  margin-block: 0.65rem;
+}
+.qa-panel fieldset input[type="radio"] {
+  margin-right: 0.5rem;
+}
+.qa-panel blockquote {
+  border-left: 2px solid var(--line);
+  padding-left: 1rem;
+  color: var(--ink-2);
+  margin-block: 0.65rem;
+}
+.qa-process > summary {
+  cursor: pointer;
+  padding-block: 0.65rem;
+  color: var(--muted);
+}
+.qa-settings {
+  margin-block: 1.5rem;
+}
+.qa-settings select {
+  display: block;
+  margin-top: 0.5rem;
+  max-width: 100%;
+  padding: 0.65rem 1rem;
+  border-radius: 0.75rem;
+  font: inherit;
+}
+.qa-budget,
+.qa-model-used,
+.qa-progress,
+.qa-step-meta {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.qa-activity {
+  margin-block: 1.5rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--line);
+}
+.qa-step {
+  margin-block: 0.45rem;
+}
+.qa-step summary {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.5rem;
+  cursor: pointer;
+  border-radius: 0.5rem;
+}
+.qa-step summary::after {
+  content: "+";
+  margin-left: auto;
+}
+.qa-step[open] summary::after {
+  content: "−";
+}
+.qa-step summary:hover {
+  background: var(--bg-hover);
+}
+.qa-step-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.qa-step-running {
+  color: var(--accent);
+}
+.qa-step-failed {
+  color: var(--danger);
+}
+.qa-step-meta {
+  margin-left: auto;
+}
+.qa-step-body {
+  padding: 0 1rem 1rem;
+  font-size: 0.9rem;
+}
+.qa-step-body pre {
+  max-height: 22rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 0.85rem;
+  background: var(--bg-sunken);
+  border-radius: 0.6rem;
+  font-size: 0.8rem;
+}
+.qa-thinking {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 28rem;
+  overflow: auto;
+  line-height: 1.75;
+}

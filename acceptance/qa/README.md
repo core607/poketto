@@ -13,7 +13,7 @@ the supplied reformulations do not measure whether an agent can discover them.
 through the ordinary Gradle test entrance.
 
 For explicit paid acceptance, follow the [isolated application entrance](../README.md)
-and add a model key as `POKETTO_QA_API_KEY` in ignored `acceptance/.env`. Use a fresh
+and add a model key as `POKETTO_QA_DEEPSEEK_API_KEY` in ignored `acceptance/.env`. Use a fresh
 fixture project and include the QA override:
 
 ```sh
@@ -23,10 +23,14 @@ python acceptance/qa/run.py --base http://127.0.0.1:38180 --env-file acceptance/
 python acceptance/qa/wish.py --base http://127.0.0.1:38180 --env-file acceptance/.env --report .gradle/qa-wish.json
 ```
 
-The default override limits the shared daily budget to $0.50. Both scripts call
+The override defaults to DeepSeek and limits the shared daily budget to $0.50.
+For Claude, configure `POKETTO_QA_ANTHROPIC_API_KEY`, set
+`POKETTO_QA_DEFAULT_PROVIDER=anthropic` for wishes, and pass `--provider anthropic`
+to `run.py`. Both choices use the same admission ledger and bounded thinking loop. Both scripts call
 the product's real authentication, PostgreSQL and QA budget entrance. `run.py`
 asks five web questions, rereads every cited public article independently, and
-checks completed duplicates without repeating paid work. `wish.py` checks holder
+checks completed duplicates without repeating paid work. The response records
+include the selected model, public thinking and tool activity. `wish.py` checks holder
 consent, one-candy spending, clarification across fresh MCP sessions, passive
 status reads and revocation. Its synthetic machine key is revoked on completion.
 Neither script is browser acceptance.
@@ -37,8 +41,8 @@ before any further experiment. `--cases` selects comma-separated fixture IDs for
 `run.py`; it does not bypass daily allowances. Once finished, dispose only of this
 fixture project's volumes using the isolated entrance's cleanup procedure.
 
-The [2026-10-09 report](2026-10-09-results.json) records the provider run and source
-hashes. Required source hits and exact-quote checks passed for these fixtures;
+The [2026-10-09 report](2026-10-09-results.json) records the earlier DeepSeek run and source
+hashes before thinking and provider selection; it does not verify the new adapters. Required source hits and exact-quote checks passed for these fixtures;
 they do not establish general recall, semantic entailment accuracy or an advantage
 over embedding retrieval. Plain-text rendering and actual browser controls require
 their separate Chrome acceptance.

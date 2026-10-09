@@ -2,9 +2,26 @@ export type QaAllowance = {
   remaining: number;
   dailyLimit: number;
   resetsAt: string;
-  runCostUpperUsd: string;
+  defaultProvider: string;
+  models: {
+    provider: string;
+    model: string;
+    configured: boolean;
+    runCostUpperUsd: string;
+  }[];
+  anthropicBudget: {
+    limitUsd: string;
+    spentUsd: string;
+    reservedUsd: string;
+    remainingUsd: string;
+    resetsAt: string;
+  };
 };
-export type QaQuestion = { requestId: string; question: string };
+export type QaQuestion = {
+  requestId: string;
+  question: string;
+  provider: string;
+};
 export type QaChoice = { requestId: string; revision: number; answer: string };
 export type QaReply = {
   requestId: string;
@@ -26,6 +43,13 @@ export type QaReply = {
     expiresAt: string;
   } | null;
   notice: string;
+  selection: {
+    requestedProvider: string;
+    provider: string;
+    model: string;
+    fallbackReason: string | null;
+  };
+  activity: QaActivity[];
   usage: {
     calls: number;
     inputTokens: number;
@@ -33,4 +57,14 @@ export type QaReply = {
     costUpperUsd: string;
     uncertain: boolean;
   };
+};
+
+export type QaActivity = {
+  id: number;
+  kind: string;
+  name: string;
+  state: "RUNNING" | "COMPLETED" | "FAILED";
+  input: string;
+  output: string;
+  elapsedMillis: number;
 };

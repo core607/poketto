@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function Ask() {
   return (
-    <div className="page">
+    <div className="page qa-page">
       <header className="page-header">
         <h1>许愿井</h1>
         <p>带着一个问题，沿着出处找下去。</p>

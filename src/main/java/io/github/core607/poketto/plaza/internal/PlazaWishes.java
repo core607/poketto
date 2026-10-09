@@ -35,7 +35,7 @@ final class PlazaWishes {
             reply = qa.ask(
                     actor,
                     workspace,
-                    new QaService.Question(UUID.fromString(command.argument(1)), command.argument(0)));
+                    new QaService.Question(UUID.fromString(command.argument(1)), command.argument(0), null));
         }
         List<String> next = reply.clarification() == null
                 ? List.of("wish --status " + reply.requestId())

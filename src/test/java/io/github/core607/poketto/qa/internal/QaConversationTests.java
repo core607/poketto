@@ -1,6 +1,7 @@
 package io.github.core607.poketto.qa.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
@@ -90,12 +91,37 @@ class QaConversationTests {
         assertThat(((QaConversation.Finished) result).notice()).contains("未找到足以回答的公开证据");
     }
 
+    @Test
+    void plainTextCannotBypassTheAnswerToolAndThinkingIsPreservedForTheNextTurn() {
+        var conversation = conversation();
+        var completion =
+                new QaModel.Completion(List.of(), 100, 20, 0, "An unsupported answer.", "Full reasoning.", null);
+        assertThat(conversation.accept(completion, () -> {})).isInstanceOf(QaConversation.Continue.class);
+        assertThat(conversation.messages().get(2).reasoning()).isEqualTo("Full reasoning.");
+        assertThat(conversation.messages().getLast().content()).contains("Finish only with answer");
+    }
+
+    @Test
+    void toolActivityRecordsFailuresAsDataAndNeverSilentlyTruncatesThinking() {
+        var conversation = conversation();
+        conversation.accept(turn(call("bad", "spend_candy", "{}")), () -> {});
+        assertThat(conversation.activity().snapshot().getFirst().state()).isEqualTo("FAILED");
+        assertThat(conversation.activity().snapshot().getFirst().output()).contains("UNKNOWN_TOOL");
+        int entry = conversation.activity().start("thinking", "fixture", "");
+        String complete = "Reasoning. ".repeat(1000);
+        conversation.activity().finish(entry, complete, "COMPLETED");
+        assertThat(conversation.activity().snapshot().get(entry).output()).isEqualTo(complete);
+        assertThatThrownBy(() -> conversation.activity().finish(entry, "a".repeat(270000), "COMPLETED"))
+                .isInstanceOf(QaException.class);
+        assertThat(conversation.activity().snapshot().get(entry).output()).isEqualTo(complete);
+    }
+
     private QaConversation conversation() {
         return new QaConversation(sources, JsonMapper.shared(), "What do the papers say?", "Speak briefly");
     }
 
     private static QaModel.Completion turn(QaModel.Call... calls) {
-        return new QaModel.Completion(List.of(calls), 100, 20);
+        return new QaModel.Completion(List.of(calls), 100, 20, 0, "", "", null);
     }
 
     private static QaModel.Call call(String id, String name, String arguments) {

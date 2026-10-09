@@ -50,6 +50,7 @@ def main():
     parser.add_argument('--base', required=True)
     parser.add_argument('--env-file', type=Path, required=True)
     parser.add_argument('--report', type=Path, required=True)
+    parser.add_argument('--provider', choices=['anthropic', 'deepseek'], default='deepseek')
     parser.add_argument('--cases', default='tag,rephrase,cross-article,no-answer,adversarial')
     args = parser.parse_args()
     if args.report.exists():
@@ -63,7 +64,7 @@ def main():
     browser = Browser(args.base, environment['POKETTO_ACCEPTANCE_PASSWORD'])
     browser.api('PUT', '/api/auth/workspaces/' + browser.workspace + '/publication', {'enabled': True})
     browser.file('public/qa/garden/hours.md')
-    report = {'scope': 'Synthetic site corpus, real auth/PostgreSQL/DeepSeek QA; not browser or a general RAG benchmark',
+    report = {'scope': 'Synthetic site corpus, real auth/PostgreSQL/provider QA; not browser or a general RAG benchmark',
         'corpusSha256': sha(corpus_path), 'clientSha256': sha(Path(__file__)), 'cases': []}
     args.report.parent.mkdir(parents=True, exist_ok=True)
     def save():
@@ -75,7 +76,7 @@ def main():
         report['cases'].append(row)
         save()
         started = time.monotonic()
-        reply = ask(browser, '/api/qa', {'requestId': row['requestId'], 'question': case['question']})
+        reply = ask(browser, '/api/qa', {'requestId': row['requestId'], 'question': case['question'], 'provider': args.provider})
         if reply['status'] == 'WAITING':
             passive = browser.api('GET', '/api/qa/' + row['requestId'])
             assert passive['usage'] == reply['usage'], 'Reading clarification status caused another model call'
@@ -85,6 +86,9 @@ def main():
                 'answer': '只使用题目中指定地点的公开文章；没有明确证据时直接说明没有找到。'})
         row.update(state=reply['status'], code=reply['code'], latencyMillis=round((time.monotonic()-started)*1000), usage=reply['usage'])
         row['reply'] = reply
+        assert reply['selection']['requestedProvider'] == args.provider
+        assert any(item['kind'] == 'thinking' for item in reply['activity'])
+        assert any(item['kind'] == 'tool' for item in reply['activity'])
         save()
         assert reply['status'] == 'COMPLETED', f'{case["id"]} did not complete: {reply["code"]}'
         row['sources'] = verify_sources(browser, reply)
@@ -94,7 +98,7 @@ def main():
             expected = [value for value in case['expected'] if value != 'reading/paper']
             for reference in expected:
                 assert any(value.endswith('/qa/' + reference) for value in row['sources']), f'{case["id"]} missed its supporting article'
-        repeated = ask(browser, '/api/qa', {'requestId': row['requestId'], 'question': case['question']})
+        repeated = ask(browser, '/api/qa', {'requestId': row['requestId'], 'question': case['question'], 'provider': args.provider})
         assert repeated['usage'] == reply['usage'] and not repeated['paragraphs'], 'Duplicate request replayed or retained a completed answer'
         row['sourceQuotesSupported'] = True
         row['result'] = 'PASS'

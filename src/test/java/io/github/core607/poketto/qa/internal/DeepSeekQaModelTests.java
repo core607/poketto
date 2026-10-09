@@ -7,7 +7,6 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.github.core607.poketto.qa.QaException;
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -42,8 +41,7 @@ class DeepSeekQaModelTests {
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .version(HttpClient.Version.HTTP_1_1)
                 .build();
-        var policy = new QaPolicy(
-                5, 2_000_000, 2, 6, 2048, new BigDecimal("0.3"), new BigDecimal("1.2"), Duration.ofSeconds(90), "");
+        var policy = new QaPolicy(5, 2_000_000, 2, 6, 2048, 20_000_000, Duration.ofSeconds(90), "");
         model = new DeepSeekQaModel(
                 client,
                 URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/chat/completions"),
@@ -60,20 +58,25 @@ class DeepSeekQaModelTests {
     }
 
     @Test
-    void sendsTheNonThinkingToolProtocolAndReadsUsage() {
+    void enablesThinkingAndReplaysTheFullReturnedReasoningWithToolResults() {
         QaModel.Completion completion = model.complete(messages(), Duration.ofSeconds(5));
         assertThat(completion.calls()).hasSize(2);
         assertThat(completion.inputTokens()).isEqualTo(100);
         assertThat(completion.outputTokens()).isEqualTo(20);
         String body = received.get();
         assertThat(body)
-                .contains(
-                        "\"model\":\"deepseek-flash\"",
-                        "\"thinking\":{\"type\":\"disabled\"}",
-                        "\"tool_choice\":\"required\"",
-                        "\"max_tokens\":2048");
-        assertThat(body).doesNotContain("synthetic-provider-key");
+                .contains("\"model\":\"deepseek-flash\"", "\"thinking\":{\"type\":\"enabled\"}", "\"max_tokens\":2048");
+        assertThat(body).doesNotContain("synthetic-provider-key", "tool_choice");
+        assertThat(completion.reasoning()).isEqualTo("First search, then read the evidence.");
         assertThat(requests).hasValue(1);
+        model.complete(
+                List.of(
+                        messages().getFirst(),
+                        completion.assistant(),
+                        QaModel.Message.tool("call_1", "[]"),
+                        QaModel.Message.tool("call_2", "{}")),
+                Duration.ofSeconds(5));
+        assertThat(received.get()).contains("\"reasoning_content\":\"First search, then read the evidence.\"");
     }
 
     @Test
@@ -152,7 +155,7 @@ class DeepSeekQaModelTests {
 
     private static String valid() {
         return """
-                {"choices":[{"finish_reason":"tool_calls","message":{"tool_calls":[
+                {"choices":[{"finish_reason":"tool_calls","message":{"reasoning_content":"First search, then read the evidence.","tool_calls":[
                 {"id":"call_1","type":"function","function":{"name":"search","arguments":"{}"}},
                 {"id":"call_2","type":"function","function":{"name":"read","arguments":"{}"}}
                 ]}}],"usage":{"prompt_tokens":100,"completion_tokens":20}}

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Window } from "happy-dom";
-import type { QaQuestion, QaChoice, QaReply } from "../lib/qa";
+import type { QaAllowance, QaQuestion, QaChoice, QaReply } from "../lib/qa";
 
 async function mount(fetcher: typeof fetch) {
   const window = new Window({ url: "http://localhost/ask" });
@@ -12,6 +12,7 @@ async function mount(fetcher: typeof fetch) {
     HTMLElement: window.HTMLElement,
     HTMLTextAreaElement: window.HTMLTextAreaElement,
     HTMLInputElement: window.HTMLInputElement,
+    FormData: window.FormData,
     Event: window.Event,
     IS_REACT_ACT_ENVIRONMENT: true,
   };
@@ -79,6 +80,40 @@ async function mount(fetcher: typeof fetch) {
   };
 }
 
+const allowance: QaAllowance = {
+  remaining: 4,
+  dailyLimit: 5,
+  resetsAt: "2026-10-10T00:00:00Z",
+  defaultProvider: "anthropic",
+  models: [
+    {
+      provider: "anthropic",
+      model: "claude-haiku-5-5",
+      configured: true,
+      runCostUpperUsd: "0.1",
+    },
+    {
+      provider: "deepseek",
+      model: "deepseek-flash",
+      configured: true,
+      runCostUpperUsd: "0.2",
+    },
+  ],
+  anthropicBudget: {
+    limitUsd: "20",
+    spentUsd: "0",
+    reservedUsd: "0",
+    remainingUsd: "20",
+    resetsAt: "2026-11-01T00:00:00Z",
+  },
+};
+const selection = {
+  requestedProvider: "anthropic",
+  provider: "anthropic",
+  model: "claude-haiku-5-5",
+  fallbackReason: null,
+};
+
 const usage = {
   calls: 1,
   inputTokens: 100,
@@ -92,13 +127,7 @@ test("uncertain questions retry the same identity, clarification waits for a cho
   const ui = await mount(async (input, options) => {
     if (String(input) === "/api/auth/csrf")
       return Response.json({ headerName: "X-CSRF", token: "fixture" });
-    if (options?.method !== "POST")
-      return Response.json({
-        remaining: 4,
-        dailyLimit: 5,
-        resetsAt: "2026-10-10T00:00:00Z",
-        runCostUpperUsd: "0.14",
-      });
+    if (options?.method !== "POST") return Response.json(allowance);
     const body = JSON.parse(String(options.body)) as QaQuestion | QaChoice;
     writes.push(body);
     if (writes.length === 1) throw new Error("Response lost after dispatch");
@@ -115,6 +144,8 @@ test("uncertain questions retry the same identity, clarification waits for a cho
       },
       notice: "等待选择。",
       usage,
+      selection,
+      activity: [],
     };
     if (String(input) === "/api/qa/continue") {
       reply.status = "COMPLETED";
@@ -180,4 +211,145 @@ test("non-creators see the eligibility boundary and cannot submit a question", a
   assert.match(ui.container.textContent, /仅向当前创作者和管理员开放/);
   assert.equal(ui.container.querySelector("textarea")?.disabled, true);
   assert.equal(writes, 0);
+});
+
+test("successful login clears the earlier unauthorized notice and unlocks the question", async (t) => {
+  let loggedIn = false;
+  const ui = await mount(async (input) => {
+    if (String(input) === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (String(input) === "/api/auth/identity/policy")
+      return Response.json({ emailAvailable: false, googleAvailable: false });
+    if (String(input) === "/api/auth/login") {
+      loggedIn = true;
+      return Response.json({});
+    }
+    return loggedIn
+      ? Response.json(allowance)
+      : Response.json({}, { status: 401 });
+  });
+  t.after(() => ui.cleanup());
+  assert.match(ui.container.textContent, /登录信息无效/);
+  await ui.click("登录以使用问答");
+  const login = ui.container.querySelector('input[name="login"]');
+  const password = ui.container.querySelector('input[name="password"]');
+  assert.ok(login instanceof ui.window.HTMLInputElement);
+  assert.ok(password instanceof ui.window.HTMLInputElement);
+  login.value = "fixture";
+  password.value = "fixture-password";
+  const form = login.closest("form");
+  assert.ok(form);
+  await ui.act(async () =>
+    form.dispatchEvent(
+      new ui.window.Event("submit", { bubbles: true, cancelable: true }),
+    ),
+  );
+  assert.equal(loggedIn, true);
+  assert.doesNotMatch(ui.container.textContent, /登录信息无效/);
+  const question = ui.container.querySelector('textarea[aria-label="问题"]');
+  assert.ok(question instanceof ui.window.HTMLTextAreaElement);
+  assert.equal(question.disabled, false);
+});
+
+test("read-only progress displays thinking and tool results without replaying the question", async (t) => {
+  let finish: (response: Response) => void = () => {};
+  let writes = 0;
+  let reads = 0;
+  let request: QaQuestion;
+  const activity: QaReply["activity"] = [
+    {
+      id: 0,
+      kind: "thinking",
+      name: "deepseek-flash",
+      state: "COMPLETED",
+      input: "",
+      output: "完整思考 <script>no</script>",
+      elapsedMillis: 1250,
+    },
+    {
+      id: 1,
+      kind: "tool",
+      name: "search",
+      state: "RUNNING",
+      input: '{"query":"garden"}',
+      output: "",
+      elapsedMillis: 0,
+    },
+  ];
+  const fallback = {
+    ...selection,
+    provider: "deepseek",
+    model: "deepseek-flash",
+    fallbackReason: "ANTHROPIC_MONTHLY_BUDGET",
+  };
+  const ui = await mount(async (input, options) => {
+    if (String(input) === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (options?.method === "POST") {
+      writes++;
+      request = JSON.parse(String(options.body));
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    }
+    if (String(input) === "/api/qa") return Response.json(allowance);
+    reads++;
+    return Response.json({
+      requestId: request.requestId,
+      status: "RUNNING",
+      code: "RUNNING",
+      revision: 0,
+      paragraphs: [],
+      notice: "Working",
+      usage,
+      selection: fallback,
+      activity,
+    });
+  });
+  t.after(() => ui.cleanup());
+  assert.equal(ui.container.querySelector("select")?.value, "anthropic");
+  assert.match(ui.container.textContent, /20.00/);
+  await ui.fill("问题", "Garden papers?");
+  await ui.submit();
+  await ui.act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1150));
+  });
+  assert.equal(writes, 1);
+  assert.ok(reads > 0);
+  assert.equal(request!.provider, "anthropic");
+  assert.match(ui.container.textContent, /本次已使用 DeepSeek/);
+  assert.match(ui.container.textContent, /完整思考 <script>no<\/script>/);
+  assert.equal(ui.container.querySelectorAll("script").length, 0);
+  assert.equal(ui.container.querySelectorAll("details.qa-step").length, 2);
+  assert.match(ui.container.textContent, /搜索公开文章…/);
+  await ui.act(async () =>
+    finish(
+      Response.json({
+        requestId: request!.requestId,
+        status: "COMPLETED",
+        code: "OK",
+        revision: 0,
+        paragraphs: [],
+        notice: "Finished",
+        usage,
+        selection: fallback,
+        activity: [
+          activity[0],
+          {
+            ...activity[1],
+            state: "COMPLETED",
+            output: '{"total":2}',
+            elapsedMillis: 150,
+          },
+        ],
+      }),
+    ),
+  );
+  assert.match(ui.container.textContent, /"total": 2/);
+  const previous = reads;
+  await ui.act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1150));
+  });
+  assert.equal(reads, previous);
+  assert.equal(writes, 1);
 });

@@ -26,6 +26,20 @@ refund candy independently of money already spent. Account/request identities
 remain in PostgreSQL so restart or deletion of transient text cannot allow replay.
 Database transactions never span upstream or public-content I/O.
 
+Native Anthropic and DeepSeek adapters share that ledger. Server-owned models,
+prices and credentials keep browser selection from bypassing cost admission.
+Anthropic additionally reserves a shared UTC monthly budget under the same lock.
+An insufficient month selects DeepSeek before dispatch; errors after dispatch
+never trigger fallback. Provider, model, price and original billing period belong
+to the request, including clarification and duplicate delivery. This prevents
+concurrent overspend and avoids paying two providers for one uncertain operation.
+
+Provider thinking is enabled, with Claude's public summary and DeepSeek's returned
+reasoning shown alongside tool activity. Opaque Claude signatures and full
+provider turns stay only in transient replay state. Read-only progress polling
+cannot dispatch a model. Text remains subject to the same expiry boundary;
+ordinary model prose cannot bypass the citation tool.
+
 Clarification is a structured tool result that releases model concurrency and
 waits for an explicit, revision-bound answer. Its bounded text is held only in
 memory until continuation, completion or expiry. Losing that state ends the
@@ -51,16 +65,18 @@ inside a model execution slot for a user choice wastes scarce concurrency.
 
 ## Consequences and verification
 
-Worst-case reservations temporarily reduce available daily budget, and peak prices
+Worst-case reservations temporarily reduce available daily and monthly budgets,
+so a small Claude remainder can select DeepSeek. Peak prices
 overestimate discounted calls. Metadata storage grows with completed requests;
 removing those identities would require a separate replay policy. Transient
 continuations can be lost, while their already dispatched work remains accounted
 for. Site-wide retrieval still depends on complete, valid cached snapshots and
 explicitly refuses excess capacity.
 
-`QaIntegrationIT`, `QaConversationTests`, `DeepSeekQaModelTests`,
+`QaIntegrationIT`, `QaConversationTests`, `AnthropicQaModelTests`, `DeepSeekQaModelTests`,
 `PlazaQaSourcesTests` and the [site-corpus acceptance](../../acceptance/qa/README.md)
-pin these boundaries. Actual Chrome acceptance and delivery remain pending.
+pin these boundaries. Chrome verifies DeepSeek selection, public thinking/tool disclosure and cited answers
+through the real provider. Anthropic interoperability and delivery remain pending.
 The plaza foundation, community, [game](2026-10-09-pocket-games.md), public delivery,
 repository authority and independent retrieval records retain their respective
 scopes. This decision partially supersedes the requirements'

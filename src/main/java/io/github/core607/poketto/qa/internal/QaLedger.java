@@ -20,15 +20,19 @@ final class QaLedger {
     private final QaPolicy policy;
     private final QaCandy candy;
     private final Clock clock;
+    private final QaModels models;
+    private final QaMonth month;
 
-    QaLedger(JdbcTemplate jdbc, QaPolicy policy, QaCandy candy, Clock clock) {
+    QaLedger(JdbcTemplate jdbc, QaPolicy policy, QaCandy candy, Clock clock, QaModels models) {
         this.jdbc = jdbc;
         this.policy = policy;
         this.candy = candy;
         this.clock = clock;
+        this.models = models;
+        this.month = new QaMonth(jdbc, policy.anthropicMonthlyMicros(), clock);
     }
 
-    Start begin(UUID account, UUID request, UUID credential) {
+    Start begin(UUID account, UUID request, UUID credential, String requestedProvider) {
         Run previous = find(account, request);
         if (previous != null) {
             entrance(previous, credential);
@@ -44,12 +48,14 @@ final class QaLedger {
         if (retained >= 64) {
             throw new QaException("QA_CAPACITY", "The question continuation capacity is full");
         }
+        Admission admission = select(requestedProvider, day);
+        QaProvider provider = admission.provider();
         jdbc.update("insert into qa_budget_days(day) values (?) on conflict do nothing", Date.valueOf(day));
         int reserved = jdbc.update(
                 "update qa_budget_days set reserved_micros=reserved_micros+? where day=? and spent_micros+reserved_micros+?<=?",
-                policy.runBound(),
+                provider.runBound(policy),
                 Date.valueOf(day),
-                policy.runBound(),
+                provider.runBound(policy),
                 policy.dailyMicros());
         if (reserved == 0) {
             throw new QaException("BUDGET_LIMIT", "The shared daily model budget is reserved or spent");
@@ -58,18 +64,32 @@ final class QaLedger {
             candy.reserve(account);
         }
         jdbc.update(
-                "insert into qa_runs(account_id,request_id,channel,credential_id,budget_day,status,reserved_micros,call_bound_micros,candy_reserved,created_at,expires_at) values (?,?,?,?,?,'RUNNING',?,?,?,?,?)",
+                "insert into qa_runs(account_id,request_id,channel,credential_id,budget_day,status,reserved_micros,call_bound_micros,candy_reserved,created_at,expires_at,requested_provider,provider,model,fallback_reason,input_price,output_price) values (?,?,?,?,?,'RUNNING',?,?,?,?,?,?,?,?,?,?,?)",
                 account,
                 request,
                 credential == null ? "WEB" : "WISH",
                 credential,
                 Date.valueOf(day),
-                policy.runBound(),
-                policy.callBound(),
+                provider.runBound(policy),
+                provider.callBound(policy),
                 credential != null,
                 Timestamp.from(clock.instant()),
-                Timestamp.from(clock.instant().plus(policy.runTime())));
+                Timestamp.from(clock.instant().plus(policy.runTime())),
+                admission.requested(),
+                provider.id(),
+                provider.model(),
+                admission.reason(),
+                provider.prices().input(),
+                provider.prices().output());
         return new Start(find(account, request), true);
+    }
+
+    private Admission select(String requestedProvider, LocalDate day) {
+        QaProvider requested = models.require(requestedProvider);
+        if (requested.id().equals("anthropic") && !month.reserve(day, requested.runBound(policy))) {
+            return new Admission(models.require("deepseek"), requested.id(), "ANTHROPIC_MONTHLY_BUDGET");
+        }
+        return new Admission(requested, requested.id(), null);
     }
 
     Run resume(Run run, int revision) {
@@ -102,16 +122,20 @@ final class QaLedger {
         return find(run.account(), run.request());
     }
 
-    Run settle(Run run, Long input, Long output) {
+    Run settle(Run run, QaModel.Completion completion) {
         if (!run.inFlight() || !run.status().equals("RUNNING")) {
             return run;
         }
-        boolean unknown = input == null || output == null;
-        long cost = unknown ? run.callBound() : policy.cost(input, output);
+        boolean unknown = completion == null;
+        long cost = unknown
+                ? run.callBound()
+                : run.prices()
+                        .cost(completion.inputTokens() + completion.cacheCreationTokens(), completion.outputTokens());
         if (cost > run.callBound()) {
             cost = run.callBound();
             unknown = true;
         }
+        month.settle(run, cost);
         jdbc.update(
                 "update qa_budget_days set reserved_micros=reserved_micros-?,spent_micros=spent_micros+? where day=?",
                 cost,
@@ -121,8 +145,8 @@ final class QaLedger {
                 "update qa_runs set reserved_micros=reserved_micros-?,cost_micros=cost_micros+?,input_tokens=input_tokens+?,output_tokens=output_tokens+?,in_flight=false,uncertain=uncertain or ? where account_id=? and request_id=?",
                 cost,
                 cost,
-                input == null ? 0 : input,
-                output == null ? 0 : output,
+                completion == null ? 0 : completion.inputTokens(),
+                completion == null ? 0 : completion.outputTokens(),
                 unknown,
                 run.account(),
                 run.request());
@@ -146,7 +170,8 @@ final class QaLedger {
         if (!run.pending()) {
             return run;
         }
-        run = settle(run, null, null);
+        run = settle(run, null);
+        month.release(run);
         jdbc.update(
                 "update qa_budget_days set reserved_micros=reserved_micros-? where day=?",
                 run.reserved(),
@@ -201,7 +226,13 @@ final class QaLedger {
                         row.getBoolean("uncertain"),
                         row.getBoolean("candy_reserved"),
                         row.getString("error_code"),
-                        row.getTimestamp("expires_at").toInstant()),
+                        row.getTimestamp("expires_at").toInstant(),
+                        new QaService.Selection(
+                                row.getString("requested_provider"),
+                                row.getString("provider"),
+                                row.getString("model"),
+                                row.getString("fallback_reason")),
+                        new QaPrices(row.getBigDecimal("input_price"), row.getBigDecimal("output_price"))),
                 account,
                 request);
         return rows.isEmpty() ? null : rows.getFirst();
@@ -218,7 +249,9 @@ final class QaLedger {
                 Math.max(0, policy.dailyQuestions() - used(account, today())),
                 policy.dailyQuestions(),
                 today().plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toString(),
-                QaPolicy.dollars(policy.runBound()));
+                models.defaultProvider(),
+                models.options(policy),
+                month.snapshot());
     }
 
     private int used(UUID account, LocalDate day) {
@@ -256,6 +289,8 @@ final class QaLedger {
 
     record Start(Run run, boolean created) {}
 
+    private record Admission(QaProvider provider, String requested, String reason) {}
+
     record Run(
             UUID account,
             UUID request,
@@ -273,7 +308,9 @@ final class QaLedger {
             boolean uncertain,
             boolean candyReserved,
             String error,
-            Instant expires) {
+            Instant expires,
+            QaService.Selection selection,
+            QaPrices prices) {
         boolean pending() {
             return status.equals("RUNNING") || status.equals("WAITING");
         }

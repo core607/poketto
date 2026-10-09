@@ -245,7 +245,7 @@ class ExistingDeploymentTests(unittest.TestCase):
 
     def test_qa_budget_and_literal_key_reach_only_app_and_survive_an_image_update(self):
         secret = "qa-$literal-$(not-a-command)"
-        settings = updater.read_settings(io.StringIO("POKETTO_QA_API_KEY=" + secret + "\nPOKETTO_QA_DAILY_USD=0.50\nPOKETTO_PLAZA_ENABLED=false\n"))
+        settings = updater.read_settings(io.StringIO("POKETTO_QA_DEEPSEEK_API_KEY=" + secret + "\nPOKETTO_QA_ANTHROPIC_API_KEY=claude-$literal\nPOKETTO_QA_ANTHROPIC_MONTHLY_USD=20\nPOKETTO_QA_DEFAULT_PROVIDER=anthropic\nPOKETTO_QA_DAILY_USD=0.50\nPOKETTO_PLAZA_ENABLED=false\n"))
         result = self.installation.update(REVISION, "new-app", "new-frontend", settings=settings)
         self.installation.update(REVISION, "new-app", "new-frontend")
         for key, value in settings.items():

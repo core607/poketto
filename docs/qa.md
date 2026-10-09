@@ -57,14 +57,15 @@ the holder's `WISH` grant and current credential/workspace authorization.
 The request ID belongs to the account and entrance. Only the original machine
 credential can continue its wish; another credential does not inherit its text.
 Repeat an uncertain request with the original ID. A completed duplicate returns
-usage and status without another model call or retained answer. The web interface
-offers explicit status checks and retries; it never automatically resends a paid
+usage and status without another model call or retained answer. The web interface polls read-only status while a request is active and offers
+explicit retries after an uncertain result; it never automatically resends a paid
 operation. A lost completed response cannot be reconstructed from server storage.
 
 Before dispatch, the account transaction reserves the entire run's worst-case
 cost and, for a wish, one candy. Every model call is durably marked before sending.
-Known usage settles at configured uncached input/output prices; cache and off-peak
-discounts are not assumed. Missing usage, interrupted responses and uncertain
+Known usage settles at the request's saved input/output prices. DeepSeek cache
+and off-peak discounts are not assumed; Anthropic cache reads use the uncached
+price and cache writes use twice that price conservatively. Missing usage, interrupted responses and uncertain
 outcomes consume the whole conservative bound for that call. These amounts are
 budget estimates, not a provider invoice. Unused reservations are released.
 
@@ -82,26 +83,57 @@ properties; uppercase environment equivalents are accepted.
 
 | Property | Default |
 | --- | --- |
-| `poketto.qa.enabled` | `true`; a nonempty key is also required |
-| `poketto.qa.api-key` | `DEEPSEEK_API_KEY`, otherwise unavailable |
-| `poketto.qa.base-url` | `DEEPSEEK_BASE_URL`, otherwise `https://api.deepseek.com` |
-| `poketto.qa.model` | `deepseek-flash` |
+| `poketto.qa.enabled` | `true`; at least one provider key is required |
+| `poketto.qa.default-provider` | `anthropic` |
+| `poketto.qa.anthropic.api-key` | `ANTHROPIC_API_KEY`, otherwise unavailable |
+| `poketto.qa.anthropic.base-url` | `https://api.anthropic.com/v1` |
+| `poketto.qa.anthropic.model` | `claude-haiku-5-5` |
+| `poketto.qa.anthropic.monthly-usd` | `20`; shared by all accounts, UTC calendar month |
+| `poketto.qa.anthropic.input-usd-per-million` | `0.10` |
+| `poketto.qa.anthropic.output-usd-per-million` | `0.50` |
+| `poketto.qa.deepseek.api-key` | `DEEPSEEK_API_KEY`, otherwise unavailable |
+| `poketto.qa.deepseek.base-url` | `DEEPSEEK_BASE_URL`, otherwise `https://api.deepseek.com` |
+| `poketto.qa.deepseek.model` | `deepseek-flash` |
+| `poketto.qa.deepseek.input-usd-per-million` | `0.30` |
+| `poketto.qa.deepseek.output-usd-per-million` | `1.20` |
 | `poketto.qa.daily-questions` | `5` |
 | `poketto.qa.daily-usd` | `2` |
 | `poketto.qa.max-concurrency` | `2` |
 | `poketto.qa.max-rounds` | `6` |
-| `poketto.qa.max-output-tokens` | `2048` |
+| `poketto.qa.max-output-tokens` | `8192`, including thinking; maximum `16384` |
 | `poketto.qa.timeout-seconds` | `90` per active request; maximum `120` |
-| `poketto.qa.input-usd-per-million` | `0.30` |
-| `poketto.qa.output-usd-per-million` | `1.20` |
 | `poketto.qa.personality` | Empty; at most 2000 characters, expression only |
 
-The default prices use the provider's [peak uncached Flash rates](https://api-docs.deepseek.com/quick_start/pricing/)
-checked on 2026-10-09. Verify prices when changing the model/provider or after a
-provider price change. Hard fee admission assumes those configured upper prices
-and provider token limits remain valid. HTTPS is required and redirects are
-disabled. Thinking is disabled and structured tools are required under the
-[DeepSeek completion protocol](https://api-docs.deepseek.com/api/create-chat-completion/).
+The browser selects one server-configured model per provider. It defaults to
+Haiku 5.5, shows unavailable credentials explicitly, and cannot supply arbitrary
+model IDs, endpoints or prices. MCP wishes use the configured default provider.
+A Claude question reserves its entire cost bound against both the daily and
+monthly budgets. If the month cannot fit that reservation, admission selects
+DeepSeek and the reply identifies the actual model and fallback reason. Monthly
+budget exhaustion is the only automatic fallback trigger: missing keys and
+provider failures do not silently switch models. Daily budget, account allowances
+and concurrency still apply. Clarifications and repeated request IDs retain their
+original selection and price snapshot; delayed responses bill the original month.
+Unused reservations are released; changing configuration does not erase spending.
+
+Prices follow [Haiku 5.5's short-context tier](https://platform.claude.com/docs/en/models/haiku-5-5/overview)
+and [DeepSeek's peak uncached Flash rates](https://api-docs.deepseek.com/quick_start/pricing/),
+checked on 2026-10-09. This loop's input cap stays below Haiku's 100k-token price
+threshold. Verify prices and protocol support when changing models. Hard admission
+assumes the configured upper prices and provider token limits remain valid. HTTPS
+is required and redirects are disabled.
+
+Claude uses adaptive thinking with `display: "summarized"`; DeepSeek enables
+thinking and returns its complete `reasoning_content`. The adapters retain the
+provider's reasoning and opaque signatures for subsequent tool turns. Only public
+thinking text enters browser activity. Collapsible records show thinking, tool
+arguments, complete results, errors and elapsed time as plain text. Status polling
+shows the active step; thinking text arrives when that model turn finishes, not as
+a token stream. These traces stay in memory with the question and disappear on
+completion or expiry; the current page keeps its received copy. Limits reject
+oversized activity rather than silently truncating it. The loop uses automatic
+tool choice because forced tool use suppresses or rejects thinking; an ordinary
+text completion must continue through the bounded citation/answer tool.
 
 The standard Compose `.env` and existing-installation updater accept these `POKETTO_QA_`
 settings and the plaza switches. Ordinary image updates retain them; the GitHub
@@ -114,18 +146,20 @@ HTTP question bodies are limited to 16 KiB before JSON parsing; questions allow
 including schemas, is at most 64 KiB. Its conservative input token bound adds 4096
 tokens of framing allowance. Upstream bodies are capped at 128 KiB during receipt;
 each call has a 45-second deadline within the active request's remaining time.
-Six default calls reserve at most $0.140088. Input/output token reports outside the
+Six default calls reserve at most $0.108138 for Claude or $0.184320 for DeepSeek.
+The Claude bound includes twice the uncached input price for possible cache writes. Input/output token reports outside the
 configured bounds are treated as uncertain, never as free usage.
 
 A question may execute 16 tools, retain 16 source pages and return 32 KiB of answer
-text plus citations. At most 64 questions may be running or awaiting clarification
+text plus citations. Public activity is bounded to 40 entries and 256 KiB,
+including space reserved for failure status. At most 64 questions may be running or awaiting clarification
 across the instance; only running questions consume model concurrency. These
 limits cover the complete result rather than silently shortening a source.
 
 ## Verification
 
 `QaIntegrationIT` covers the real PostgreSQL and account boundary;
-`DeepSeekQaModelTests` exercise bounded HTTP, malformed responses and no retries;
+`AnthropicQaModelTests` and `DeepSeekQaModelTests` exercise bounded HTTP, malformed responses and no retries;
 `QaConversationTests`, `PlazaQaSourcesTests` and the question component tests cover
 tool turns, evidence, fixed retrieval cases and explicit user choices.
 [Site QA acceptance](../acceptance/qa/README.md) owns the fixed corpus, paid
