@@ -1,11 +1,33 @@
 import { NextRequest } from "next/server";
 
 export function GET(request: NextRequest) {
-  const origin = request.nextUrl.origin;
+  // Standalone Next.js uses its internal listener in nextUrl behind the gateway.
+  // Only the requested host and forwarded scheme belong in the browser's policy.
+  const host = request.headers.get("host") ?? request.nextUrl.host;
+  const scheme =
+    request.headers.get("x-forwarded-proto") ??
+    request.nextUrl.protocol.replace(":", "");
+  let origin: string;
+  try {
+    const publicUrl = new URL(`${scheme}://${host}`);
+    if (
+      !["http:", "https:"].includes(publicUrl.protocol) ||
+      publicUrl.username ||
+      publicUrl.password ||
+      publicUrl.pathname !== "/" ||
+      publicUrl.search ||
+      publicUrl.hash
+    ) {
+      return new Response("Invalid public origin", { status: 400 });
+    }
+    origin = publicUrl.origin;
+  } catch {
+    return new Response("Invalid public origin", { status: 400 });
+  }
   const csp = [
     "default-src 'none'",
     `script-src blob: data: ${origin}/games/frame.mjs ${origin}/games/runtime.mjs`,
-    "worker-src blob:",
+    "worker-src data:",
     "connect-src 'none'",
     "img-src data: blob:",
     "style-src 'unsafe-inline'",

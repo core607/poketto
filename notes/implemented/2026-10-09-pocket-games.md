@@ -18,7 +18,11 @@ model/tool round trip. Author action names remain arguments to fixed plaza actio
 The system-owned marker denotes validated protocol conformance, never trusted code.
 It is a current public projection, not a Git mutation.
 
-The browser uses an opaque iframe and disposable worker. Platform controls explicitly
+The browser uses an opaque iframe and disposable data-URL worker. The worker
+retains an opaque origin and the frame's restrictive policy; blob-URL worker
+startup fails in the tested sandboxed Chrome context. The frame pins script
+addresses to the public request origin rather than the internal proxy listener.
+Platform controls explicitly
 save untrusted state; author code has no platform operation channel. Native games
 reuse [supervisor containment](2026-09-05-local-execution-supervisor.md), but have a
 separate worker, account, admission pool and resource slice. Repository copy and
@@ -57,8 +61,9 @@ rebuildable content projections, and provide no certified game outcomes.
 
 `GameSavesIntegrationIT`, `GameCatalogueTests`, the frontend game tests and the
 [native games scenario](../../executor-native/README.md) pin these boundaries.
-Live Chrome isolation and cross-runtime handoff remain awaiting acceptance. This
-record partially supersedes the games portion of the
+Chrome acceptance verifies local play without server jobs, blocked network/DOM
+access, account save conflicts, withdrawal, version changes and browser/agent
+handoff through the real Linux worker. This record partially supersedes the games portion of the
 [plaza proposal](../proposed/2026-10-09-plaza-exploration.md); creator QA remains
 proposed. The public delivery, community and repository supervisor records retain
 their authority over their own entrances.

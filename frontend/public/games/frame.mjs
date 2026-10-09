@@ -68,17 +68,15 @@ function step(request) {
 
 function execute(request) {
   status.textContent = "游戏进行中…";
-  const source = `import { runGame } from ${JSON.stringify(runtime)};
-    onmessage=async(event)=>{try{postMessage({ok:true,result:await runGame(event.data.bundle,event.data.request)})}
+  const source = `onmessage=async(event)=>{try{const {runGame}=await import(${JSON.stringify(runtime)});postMessage({ok:true,result:await runGame(event.data.bundle,event.data.request)})}
     catch{postMessage({ok:false})}};`;
-  const url = URL.createObjectURL(
-    new Blob([source], { type: "text/javascript" }),
-  );
+  // A data URL preserves an opaque worker origin and avoids blob:null startup failures in sandboxed Chromium frames.
+  const url =
+    "data:text/javascript;charset=utf-8," + encodeURIComponent(source);
   let worker;
   try {
     worker = new Worker(url, { type: "module" });
   } catch {
-    URL.revokeObjectURL(url);
     busy = false;
     for (const button of actions.querySelectorAll("button"))
       button.disabled = false;
@@ -92,7 +90,6 @@ function execute(request) {
     settled = true;
     clearTimeout(timer);
     worker.terminate();
-    URL.revokeObjectURL(url);
     busy = false;
     for (const button of actions.querySelectorAll("button"))
       button.disabled = false;
