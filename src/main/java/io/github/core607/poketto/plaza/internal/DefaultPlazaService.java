@@ -194,8 +194,11 @@ final class DefaultPlazaService implements PlazaService {
         command.count(2, 2);
         requirePocket(identity);
         if (command.argument(0).equals("--remove")) {
-            pocket.remove(identity.accountId(), UUID.fromString(command.argument(1)));
-            return PlazaResult.ok("The note is no longer in your pocket.", null, "pocket");
+            boolean removed = pocket.remove(identity.accountId(), UUID.fromString(command.argument(1)));
+            return PlazaResult.ok(
+                    removed ? "The note was removed." : "That note was already absent from your pocket.",
+                    new Removal(removed ? "DELETED" : "ABSENT"),
+                    "pocket");
         }
         return PlazaResult.ok(
                 "A note waits for your next visit.",
@@ -250,6 +253,8 @@ final class DefaultPlazaService implements PlazaService {
     record Help(String syntax, String hint, String locked) {}
 
     record Pocket(List<PlazaPocket.Note> notes, String nextNoteRequest) {}
+
+    record Removal(String result) {}
 
     private record ReadContext(MachineAccounts.Identity identity, Set<String> discovered) {}
 }

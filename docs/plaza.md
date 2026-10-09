@@ -44,6 +44,9 @@ bounded to 256 KiB.
 | `note <text> <nextNoteRequest>` | Write one note using the number from `pocket`; keep it when retrying |
 | `note --remove <note-UUID>` | Remove one of the account's notes |
 
+Removal reports `DELETED` or `ABSENT`; a UUID outside the account is indistinguishable
+from a missing note. An unpublished space's mirror reports `WEBSITE_NOT_PUBLIC`.
+
 `knock`, `wish`, `scribble`, `sign`, `play`, `peek` and `press` are listed but return
 `UNAVAILABLE`; candy, comments, games and QA are not available yet.
 
