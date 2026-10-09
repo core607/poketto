@@ -79,7 +79,8 @@ Use **载入并替换当前进度** to resume the assistant's latest version in 
 Saving is manual; loading explicitly replaces current local progress.
 
 Progress is untrusted JSON, bounded to 32 KiB, 16 levels and 2048 object/array
-entries. It grants no rewards or certified scores. Cloud writes bind the account,
+entries. It grants no rewards or certified scores. HTTP save bodies are capped at
+128 KiB before JSON parsing, including escaped text. Cloud writes bind the account,
 workspace, article, package version and expected save revision. A stale browser or
 assistant receives `SAVE_CONFLICT`; load the latest save or save a separate new
 game instead of silently overwriting it. An updated package suspends older saves

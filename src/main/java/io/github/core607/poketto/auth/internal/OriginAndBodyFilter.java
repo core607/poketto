@@ -53,6 +53,13 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
             filterBody(request, response, chain, CAPTURE_BODY);
             return;
         }
+        if (path.equals("/api/games/saves") || path.startsWith("/api/games/saves/")) {
+            response.setHeader("Cache-Control", "no-store");
+            response.setHeader("Referrer-Policy", "no-referrer");
+            // Room for JSON escaping around a 32 KiB save; reject before the tree is materialized.
+            filterBody(request, response, chain, 128 * 1024);
+            return;
+        }
         if (path.startsWith("/api/auth/") || path.startsWith("/api/admin/")) {
             response.setHeader("Cache-Control", "no-store");
             response.setHeader("Referrer-Policy", "no-referrer");

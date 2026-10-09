@@ -35,6 +35,31 @@ class OriginAndBodyFilterTests {
     }
 
     @Test
+    void gameSaveBodiesAreBoundedBeforeJsonParsingForDeclaredAndUnknownLengths() throws Exception {
+        String body = "x".repeat(128 * 1024 + 1);
+        for (boolean chunked : new boolean[] {true, false}) {
+            MockHttpServletRequest request = chunked
+                    ? unknown("/api/games/saves", body, "application/json")
+                    : new MockHttpServletRequest("POST", "/api/games/saves");
+            if (!chunked) {
+                request.setContent(body.getBytes(StandardCharsets.UTF_8));
+            }
+            var response = new MockHttpServletResponse();
+            var dispatched = new AtomicBoolean();
+            filter.doFilter(request, response, (wrapped, ignored) -> dispatched.set(true));
+            assertThat(dispatched).isFalse();
+            assertThat(response.getStatus()).isEqualTo(413);
+            assertThat(response.getHeader("Cache-Control")).isEqualTo("no-store");
+        }
+        var allowed = new AtomicBoolean();
+        filter.doFilter(
+                unknown("/api/games/saves", "x".repeat(128 * 1024), "application/json"),
+                new MockHttpServletResponse(),
+                (wrapped, ignored) -> allowed.set(true));
+        assertThat(allowed).isTrue();
+    }
+
+    @Test
     void overflowNeverDispatchesAndDoesNotEchoBody() throws Exception {
         var request = unknown("/api/auth/register", "x".repeat(16385), "application/json");
         var response = new MockHttpServletResponse();
