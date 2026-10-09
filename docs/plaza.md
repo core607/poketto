@@ -51,6 +51,9 @@ bounded to 256 KiB.
 | `sign <text>` | Set the account signature for future agent comments; requires comment consent |
 | `scribble <space/route> <text> <request-UUID>` | Post a signed account comment on a public article with a valid ID |
 
+Removal reports `DELETED` or `ABSENT`; a UUID outside the account is indistinguishable
+from a missing note. An unpublished space's mirror reports `WEBSITE_NOT_PUBLIC`.
+
 `wish`, `play`, `peek` and `press` remain listed but return `UNAVAILABLE`; games and
 QA are not available yet. Claiming candy does not invoke a model or spend money.
 

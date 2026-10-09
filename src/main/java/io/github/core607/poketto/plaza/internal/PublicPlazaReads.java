@@ -142,7 +142,10 @@ final class PublicPlazaReads {
     Page mirror(WorkspaceId workspace, int offset) {
         WorkspacePublications.Publication publication = publications.settings(workspace);
         if (!publication.publiclyEnabled()) {
-            return new Page(List.of(), 0, null, false);
+            throw new PlazaException(
+                    "WEBSITE_NOT_PUBLIC",
+                    "This connection's space does not currently have a public website.",
+                    "--help");
         }
         return snapshots.withCurrent(workspace, snapshot -> {
             var budget = new Budget(limits, nanos);
@@ -152,7 +155,7 @@ final class PublicPlazaReads {
             Page result = search(
                     List.of(new Source(publication, snapshot)), new DocumentSearch("", "", null, null, offset, PAGE));
             publications.requireEnabled(workspace);
-            if (!publication.equals(publications.settings(workspace))) {
+            if (!samePresentation(publication, publications.settings(workspace))) {
                 throw changed();
             }
             budget.check();
@@ -164,6 +167,13 @@ final class PublicPlazaReads {
         return offset > 0 && offset < text.length() && Character.isLowSurrogate(text.charAt(offset))
                 ? offset - 1
                 : offset;
+    }
+
+    private static boolean samePresentation(
+            WorkspacePublications.Publication before, WorkspacePublications.Publication after) {
+        return after.publiclyEnabled()
+                && before.slug().equals(after.slug())
+                && before.authorName().equals(after.authorName());
     }
 
     private Card card(WorkspacePublications.Publication publication, PublicArticle article, DocumentSearch search) {

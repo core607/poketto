@@ -147,6 +147,17 @@ class PlazaIntegrationIT {
         assertThat(run(memberKey, "note \"member secret\" 1").status().code()).isEqualTo("OK");
         assertThat(((DefaultPlazaService.Pocket) run(key, "pocket").data()).notes())
                 .isEmpty();
+        UUID privateNote = ((DefaultPlazaService.Pocket)
+                        run(memberKey, "pocket").data())
+                .notes()
+                .getFirst()
+                .id();
+        assertThat(((DefaultPlazaService.Removal)
+                                run(key, "note --remove " + privateNote).data())
+                        .result())
+                .isEqualTo("ABSENT");
+        assertThat(((DefaultPlazaService.Pocket) run(memberKey, "pocket").data()).notes())
+                .hasSize(1);
         assertThatThrownBy(() -> accounts.set(memberKey, memberKey.subjectId(), Set.of(MachinePermission.POCKET)))
                 .isInstanceOf(AuthException.class);
     }
@@ -164,7 +175,14 @@ class PlazaIntegrationIT {
         var notes = ((DefaultPlazaService.Pocket) run(key, "pocket").data()).notes();
         assertThat(notes).hasSize(1);
         UUID id = ((PlazaPocket.Note) notes.getFirst()).id();
-        assertThat(run(key, "note --remove " + id).status().code()).isEqualTo("OK");
+        assertThat(((DefaultPlazaService.Removal)
+                                run(key, "note --remove " + id).data())
+                        .result())
+                .isEqualTo("DELETED");
+        assertThat(((DefaultPlazaService.Removal)
+                                run(key, "note --remove " + id).data())
+                        .result())
+                .isEqualTo("ABSENT");
         assertThat(run(key, command).status().code()).isEqualTo("NOTE_REMOVED");
         assertThat(jdbc.queryForObject("select count(*) from plaza_notes where note_id=?", Long.class, id))
                 .isZero();

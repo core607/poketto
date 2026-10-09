@@ -89,8 +89,8 @@ final class PlazaPocket {
         return values.isEmpty() ? 1 : values.getFirst();
     }
 
-    void remove(UUID account, UUID id) {
-        jdbc.update("delete from plaza_notes where account_id=? and note_id=?", account, id);
+    boolean remove(UUID account, UUID id) {
+        return jdbc.update("delete from plaza_notes where account_id=? and note_id=?", account, id) != 0;
     }
 
     Set<String> discovered(UUID account) {

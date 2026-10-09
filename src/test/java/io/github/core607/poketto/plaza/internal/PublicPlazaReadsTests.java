@@ -118,6 +118,22 @@ class PublicPlazaReadsTests {
     }
 
     @Test
+    void mirrorNamesClosedWebsitesButIgnoresDescriptionOnlyChanges() {
+        WorkspacePublications.Publication publication = add("one", "/a", "Needle");
+        var description = new WorkspacePublications.Publication(
+                publication.workspaceId(), "one", "one", true, true, "author", "Changed description", true);
+        when(publications.settings(publication.workspaceId())).thenReturn(publication, description);
+        assertThat(reads().mirror(publication.workspaceId(), 0).items()).hasSize(1);
+        var closed = new WorkspacePublications.Publication(
+                publication.workspaceId(), "one", "one", false, true, "author", "", false);
+        when(publications.settings(publication.workspaceId())).thenReturn(closed);
+        assertThatThrownBy(() -> reads().mirror(publication.workspaceId(), 0))
+                .isInstanceOf(PlazaException.class)
+                .extracting(failure -> ((PlazaException) failure).code())
+                .isEqualTo("WEBSITE_NOT_PUBLIC");
+    }
+
+    @Test
     void largeResultSetsNeverSuggestAnUncallableNextPage() {
         WorkspacePublications.Publication publication = add("one", "/a", "needle");
         List<PublicArticle> articles = IntStream.range(0, 10011)
