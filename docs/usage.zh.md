@@ -167,6 +167,8 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 [口袋小游戏](games.md)让匿名网页游玩与独立隔离的 agent 作业共用一份规则包。账号存档可在两端主动接手，agent 需要单独的 `GAME_SAVE` 授权。
 
+配置模型密钥后，[创作者问答](qa.md)可通过 `/ask` 或 `wander wish` 使用，仅创作者和管理员可提问。它只读公开文章，核对出处，通过选项澄清范围，并共用费用预算。
+
 `/mcp` 通过 Streamable HTTP 提供 MCP，以工作空间 Bearer 凭据（API key 或 OAuth 访问令牌）认证，独立于浏览器会话。工具目录始终包含 `get_asset` 和 `put_asset`；启用执行器后还包含 `repo_exec`、`repo_discard` 和 `get_artifact`。没有独立的文件工具：通过 `repo_exec` 查看目录、搜索、读取和编辑文件，用 `poketto` CLI 持久化修改，并按需逐层读取仓库的 `AGENTS.md`。详见 [CodeAct 入口记录](../notes/implemented/2026-09-10-codeact-mcp-entrance.md)。
 
 `repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证 root supervisor 和低权限 SRT 账号。应用默认接纳四个会话（`POKETTO_EXECUTOR_MAX_SESSIONS`）、最多 128 MiB bundle，这些值不能超过 worker 的限制。worker 缺失或隔离能力不受支持时，不会降级为普通子进程。

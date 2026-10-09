@@ -15,7 +15,7 @@ The broader [frontend](2026-08-30-nextjs-frontend.md) and [retrieval and sandbox
 ## Positioning
 
 Poketto is a Git-native content workspace for many accounts. Each space is one Git repository: members author it in the browser, their AI agents work on the same repository over MCP, and a published space serves its public content as a website. The same Markdown serves both public presentation and the long-term memory of trusted AI agents.
-Space websites include server-rendered articles, folder, album and collection pages, tags, archives and bounded search. The root site adds cross-space search, discovery batches of published spaces, sitemaps covering every published space, and an RSS feed of the default space. Budget-capped visitor Q&A remains a deferred product target.
+Space websites include server-rendered articles, folder, album and collection pages, tags, archives and bounded search. The root site adds cross-space search, discovery batches of published spaces, sitemaps covering every published space, and an RSS feed of the default space. [Creator QA](2026-10-09-creator-qa.md) supplies budget-capped public questions; anonymous and other account groups remain excluded.
 
 ## Design principles
 
@@ -53,9 +53,9 @@ Files use repository-relative paths without mandatory frontmatter IDs. Optional 
 
 [Working-copy identity](2026-09-14-account-working-copies.md) requires explicit initial admission or the previously returned copy ID on every execution request. Mismatches fail before execution, including after a reconnect at the same commit. Account working copies keep a copy's files across transport closure, reconnection and application restart: only explicit disposal or seven days without authorized use removes them, and ending a lease loses only its runtime state: shell state, private `/tmp` and retained artifacts. Unsaved work has no off-host backup.
 
-## Deferred visitor Q&A design
+## Creator questions and untrusted content
 
-The upstream LLM key exists only in server-side environment variables. The daily budget reserves per agent run: the worst case (context growing per round + output cap × round cap) is deducted up front; if the reservation fails, the run does not start; actual usage settles afterwards. Per-IP token bucket (in-JVM). Price tables are configuration.
+The [QA decision](2026-10-09-creator-qa.md) owns creator eligibility, account allowances, whole-run cost reservations, uncertain calls and transient text. Price upper bounds and provider keys are server configuration. QA shares the plaza's read-only public boundary and cannot capture URLs or execute repository tools.
 clip_url SSRF protections: http/https only; block private, loopback, link-local, and cloud metadata addresses after DNS resolution; re-validate every redirect hop; timeout, size, and content-type limits. Fetched content is untrusted data; instruction-like text inside it is never executed as instructions.
 Rendering pipeline: raw HTML disabled, URLs sanitized, an output HTML sanitizer, and CSP headers.
 

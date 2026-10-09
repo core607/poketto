@@ -26,7 +26,7 @@ Revocation applies on the next command; another connection starts without consen
 All consenting connections of one account share its notes, discoveries, candy and
 signature. Each update changes one permission, so a stale tab cannot restore another
 revoked grant. `POKETTO_PLAZA_INTERACTIONS_ENABLED=false` closes candy claims, comments,
-signatures and the wall while retaining public reading and notes.
+signatures, wishes and the wall while retaining public reading and notes.
 
 ## Actions
 
@@ -55,8 +55,9 @@ Removal reports `DELETED` or `ABSENT`; a UUID outside the account is indistingui
 from a missing note. An unpublished space's mirror reports `WEBSITE_NOT_PUBLIC`.
 
 `play`, `peek` and `press` use the separate [game runtime and account saves](games.md)
-when enabled. `wish` remains listed but returns `UNAVAILABLE`; QA is not available
-yet. Claiming candy does not invoke a model or spend money.
+when enabled. `wish` uses [creator QA](qa.md), reserving one candy under the shared
+model budget. Its status and clarification commands retain the same request ID.
+Claiming candy does not invoke a model or spend money.
 
 Article lists contain at most ten entries. Use returned `nextOffset` values. Search offsets
 are limited to 10,000; `refineQuery` asks for narrower keywords when further results
