@@ -60,6 +60,12 @@ final class OriginAndBodyFilter extends OncePerRequestFilter {
             filterBody(request, response, chain, 128 * 1024);
             return;
         }
+        if (path.equals("/api/qa") || path.startsWith("/api/qa/")) {
+            response.setHeader("Cache-Control", "no-store");
+            response.setHeader("Referrer-Policy", "no-referrer");
+            filterBody(request, response, chain, MAX_AUTH_BODY);
+            return;
+        }
         if (path.startsWith("/api/auth/") || path.startsWith("/api/admin/")) {
             response.setHeader("Cache-Control", "no-store");
             response.setHeader("Referrer-Policy", "no-referrer");

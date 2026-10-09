@@ -60,6 +60,22 @@ class OriginAndBodyFilterTests {
     }
 
     @Test
+    void questionAndContinuationRejectOversizedBodiesWithoutInvokingTheirHandler() throws Exception {
+        for (String path : new String[] {"/api/qa", "/api/qa/continue"}) {
+            var response = new MockHttpServletResponse();
+            var dispatched = new AtomicBoolean();
+            filter.doFilter(
+                    unknown(path, "x".repeat(16385), "application/json"),
+                    response,
+                    (wrapped, ignored) -> dispatched.set(true));
+            assertThat(dispatched).isFalse();
+            assertThat(response.getStatus()).isEqualTo(413);
+            assertThat(response.getHeader("Cache-Control")).isEqualTo("no-store");
+            assertThat(response.getHeader("Referrer-Policy")).isEqualTo("no-referrer");
+        }
+    }
+
+    @Test
     void overflowNeverDispatchesAndDoesNotEchoBody() throws Exception {
         var request = unknown("/api/auth/register", "x".repeat(16385), "application/json");
         var response = new MockHttpServletResponse();

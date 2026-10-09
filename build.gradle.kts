@@ -48,6 +48,8 @@ val postgresTestImage = providers.gradleProperty("poketto.postgres.image")
 
 dependencies {
     implementation("org.springframework.ai:spring-ai-starter-mcp-server-webmvc:2.0.1")
+    implementation("org.springframework.ai:spring-ai-anthropic:2.0.1")
+    implementation("org.springframework.ai:spring-ai-deepseek:2.0.1")
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-session-jdbc")
     implementation("org.springframework.security:spring-security-oauth2-client")
@@ -135,6 +137,7 @@ tasks.register<Sync>("stageAcceptanceRuntime") {
     from(sourceSets.main.get().output) { into("classes") }
     from(integrationTestSourceSet.output) { into("classes") }
     from(layout.projectDirectory.dir("examples/pocket-game")) { into("game-example") }
+    from(layout.projectDirectory.dir("acceptance/qa")) { into("qa-fixture") }
     from(configurations[integrationTestSourceSet.runtimeClasspathConfigurationName]) { into("jars") }
 }
 

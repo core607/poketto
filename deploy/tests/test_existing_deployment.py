@@ -243,6 +243,17 @@ class ExistingDeploymentTests(unittest.TestCase):
         with self.assertRaisesRegex(updater.DeploymentError, "runtime configuration"):
             self.installation.update(REVISION, "new-app", "new-frontend", settings={"POKETTO_EMAIL_DAILY_LIMIT": "80"})
 
+    def test_qa_budget_and_literal_key_reach_only_app_and_survive_an_image_update(self):
+        secret = "qa-$literal-$(not-a-command)"
+        settings = updater.read_settings(io.StringIO("POKETTO_QA_DEEPSEEK_API_KEY=" + secret + "\nPOKETTO_QA_ANTHROPIC_API_KEY=claude-$literal\nPOKETTO_QA_ANTHROPIC_MONTHLY_USD=20\nPOKETTO_QA_DEFAULT_PROVIDER=anthropic\nPOKETTO_QA_PRICES_FILE=/var/lib/poketto/qa-pricing/prices.json\nPOKETTO_QA_DAILY_USD=0.50\nPOKETTO_PLAZA_ENABLED=false\n"))
+        result = self.installation.update(REVISION, "new-app", "new-frontend", settings=settings)
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        for key, value in settings.items():
+            self.assertIn(key + "=" + value, self.docker.running["app"]["Config"]["Env"])
+        self.assertFalse(any(value.startswith("POKETTO_QA_") for value in self.docker.running["frontend"]["Config"]["Env"]))
+        self.assertNotIn(secret, self.installation.state_file.read_text() + json.dumps(result) + str(self.docker.calls))
+        self.assertEqual(self.installation.overlay.stat().st_mode & 0o777, 0o600)
+
     def test_invalid_identity_configuration_never_restarts_containers(self):
         for settings in ({"POKETTO_RESEND_API_KEY": "missing-from"}, {"POKETTO_GOOGLE_CLIENT_ID": "unpaired"},
                          {"POKETTO_EMAIL_DAILY_LIMIT": "0"}, {"POKETTO_EMAIL_DAILY_LIMIT": "100001"}):

@@ -15,6 +15,8 @@ import io.github.core607.poketto.plaza.PlazaCommand;
 import io.github.core607.poketto.plaza.PlazaException;
 import io.github.core607.poketto.plaza.PlazaResult;
 import io.github.core607.poketto.plaza.PlazaService;
+import io.github.core607.poketto.qa.QaException;
+import io.github.core607.poketto.qa.QaService;
 import io.github.core607.poketto.workspace.PublicationUnavailableException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.ArrayList;
@@ -31,6 +33,7 @@ final class DefaultPlazaService implements PlazaService {
     private final MachineCommunity interactions;
     private final boolean interactionsEnabled;
     private final PlazaGames games;
+    private final QaService qa;
 
     DefaultPlazaService(
             MachineAccounts accounts,
@@ -40,7 +43,8 @@ final class DefaultPlazaService implements PlazaService {
             PlazaWallet wallet,
             MachineCommunity interactions,
             boolean interactionsEnabled,
-            GameSaves games) {
+            GameSaves games,
+            QaService qa) {
         this.accounts = accounts;
         this.reads = reads;
         this.pocket = pocket;
@@ -49,6 +53,7 @@ final class DefaultPlazaService implements PlazaService {
         this.interactions = interactions;
         this.interactionsEnabled = interactionsEnabled;
         this.games = games == null ? null : new PlazaGames(games);
+        this.qa = qa;
     }
 
     @Override
@@ -56,6 +61,9 @@ final class DefaultPlazaService implements PlazaService {
         try {
             PlazaCommand command = PlazaCommand.parse(input);
             String client = clientName(clientName);
+            if (command.name().equals("wish") && interactionsEnabled && qa != null) {
+                return new PlazaWishes(qa).execute(actor, workspace, command);
+            }
             if (games != null && Set.of("play", "peek", "press").contains(command.name())) {
                 return games.execute(actor, workspace, command);
             }
@@ -66,6 +74,9 @@ final class DefaultPlazaService implements PlazaService {
                 return publicRead(actor, workspace, command);
             }
             return accounts.withCreator(actor, workspace, identity -> dispatch(identity, workspace, command, client));
+        } catch (QaException refused) {
+            return PlazaResult.refused(
+                    refused.code(), refused.getMessage(), refused.code().equals("NO_CANDY") ? "knock" : "--help");
         } catch (GameException refused) {
             return PlazaResult.refused(
                     refused.code(),
@@ -135,57 +146,91 @@ final class DefaultPlazaService implements PlazaService {
 
     private PlazaResult help(MachineAccounts.Identity identity, PlazaCommand command, String client) {
         command.count(0, 0);
-        String lock = identity.permissions().contains(MachinePermission.POCKET) ? "" : "OWNER_CONSENT_REQUIRED";
-        String commentLock = interactionLock(identity, MachinePermission.COMMENT);
-        String gameLock = games == null
-                ? "UNAVAILABLE"
-                : identity.permissions().contains(MachinePermission.GAME_SAVE) ? "" : "OWNER_CONSENT_REQUIRED";
-        String candyLock = interactionLock(identity, MachinePermission.WISH);
-        if (candyLock.isEmpty() && wallet.read(identity.accountId(), client).claimedToday()) {
-            candyLock = "ALREADY_CLAIMED";
-        }
+        HelpLocks locks = helpLocks(identity, client);
         return PlazaResult.ok(
                 "There are other people's pockets outside. All street actions are listed here.",
-                List.of(
-                        new Help("look [offset]", "Look around the lit stalls and the well.", ""),
-                        new Help(
-                                "stall <tag-or-handle> [offset]",
-                                "Walk up to a stall; its handle opens even an unnamed one.",
-                                ""),
-                        new Help(
-                                "rumor <quoted-keywords> [offset]",
-                                "Ask a passerby. Try another phrase if the street stays quiet.",
-                                ""),
-                        new Help("read <quoted-space/route> [offset]", "Read a currently open pocket.", ""),
-                        new Help("mirror [offset]", "See this connection's space as others do.", ""),
-                        new Help("pocket", "Find the notes left for your next visit.", lock),
-                        new Help(
-                                "note <quoted-text> <nextNoteRequest-from-pocket>",
-                                "Leave a note; retain its request number when retrying.",
-                                lock),
-                        new Help("note --remove <note-UUID>", "Take one of your notes out of the pocket.", lock),
-                        new Help("knock", "Knock for today's five sweets.", candyLock),
-                        new Help("wish <quoted-question>", "The well asks for one sweet.", "UNAVAILABLE"),
-                        new Help(
-                                "scribble <quoted-space/route> <quoted-text> <request-UUID>",
-                                "The wall recognizes those allowed to write.",
-                                commentLock),
-                        new Help("sign <quoted-signature>", "Leave a name at the bottom of your paper.", commentLock),
-                        new Help(
-                                "play <space/route> <nextCreationRequest>",
-                                "Start a glowing machine; peek holds the next creation number.",
-                                gameLock),
-                        new Help(
-                                "peek [save-UUID]",
-                                "Look at a game, or list your saves and next creation number.",
-                                gameLock),
-                        new Help("peek --remove <save-UUID>", "Remove one of your saved games.", gameLock),
-                        new Help(
-                                "press <save-UUID> <quoted-action> <revision>",
-                                "Make one move and see its new screen.",
-                                gameLock)),
+                helpEntries(locks),
                 "look");
     }
+
+    private static List<Help> helpEntries(HelpLocks locks) {
+        return List.of(
+                new Help("look [offset]", "Look around the lit stalls and the well.", ""),
+                new Help(
+                        "stall <tag-or-handle> [offset]",
+                        "Walk up to a stall; its handle opens even an unnamed one.",
+                        ""),
+                new Help(
+                        "rumor <quoted-keywords> [offset]",
+                        "Ask a passerby. Try another phrase if the street stays quiet.",
+                        ""),
+                new Help("read <quoted-space/route> [offset]", "Read a currently open pocket.", ""),
+                new Help("mirror [offset]", "See this connection's space as others do.", ""),
+                new Help("pocket", "Find the notes left for your next visit.", locks.pocket()),
+                new Help(
+                        "note <quoted-text> <nextNoteRequest-from-pocket>",
+                        "Leave a note; retain its request number when retrying.",
+                        locks.pocket()),
+                new Help("note --remove <note-UUID>", "Take one of your notes out of the pocket.", locks.pocket()),
+                new Help("knock", "Knock for today's five sweets.", locks.claim()),
+                new Help(
+                        "wish <quoted-question> <request-UUID>",
+                        "The well asks for one sweet; keep the request ID when retrying.",
+                        locks.wish()),
+                new Help(
+                        "wish --status <request-UUID>", "Look for the ripple left by an earlier wish.", locks.status()),
+                new Help(
+                        "wish --answer <request-UUID> <revision> <quoted-answer>",
+                        "Tell the well which path you meant.",
+                        locks.continuation()),
+                new Help(
+                        "scribble <quoted-space/route> <quoted-text> <request-UUID>",
+                        "The wall recognizes those allowed to write.",
+                        locks.comment()),
+                new Help("sign <quoted-signature>", "Leave a name at the bottom of your paper.", locks.comment()),
+                new Help(
+                        "play <space/route> <nextCreationRequest>",
+                        "Start a glowing machine; peek holds the next creation number.",
+                        locks.game()),
+                new Help(
+                        "peek [save-UUID]",
+                        "Look at a game, or list your saves and next creation number.",
+                        locks.game()),
+                new Help("peek --remove <save-UUID>", "Remove one of your saved games.", locks.game()),
+                new Help(
+                        "press <save-UUID> <quoted-action> <revision>",
+                        "Make one move and see its new screen.",
+                        locks.game()));
+    }
+
+    private HelpLocks helpLocks(MachineAccounts.Identity identity, String client) {
+        String pocketLock = identity.permissions().contains(MachinePermission.POCKET) ? "" : "OWNER_CONSENT_REQUIRED";
+        String comment = interactionLock(identity, MachinePermission.COMMENT);
+        String game = games == null
+                ? "UNAVAILABLE"
+                : identity.permissions().contains(MachinePermission.GAME_SAVE) ? "" : "OWNER_CONSENT_REQUIRED";
+        String claim = interactionLock(identity, MachinePermission.WISH);
+        String continuation = qa == null || !qa.available() ? "UNAVAILABLE" : claim;
+        String wish = continuation;
+        PlazaWallet.Wallet balance = wallet.read(identity.accountId(), client);
+        if (wish.isEmpty() && balance.balance() == 0) {
+            wish = "NO_CANDY";
+        }
+        if (claim.isEmpty() && balance.claimedToday()) {
+            claim = "ALREADY_CLAIMED";
+        }
+        String status = qa == null ? "UNAVAILABLE" : interactionLock(identity, MachinePermission.WISH);
+        return new HelpLocks(pocketLock, comment, game, claim, wish, continuation, status);
+    }
+
+    private record HelpLocks(
+            String pocket,
+            String comment,
+            String game,
+            String claim,
+            String wish,
+            String continuation,
+            String status) {}
 
     private PlazaResult look(ReadContext context, PlazaCommand command) {
         command.count(0, 1);

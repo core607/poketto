@@ -164,6 +164,7 @@ public final class AcceptanceApplication {
                     directory.resolve("public/故障相册/00-unreadable.jpg"),
                     Base64.getDecoder().decode("/9j/4AAEQUL/wAALCAAgACABAREA/9k="));
             seedGame(directory);
+            AcceptanceQaCorpus.seed(directory);
             git.add().addFilepattern(".").call();
             git.commit()
                     .setMessage("Create synthetic acceptance content")

@@ -63,7 +63,7 @@ rebuildable content projections, and provide no certified game outcomes.
 [native games scenario](../../executor-native/README.md) pin these boundaries.
 Chrome acceptance verifies local play without server jobs, blocked network/DOM
 access, account save conflicts, withdrawal, version changes and browser/agent
-handoff through the real Linux worker. This record partially supersedes the games portion of the
-[plaza proposal](../proposed/2026-10-09-plaza-exploration.md); creator QA remains
-proposed. The public delivery, community and repository supervisor records retain
+handoff through the real Linux worker. This record owns shared rules and game
+isolation; [creator QA](2026-10-09-creator-qa.md) owns public questions and fee
+accounting. The public delivery, community and repository supervisor records retain
 their authority over their own entrances.

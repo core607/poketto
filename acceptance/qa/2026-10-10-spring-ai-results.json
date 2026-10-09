@@ -1,0 +1,78 @@
+{
+  "scope": "Spring AI 2.0.1 provider interoperability on the synthetic site corpus; HTTP/MCP only, not a retrieval ranking or browser receipt.",
+  "revision": "842ffbeec45ec62f9502c7656241db095c392d16",
+  "corpusSha256": "8a72578cade3cbd6cf4eae0e6193b5c99360498898f906ac9aa8c0ea15287d60",
+  "pricingSha256": "1ef3f5d06ac0279774da24ea924c487f730cf13bdef3e3f416748ce374c61ea9",
+  "webCases": [
+    {
+      "id": "cross-article",
+      "requestId": "1b0987ec-b24b-4aa7-bc03-670a38844f7b",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 3427,
+      "usage": {
+        "calls": 3,
+        "inputTokens": 5052,
+        "cacheReadTokens": 2944,
+        "cacheWriteTokens": 0,
+        "outputTokens": 403,
+        "costUsd": "0.001135",
+        "uncertain": false
+      },
+      "sources": [
+        "home/qa/garden/hours",
+        "home/qa/garden/tickets"
+      ],
+      "sourceQuotesSupported": true,
+      "result": "PASS"
+    }
+  ],
+  "wish": {
+    "requestId": "d5157fd1-73d3-406a-86da-baf9e39c0a43",
+    "result": "PASS",
+    "usage": {
+      "calls": 4,
+      "inputTokens": 10774,
+      "cacheReadTokens": 8510,
+      "cacheWriteTokens": 2254,
+      "outputTokens": 1047,
+      "costUsd": "0.000894",
+      "uncertain": false
+    },
+    "candySpent": 1,
+    "sources": [
+      "home/qa/garden/rain",
+      "home/qa/reading/paper"
+    ]
+  },
+  "followUp": {
+    "revision": "f079f7eb2cfc38a62ffb54661ceaba72b5c23e76",
+    "provider": "anthropic",
+    "model": "claude-haiku-5-5",
+    "webCase": {
+      "id": "tag",
+      "requestId": "b5095c88-0dea-4ce8-96c8-e3a31f26aa42",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 6222,
+      "usage": {
+        "calls": 3,
+        "inputTokens": 5978,
+        "cacheReadTokens": 3707,
+        "cacheWriteTokens": 2263,
+        "outputTokens": 436,
+        "costUsd": "0.000540",
+        "uncertain": false
+      },
+      "sources": ["home/qa/garden/rain"],
+      "sourceQuotesSupported": true,
+      "result": "PASS"
+    }
+  },
+  "limitations": [
+    "Claude refusal is covered by protocol and database tests, not a forced real-provider refusal.",
+    "Configured-rate estimates are not provider invoices; DeepSeek rates use peak prices.",
+    "Browser scenarios are described separately in the pull request; their usage is excluded here."
+  ],
+  "estimatedHttpMcpUsd": "0.002569"
+}

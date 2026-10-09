@@ -17,7 +17,7 @@ DOCKER="${POKETTO_DOCKER:-docker}"
 SSH="${POKETTO_SSH:-ssh}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="" ROOT="" IMAGE="" FRONTEND_IMAGE="" REVISION="" SYNC=0 SET_STDIN=0 SETTINGS="" PULL=0 EXISTING=0
-REGISTRY_SETTINGS="" IDENTITY_SETTINGS=""
+REGISTRY_SETTINGS="" APPLICATION_SETTINGS=""
 
 fail() {
     echo "transfer: $*" >&2
@@ -56,9 +56,28 @@ if [ "$EXISTING" = 1 ]; then
             '') ;;
             REGISTRY_USERNAME=*|REGISTRY_PASSWORD=*) REGISTRY_SETTINGS+="$setting"$'\n' ;;
             POKETTO_RESEND_API_KEY=*|POKETTO_EMAIL_FROM=*|POKETTO_EMAIL_DAILY_LIMIT=*|POKETTO_GOOGLE_CLIENT_ID=*|POKETTO_GOOGLE_CLIENT_SECRET=*|POKETTO_SUPPORT_EMAIL=*|\
-            POKETTO_GITHUB_APP_ID=*|POKETTO_GITHUB_CLIENT_ID=*|POKETTO_GITHUB_CLIENT_SECRET=*|POKETTO_GITHUB_PRIVATE_KEY=*|POKETTO_GITHUB_WEBHOOK_SECRET=*)
-                IDENTITY_SETTINGS+="$setting"$'\n' ;;
-            *) fail "existing updates accept only registry credentials and identity settings" ;;
+            POKETTO_GITHUB_APP_ID=*|POKETTO_GITHUB_CLIENT_ID=*|POKETTO_GITHUB_CLIENT_SECRET=*|POKETTO_GITHUB_PRIVATE_KEY=*|POKETTO_GITHUB_WEBHOOK_SECRET=*|\
+            POKETTO_PLAZA_ENABLED=*|\
+            POKETTO_PLAZA_INTERACTIONS_ENABLED=*|\
+            POKETTO_QA_ENABLED=*|\
+            POKETTO_QA_PRICES_FILE=*|\
+            POKETTO_QA_DEFAULT_PROVIDER=*|\
+            POKETTO_QA_ANTHROPIC_API_KEY=*|\
+            POKETTO_QA_ANTHROPIC_BASE_URL=*|\
+            POKETTO_QA_ANTHROPIC_MODEL=*|\
+            POKETTO_QA_ANTHROPIC_MONTHLY_USD=*|\
+            POKETTO_QA_DEEPSEEK_API_KEY=*|\
+            POKETTO_QA_DEEPSEEK_BASE_URL=*|\
+            POKETTO_QA_DEEPSEEK_MODEL=*|\
+            POKETTO_QA_DAILY_QUESTIONS=*|\
+            POKETTO_QA_DAILY_USD=*|\
+            POKETTO_QA_MAX_CONCURRENCY=*|\
+            POKETTO_QA_MAX_ROUNDS=*|\
+            POKETTO_QA_MAX_OUTPUT_TOKENS=*|\
+            POKETTO_QA_TIMEOUT_SECONDS=*|\
+            POKETTO_QA_PERSONALITY=*)
+                APPLICATION_SETTINGS+="$setting"$'\n' ;;
+            *) fail "existing updates accept only registry credentials and application settings" ;;
         esac
     done <<< "$SETTINGS"
     if [ "$PULL" = 0 ] && [ -n "$REGISTRY_SETTINGS" ]; then
@@ -141,8 +160,8 @@ if [ "$EXISTING" = 1 ]; then
             || fail "existing-layout registry pull failed"
     fi
     identity_arg=""
-    [ -z "$IDENTITY_SETTINGS" ] || identity_arg=" --set-stdin"
-    printf '%s' "$IDENTITY_SETTINGS" \
+    [ -z "$APPLICATION_SETTINGS" ] || identity_arg=" --set-stdin"
+    printf '%s' "$APPLICATION_SETTINGS" \
         | remote "sudo -n /usr/local/sbin/poketto-update-existing --root '$ROOT' --app-image '$TAG' --app-revision '$REVISION' --frontend-image '$FRONTEND_TAG'$identity_arg" \
         || status=$?
 elif [ "$SET_STDIN" = 1 ]; then

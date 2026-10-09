@@ -42,7 +42,7 @@ boundary. The [public search](2026-09-14-public-site-search.md),
 [consumer identity](2026-09-20-consumer-identity-and-site-policy.md) and
 [community](2026-09-23-community-interactions.md) records retain their respective
 authority. [Pocket games](2026-10-09-pocket-games.md) extend the fixed actions with
-independent execution jobs. QA remains in the [plaza proposal](../proposed/2026-10-09-plaza-exploration.md).
+independent execution jobs. [Creator QA](2026-10-09-creator-qa.md) adds bounded public questions and candy wishes.
 
 Candy belongs to the account rather than a client-supplied agent name. The account
 transaction serializes one five-candy UTC claim across every authorized connection;

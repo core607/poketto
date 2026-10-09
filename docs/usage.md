@@ -419,6 +419,10 @@ private pocket notes, candy and signed account comments. Set `POKETTO_PLAZA_ENAB
 independently isolated agent jobs. Account saves support explicit handoff under
 the separate `GAME_SAVE` grant.
 
+[Creator QA](qa.md) is available at `/ask` and through `wander wish` when a model
+key is configured. Only creators and administrators may ask; questions use bounded
+public reading, checked citations, explicit clarification and a shared fee budget.
+
 `/mcp` serves MCP over Streamable HTTP with a workspace Bearer credential (API key or
 OAuth access token), independently of browser sessions. The catalog always contains
 `get_asset` and `put_asset`; with the executor enabled it also contains `repo_exec`,
