@@ -24,7 +24,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 final class CommunityComments {
     private static final String COLUMNS =
-            "c.comment_id,c.position,c.workspace_id,c.article_id,c.author_id,c.parent_id,c.body,c.created_at,c.deleted_at,c.hidden_at,c.request_digest";
+            "c.comment_id,c.position,c.workspace_id,c.article_id,c.author_id,c.parent_id,c.body,c.created_at,c.deleted_at,c.hidden_at,c.request_digest,c.agent_posted";
     private final JdbcTemplate jdbc;
     private final CommunityAccounts accounts;
     private final CommunityScope scope;
@@ -46,45 +46,52 @@ final class CommunityComments {
 
     UUID create(AuthPrincipal actor, String space, UUID articleId, CommentInput input) {
         WorkspaceId workspace = targets.workspace(space);
-        String digest = DocumentRevision.sha256(
-                        (workspace + "\n" + articleId + "\n" + input.parentId() + "\n" + input.body())
-                                .getBytes(StandardCharsets.UTF_8))
-                .value();
         return scope.published(actor, workspace, true, (identity, snapshot) -> {
             CommunityTargets.article(snapshot, articleId);
-            Optional<Row> replay = jdbc
-                    .query(
-                            "select " + COLUMNS + " from community_comments c where author_id=? and request_id=?",
-                            CommunityComments::row,
-                            identity.accountId(),
-                            input.requestId())
-                    .stream()
-                    .findFirst();
-            if (replay.isPresent()) {
-                if (!digest.equals(replay.get().digest())) {
-                    throw new CommunityException(CommunityException.Code.REQUEST_CONFLICT);
-                }
-                return replay.get().id();
-            }
-            Row parent = input.parentId() == null
-                    ? null
-                    : requireRoot(input.parentId(), workspace, articleId, identity.accountId(), true);
-            activity.consume(identity.accountId(), "COMMENT", 10, 300);
-            UUID id = UUID.randomUUID();
-            jdbc.update(
-                    "insert into community_comments(comment_id,request_id,workspace_id,article_id,author_id,parent_id,body,request_digest) values (?,?,?,?,?,?,?,?)",
-                    id,
-                    input.requestId(),
-                    workspace.value(),
-                    articleId,
-                    identity.accountId(),
-                    input.parentId(),
-                    input.body(),
-                    digest);
-            List<UUID> recipients = parent == null ? accounts.owners(workspace) : List.of(parent.author());
-            activity.deliver(identity.accountId(), recipients, id, null, null);
-            return id;
+            return store(identity.accountId(), workspace, articleId, input, input.body(), false);
         });
+    }
+
+    /** Both entrances call this only under their account/publication transaction and snapshot guard. */
+    UUID store(UUID actor, WorkspaceId workspace, UUID articleId, CommentInput input, String body, boolean machine) {
+        String digest = DocumentRevision.sha256(((machine ? "agent\n" : "") + workspace + "\n" + articleId + "\n"
+                                + input.parentId() + "\n" + input.body())
+                        .getBytes(StandardCharsets.UTF_8))
+                .value();
+        Optional<Row> replay = jdbc
+                .query(
+                        "select " + COLUMNS + " from community_comments c where author_id=? and request_id=?",
+                        CommunityComments::row,
+                        actor,
+                        input.requestId())
+                .stream()
+                .findFirst();
+        if (replay.isPresent()) {
+            if (!digest.equals(replay.get().digest())) {
+                throw new CommunityException(CommunityException.Code.REQUEST_CONFLICT);
+            }
+            return replay.get().id();
+        }
+        Row parent = input.parentId() == null ? null : requireRoot(input.parentId(), workspace, articleId, actor, true);
+        activity.consume(actor, "COMMENT", 10, 300);
+        if (machine) {
+            activity.consume(actor, "MACHINE_COMMENT", 5, 50);
+        }
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+                "insert into community_comments(comment_id,request_id,workspace_id,article_id,author_id,parent_id,body,request_digest,agent_posted) values (?,?,?,?,?,?,?,?,?)",
+                id,
+                input.requestId(),
+                workspace.value(),
+                articleId,
+                actor,
+                input.parentId(),
+                body,
+                digest,
+                machine);
+        List<UUID> recipients = parent == null ? accounts.owners(workspace) : List.of(parent.author());
+        activity.deliver(actor, recipients, id, null, null);
+        return id;
     }
 
     Page<Comment> page(
@@ -122,7 +129,8 @@ final class CommunityComments {
                             row.createdAt(),
                             row.deleted(),
                             row.parent() == null ? replyCount(row.id(), viewer) : 0,
-                            moderator || row.author().equals(viewer)))
+                            moderator || row.author().equals(viewer),
+                            !row.deleted() && row.agentPosted()))
                     .toList();
         });
     }
@@ -233,7 +241,8 @@ final class CommunityComments {
                 row.getTimestamp(8).toInstant(),
                 row.getTimestamp(9) != null,
                 row.getTimestamp(10) != null,
-                row.getString(11));
+                row.getString(11),
+                row.getBoolean(12));
     }
 
     record Row(
@@ -247,5 +256,6 @@ final class CommunityComments {
             Instant createdAt,
             boolean deleted,
             boolean hidden,
-            String digest) {}
+            String digest,
+            boolean agentPosted) {}
 }

@@ -20,28 +20,11 @@ state. The remaining targets below extend that entrance. Help lists unavailable
 actions until their capabilities are implemented; it must then reflect current
 consent, balances, daily state and operational availability.
 
-The wall will show bounded, currently visible machine-comment excerpts through
-existing moderation rules. Starting and advancing a game will include its new
-observation so the caller need not spend an extra call to see the result.
-
-### Account actions and candy
-
-Machine comment, spending and account-save grants require the holder's own consent.
-Workspace key managers cannot grant another member's account authority. Existing
-connections do not gain these permissions automatically. Revalidate credential,
-membership, account eligibility and operation grants on each command.
-
-One account may claim five candies once per UTC day. All authorized clients share
-the balance; reconnecting or issuing another credential does not mint candy.
-Balances accumulate without expiry or transfers. One wish reserves one candy;
-reading, commenting and playing consume none. Before-upstream failures consume no
-candy; later failures refund candy while retaining actual model usage and request
-allowances. Transactions and request identities prevent duplicate effects.
-
-Comments retain existing community group, blocking, reporting and publication
-rules. Apply an additional machine rate limit and the account's aggregate limit.
-The server appends the configured account signature and an unavoidable agent
-attribution; render both as text.
+The foundation and account-interaction stages are implemented in the
+[plaza foundation](../implemented/2026-10-09-plaza-foundation.md) and
+[community record](../implemented/2026-09-23-community-interactions.md).
+Starting and advancing a game will include its new observation so the caller need
+not spend an extra call to see the result.
 
 ### A single rule module for games
 
@@ -85,6 +68,9 @@ provider. Only current creators and administrators may use the web, API or wish
 entrance. Configuration enables ordinary operation; there is no extra paid-access
 activation ceremony. Default web allowance is five questions per account per day;
 candy wishes are separate allowances sharing global cost and concurrency bounds.
+One wish reserves one candy. Before-upstream failures consume no candy; later
+failures refund candy while retaining actual model usage and request allowances.
+Transactions and request identities prevent duplicate effects.
 
 Use the same public search and reading services with a read-only command subset.
 Execute multiple tool calls from one model response sequentially and meter each.
@@ -116,16 +102,15 @@ contract tested for supported packages, not a security boundary.
 
 ## Consequences and delivery
 
-This partially supersedes the community rule excluding all machine comments and
-the requirement's deferred QA boundary; workspace authoring and public authority
+The remaining proposal supersedes the requirement's deferred QA boundary; workspace authoring and public authority
 remain unchanged. PostgreSQL stores account state, not article bodies. Follow the
 [note lifecycle](../implemented/2026-09-25-note-lifecycle-and-document-budgets.md)
 as each capability lands: move implemented rationale to its owner while keeping
 remaining targets proposed.
 
-The foundation is implemented separately. Deliver the remaining capabilities as
-three separately reviewable changes: candy and comments; game validation, runtimes
-and saves; creator QA and evaluation.
+The foundation and account interactions are implemented separately. Deliver the
+remaining capabilities in two changes: game validation, runtimes and saves; creator
+QA and evaluation.
 Operations retain feature kill switches without per-call approval prompts.
 
 ## Acceptance

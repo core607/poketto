@@ -1,5 +1,6 @@
 package io.github.core607.poketto.plaza.internal;
 
+import io.github.core607.poketto.community.MachineCommunity;
 import io.github.core607.poketto.content.PublicArticle;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -27,7 +28,8 @@ final class PlazaStreet {
             List<PublicPlazaReads.Source> sources,
             Set<String> discovered,
             int offset,
-            ToLongFunction<String> visitors) {
+            ToLongFunction<String> visitors,
+            List<MachineCommunity.Paper> wall) {
         List<Tag> tags = tags(sources);
         int end = Math.min(tags.size(), offset + 10);
         LocalDate day = LocalDate.now(clock.withZone(ZoneOffset.UTC));
@@ -52,7 +54,8 @@ final class PlazaStreet {
                 stalls,
                 tags.size(),
                 end < tags.size() ? end : null,
-                new Well(places[selection], sayings[selection], day.toString()));
+                new Well(places[selection], sayings[selection], day.toString()),
+                wall);
     }
 
     private static List<Tag> tags(List<PublicPlazaReads.Source> sources) {
@@ -105,5 +108,5 @@ final class PlazaStreet {
 
     record Well(String position, String saying, String day) {}
 
-    record Street(List<Stall> stalls, int total, Integer nextOffset, Well well) {}
+    record Street(List<Stall> stalls, int total, Integer nextOffset, Well well, List<MachineCommunity.Paper> wall) {}
 }

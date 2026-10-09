@@ -41,8 +41,15 @@ boundary. The [public search](2026-09-14-public-site-search.md),
 [website delivery](2026-09-14-workspace-public-delivery.md),
 [consumer identity](2026-09-20-consumer-identity-and-site-policy.md) and
 [community](2026-09-23-community-interactions.md) records retain their respective
-authority. Candy, comments, games and QA remain in the
+authority. Games and QA remain in the
 [plaza proposal](../proposed/2026-10-09-plaza-exploration.md).
+
+Candy belongs to the account rather than a client-supplied agent name. The account
+transaction serializes one five-candy UTC claim across every authorized connection;
+a new key or transport cannot reset it. Balances and signatures are durable server
+state. Candy grant changes update one permission under the same account guard,
+avoiding stale browser tabs reviving an unrelated revoked grant. The
+[community record](2026-09-23-community-interactions.md) owns delegated comments.
 
 ## Alternatives
 
@@ -66,5 +73,7 @@ known article reads and the single-space mirror remain independent entrances.
 
 `PlazaCommandTests`, `PublicPlazaReadsTests`, `PlazaMcpToolTests`,
 `PlazaIntegrationIT` and `McpProtocolIntegrationIT` pin the parser, public delivery,
-wire status, personal grants and durable state. The account grant component test
+wire status, personal grants and durable state. `MachineCommunityIntegrationIT` pins consent, attribution and
+shared moderation; the plaza integration test also pins concurrent daily claims.
+The account grant component test
 and isolated browser entrance cover the human consent surface.

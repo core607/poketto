@@ -7,8 +7,11 @@ Date: 2026-09-23
 The [consumer identity policy](2026-09-20-consumer-identity-and-site-policy.md)
 assigns community participation to the community group and above. Reading remains anonymous; participation
 requires a current browser account in COMMUNITY, CREATOR, or ADMINISTRATOR. Space
-membership alone never grants community participation, and machine credentials cannot
-post as a person.
+membership alone never grants community participation. The ordinary browser API
+rejects machine credentials. The [plaza entrance](2026-10-09-plaza-foundation.md)
+partially supersedes the exclusion of machine comments: a current creator may
+explicitly delegate comment/signature authority to their own connection. The
+account remains the author and a server-owned agent marker cannot be omitted.
 
 The community module provides likes, private bookmarks, space following, article comments with one level of
 replies, in-site notifications, deletion, reporting, and blocking. A following feed is
@@ -93,6 +96,11 @@ The transaction commits inside that callback. Group changes, credential changes,
 membership changes, website withdrawal and snapshot replacement therefore serialize
 with the operation without acquiring repository authority from a snapshot callback.
 The operation owns its transaction boundary and refuses an enclosing transaction.
+The machine entrance additionally locks and revalidates its credential's workspace
+before the target publication. It uses the same comment writer, moderation,
+notifications and account rate limit, plus a machine allowance. Its request digest
+separates human and machine origin; replay preserves the original signature and
+client label rather than rewriting server metadata after an uncertain response.
 
 Community records use opaque account and workspace UUID references rather than
 cross-module foreign keys. Authority and existence are checked before insertion.

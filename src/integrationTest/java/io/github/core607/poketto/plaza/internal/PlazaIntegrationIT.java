@@ -2,6 +2,7 @@ package io.github.core607.poketto.plaza.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.Accounts;
@@ -13,6 +14,7 @@ import io.github.core607.poketto.auth.MachineAccounts;
 import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.auth.SiteGroup;
 import io.github.core607.poketto.auth.SitePolicyService;
+import io.github.core607.poketto.community.MachineCommunity;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
@@ -24,6 +26,7 @@ import io.github.core607.poketto.workspace.WorkspacePublications;
 import io.github.core607.poketto.workspace.internal.CommunityPublicationFixture;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,6 +65,7 @@ class PlazaIntegrationIT {
     private WorkspacePublications publications;
     private final Snapshots snapshots = new Snapshots();
     private PlazaService plaza;
+    private Clock plazaClock = Clock.systemUTC();
 
     @BeforeEach
     void setup() {
@@ -69,7 +73,7 @@ class PlazaIntegrationIT {
         Flyway.configure().dataSource(data).load().migrate();
         jdbc = new JdbcTemplate(data);
         jdbc.execute(
-                "truncate table workspaces,auth_accounts,oauth_clients,machine_account_grants,plaza_notes,plaza_discoveries,plaza_pockets cascade");
+                "truncate table workspaces,auth_accounts,oauth_clients,machine_account_grants,plaza_notes,plaza_discoveries,plaza_wallets,plaza_pockets cascade");
         jdbc.execute("update auth_initialization set initialized_at=null");
         workspace = WorkspaceId.random();
         jdbc.update(
@@ -109,8 +113,11 @@ class PlazaIntegrationIT {
         return new DefaultPlazaService(
                 accounts,
                 new PublicPlazaReads(publications, new WebsiteContentSnapshots(snapshots, publications)),
-                new PlazaPocket(jdbc, Clock.systemUTC()),
-                new PlazaStreet(Clock.systemUTC()));
+                new PlazaPocket(jdbc, plazaClock),
+                new PlazaStreet(plazaClock),
+                new PlazaWallet(jdbc, plazaClock),
+                mock(MachineCommunity.class),
+                true);
     }
 
     @Test
@@ -219,6 +226,39 @@ class PlazaIntegrationIT {
     }
 
     @Test
+    void candiesBelongToTheAccountAndAccumulateOncePerUtcDayWithDecorativeClientFlavors() throws Exception {
+        plazaClock = Clock.fixed(Instant.parse("2026-10-09T23:59:30Z"), ZoneOffset.UTC);
+        plaza = service();
+        assertThat(run(key, "knock").status().code()).isEqualTo("OWNER_CONSENT_REQUIRED");
+        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.WISH, MachinePermission.POCKET));
+        AuthPrincipal secondKey = key(owner);
+        accounts.set(owner, secondKey.subjectId(), Set.of(MachinePermission.WISH, MachinePermission.POCKET));
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(() -> plaza.execute(key, workspace, "knock", "Claude"));
+            var second = pool.submit(() -> plaza.execute(secondKey, workspace, "knock", "Codex"));
+            assertThat(List.of(
+                            first.get(10, TimeUnit.SECONDS).status().code(),
+                            second.get(10, TimeUnit.SECONDS).status().code()))
+                    .containsExactlyInAnyOrder("OK", "ALREADY_CLAIMED");
+        }
+        DefaultPlazaService.Pocket pocket = (DefaultPlazaService.Pocket)
+                plaza.execute(key, workspace, "pocket", "Claude").data();
+        assertThat(pocket.candy().balance()).isEqualTo(5);
+        assertThat(pocket.candy().flavor()).isEqualTo("amber");
+        assertThat(pocket.candy().nextClaimAt()).isEqualTo("2026-10-10T00:00:00Z");
+        DefaultPlazaService.Pocket other = (DefaultPlazaService.Pocket)
+                plaza.execute(secondKey, workspace, "pocket", "Codex").data();
+        assertThat(other.candy().balance()).isEqualTo(5);
+        assertThat(other.candy().flavor()).isEqualTo("mint");
+        plazaClock = Clock.fixed(Instant.parse("2026-10-10T00:00:01Z"), ZoneOffset.UTC);
+        plaza = service();
+        assertThat(((PlazaWallet.Wallet) run(secondKey, "knock").data()).balance())
+                .isEqualTo(10);
+        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
+        assertThat(run(key, "knock").status().code()).isEqualTo("OWNER_CONSENT_REQUIRED");
+    }
+
+    @Test
     void removingMoreThanAThousandNotesKeepsThePocketUsableWithoutOldRequestResurrection() {
         accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
         var notes = new PlazaPocket(jdbc, Clock.systemUTC());
@@ -275,6 +315,22 @@ class PlazaIntegrationIT {
         return auth.authenticateApiKey(
                 auth.createApiKey(owner, workspace, holder.accountId(), Set.of(Capability.EXECUTE_REPOSITORY))
                         .token());
+    }
+
+    @Test
+    void independentGrantChangesDoNotRestoreARevokedPocketOrLoseAnotherSelection() throws Exception {
+        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
+        accounts.change(owner, key.subjectId(), MachinePermission.POCKET, false);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var candy = pool.submit(() -> accounts.change(owner, key.subjectId(), MachinePermission.WISH, true));
+            var comment = pool.submit(() -> accounts.change(owner, key.subjectId(), MachinePermission.COMMENT, true));
+            candy.get(10, TimeUnit.SECONDS);
+            comment.get(10, TimeUnit.SECONDS);
+        }
+        Set<MachinePermission> permissions =
+                accounts.withCreator(key, workspace, MachineAccounts.Identity::permissions);
+        assertThat(permissions).containsExactlyInAnyOrder(MachinePermission.WISH, MachinePermission.COMMENT);
+        assertThat(run(key, "pocket").status().code()).isEqualTo("OWNER_CONSENT_REQUIRED");
     }
 
     private PlazaResult run(AuthPrincipal actor, String command) {

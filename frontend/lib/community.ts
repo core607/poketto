@@ -15,6 +15,7 @@ export type CommunityTab = (typeof communityTabs)[number];
 export type CommunityProfile = { accountId: string; displayName: string };
 export type CommunityPage<T> = { items: T[]; nextBefore: number | null };
 export type CommunityComment = {
+  agentPosted: boolean;
   id: string;
   position: number;
   parentId: string | null;

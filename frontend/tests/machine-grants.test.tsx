@@ -69,7 +69,7 @@ test("account consent is explicit, client names are text, and a failed update do
   assert.ok(container.textContent.includes("<img src=x onerror=alert(1)>"));
   const checkbox = container.querySelector('input[type="checkbox"]')!;
   await act(async () => (checkbox as unknown as { click(): void }).click());
-  assert.deepEqual(writes, [{ permissions: ["POCKET"] }]);
+  assert.deepEqual(writes, [{ permission: "POCKET", enabled: true }]);
   assert.ok(container.querySelector('[role="alert"]'));
   assert.equal(
     (container.querySelector("input") as unknown as { checked: boolean })
