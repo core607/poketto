@@ -45,10 +45,34 @@
       "home/qa/reading/paper"
     ]
   },
+  "followUp": {
+    "revision": "f079f7eb2cfc38a62ffb54661ceaba72b5c23e76",
+    "provider": "anthropic",
+    "model": "claude-haiku-5-5",
+    "webCase": {
+      "id": "tag",
+      "requestId": "b5095c88-0dea-4ce8-96c8-e3a31f26aa42",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 6222,
+      "usage": {
+        "calls": 3,
+        "inputTokens": 5978,
+        "cacheReadTokens": 3707,
+        "cacheWriteTokens": 2263,
+        "outputTokens": 436,
+        "costUsd": "0.000540",
+        "uncertain": false
+      },
+      "sources": ["home/qa/garden/rain"],
+      "sourceQuotesSupported": true,
+      "result": "PASS"
+    }
+  },
   "limitations": [
     "Claude refusal is covered by protocol and database tests, not a forced real-provider refusal.",
     "Configured-rate estimates are not provider invoices; DeepSeek rates use peak prices.",
-    "Browser scenarios and the later prompt refinement are described separately in the pull request; their usage is excluded here."
+    "Browser scenarios are described separately in the pull request; their usage is excluded here."
   ],
-  "estimatedHttpMcpUsd": "0.002029"
+  "estimatedHttpMcpUsd": "0.002569"
 }

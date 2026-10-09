@@ -69,9 +69,8 @@ operation. A lost completed response cannot be reconstructed from server storage
 
 Before dispatch, the account transaction reserves the entire run's worst-case
 cost and, for a wish, one candy. Every model call is durably marked before sending.
-Known usage settles at the request's saved input/output prices. DeepSeek cache
-and off-peak discounts are not assumed; Anthropic cache reads use the uncached
-price and cache writes use twice that price conservatively. Missing usage, interrupted responses and uncertain
+Known usage settles at the request's four saved rates, as described below.
+Missing usage, interrupted responses and uncertain
 outcomes consume the whole conservative bound for that call. These amounts are
 budget estimates, not a provider invoice. Unused reservations are released.
 
@@ -174,7 +173,8 @@ seconds on new questions or allowance reads. Valid files replace the whole
 catalog; invalid, missing or oversized updates log an error and retain the last
 valid prices. Existing questions and recorded spending never change. Restart
 once to set the path; subsequent price edits require no restart. Changing model
-IDs also requires matching catalog entries.
+IDs also requires matching catalog entries. Missing or invalid startup prices
+prevent the application from starting; validate the catalog before restarting.
 
 The standard Compose `.env` and existing-installation updater accept these `POKETTO_QA_`
 settings and the plaza switches. Ordinary image updates retain them; the GitHub
