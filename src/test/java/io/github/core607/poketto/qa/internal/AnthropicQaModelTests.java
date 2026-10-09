@@ -65,6 +65,7 @@ class AnthropicQaModelTests {
         assertThat(request.path("system").asText()).isEqualTo("Only public evidence.\n");
         assertThat(request.at("/thinking/type").asText()).isEqualTo("adaptive");
         assertThat(request.at("/thinking/display").asText()).isEqualTo("summarized");
+        assertThat(request.at("/cache_control/type").asText()).isEqualTo("ephemeral");
         assertThat(request.at("/tool_choice/type").asText()).isEqualTo("auto");
         assertThat(request.at("/tools/0/input_schema").isObject()).isTrue();
         assertThat(completion.calls()).hasSize(2);
@@ -80,6 +81,7 @@ class AnthropicQaModelTests {
                         QaModel.Message.tool("toolu_b", "second result")),
                 Duration.ofSeconds(5));
         JsonNode turns = received.get().path("messages");
+        assertThat(received.get().at("/cache_control/type").asText()).isEqualTo("ephemeral");
         assertThat(turns.size()).isEqualTo(3);
         assertThat(turns.get(1).path("content"))
                 .isEqualTo(json.readTree(valid()).path("content"));
@@ -121,6 +123,20 @@ class AnthropicQaModelTests {
         QaModel.Completion result = model.complete(messages(), Duration.ofSeconds(5));
         assertThat(result.calls()).isEmpty();
         assertThat(result.content()).isEqualTo("Need sources.");
+    }
+
+    @Test
+    void refusalIsAnExplicitResultWithReportedUsageRatherThanAnUncertainEmptyTurn() {
+        response = """
+                {"stop_reason":"refusal","content":[],
+                "usage":{"input_tokens":40,"output_tokens":4}}
+                """;
+        int before = requests.get();
+        QaModel.Completion result = model.complete(messages(), Duration.ofSeconds(5));
+        assertThat(result.refused()).isTrue();
+        assertThat(result.inputTokens()).isEqualTo(40);
+        assertThat(result.outputTokens()).isEqualTo(4);
+        assertThat(requests).hasValue(before + 1);
     }
 
     private void assertUncertainOnce() {

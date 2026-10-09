@@ -378,6 +378,33 @@ class QaIntegrationIT {
     }
 
     @Test
+    void refusalSettlesReportedUsageRefundsCandyAndNeverExecutesToolsOrFallsBack() {
+        when(claude.complete(any(), any()))
+                .thenReturn(new QaModel.Completion(
+                        List.of(new QaModel.Call("ignored", "function", new QaModel.Function("search", "{}"))),
+                        100,
+                        20,
+                        0,
+                        "Refused",
+                        "",
+                        null,
+                        true));
+        var input = new QaService.Question(UUID.randomUUID(), "Find public papers", "anthropic");
+        QaService.Reply reply = qa.ask(key, workspace, input);
+        assertThat(reply.status()).isEqualTo("FAILED");
+        assertThat(reply.code()).isEqualTo("MODEL_REFUSED");
+        assertThat(reply.paragraphs()).isEmpty();
+        assertThat(reply.usage().calls()).isEqualTo(1);
+        assertThat(reply.usage().uncertain()).isFalse();
+        assertThat(number("select spent_micros from qa_anthropic_months")).isEqualTo(20);
+        assertThat(number("select reserved_micros from qa_anthropic_months")).isZero();
+        assertThat(balance()).isEqualTo(5);
+        assertThat(qa.ask(key, workspace, input).code()).isEqualTo("MODEL_REFUSED");
+        verify(claude, times(1)).complete(any(), any());
+        verifyNoInteractions(model, sources);
+    }
+
+    @Test
     void monthlyReservationsShareTheDailyTransactionAndDoNotLeakWhenDailyAdmissionFails() {
         jdbc.update("insert into qa_budget_days(day,spent_micros) values ('2026-10-09',2000000)");
         assertThatThrownBy(() -> qa.ask(
@@ -478,7 +505,8 @@ class QaIntegrationIT {
                 0,
                 "",
                 "Public provider reasoning.",
-                null);
+                null,
+                false);
     }
 
     private QaCandy candy() {

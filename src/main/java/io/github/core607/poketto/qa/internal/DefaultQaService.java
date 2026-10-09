@@ -194,6 +194,9 @@ final class DefaultQaService implements QaService, AutoCloseable {
         QaModel.Completion completion =
                 model.complete(session.conversation.messages(), Duration.between(clock.instant(), current.expires()));
         record(initial, () -> ledger.settle(ledger.find(initial.account(), initial.request()), completion));
+        if (completion.refused()) {
+            throw new QaException("MODEL_REFUSED", "The selected model declined to answer");
+        }
         session.conversation.activity().finish(thinking, completion.reasoning(), "COMPLETED");
         return completion;
     }
@@ -255,7 +258,10 @@ final class DefaultQaService implements QaService, AutoCloseable {
                 switch (run.status()) {
                     case "COMPLETED" -> "这次请求已完成，不会再次调用模型。完成后的问答内容不在服务器保留；若响应丢失，只能核对用量。";
                     case "WAITING" -> "请选择范围，也可以自行补充。等待期间不会调用模型。";
-                    case "FAILED" -> "问答未完成（" + run.error() + "）。已退回本次预留的糖果；已发出的模型调用仍记入用量和额度。";
+                    case "FAILED" ->
+                        run.error().equals("MODEL_REFUSED")
+                                ? "所选模型拒绝了这次请求。可以选择其他模型或重新编辑问题；已发生的调用仍计入用量和额度，预留糖果已退回。"
+                                : "问答未完成（" + run.error() + "）。已退回本次预留的糖果；已发出的模型调用仍记入用量和额度。";
                     default -> "这次请求仍在处理。请查看状态，不要以新请求重复提交。";
                 };
         String code = run.error() == null ? run.status() : run.error();

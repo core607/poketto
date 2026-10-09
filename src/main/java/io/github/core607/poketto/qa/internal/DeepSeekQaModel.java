@@ -87,7 +87,7 @@ final class DeepSeekQaModel implements QaModel {
             Assistant assistant = choice.message();
             List<Call> calls = assistant.calls() == null ? List.of() : assistant.calls();
             return new Completion(
-                    calls, usage.input(), usage.output(), 0, assistant.content(), assistant.reasoning(), null);
+                    calls, usage.input(), usage.output(), 0, assistant.content(), assistant.reasoning(), null, false);
         } catch (JacksonException | IllegalArgumentException malformed) {
             throw new QaException("UPSTREAM_UNCERTAIN", "The upstream response was incomplete or malformed", malformed);
         }

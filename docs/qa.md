@@ -122,6 +122,11 @@ and concurrency still apply. Clarifications and repeated request IDs retain thei
 original selection and price snapshot; delayed responses bill the original month.
 Unused reservations are released; changing configuration does not erase spending.
 
+Anthropic `stop_reason: "refusal"` ends the request as `MODEL_REFUSED`, with its
+reported usage settled and unused reservations released. It never executes tools
+from that response or automatically changes providers. The page offers explicit
+DeepSeek resubmission with a new request ID and allowance, or editing without a call.
+
 Prices follow [Haiku 5.5's short-context tier](https://platform.claude.com/docs/en/models/haiku-5-5/overview)
 and [DeepSeek's peak uncached Flash rates](https://api-docs.deepseek.com/quick_start/pricing/),
 checked on 2026-10-09. This loop's input cap stays below Haiku's 100k-token price
@@ -132,14 +137,21 @@ is required and redirects are disabled.
 Claude uses adaptive thinking with `display: "summarized"`; DeepSeek enables
 thinking and returns its complete `reasoning_content`. The adapters retain the
 provider's reasoning and opaque signatures for subsequent tool turns. Only public
-thinking text enters browser activity. Collapsible records show thinking, tool
-arguments, complete results, errors and elapsed time as plain text. Status polling
+thinking text enters browser activity; empty thinking turns have no card or count.
+Tool rows summarize the action and result, with original arguments, complete
+results and errors under **查看详情**. Elapsed time stays aligned across rows.
+Status polling
 shows the active step; thinking text arrives when that model turn finishes, not as
 a token stream. These traces stay in memory with the question and disappear on
 completion or expiry; the current page keeps its received copy. Limits reject
 oversized activity rather than silently truncating it. The loop uses automatic
 tool choice because forced tool use suppresses or rejects thinking; an ordinary
 text completion must continue through the bounded citation/answer tool.
+
+Anthropic requests use top-level `cache_control: {"type":"ephemeral"}` for
+automatic five-minute prefix caching through the tool loop. Cache hits depend on
+the provider's minimum length and exact prefix match. Budget accounting remains
+conservative rather than assuming a discounted hit before its response arrives.
 
 The standard Compose `.env` and existing-installation updater accept these `POKETTO_QA_`
 settings and the plaza switches. Ordinary image updates retain them; the GitHub

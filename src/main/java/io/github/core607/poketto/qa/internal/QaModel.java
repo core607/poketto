@@ -45,7 +45,8 @@ interface QaModel {
             long cacheCreationTokens,
             String content,
             String reasoning,
-            List<JsonNode> providerContent) {
+            List<JsonNode> providerContent,
+            boolean refused) {
         public Completion {
             if (calls == null || calls.stream().anyMatch(Objects::isNull)) {
                 throw new IllegalArgumentException("Missing tool call list");

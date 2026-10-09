@@ -82,7 +82,7 @@
 }
 .qa-step summary {
   display: grid;
-  grid-template-columns: 0.45rem minmax(0, 1fr) auto 1rem;
+  grid-template-columns: 0.45rem minmax(0, 1fr) auto 4.5em;
   align-items: center;
   gap: 0.65rem;
   padding: 0.65rem 0.5rem;
@@ -90,10 +90,19 @@
   border-radius: 0.5rem;
 }
 .qa-step summary::after {
-  content: "+";
-  text-align: center;
+  content: "查看详情";
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 .qa-step[open] summary::after {
+  content: "收起详情";
+}
+.qa-thought summary::after {
+  content: "+";
+}
+.qa-thought[open] summary::after {
   content: "−";
 }
 .qa-step summary:hover {
@@ -157,4 +166,30 @@
   font-size: 0.75rem;
   line-height: 1.6;
   font-variant-numeric: tabular-nums;
+}
+.qa-refusal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.qa-refusal-actions p {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+@media (max-width: 36rem) {
+  .qa-step summary {
+    grid-template-columns: 0.45rem minmax(0, 1fr) 4.5em;
+  }
+  .qa-step-title {
+    grid-column: 2 / -1;
+  }
+  .qa-step-meta {
+    grid-column: 2;
+    justify-self: end;
+  }
+  .qa-step summary::after {
+    grid-column: 3;
+  }
 }

@@ -13,7 +13,7 @@ record QaProvider(String id, String model, QaPrices prices, QaModel client, bool
     }
 
     long callBound(QaPolicy policy) {
-        // A cache write can cost twice uncached input; no prompt caching is requested.
+        // Reserve the upper cache-write price before the response reveals any cache hits.
         int inputMultiplier = id.equals("anthropic") ? 2 : 1;
         return prices.cost((long) QaPolicy.INPUT_TOKEN_BOUND * inputMultiplier, policy.outputTokens());
     }

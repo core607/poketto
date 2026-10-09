@@ -58,6 +58,7 @@ final class AnthropicQaModel implements QaModel {
                 tools,
                 new ToolChoice("auto"),
                 new Thinking("adaptive", "summarized"),
+                new CacheControl("ephemeral"),
                 false));
         if (body.length > QaPolicy.INPUT_BYTES) {
             throw new QaException("INPUT_LIMIT", "The bounded model input is full");
@@ -126,7 +127,9 @@ final class AnthropicQaModel implements QaModel {
     private Completion parse(byte[] bytes) {
         try {
             Response response = json.readValue(bytes, Response.class);
-            if (!("tool_use".equals(response.stopReason()) || "end_turn".equals(response.stopReason()))
+            if (!("tool_use".equals(response.stopReason())
+                            || "end_turn".equals(response.stopReason())
+                            || "refusal".equals(response.stopReason()))
                     || response.content() == null
                     || response.usage() == null) {
                 throw new IllegalArgumentException("Expected a complete Anthropic tool turn with usage");
@@ -165,7 +168,14 @@ final class AnthropicQaModel implements QaModel {
                 throw new IllegalArgumentException("Anthropic usage exceeds the reserved bounds");
             }
             return new Completion(
-                    calls, input, usage.output(), created, content.toString(), thinking.toString(), response.content());
+                    calls,
+                    input,
+                    usage.output(),
+                    created,
+                    content.toString(),
+                    thinking.toString(),
+                    response.content(),
+                    "refusal".equals(response.stopReason()));
         } catch (JacksonException | IllegalArgumentException | ArithmeticException malformed) {
             throw new QaException(
                     "UPSTREAM_UNCERTAIN", "The Anthropic response was incomplete or malformed", malformed);
@@ -194,6 +204,8 @@ final class AnthropicQaModel implements QaModel {
 
     private record Thinking(String type, String display) {}
 
+    private record CacheControl(String type) {}
+
     private record Turn(String role, List<JsonNode> content) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -214,6 +226,7 @@ final class AnthropicQaModel implements QaModel {
             List<Tool> tools,
             @JsonProperty("tool_choice") ToolChoice choice,
             Thinking thinking,
+            @JsonProperty("cache_control") CacheControl cacheControl,
             boolean stream) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)

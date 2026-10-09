@@ -29,6 +29,7 @@ export function QaPanel() {
   const [uncertain, setUncertain] = useState(false);
   const [provider, setProvider] = useState("");
   const [progressId, setProgressId] = useState<string | null>(null);
+  const questionInput = useRef<HTMLTextAreaElement>(null);
   const activeRequest = useRef<string | null>(null);
   const pending = useRef<{ path: string; body: QaQuestion | QaChoice } | null>(
     null,
@@ -157,8 +158,32 @@ export function QaPanel() {
     if (id) receive(await api<QaReply>(`/api/qa/${id}`));
     await refresh();
   }
+  function startQuestion(nextProvider: string) {
+    if (inFlight.current || !question.trim() || !allowance?.remaining) return;
+    if (
+      !allowance.models.some(
+        (model) => model.provider === nextProvider && model.configured,
+      )
+    )
+      return;
+    setProvider(nextProvider);
+    pending.current = {
+      path: "/api/qa",
+      body: {
+        requestId: crypto.randomUUID(),
+        question: question.trim(),
+        provider: nextProvider,
+      },
+    };
+    setReply(null);
+    void operation(send);
+  }
   const waiting = reply?.status === "WAITING" && reply.clarification;
   const processing = reply?.status === "RUNNING";
+  const refused = reply?.status === "FAILED" && reply.code === "MODEL_REFUSED";
+  const deepseekAvailable = allowance?.models.some(
+    (model) => model.provider === "deepseek" && model.configured,
+  );
   const selected = allowance?.models.find(
     (model) => model.provider === provider,
   );
@@ -206,23 +231,13 @@ export function QaPanel() {
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (inFlight.current) return;
-            if (!question.trim() || !allowance || !selected?.configured) return;
-            pending.current = {
-              path: "/api/qa",
-              body: {
-                requestId: crypto.randomUUID(),
-                question: question.trim(),
-                provider,
-              },
-            };
-            setReply(null);
-            void operation(send);
+            startQuestion(provider);
           }}
         >
           <label>
             想了解什么？
             <textarea
+              ref={questionInput}
               aria-label="问题"
               value={question}
               maxLength={1000}
@@ -335,6 +350,35 @@ export function QaPanel() {
             </div>
           ))}
           {reply.notice && <p>{reply.notice}</p>}
+          {refused && (
+            <div className="qa-refusal-actions">
+              {reply.selection.provider !== "deepseek" && (
+                <button
+                  className="btn btn-secondary"
+                  disabled={
+                    busy ||
+                    !deepseekAvailable ||
+                    !allowance?.remaining ||
+                    !question.trim()
+                  }
+                  onClick={() => startQuestion("deepseek")}
+                >
+                  改用 DeepSeek
+                </button>
+              )}
+              <button
+                className="btn btn-secondary"
+                disabled={busy}
+                onClick={() => {
+                  setReply(null);
+                  questionInput.current?.focus();
+                }}
+              >
+                重新编辑
+              </button>
+              <p>改用模型会发起新请求，重新计算额度与费用。</p>
+            </div>
+          )}
           <footer className="qa-usage" aria-label="本次用量">
             <span>
               模型调用 {reply.usage.calls} 次 · 输入 {reply.usage.inputTokens} /

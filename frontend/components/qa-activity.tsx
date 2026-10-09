@@ -1,4 +1,5 @@
 import type { QaActivity as Activity } from "../lib/qa";
+import { toolSummary } from "../lib/qa-activity-summary";
 
 const toolNames: Record<string, string> = {
   search: "搜索公开文章",
@@ -47,7 +48,7 @@ export function QaActivity({ entries }: { entries: Activity[] }) {
               ? entry.state === "FAILED"
                 ? "模型调用"
                 : "思考"
-              : (toolNames[entry.name] ?? entry.name);
+              : toolSummary(entry, toolNames[entry.name] ?? entry.name);
             const state =
               entry.state === "RUNNING"
                 ? "进行中"
@@ -55,7 +56,10 @@ export function QaActivity({ entries }: { entries: Activity[] }) {
                   ? "未完成"
                   : "已完成";
             return (
-              <details className="qa-step" key={entry.id}>
+              <details
+                className={`qa-step${thinking ? " qa-thought" : ""}`}
+                key={entry.id}
+              >
                 <summary>
                   <span
                     className={`qa-step-dot qa-step-${entry.state.toLowerCase()}`}

@@ -251,6 +251,55 @@ test("successful login clears the earlier unauthorized notice and unlocks the qu
   assert.equal(question.disabled, false);
 });
 
+test("refusal waits for an explicit new-provider request or editing without silently retrying", async (t) => {
+  const writes: QaQuestion[] = [];
+  const ui = await mount(async (input, options) => {
+    if (String(input) === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (options?.method !== "POST") return Response.json(allowance);
+    const body = JSON.parse(String(options.body)) as QaQuestion;
+    writes.push(body);
+    return Response.json({
+      requestId: body.requestId,
+      status: "FAILED",
+      code: "MODEL_REFUSED",
+      revision: 0,
+      paragraphs: [],
+      clarification: null,
+      notice: "所选模型拒绝了这次请求。",
+      usage,
+      selection: { ...selection, provider: body.provider },
+      activity: [],
+    });
+  });
+  t.after(() => ui.cleanup());
+  await ui.fill("问题", "Find public papers?");
+  await ui.submit();
+  assert.equal(writes.length, 1);
+  assert.match(ui.container.textContent, /拒绝了这次请求/);
+  await ui.click("重新编辑");
+  assert.equal(writes.length, 1);
+  assert.equal(
+    ui.container.querySelector('textarea[aria-label="问题"]')?.textContent,
+    "Find public papers?",
+  );
+  await ui.fill("问题", "Find garden papers?");
+  await ui.submit();
+  assert.equal(writes.length, 2);
+  await ui.click("改用 DeepSeek");
+  assert.equal(writes.length, 3);
+  assert.equal(writes[2].provider, "deepseek");
+  assert.equal(writes[2].question, "Find garden papers?");
+  assert.notEqual(writes[2].requestId, writes[1].requestId);
+  assert.equal(ui.container.querySelector("select")?.value, "deepseek");
+  assert.equal(
+    [...ui.container.querySelectorAll("button")].some(
+      (button) => button.textContent === "改用 DeepSeek",
+    ),
+    false,
+  );
+});
+
 test("read-only progress displays thinking and tool results without replaying the question", async (t) => {
   let finish: (response: Response) => void = () => {};
   let writes = 0;
@@ -347,6 +396,14 @@ test("read-only progress displays thinking and tool results without replaying th
     ),
   );
   assert.match(ui.container.textContent, /"total": 2/);
+  assert.match(
+    ui.container.querySelectorAll("details.qa-step > summary")[1].textContent,
+    /搜索「garden」 → 找到 2 篇/,
+  );
+  assert.equal(
+    ui.container.querySelectorAll("details.qa-step")[1].hasAttribute("open"),
+    false,
+  );
   assert.equal(ui.container.querySelectorAll("details.qa-step").length, 2);
   assert.match(ui.container.textContent, /思考 1 轮 · 工具 1 次/);
   assert.doesNotMatch(ui.container.textContent, /没有返回可展示的思考/);
