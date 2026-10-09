@@ -3,7 +3,9 @@ package io.github.core607.poketto.community.internal;
 import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.CommunityAccounts;
+import io.github.core607.poketto.auth.MachineAccounts;
 import io.github.core607.poketto.community.Community;
+import io.github.core607.poketto.community.MachineCommunity;
 import io.github.core607.poketto.community.Readership;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.ReviewedBodyEdits;
@@ -89,5 +91,24 @@ class CommunityConfiguration {
             return salt;
         });
         return new JdbcReadership(jdbc, new CommunityTargets(publications, snapshots), seen, clock);
+    }
+
+    @Bean
+    MachineCommunity machineCommunity(
+            JdbcTemplate jdbc,
+            MachineAccounts machines,
+            CommunityAccounts accounts,
+            PublicationGuard guard,
+            WorkspacePublications publications,
+            PublicContentSnapshots snapshots,
+            PlatformTransactionManager transactions) {
+        var targets = new CommunityTargets(publications, snapshots);
+        var comments = new CommunityComments(
+                jdbc,
+                accounts,
+                new CommunityScope(transactions, accounts, guard, snapshots),
+                targets,
+                new CommunityActivity(jdbc, clock));
+        return new JdbcMachineCommunity(jdbc, machines, guard, transactions, targets, comments);
     }
 }

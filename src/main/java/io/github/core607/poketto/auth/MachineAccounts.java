@@ -3,6 +3,7 @@ package io.github.core607.poketto.auth;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.sql.PreparedStatement;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -11,6 +12,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** Account-first lock ordering fences group changes, credential recovery and personal grants. */
@@ -28,18 +30,22 @@ public final class MachineAccounts {
     }
 
     public <T> T withCreator(AuthPrincipal actor, WorkspaceId workspace, Function<Identity, T> operation) {
+        return transactions.execute(status -> operation.apply(lock(actor, workspace)));
+    }
+
+    /** Caller owns the transaction; take policy, account and credential-workspace guards before publication locks. */
+    public Identity lock(AuthPrincipal actor, WorkspaceId workspace) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Machine account authority requires a transaction");
+        }
         if (actor == null || actor.kind() != AuthPrincipal.Kind.API_KEY) {
             throw new AuthException(AuthException.Code.DENIED);
         }
-        return transactions.execute(status -> {
-            lockPolicy();
-            AccountIdentity account = lockCreator(actor.accountId());
-            lockWorkspace(workspace);
-            auth.authorize(actor, workspace);
-            var identity = new Identity(
-                    account.accountId(), account.displayName(), grants(actor.subjectId(), account.accountId()));
-            return operation.apply(identity);
-        });
+        lockPolicy();
+        AccountIdentity account = lockCreator(actor.accountId());
+        lockWorkspace(workspace);
+        auth.authorize(actor, workspace);
+        return new Identity(account.accountId(), account.displayName(), grants(actor.subjectId(), account.accountId()));
     }
 
     public ConnectionPage connections(AuthPrincipal actor, int offset) {
@@ -96,6 +102,19 @@ public final class MachineAccounts {
                 return statement;
             });
             return selected;
+        });
+    }
+
+    /** Changes only the selected permission so an old browser tab cannot restore another revoked grant. */
+    public Set<MachinePermission> change(AuthPrincipal actor, UUID key, MachinePermission permission, boolean enabled) {
+        return human(actor, () -> {
+            var selected = new HashSet<>(grants(key, actor.accountId()));
+            if (enabled) {
+                selected.add(permission);
+            } else {
+                selected.remove(permission);
+            }
+            return set(actor, key, selected);
         });
     }
 

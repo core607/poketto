@@ -433,6 +433,7 @@ class McpProtocolIntegrationIT {
         JsonNode resumed = call(token, second, "wander", Map.of("command", "pocket"));
         assertThat(resumed.path("structuredContent")
                         .path("data")
+                        .path("notes")
                         .get(0)
                         .path("body")
                         .stringValue())

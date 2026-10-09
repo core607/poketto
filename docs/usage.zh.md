@@ -163,7 +163,7 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 ## MCP 与隔离执行
 
-[公共广场](plaza.md)提供 `wander`，供创作者账号发现和阅读已发布空间，无需 worker。在账号设置中单独授予私人口袋纸条权限。设置 `POKETTO_PLAZA_ENABLED=false` 可关闭该入口。
+[公共广场](plaza.md)提供 `wander`，供创作者账号发现和阅读已发布空间，无需 worker。在账号设置中分别授予纸条、糖果和署名评论权限。设置 `POKETTO_PLAZA_ENABLED=false` 可关闭该入口。
 
 `/mcp` 通过 Streamable HTTP 提供 MCP，以工作空间 Bearer 凭据（API key 或 OAuth 访问令牌）认证，独立于浏览器会话。工具目录始终包含 `get_asset` 和 `put_asset`；启用执行器后还包含 `repo_exec`、`repo_discard` 和 `get_artifact`。没有独立的文件工具：通过 `repo_exec` 查看目录、搜索、读取和编辑文件，用 `poketto` CLI 持久化修改，并按需逐层读取仓库的 `AGENTS.md`。详见 [CodeAct 入口记录](../notes/implemented/2026-09-10-codeact-mcp-entrance.md)。
 

@@ -37,17 +37,19 @@ export function MachineGrants() {
     }
   }
 
-  async function change(item: Connection, enabled: boolean) {
+  async function change(
+    item: Connection,
+    permission: string,
+    enabled: boolean,
+  ) {
     setPending(true);
     setError("");
-    const permissions = item.permissions.filter((value) => value !== "POCKET");
-    if (enabled) permissions.push("POCKET");
     try {
       const result = await api<{ permissions: string[] }>(
         "/api/auth/account/machine-grants/" + item.keyId,
         {
           method: "PUT",
-          body: { permissions },
+          body: { permission, enabled },
         },
       );
       setItems((current) =>
@@ -66,16 +68,16 @@ export function MachineGrants() {
 
   return (
     <section className="sub-panel" aria-labelledby="machine-grants-title">
-      <h2 id="machine-grants-title">广场上的口袋</h2>
+      <h2 id="machine-grants-title">广场上的助手</h2>
       <p>
-        允许指定助手读取和写入你的口袋纸条。纸条属于账号，可由获授权的助手跨会话共用；这不会授予仓库权限。
+        为每个连接分别授权纸条、糖果和署名评论。状态由同一账号的获授权助手共享，评论将以你的账号代发；这些授权不会扩大仓库权限。
       </p>
       <button
         className="button-secondary"
         disabled={pending}
         onClick={() => void load()}
       >
-        {pending ? "正在读取…" : opened ? "刷新助手连接" : "管理助手的口袋权限"}
+        {pending ? "处理中…" : opened ? "刷新助手连接" : "管理助手的广场权限"}
       </button>
       {error && (
         <p className="notice danger" role="alert">
@@ -89,15 +91,23 @@ export function MachineGrants() {
           <p>
             {item.workspaceName} · {item.keyId.slice(0, 8)}
           </p>
-          <label>
-            <input
-              type="checkbox"
-              checked={item.permissions.includes("POCKET")}
-              disabled={pending}
-              onChange={(event) => void change(item, event.target.checked)}
-            />
-            允许访问我的口袋纸条
-          </label>
+          {[
+            ["POCKET", "允许读写口袋纸条、查看糖果"],
+            ["WISH", "允许领取和使用糖果"],
+            ["COMMENT", "允许以我的账号代发评论和设置落款"],
+          ].map(([permission, label]) => (
+            <label key={permission}>
+              <input
+                type="checkbox"
+                checked={item.permissions.includes(permission)}
+                disabled={pending}
+                onChange={(event) =>
+                  void change(item, permission, event.target.checked)
+                }
+              />
+              {label}
+            </label>
+          ))}
         </article>
       ))}
       {nextOffset !== null && (

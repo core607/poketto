@@ -413,7 +413,7 @@ space, select fewer files, or use browser export.
 
 The [public plaza](plaza.md) adds `wander` for creator accounts to discover and read
 published spaces without a worker. Account settings separately grant access to
-private pocket notes. Set `POKETTO_PLAZA_ENABLED=false` to disable the entrance.
+private pocket notes, candy and signed account comments. Set `POKETTO_PLAZA_ENABLED=false` to disable the entrance.
 
 `/mcp` serves MCP over Streamable HTTP with a workspace Bearer credential (API key or
 OAuth access token), independently of browser sessions. The catalog always contains

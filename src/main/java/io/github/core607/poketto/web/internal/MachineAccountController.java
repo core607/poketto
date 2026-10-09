@@ -33,8 +33,16 @@ class MachineAccountController {
     }
 
     @PutMapping("/{key}")
-    Grant set(@AuthenticationPrincipal AuthPrincipal actor, @PathVariable UUID key, @RequestBody Grant input) {
-        return new Grant(accounts.set(actor, key, input.permissions()));
+    Grant set(@AuthenticationPrincipal AuthPrincipal actor, @PathVariable UUID key, @RequestBody Change input) {
+        return new Grant(accounts.change(actor, key, input.permission(), input.enabled()));
+    }
+
+    record Change(MachinePermission permission, Boolean enabled) {
+        Change {
+            if (permission == null || enabled == null) {
+                throw new IllegalArgumentException("Select one permission and its enabled state");
+            }
+        }
     }
 
     record Grant(Set<MachinePermission> permissions) {

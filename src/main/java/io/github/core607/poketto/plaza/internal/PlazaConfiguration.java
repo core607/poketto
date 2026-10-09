@@ -1,6 +1,7 @@
 package io.github.core607.poketto.plaza.internal;
 
 import io.github.core607.poketto.auth.MachineAccounts;
+import io.github.core607.poketto.community.MachineCommunity;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.WebsiteContentSnapshots;
 import io.github.core607.poketto.plaza.PlazaService;
@@ -24,12 +25,17 @@ class PlazaConfiguration {
             WorkspacePublications publications,
             PublicContentSnapshots snapshots,
             JdbcTemplate jdbc,
-            @Value("${poketto.plaza.public-url:${poketto.oauth.issuer:}}") String publicUrl) {
+            MachineCommunity interactions,
+            @Value("${poketto.plaza.public-url:${poketto.oauth.issuer:}}") String publicUrl,
+            @Value("${poketto.plaza.interactions-enabled:true}") boolean interactionsEnabled) {
         Clock clock = Clock.systemUTC();
         return new DefaultPlazaService(
                 accounts,
                 new PublicPlazaReads(publications, new WebsiteContentSnapshots(snapshots, publications), publicUrl),
                 new PlazaPocket(jdbc, clock),
-                new PlazaStreet(clock));
+                new PlazaStreet(clock),
+                new PlazaWallet(jdbc, clock),
+                interactions,
+                interactionsEnabled);
     }
 }
