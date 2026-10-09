@@ -3,6 +3,7 @@ package io.github.core607.poketto.plaza.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.Accounts;
@@ -21,6 +22,7 @@ import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.WebsiteContentSnapshots;
 import io.github.core607.poketto.plaza.PlazaResult;
 import io.github.core607.poketto.plaza.PlazaService;
+import io.github.core607.poketto.qa.QaService;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePublications;
 import io.github.core607.poketto.workspace.internal.CommunityPublicationFixture;
@@ -65,6 +67,7 @@ class PlazaIntegrationIT {
     private WorkspacePublications publications;
     private final Snapshots snapshots = new Snapshots();
     private PlazaService plaza;
+    private QaService qa;
     private Clock plazaClock = Clock.systemUTC();
 
     @BeforeEach
@@ -118,7 +121,35 @@ class PlazaIntegrationIT {
                 new PlazaWallet(jdbc, plazaClock),
                 mock(MachineCommunity.class),
                 true,
-                null);
+                null,
+                qa);
+    }
+
+    @Test
+    void wishHelpSeparatesClaimingSpendingContinuationAndPassiveStatusLocks() {
+        qa = mock(QaService.class);
+        plaza = service();
+        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.WISH));
+        assertThat(helpLock("wish <quoted-question>")).isEqualTo("UNAVAILABLE");
+        assertThat(helpLock("wish --status")).isEmpty();
+        assertThat(helpLock("wish --answer")).isEqualTo("UNAVAILABLE");
+        when(qa.available()).thenReturn(true);
+        assertThat(helpLock("wish <quoted-question>")).isEqualTo("NO_CANDY");
+        assertThat(helpLock("wish --answer")).isEmpty();
+        run(key, "knock");
+        assertThat(helpLock("knock")).isEqualTo("ALREADY_CLAIMED");
+        assertThat(helpLock("wish <quoted-question>")).isEmpty();
+        assertThat(helpLock("wish --status")).isEmpty();
+    }
+
+    private String helpLock(String prefix) {
+        List<?> entries = (List<?>) run(key, "--help").data();
+        return entries.stream()
+                .map(DefaultPlazaService.Help.class::cast)
+                .filter(item -> item.syntax().startsWith(prefix))
+                .findFirst()
+                .orElseThrow()
+                .locked();
     }
 
     @Test
