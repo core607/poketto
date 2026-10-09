@@ -64,7 +64,7 @@ final class QaLedger {
             candy.reserve(account);
         }
         jdbc.update(
-                "insert into qa_runs(account_id,request_id,channel,credential_id,budget_day,status,reserved_micros,call_bound_micros,candy_reserved,created_at,expires_at,requested_provider,provider,model,fallback_reason,input_price,output_price) values (?,?,?,?,?,'RUNNING',?,?,?,?,?,?,?,?,?,?,?)",
+                "insert into qa_runs(account_id,request_id,channel,credential_id,budget_day,status,reserved_micros,call_bound_micros,candy_reserved,created_at,expires_at,requested_provider,provider,model,fallback_reason,input_price,cache_read_price,cache_write_price,output_price) values (?,?,?,?,?,'RUNNING',?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 account,
                 request,
                 credential == null ? "WEB" : "WISH",
@@ -80,6 +80,8 @@ final class QaLedger {
                 provider.model(),
                 admission.reason(),
                 provider.prices().input(),
+                provider.prices().cacheRead(),
+                provider.prices().cacheWrite(),
                 provider.prices().output());
         return new Start(find(account, request), true);
     }
@@ -130,7 +132,13 @@ final class QaLedger {
         long cost = unknown
                 ? run.callBound()
                 : run.prices()
-                        .cost(completion.inputTokens() + completion.cacheCreationTokens(), completion.outputTokens());
+                        .cost(
+                                completion.inputTokens()
+                                        - completion.cacheCreationTokens()
+                                        - completion.cacheReadTokens(),
+                                completion.cacheReadTokens(),
+                                completion.cacheCreationTokens(),
+                                completion.outputTokens());
         if (cost > run.callBound()) {
             cost = run.callBound();
             unknown = true;
@@ -142,10 +150,12 @@ final class QaLedger {
                 cost,
                 Date.valueOf(run.day()));
         jdbc.update(
-                "update qa_runs set reserved_micros=reserved_micros-?,cost_micros=cost_micros+?,input_tokens=input_tokens+?,output_tokens=output_tokens+?,in_flight=false,uncertain=uncertain or ? where account_id=? and request_id=?",
+                "update qa_runs set reserved_micros=reserved_micros-?,cost_micros=cost_micros+?,input_tokens=input_tokens+?,cache_read_tokens=cache_read_tokens+?,cache_write_tokens=cache_write_tokens+?,output_tokens=output_tokens+?,in_flight=false,uncertain=uncertain or ? where account_id=? and request_id=?",
                 cost,
                 cost,
                 completion == null ? 0 : completion.inputTokens(),
+                completion == null ? 0 : completion.cacheReadTokens(),
+                completion == null ? 0 : completion.cacheCreationTokens(),
                 completion == null ? 0 : completion.outputTokens(),
                 unknown,
                 run.account(),
@@ -218,6 +228,8 @@ final class QaLedger {
                         row.getInt("revision"),
                         row.getInt("calls"),
                         row.getLong("input_tokens"),
+                        row.getLong("cache_read_tokens"),
+                        row.getLong("cache_write_tokens"),
                         row.getLong("output_tokens"),
                         row.getLong("cost_micros"),
                         row.getLong("reserved_micros"),
@@ -232,7 +244,11 @@ final class QaLedger {
                                 row.getString("provider"),
                                 row.getString("model"),
                                 row.getString("fallback_reason")),
-                        new QaPrices(row.getBigDecimal("input_price"), row.getBigDecimal("output_price"))),
+                        new QaPrices(
+                                row.getBigDecimal("input_price"),
+                                row.getBigDecimal("cache_read_price"),
+                                row.getBigDecimal("cache_write_price"),
+                                row.getBigDecimal("output_price"))),
                 account,
                 request);
         return rows.isEmpty() ? null : rows.getFirst();
@@ -300,6 +316,8 @@ final class QaLedger {
             int revision,
             int calls,
             long input,
+            long cacheRead,
+            long cacheWrite,
             long output,
             long cost,
             long reserved,
@@ -316,7 +334,7 @@ final class QaLedger {
         }
 
         QaService.Usage usage() {
-            return new QaService.Usage(calls, input, output, QaPolicy.dollars(cost), uncertain);
+            return new QaService.Usage(calls, input, cacheRead, cacheWrite, output, QaPolicy.dollars(cost), uncertain);
         }
     }
 }

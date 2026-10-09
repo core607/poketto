@@ -90,18 +90,15 @@ properties; uppercase environment equivalents are accepted.
 | Property | Default |
 | --- | --- |
 | `poketto.qa.enabled` | `true`; at least one provider key is required |
+| `poketto.qa.prices-file` | Empty uses the bundled catalog; an explicit path must be valid at startup |
 | `poketto.qa.default-provider` | `anthropic` |
 | `poketto.qa.anthropic.api-key` | `ANTHROPIC_API_KEY`, otherwise unavailable |
-| `poketto.qa.anthropic.base-url` | `https://api.anthropic.com/v1` |
+| `poketto.qa.anthropic.base-url` | `https://api.anthropic.com` |
 | `poketto.qa.anthropic.model` | `claude-haiku-5-5` |
 | `poketto.qa.anthropic.monthly-usd` | `20`; shared by all accounts, UTC calendar month |
-| `poketto.qa.anthropic.input-usd-per-million` | `0.10` |
-| `poketto.qa.anthropic.output-usd-per-million` | `0.50` |
 | `poketto.qa.deepseek.api-key` | `DEEPSEEK_API_KEY`, otherwise unavailable |
 | `poketto.qa.deepseek.base-url` | `DEEPSEEK_BASE_URL`, otherwise `https://api.deepseek.com` |
 | `poketto.qa.deepseek.model` | `deepseek-flash` |
-| `poketto.qa.deepseek.input-usd-per-million` | `0.30` |
-| `poketto.qa.deepseek.output-usd-per-million` | `1.20` |
 | `poketto.qa.daily-questions` | `5` |
 | `poketto.qa.daily-usd` | `2` |
 | `poketto.qa.max-concurrency` | `2` |
@@ -148,10 +145,34 @@ oversized activity rather than silently truncating it. The loop uses automatic
 tool choice because forced tool use suppresses or rejects thinking; an ordinary
 text completion must continue through the bounded citation/answer tool.
 
-Anthropic requests use top-level `cache_control: {"type":"ephemeral"}` for
-automatic five-minute prefix caching through the tool loop. Cache hits depend on
-the provider's minimum length and exact prefix match. Budget accounting remains
-conservative rather than assuming a discounted hit before its response arrives.
+Spring AI owns provider messages, tool schemas and signed thinking replay. Its
+Anthropic conversation-history caching strategy places five-minute
+`cache_control: {"type":"ephemeral"}` breakpoints on the prompt and final tool
+result. Cache hits still depend on minimum length and an exact prefix match.
+The application executes tools and records each HTTP dispatch; framework retries
+and redirects are disabled. An SDK transport adapter retains these limits and
+handles Spring AI 2.0.1's empty-content branch before it discards refusal/usage.
+
+The [price catalog](../src/main/resources/qa/prices.json) has four USD-per-million
+rates for every configured provider/model: `input`, `cacheRead`, `cacheWrite` and
+`output`. At admission, each question snapshots all four rates and reserves the
+maximum possible input/output cost. Each completed call settles its actual token
+categories at those rates, rounding the sum up to one micro-dollar. Anthropic's
+`input_tokens` excludes cache tokens; DeepSeek's `prompt_tokens` includes them.
+A cache token is never also billed as ordinary input. The UI's estimate uses these
+configured rates, not an invoice; missing/ambiguous usage retains the call bound.
+DeepSeek defaults use peak rates; off-peak discounts are not inferred.
+
+To hot-update prices, copy the catalog into the already mounted data directory,
+for example `qa-pricing/prices.json`, and set `POKETTO_QA_PRICES_FILE` to its
+container path `/var/lib/poketto/qa-pricing/prices.json`. Keep it operator-owned and
+readable by the app. Atomically replace the file in that directory; binding only
+one file would keep the old inode visible. Price checks occur at most every five
+seconds on new questions or allowance reads. Valid files replace the whole
+catalog; invalid, missing or oversized updates log an error and retain the last
+valid prices. Existing questions and recorded spending never change. Restart
+once to set the path; subsequent price edits require no restart. Changing model
+IDs also requires matching catalog entries.
 
 The standard Compose `.env` and existing-installation updater accept these `POKETTO_QA_`
 settings and the plaza switches. Ordinary image updates retain them; the GitHub
@@ -164,8 +185,8 @@ HTTP question bodies are limited to 16 KiB before JSON parsing; questions allow
 including schemas, is at most 64 KiB. Its conservative input token bound adds 4096
 tokens of framing allowance. Upstream bodies are capped at 128 KiB during receipt;
 each call has a 45-second deadline within the active request's remaining time.
-Six default calls reserve at most $0.108138 for Claude or $0.184320 for DeepSeek.
-The Claude bound includes twice the uncached input price for possible cache writes. Input/output token reports outside the
+Six default calls reserve at most $0.076800 for Claude or $0.184320 for DeepSeek.
+The input bound uses the highest of ordinary, cache-read and cache-write rates. Token reports outside the
 configured bounds are treated as uncertain, never as free usage.
 
 A question may execute 16 tools, retain 16 source pages and return 32 KiB of answer

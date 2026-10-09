@@ -117,8 +117,10 @@ const selection = {
 const usage = {
   calls: 1,
   inputTokens: 100,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
   outputTokens: 20,
-  costUpperUsd: "0.000054",
+  costUsd: "0.000054",
   uncertain: false,
 };
 

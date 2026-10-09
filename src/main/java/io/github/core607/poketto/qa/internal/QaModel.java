@@ -8,12 +8,10 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import tools.jackson.databind.JsonNode;
+import org.springframework.ai.chat.messages.AssistantMessage;
 
 interface QaModel {
-    default void validate(List<Message> messages) {}
-
-    Completion complete(List<Message> messages, Duration remaining);
+    Completion complete(List<Message> messages, Duration remaining, Runnable beforeDispatch);
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record Message(
@@ -22,7 +20,7 @@ interface QaModel {
             @JsonProperty("tool_calls") List<Call> calls,
             @JsonProperty("tool_call_id") String callId,
             @JsonProperty("reasoning_content") String reasoning,
-            @JsonIgnore List<JsonNode> providerContent) {
+            @JsonIgnore AssistantMessage providerContent) {
         static Message text(String role, String text) {
             return new Message(role, text, null, null, null, null);
         }
@@ -43,9 +41,10 @@ interface QaModel {
             long inputTokens,
             long outputTokens,
             long cacheCreationTokens,
+            long cacheReadTokens,
             String content,
             String reasoning,
-            List<JsonNode> providerContent,
+            AssistantMessage providerContent,
             boolean refused) {
         public Completion {
             if (calls == null || calls.stream().anyMatch(Objects::isNull)) {
@@ -70,9 +69,11 @@ interface QaModel {
             if (inputTokens < 1 || cacheCreationTokens < 0 || cacheCreationTokens > inputTokens || outputTokens < 0) {
                 throw new IllegalArgumentException("Invalid completion usage");
             }
+            if (cacheReadTokens < 0 || cacheReadTokens > inputTokens - cacheCreationTokens) {
+                throw new IllegalArgumentException("Invalid cache read token usage");
+            }
             content = content == null ? "" : content;
             reasoning = reasoning == null ? "" : reasoning;
-            providerContent = providerContent == null ? null : List.copyOf(providerContent);
         }
 
         Message assistant() {

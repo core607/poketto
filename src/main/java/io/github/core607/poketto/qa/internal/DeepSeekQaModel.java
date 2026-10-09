@@ -1,122 +1,107 @@
 package io.github.core607.poketto.qa.internal;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import io.github.core607.poketto.qa.QaException;
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.deepseek.DeepSeekAssistantMessage;
+import org.springframework.ai.deepseek.DeepSeekChatModel;
+import org.springframework.ai.deepseek.DeepSeekChatOptions;
+import org.springframework.ai.deepseek.api.DeepSeekApi;
+import org.springframework.core.retry.RetryPolicy;
+import org.springframework.core.retry.RetryTemplate;
+import org.springframework.web.client.RestClientException;
 import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** Bounded thinking/tool turns. No redirects, request replay, wire logging or automatic retry. */
 final class DeepSeekQaModel implements QaModel {
-    private final HttpClient http;
-    private final URI endpoint;
-    private final String key;
-    private final String model;
-    private final QaPolicy policy;
-    private final ObjectMapper json;
-    private final JsonNode tools;
+    private final DeepSeekChatModel chat;
+    private final QaTransport transport;
+    private final int outputLimit;
 
     DeepSeekQaModel(HttpClient http, URI endpoint, String key, String model, QaPolicy policy, ObjectMapper json) {
-        this.http = http;
-        this.endpoint = endpoint;
-        this.key = key;
-        this.model = model;
-        this.policy = policy;
-        this.json = json;
-        tools = QaToolSchemas.load(json);
-    }
-
-    @Override
-    public void validate(List<Message> messages) {
-        body(messages);
-    }
-
-    private byte[] body(List<Message> messages) {
-        byte[] body = json.writeValueAsBytes(
-                new Request(model, messages, tools, new Thinking("enabled"), policy.outputTokens(), false));
-        if (body.length > QaPolicy.INPUT_BYTES) {
-            throw new QaException("INPUT_LIMIT", "The bounded model input is full");
-        }
-        return body;
-    }
-
-    @Override
-    public Completion complete(List<Message> messages, Duration remaining) {
-        byte[] body = body(messages);
-        Duration timeout = QaHttp.timeout(remaining);
-        HttpRequest request = HttpRequest.newBuilder(endpoint)
-                .timeout(timeout)
-                .header("Authorization", "Bearer " + key)
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
-                .build();
-        return parse(QaHttp.send(http, request, timeout));
-    }
-
-    private Completion parse(byte[] bytes) {
-        try {
-            Response response = json.readValue(bytes, Response.class);
-            if (response.usage() == null
+        outputLimit = policy.outputTokens();
+        transport = new QaTransport(http, bytes -> {
+            DeepSeekApi.ChatCompletion response = json.readValue(bytes, DeepSeekApi.ChatCompletion.class);
+            if (response == null
                     || response.choices() == null
                     || response.choices().size() != 1) {
-                throw new IllegalArgumentException("Missing completion or usage");
+                throw new IllegalArgumentException("Expected one complete DeepSeek choice");
             }
-            Usage usage = response.usage();
-            if (usage.input() == null || usage.output() == null) {
-                throw new IllegalArgumentException("Missing token usage");
+            requireUsage(response.usage());
+            DeepSeekApi.ChatCompletion.Choice choice = response.choices().getFirst();
+            if (choice == null || choice.message() == null || choice.index() == null || choice.finishReason() == null) {
+                throw new IllegalArgumentException("Incomplete DeepSeek choice");
             }
-            if (usage.input() < 1
-                    || usage.input() > QaPolicy.INPUT_TOKEN_BOUND
-                    || usage.output() < 0
-                    || usage.output() > policy.outputTokens()) {
-                throw new IllegalArgumentException("Upstream usage exceeds the reserved bounds");
-            }
-            Choice choice = response.choices().getFirst();
-            if (choice == null) {
-                throw new IllegalArgumentException("Missing completion choice");
-            }
-            if (!("tool_calls".equals(choice.finish()) || "stop".equals(choice.finish())) || choice.message() == null) {
-                throw new IllegalArgumentException("Expected a complete tool turn");
-            }
-            Assistant assistant = choice.message();
-            List<Call> calls = assistant.calls() == null ? List.of() : assistant.calls();
-            return new Completion(
-                    calls, usage.input(), usage.output(), 0, assistant.content(), assistant.reasoning(), null, false);
-        } catch (JacksonException | IllegalArgumentException malformed) {
-            throw new QaException("UPSTREAM_UNCERTAIN", "The upstream response was incomplete or malformed", malformed);
+        });
+        var api = DeepSeekApi.builder()
+                .baseUrl(endpoint.resolve("/").toString())
+                .completionsPath(endpoint.getPath())
+                .apiKey(key.isBlank() ? "unconfigured" : key)
+                .restClientBuilder(transport.rest())
+                .build();
+        var options = DeepSeekChatOptions.builder()
+                .model(model)
+                .maxTokens(outputLimit)
+                .enableThinking()
+                .toolCallbacks(QaToolSchemas.callbacks(json))
+                .build();
+        chat = DeepSeekChatModel.builder()
+                .deepSeekApi(api)
+                .options(options)
+                .retryTemplate(new RetryTemplate(RetryPolicy.withMaxRetries(0)))
+                .build();
+    }
+
+    @Override
+    public Completion complete(List<Message> messages, Duration remaining, Runnable beforeDispatch) {
+        try {
+            return transport.call(
+                    remaining,
+                    beforeDispatch,
+                    () -> completion(chat.call(new Prompt(QaSpringMessages.convert(messages)))));
+        } catch (RestClientException | JacksonException | IllegalArgumentException malformed) {
+            throw new QaException("UPSTREAM_UNCERTAIN", "The DeepSeek response was incomplete or malformed", malformed);
         }
     }
 
-    private record Thinking(String type) {}
+    private Completion completion(ChatResponse response) {
+        var generation = response.getResult();
+        if (!Set.of("STOP", "TOOL_CALLS").contains(generation.getMetadata().getFinishReason())) {
+            throw new IllegalArgumentException("Expected a complete DeepSeek tool turn");
+        }
+        var usage = (DeepSeekApi.Usage) response.getMetadata().getUsage().getNativeUsage();
+        requireUsage(usage);
+        long read = usage.promptTokensDetails() == null
+                        || usage.promptTokensDetails().cachedTokens() == null
+                ? 0
+                : usage.promptTokensDetails().cachedTokens();
+        var assistant = (DeepSeekAssistantMessage) generation.getOutput();
+        if (assistant.getText() == null) {
+            assistant = assistant.mutate().content("").build();
+        }
+        return new Completion(
+                QaSpringMessages.calls(assistant),
+                usage.promptTokens(),
+                usage.completionTokens(),
+                0,
+                read,
+                assistant.getText(),
+                assistant.getReasoningContent(),
+                assistant,
+                false);
+    }
 
-    private record Request(
-            String model,
-            List<Message> messages,
-            JsonNode tools,
-            Thinking thinking,
-            @JsonProperty("max_tokens") int maximum,
-            boolean stream) {}
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record Response(List<Choice> choices, Usage usage) {}
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record Choice(@JsonProperty("finish_reason") String finish, Assistant message) {}
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record Assistant(
-            @JsonProperty("tool_calls") List<Call> calls,
-            String content,
-            @JsonProperty("reasoning_content") String reasoning) {}
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record Usage(
-            @JsonProperty("prompt_tokens") Long input,
-            @JsonProperty("completion_tokens") Long output) {}
+    private void requireUsage(DeepSeekApi.Usage usage) {
+        if (usage == null || usage.promptTokens() == null || usage.completionTokens() == null) {
+            throw new IllegalArgumentException("Missing DeepSeek token usage");
+        }
+        if (usage.promptTokens() > QaPolicy.INPUT_TOKEN_BOUND || usage.completionTokens() > outputLimit) {
+            throw new IllegalArgumentException("DeepSeek usage exceeds the reserved bounds");
+        }
+    }
 }

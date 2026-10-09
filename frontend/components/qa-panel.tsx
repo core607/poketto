@@ -385,11 +385,11 @@ export function QaPanel() {
               输出 {reply.usage.outputTokens} tokens
             </span>
             <span>
-              预算记账上限 $
-              {Number(reply.usage.costUpperUsd)
+              估算费用 $
+              {Number(reply.usage.costUsd)
                 .toFixed(6)
                 .replace(/\.?0+$/, "")}
-              {reply.usage.uncertain ? "（含结果不明调用的保守上限）" : ""}
+              {reply.usage.uncertain ? "（含待核对调用的预留上限）" : ""}
               ，实际费用以上游账单为准。
             </span>
           </footer>

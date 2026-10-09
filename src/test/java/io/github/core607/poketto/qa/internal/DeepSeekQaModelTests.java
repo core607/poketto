@@ -59,9 +59,12 @@ class DeepSeekQaModelTests {
 
     @Test
     void enablesThinkingAndReplaysTheFullReturnedReasoningWithToolResults() {
-        QaModel.Completion completion = model.complete(messages(), Duration.ofSeconds(5));
+        var dispatches = new AtomicInteger();
+        QaModel.Completion completion = model.complete(messages(), Duration.ofSeconds(5), dispatches::incrementAndGet);
+        assertThat(dispatches).hasValue(1);
         assertThat(completion.calls()).hasSize(2);
         assertThat(completion.inputTokens()).isEqualTo(100);
+        assertThat(completion.cacheReadTokens()).isEqualTo(60);
         assertThat(completion.outputTokens()).isEqualTo(20);
         String body = received.get();
         assertThat(body)
@@ -75,7 +78,8 @@ class DeepSeekQaModelTests {
                         completion.assistant(),
                         QaModel.Message.tool("call_1", "[]"),
                         QaModel.Message.tool("call_2", "{}")),
-                Duration.ofSeconds(5));
+                Duration.ofSeconds(5),
+                () -> {});
         assertThat(received.get()).contains("\"reasoning_content\":\"First search, then read the evidence.\"");
     }
 
@@ -89,7 +93,7 @@ class DeepSeekQaModelTests {
                 new Response(200, "{"))) {
             response = failure;
             int before = requests.get();
-            assertThatThrownBy(() -> model.complete(messages(), Duration.ofSeconds(5)))
+            assertThatThrownBy(() -> model.complete(messages(), Duration.ofSeconds(5), () -> {}))
                     .isInstanceOf(QaException.class);
             assertThat(requests).hasValue(before + 1);
         }
@@ -98,10 +102,13 @@ class DeepSeekQaModelTests {
     @Test
     void completeResponseAndRequestBytesAreBounded() {
         response = new Response(200, " ".repeat(131_073));
-        assertThatThrownBy(() -> model.complete(messages(), Duration.ofSeconds(5)))
+        assertThatThrownBy(() -> model.complete(messages(), Duration.ofSeconds(5), () -> {}))
                 .isInstanceOf(QaException.class);
         int before = requests.get();
-        assertThatThrownBy(() -> model.validate(List.of(QaModel.Message.text("user", "字".repeat(30_000)))))
+        assertThatThrownBy(() -> model.complete(
+                        List.of(QaModel.Message.text("user", "字".repeat(30_000))), Duration.ofSeconds(5), () -> {
+                            throw new AssertionError("Must not dispatch oversized input");
+                        }))
                 .isInstanceOf(QaException.class)
                 .hasMessageContaining("input");
         assertThat(requests).hasValue(before);
@@ -126,7 +133,7 @@ class DeepSeekQaModelTests {
         });
         long started = System.nanoTime();
         try {
-            assertThatThrownBy(() -> model.complete(messages(), Duration.ofMillis(150)))
+            assertThatThrownBy(() -> model.complete(messages(), Duration.ofMillis(150), () -> {}))
                     .isInstanceOf(QaException.class);
             assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(3));
         } finally {
@@ -141,6 +148,7 @@ class DeepSeekQaModelTests {
         if (response.status() == 302) {
             exchange.getResponseHeaders().set("Location", "/chat/completions");
         }
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(response.status(), body.length == 0 ? -1 : body.length);
         try {
             exchange.getResponseBody().write(body);
@@ -155,10 +163,10 @@ class DeepSeekQaModelTests {
 
     private static String valid() {
         return """
-                {"choices":[{"finish_reason":"tool_calls","message":{"reasoning_content":"First search, then read the evidence.","tool_calls":[
+                {"choices":[{"index":0,"finish_reason":"tool_calls","message":{"role":"assistant","reasoning_content":"First search, then read the evidence.","tool_calls":[
                 {"id":"call_1","type":"function","function":{"name":"search","arguments":"{}"}},
                 {"id":"call_2","type":"function","function":{"name":"read","arguments":"{}"}}
-                ]}}],"usage":{"prompt_tokens":100,"completion_tokens":20}}
+                ]}}],"usage":{"prompt_tokens":100,"completion_tokens":20,"prompt_tokens_details":{"cached_tokens":60}}}
                 """;
     }
 

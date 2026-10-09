@@ -13,9 +13,11 @@ record QaProvider(String id, String model, QaPrices prices, QaModel client, bool
     }
 
     long callBound(QaPolicy policy) {
-        // Reserve the upper cache-write price before the response reveals any cache hits.
-        int inputMultiplier = id.equals("anthropic") ? 2 : 1;
-        return prices.cost((long) QaPolicy.INPUT_TOKEN_BOUND * inputMultiplier, policy.outputTokens());
+        return prices.bound(QaPolicy.INPUT_TOKEN_BOUND, policy.outputTokens());
+    }
+
+    QaProvider withPrices(QaPrices replacement) {
+        return new QaProvider(id, model, replacement, client, configured);
     }
 
     long runBound(QaPolicy policy) {

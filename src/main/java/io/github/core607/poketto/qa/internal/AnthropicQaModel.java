@@ -1,247 +1,152 @@
 package io.github.core607.poketto.qa.internal;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.anthropic.backends.AnthropicBackend;
+import com.anthropic.client.AnthropicClient;
+import com.anthropic.client.AnthropicClientImpl;
+import com.anthropic.core.ClientOptions;
+import com.anthropic.core.ObjectMappers;
+import com.anthropic.errors.AnthropicException;
+import com.anthropic.models.messages.ThinkingConfigAdaptive;
 import io.github.core607.poketto.qa.QaException;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
+import java.util.Set;
+import org.springframework.ai.anthropic.AnthropicCacheOptions;
+import org.springframework.ai.anthropic.AnthropicCacheStrategy;
+import org.springframework.ai.anthropic.AnthropicChatModel;
+import org.springframework.ai.anthropic.AnthropicChatOptions;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.web.client.RestClientException;
 import tools.jackson.databind.ObjectMapper;
 
-/** Native Messages protocol; public thinking summaries are distinct from opaque blocks retained for replay. */
+/** Provider protocol and signed thinking replay belong to Spring AI and the official SDK. */
 final class AnthropicQaModel implements QaModel {
-    private final HttpClient http;
-    private final URI endpoint;
-    private final String key;
-    private final String model;
-    private final QaPolicy policy;
-    private final ObjectMapper json;
-    private final List<Tool> tools;
+    private final AnthropicChatModel chat;
+    private final QaTransport transport;
+    private final int outputLimit;
 
-    AnthropicQaModel(HttpClient http, URI endpoint, String key, String model, QaPolicy policy, ObjectMapper json) {
-        this.http = http;
-        this.endpoint = endpoint;
-        this.key = key;
-        this.model = model;
-        this.policy = policy;
-        this.json = json;
-        var definitions = new ArrayList<Tool>();
-        for (JsonNode item : QaToolSchemas.load(json)) {
-            ToolDefinition definition = json.treeToValue(item, ToolDefinition.class);
-            ToolFunction function = definition.function();
-            definitions.add(new Tool(function.name(), function.description(), function.parameters()));
-        }
-        tools = List.copyOf(definitions);
-    }
-
-    @Override
-    public void validate(List<Message> messages) {
-        body(messages);
-    }
-
-    private byte[] body(List<Message> messages) {
-        String system = messages.stream()
-                .filter(value -> value.role().equals("system"))
-                .map(Message::content)
-                .reduce("", (left, right) -> left + right + "\n");
-        byte[] body = json.writeValueAsBytes(new Request(
-                model,
-                policy.outputTokens(),
-                system,
-                convert(messages),
-                tools,
-                new ToolChoice("auto"),
-                new Thinking("adaptive", "summarized"),
-                new CacheControl("ephemeral"),
-                false));
-        if (body.length > QaPolicy.INPUT_BYTES) {
-            throw new QaException("INPUT_LIMIT", "The bounded model input is full");
-        }
-        return body;
-    }
-
-    private List<Turn> convert(List<Message> messages) {
-        var turns = new ArrayList<Turn>();
-        for (Message message : messages) {
-            if (message.role().equals("system")) {
-                continue;
-            }
-            if (message.providerContent() != null) {
-                turns.add(new Turn(message.role(), message.providerContent()));
-                continue;
-            }
-            var blocks = new ArrayList<JsonNode>();
-            String role = message.role();
-            if (role.equals("tool")) {
-                role = "user";
-                blocks.add(json.valueToTree(
-                        new Block("tool_result", null, null, null, null, message.callId(), message.content())));
-            } else {
-                if (message.content() != null && !message.content().isEmpty()) {
-                    blocks.add(json.valueToTree(new Block("text", message.content(), null, null, null, null, null)));
-                }
-                if (message.calls() != null) {
-                    for (Call call : message.calls()) {
-                        blocks.add(json.valueToTree(new Block(
-                                "tool_use",
-                                null,
-                                call.id(),
-                                call.function().name(),
-                                json.readTree(call.function().arguments()),
-                                null,
-                                null)));
-                    }
-                }
-            }
-            if (!turns.isEmpty() && turns.getLast().role().equals(role)) {
-                Turn previous = turns.removeLast();
-                var combined = new ArrayList<JsonNode>(previous.content());
-                combined.addAll(blocks);
-                blocks = combined;
-            }
-            turns.add(new Turn(role, List.copyOf(blocks)));
-        }
-        return List.copyOf(turns);
-    }
-
-    @Override
-    public Completion complete(List<Message> messages, Duration remaining) {
-        byte[] payload = body(messages);
-        Duration timeout = QaHttp.timeout(remaining);
-        HttpRequest request = HttpRequest.newBuilder(endpoint)
-                .timeout(timeout)
-                .header("x-api-key", key)
-                .header("anthropic-version", "2023-06-01")
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofByteArray(payload))
+    AnthropicQaModel(HttpClient http, URI baseUrl, String key, String model, QaPolicy policy, ObjectMapper json) {
+        outputLimit = policy.outputTokens();
+        transport = new QaTransport(http, this::inspect);
+        String base = baseUrl.toString();
+        var backend = AnthropicBackend.builder()
+                .baseUrl(base)
+                .apiKey(key.isBlank() ? "unconfigured" : key)
                 .build();
-        return parse(QaHttp.send(http, request, timeout));
+        var httpClient = new QaAnthropicTransport(transport, backend);
+        var clientOptions =
+                ClientOptions.builder().baseUrl(base).httpClient(httpClient).maxRetries(0);
+        backend.applyCredentials(httpClient, clientOptions);
+        AnthropicClient client = new AnthropicClientImpl(clientOptions.build());
+        var options = AnthropicChatOptions.builder()
+                .model(model)
+                .maxTokens(outputLimit)
+                .thinkingAdaptive(ThinkingConfigAdaptive.Display.SUMMARIZED)
+                .cacheOptions(AnthropicCacheOptions.builder()
+                        .strategy(AnthropicCacheStrategy.CONVERSATION_HISTORY)
+                        .cacheToolResults(true)
+                        .build())
+                .toolCallbacks(QaToolSchemas.callbacks(json))
+                .build();
+        chat = AnthropicChatModel.builder()
+                .anthropicClient(client)
+                .anthropicClientAsync(client.async())
+                .options(options)
+                .build();
     }
 
-    private Completion parse(byte[] bytes) {
+    @Override
+    public Completion complete(List<Message> messages, Duration remaining, Runnable beforeDispatch) {
         try {
-            Response response = json.readValue(bytes, Response.class);
-            if (!("tool_use".equals(response.stopReason())
-                            || "end_turn".equals(response.stopReason())
-                            || "refusal".equals(response.stopReason()))
-                    || response.content() == null
-                    || response.usage() == null) {
-                throw new IllegalArgumentException("Expected a complete Anthropic tool turn with usage");
-            }
-            var calls = new ArrayList<Call>();
-            var thinking = new StringBuilder();
-            var content = new StringBuilder();
-            for (JsonNode raw : response.content()) {
-                if (raw == null || raw.isNull()) {
-                    throw new IllegalArgumentException("Missing Anthropic content block");
-                }
-                Output block = json.treeToValue(raw, Output.class);
-                if ("tool_use".equals(block.type())) {
-                    if (block.input() == null || !block.input().isObject()) {
-                        throw new IllegalArgumentException("Invalid Anthropic tool input");
-                    }
-                    calls.add(new Call(
-                            block.id(),
-                            "function",
-                            new Function(block.name(), json.writeValueAsString(block.input()))));
-                } else if ("thinking".equals(block.type())) {
-                    thinking.append(block.thinking() == null ? "" : block.thinking());
-                } else if ("text".equals(block.type())) {
-                    content.append(block.text() == null ? "" : block.text());
-                } else if (!"redacted_thinking".equals(block.type())) {
-                    throw new IllegalArgumentException("Unexpected Anthropic content block");
-                }
-            }
-            Usage usage = response.usage();
-            if (usage.input() == null || usage.output() == null || usage.input() < 0 || usage.output() < 0) {
-                throw new IllegalArgumentException("Missing or negative Anthropic token usage");
-            }
-            long created = cacheTokens(usage.created());
-            long input = Math.addExact(usage.input(), Math.addExact(created, cacheTokens(usage.read())));
-            if (input > QaPolicy.INPUT_TOKEN_BOUND || usage.output() > policy.outputTokens()) {
-                throw new IllegalArgumentException("Anthropic usage exceeds the reserved bounds");
-            }
-            return new Completion(
-                    calls,
-                    input,
-                    usage.output(),
-                    created,
-                    content.toString(),
-                    thinking.toString(),
-                    response.content(),
-                    "refusal".equals(response.stopReason()));
-        } catch (JacksonException | IllegalArgumentException | ArithmeticException malformed) {
+            return transport.call(
+                    remaining,
+                    beforeDispatch,
+                    () -> completion(chat.call(new Prompt(QaSpringMessages.convert(messages)))));
+        } catch (EmptyResponse empty) {
+            return empty.completion;
+        } catch (AnthropicException | RestClientException | IllegalArgumentException | ArithmeticException malformed) {
             throw new QaException(
                     "UPSTREAM_UNCERTAIN", "The Anthropic response was incomplete or malformed", malformed);
         }
     }
 
-    private static long cacheTokens(Long value) {
-        if (value != null && value < 0) {
-            throw new IllegalArgumentException("Negative Anthropic cache token usage");
-        }
-        return value == null ? 0 : value;
+    private Completion completion(ChatResponse response) {
+        Generation result = response.getResults().getLast();
+        AssistantMessage assistant = result.getOutput();
+        String reason = result.getMetadata().getFinishReason();
+        requireFinish(reason);
+        var usage = response.getMetadata().getUsage();
+        long read = usage.getCacheReadInputTokens() == null ? 0 : usage.getCacheReadInputTokens();
+        long write = usage.getCacheWriteInputTokens() == null ? 0 : usage.getCacheWriteInputTokens();
+        long input = Math.addExact(usage.getPromptTokens(), Math.addExact(read, write));
+        requireUsage(input, usage.getCompletionTokens());
+        String thinking = response.getResults().stream()
+                .map(Generation::getOutput)
+                .filter(message -> message.getMetadata().containsKey("signature"))
+                .map(AssistantMessage::getText)
+                .reduce("", String::concat);
+        return new Completion(
+                QaSpringMessages.calls(assistant),
+                input,
+                usage.getCompletionTokens(),
+                write,
+                read,
+                assistant.getText(),
+                thinking,
+                assistant,
+                "refusal".equals(reason));
     }
 
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record ToolDefinition(ToolFunction function) {}
+    private void inspect(byte[] bytes) {
+        try {
+            var message = ObjectMappers.jsonMapper().readValue(bytes, com.anthropic.models.messages.Message.class);
+            message.validate();
+            for (var block : message.content()) {
+                if (!(block.isText() || block.isThinking() || block.isRedactedThinking() || block.isToolUse())) {
+                    throw new IllegalArgumentException("Unsupported Anthropic content block");
+                }
+            }
+            if (message.content().isEmpty()) {
+                // Spring AI 2.0.1 drops usage/stop_reason and logs the prompt on this branch.
+                String reason = message.stopReason().map(Object::toString).orElse("");
+                requireFinish(reason);
+                var usage = message.usage();
+                long read = usage.cacheReadInputTokens().orElse(0L);
+                long write = usage.cacheCreationInputTokens().orElse(0L);
+                long input = Math.addExact(usage.inputTokens(), Math.addExact(read, write));
+                requireUsage(input, usage.outputTokens());
+                throw new EmptyResponse(new Completion(
+                        List.of(), input, usage.outputTokens(), write, read, "", "", null, "refusal".equals(reason)));
+            }
+        } catch (IOException malformed) {
+            throw new QaException("UPSTREAM_UNCERTAIN", "The Anthropic response was malformed", malformed);
+        }
+    }
 
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record ToolFunction(String name, String description, JsonNode parameters) {}
+    private static void requireFinish(String reason) {
+        if (!Set.of("tool_use", "end_turn", "refusal").contains(reason)) {
+            throw new IllegalArgumentException("Expected a complete Anthropic tool turn");
+        }
+    }
 
-    private record Tool(
-            String name,
-            String description,
-            @JsonProperty("input_schema") JsonNode schema) {}
+    private void requireUsage(long input, long output) {
+        if (input > QaPolicy.INPUT_TOKEN_BOUND || output > outputLimit) {
+            throw new IllegalArgumentException("Anthropic usage exceeds the reserved bounds");
+        }
+    }
 
-    private record ToolChoice(String type) {}
+    private static final class EmptyResponse extends RuntimeException {
+        private final Completion completion;
 
-    private record Thinking(String type, String display) {}
-
-    private record CacheControl(String type) {}
-
-    private record Turn(String role, List<JsonNode> content) {}
-
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    private record Block(
-            String type,
-            String text,
-            String id,
-            String name,
-            JsonNode input,
-            @JsonProperty("tool_use_id") String toolId,
-            String content) {}
-
-    private record Request(
-            String model,
-            @JsonProperty("max_tokens") int maximum,
-            String system,
-            List<Turn> messages,
-            List<Tool> tools,
-            @JsonProperty("tool_choice") ToolChoice choice,
-            Thinking thinking,
-            @JsonProperty("cache_control") CacheControl cacheControl,
-            boolean stream) {}
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record Response(
-            List<JsonNode> content,
-            @JsonProperty("stop_reason") String stopReason,
-            Usage usage) {}
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record Output(String type, String id, String name, JsonNode input, String thinking, String text) {}
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    private record Usage(
-            @JsonProperty("input_tokens") Long input,
-            @JsonProperty("output_tokens") Long output,
-            @JsonProperty("cache_creation_input_tokens") Long created,
-            @JsonProperty("cache_read_input_tokens") Long read) {}
+        private EmptyResponse(Completion completion) {
+            super("Empty Anthropic response with known usage");
+            this.completion = completion;
+        }
+    }
 }

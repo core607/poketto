@@ -70,7 +70,14 @@ public interface QaService {
         }
     }
 
-    record Usage(int calls, long inputTokens, long outputTokens, String costUpperUsd, boolean uncertain) {}
+    record Usage(
+            int calls,
+            long inputTokens,
+            long cacheReadTokens,
+            long cacheWriteTokens,
+            long outputTokens,
+            String costUsd,
+            boolean uncertain) {}
 
     record Selection(String requestedProvider, String provider, String model, String fallbackReason) {}
 

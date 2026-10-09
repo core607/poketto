@@ -53,8 +53,10 @@ export type QaReply = {
   usage: {
     calls: number;
     inputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
     outputTokens: number;
-    costUpperUsd: string;
+    costUsd: string;
     uncertain: boolean;
   };
 };

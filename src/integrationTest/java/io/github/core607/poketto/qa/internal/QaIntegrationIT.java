@@ -9,7 +9,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.Accounts;
@@ -25,6 +24,8 @@ import io.github.core607.poketto.qa.QaService;
 import io.github.core607.poketto.qa.QaSources;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -42,6 +43,7 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -57,6 +59,9 @@ import tools.jackson.databind.json.JsonMapper;
 /** Real eligibility, transactions and budget persistence; model completions are fixtures and spend no money. */
 @Testcontainers
 class QaIntegrationIT {
+    @TempDir
+    Path directory;
+
     @Container
     static final PostgreSQLContainer postgres = new PostgreSQLContainer(
             DockerImageName.parse(System.getProperty("poketto.postgres.image")).asCompatibleSubstituteFor("postgres"));
@@ -67,7 +72,8 @@ class QaIntegrationIT {
     private QaModels models;
     private QaProvider deepseek;
     private QaProvider anthropic;
-    private final QaPrices prices = new QaPrices(new BigDecimal("0.30"), new BigDecimal("1.20"));
+    private final QaPrices prices = new QaPrices(
+            new BigDecimal("0.30"), new BigDecimal("0.006"), new BigDecimal("0.30"), new BigDecimal("1.20"));
     private final QaSources sources = mock(QaSources.class);
     private JdbcTemplate jdbc;
     private AuthService auth;
@@ -111,17 +117,24 @@ class QaIntegrationIT {
         anthropic = new QaProvider(
                 "anthropic",
                 "claude-haiku-5-5",
-                new QaPrices(new BigDecimal("0.10"), new BigDecimal("0.50")),
+                new QaPrices(
+                        new BigDecimal("0.10"),
+                        new BigDecimal("0.01"),
+                        new BigDecimal("0.125"),
+                        new BigDecimal("0.50")),
                 claude,
                 true);
-        models = new QaModels(anthropic, deepseek, "anthropic");
+        models = modelSet(anthropic);
         ledger = new QaLedger(jdbc, policy, candy(), clock, models);
         qa = service();
-        when(model.complete(any(), any())).thenAnswer(call -> {
-            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
-                    .isFalse();
-            return noAnswer();
-        });
+        doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
+                    assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                            .isFalse();
+                    return noAnswer();
+                })
+                .when(model)
+                .complete(any(), any(), any());
     }
 
     @AfterEach
@@ -141,7 +154,7 @@ class QaIntegrationIT {
                 .isInstanceOf(QaException.class)
                 .hasMessageContaining("allowance");
         assertThat(qa.allowance(owner).remaining()).isZero();
-        verify(model, times(5)).complete(any(), any());
+        verify(model, times(5)).complete(any(), any(), any());
         assertThat(number("select sum(cost_micros) from qa_runs")).isEqualTo(5 * prices.cost(100, 20));
         assertThat(number("select sum(reserved_micros) from qa_budget_days")).isZero();
         assertThat(jdbc.queryForList("select row_to_json(qa_runs)::text from qa_runs", String.class)
@@ -164,39 +177,45 @@ class QaIntegrationIT {
 
     @Test
     void failureBeforeDispatchRefundsCandyAndDoesNotConsumeACall() {
-        doThrow(new QaException("INPUT_LIMIT", "Too much text")).when(model).validate(any());
+        doThrow(new QaException("INPUT_LIMIT", "Too much text")).when(model).complete(any(), any(), any());
         QaService.Reply reply = qa.ask(key, workspace, question());
         assertThat(reply.status()).isEqualTo("FAILED");
         assertThat(reply.usage().calls()).isZero();
         assertThat(balance()).isEqualTo(5);
         assertThat(number("select sum(spent_micros+reserved_micros) from qa_budget_days"))
                 .isZero();
-        verify(model, times(0)).complete(any(), any());
+        verify(model, times(1)).complete(any(), any(), any());
     }
 
     @Test
     void uncertainPaidFailureRefundsCandyButRetainsTheCallBoundAndCannotReplay() {
-        doThrow(new QaException("UPSTREAM_UNCERTAIN", "Connection lost"))
+        doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
+                    throw new QaException("UPSTREAM_UNCERTAIN", "Connection lost");
+                })
                 .when(model)
-                .complete(any(), any());
+                .complete(any(), any(), any());
         QaService.Question input = question();
         QaService.Reply reply = qa.ask(key, workspace, input);
         assertThat(reply.code()).isEqualTo("UPSTREAM_UNCERTAIN");
         assertThat(reply.usage().uncertain()).isTrue();
-        assertThat(reply.usage().costUpperUsd()).isEqualTo(QaPolicy.dollars(deepseek.callBound(policy)));
+        assertThat(reply.usage().costUsd()).isEqualTo(QaPolicy.dollars(deepseek.callBound(policy)));
         assertThat(balance()).isEqualTo(5);
         qa.ask(key, workspace, input);
         qa.expire();
         assertThat(balance()).isEqualTo(5);
-        verify(model, times(1)).complete(any(), any());
+        verify(model, times(1)).complete(any(), any(), any());
     }
 
     @Test
     void clarificationReleasesConcurrencyAndContinuesOnceWithTheSameWishAndRunBudget() {
         var calls = new AtomicInteger();
-        doAnswer(call -> calls.getAndIncrement() == 0 ? clarification() : noAnswer())
+        doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
+                    return calls.getAndIncrement() == 0 ? clarification() : noAnswer();
+                })
                 .when(model)
-                .complete(any(), any());
+                .complete(any(), any(), any());
         QaService.Question input = question();
         QaService.Reply waiting = qa.ask(key, workspace, input);
         assertThat(waiting.status()).isEqualTo("WAITING");
@@ -227,11 +246,12 @@ class QaIntegrationIT {
     @Test
     void revokingConsentDuringAnUpstreamCallPreventsDeliveryButStillSettlesUsageAndRefunds() {
         doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
                     machines.set(owner, key.subjectId(), Set.of());
                     return noAnswer();
                 })
                 .when(model)
-                .complete(any(), any());
+                .complete(any(), any(), any());
         QaService.Reply refused = qa.ask(key, workspace, question());
         assertThat(refused.code()).isEqualTo("OWNER_CONSENT_REQUIRED");
         assertThat(refused.paragraphs()).isEmpty();
@@ -242,7 +262,12 @@ class QaIntegrationIT {
 
     @Test
     void aCreatorLosingEligibilityCannotContinueEvenWithCandyRemaining() {
-        when(model.complete(any(), any())).thenReturn(clarification());
+        doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
+                    return clarification();
+                })
+                .when(model)
+                .complete(any(), any(), any());
         QaService.Question input = question();
         qa.ask(key, workspace, input);
         jdbc.update("update auth_accounts set site_group='VIEWER' where account_id=?", owner.accountId());
@@ -251,12 +276,17 @@ class QaIntegrationIT {
         clock.now = clock.now.plusSeconds(601);
         qa.expire();
         assertThat(balance()).isEqualTo(5);
-        verify(model, times(1)).complete(any(), any());
+        verify(model, times(1)).complete(any(), any(), any());
     }
 
     @Test
     void restartLosesOnlyTransientClarificationAndNeverReplaysOrDoubleRefunds() {
-        when(model.complete(any(), any())).thenReturn(clarification());
+        doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
+                    return clarification();
+                })
+                .when(model)
+                .complete(any(), any(), any());
         QaService.Question input = question();
         qa.ask(key, workspace, input);
         qa.close();
@@ -264,7 +294,7 @@ class QaIntegrationIT {
         assertThat(qa.status(key, workspace, input.requestId()).code()).isEqualTo("CONTINUATION_LOST");
         assertThat(qa.ask(key, workspace, input).code()).isEqualTo("CONTINUATION_LOST");
         assertThat(balance()).isEqualTo(5);
-        verify(model, times(1)).complete(any(), any());
+        verify(model, times(1)).complete(any(), any(), any());
     }
 
     @Test
@@ -272,6 +302,7 @@ class QaIntegrationIT {
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
                     assertThat(TransactionSynchronizationManager.isActualTransactionActive())
                             .isFalse();
                     entered.countDown();
@@ -279,7 +310,7 @@ class QaIntegrationIT {
                     return noAnswer();
                 })
                 .when(model)
-                .complete(any(), any());
+                .complete(any(), any(), any());
         QaService.Question input = question();
         try (var threads = Executors.newVirtualThreadPerTaskExecutor()) {
             var running = threads.submit(() -> qa.ask(key, workspace, input));
@@ -295,22 +326,23 @@ class QaIntegrationIT {
             }
             assertThat(running.get(10, TimeUnit.SECONDS).status()).isEqualTo("COMPLETED");
         }
-        verify(model, times(1)).complete(any(), any());
+        verify(model, times(1)).complete(any(), any(), any());
     }
 
     @Test
     void expiryBooksAnUnknownCallBeforeLateCompletionAndPreventsItsAnswerFromEscaping() {
         doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
                     clock.now = clock.now.plusSeconds(91);
                     qa.expire();
                     return noAnswer();
                 })
                 .when(model)
-                .complete(any(), any());
+                .complete(any(), any(), any());
         QaService.Reply result = qa.ask(key, workspace, question());
         assertThat(result.code()).isEqualTo("QA_EXPIRED");
         assertThat(result.usage().uncertain()).isTrue();
-        assertThat(result.usage().costUpperUsd()).isEqualTo(QaPolicy.dollars(deepseek.callBound(policy)));
+        assertThat(result.usage().costUsd()).isEqualTo(QaPolicy.dollars(deepseek.callBound(policy)));
         assertThat(balance()).isEqualTo(5);
         assertThat(number("select sum(reserved_micros) from qa_budget_days")).isZero();
     }
@@ -329,6 +361,7 @@ class QaIntegrationIT {
     void midnightDoesNotReleaseConcurrencyWhileAnEarlierPaidCallIsStillInFlight() {
         clock.now = Instant.parse("2026-10-09T23:59:59Z");
         doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
                     clock.now = clock.now.plusSeconds(2);
                     qa.expire();
                     assertThatThrownBy(() -> qa.ask(owner, null, question()))
@@ -337,13 +370,13 @@ class QaIntegrationIT {
                     return noAnswer();
                 })
                 .when(model)
-                .complete(any(), any());
+                .complete(any(), any(), any());
         QaService.Reply reply = qa.ask(key, workspace, question());
         assertThat(reply.code()).isEqualTo("QA_EXPIRED");
         assertThat(reply.usage().uncertain()).isFalse();
-        assertThat(reply.usage().costUpperUsd()).isEqualTo(QaPolicy.dollars(prices.cost(100, 20)));
+        assertThat(reply.usage().costUsd()).isEqualTo(QaPolicy.dollars(prices.cost(100, 20)));
         assertThat(balance()).isEqualTo(5);
-        verify(model, times(1)).complete(any(), any());
+        verify(model, times(1)).complete(any(), any(), any());
     }
 
     @Test
@@ -357,14 +390,17 @@ class QaIntegrationIT {
         jdbc.update("update qa_anthropic_months set spent_micros=0");
         assertThat(qa.ask(owner, null, input).selection()).isEqualTo(reply.selection());
         verifyNoInteractions(claude);
-        verify(model, times(1)).complete(any(), any());
+        verify(model, times(1)).complete(any(), any(), any());
     }
 
     @Test
     void uncertainClaudeCallNeverFallsBackAndKeepsItsMonthlyChargeAfterCandyRefund() {
-        doThrow(new QaException("UPSTREAM_UNCERTAIN", "Connection lost"))
+        doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
+                    throw new QaException("UPSTREAM_UNCERTAIN", "Connection lost");
+                })
                 .when(claude)
-                .complete(any(), any());
+                .complete(any(), any(), any());
         QaService.Question input = new QaService.Question(UUID.randomUUID(), "Find public papers", "anthropic");
         QaService.Reply reply = qa.ask(key, workspace, input);
         assertThat(reply.usage().uncertain()).isTrue();
@@ -373,22 +409,27 @@ class QaIntegrationIT {
         assertThat(number("select reserved_micros from qa_anthropic_months")).isZero();
         assertThat(balance()).isEqualTo(5);
         qa.ask(key, workspace, input);
-        verify(claude, times(1)).complete(any(), any());
+        verify(claude, times(1)).complete(any(), any(), any());
         verifyNoInteractions(model);
     }
 
     @Test
     void refusalSettlesReportedUsageRefundsCandyAndNeverExecutesToolsOrFallsBack() {
-        when(claude.complete(any(), any()))
-                .thenReturn(new QaModel.Completion(
-                        List.of(new QaModel.Call("ignored", "function", new QaModel.Function("search", "{}"))),
-                        100,
-                        20,
-                        0,
-                        "Refused",
-                        "",
-                        null,
-                        true));
+        doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
+                    return new QaModel.Completion(
+                            List.of(new QaModel.Call("ignored", "function", new QaModel.Function("search", "{}"))),
+                            100,
+                            20,
+                            0,
+                            0,
+                            "Refused",
+                            "",
+                            null,
+                            true);
+                })
+                .when(claude)
+                .complete(any(), any(), any());
         var input = new QaService.Question(UUID.randomUUID(), "Find public papers", "anthropic");
         QaService.Reply reply = qa.ask(key, workspace, input);
         assertThat(reply.status()).isEqualTo("FAILED");
@@ -400,7 +441,7 @@ class QaIntegrationIT {
         assertThat(number("select reserved_micros from qa_anthropic_months")).isZero();
         assertThat(balance()).isEqualTo(5);
         assertThat(qa.ask(key, workspace, input).code()).isEqualTo("MODEL_REFUSED");
-        verify(claude, times(1)).complete(any(), any());
+        verify(claude, times(1)).complete(any(), any(), any());
         verifyNoInteractions(model, sources);
     }
 
@@ -448,14 +489,66 @@ class QaIntegrationIT {
                         .run()));
         clock.now = Instant.parse("2026-11-01T00:00:01Z");
         var changed = new QaProvider(
-                "anthropic", "different-model", new QaPrices(new BigDecimal("99"), new BigDecimal("99")), claude, true);
-        var restarted = new QaLedger(jdbc, policy, candy(), clock, new QaModels(changed, deepseek, "anthropic"));
+                "anthropic",
+                "different-model",
+                new QaPrices(new BigDecimal("99"), new BigDecimal("99"), new BigDecimal("99"), new BigDecimal("99")),
+                claude,
+                true);
+        var restarted = new QaLedger(jdbc, policy, candy(), clock, modelSet(changed));
         QaLedger.Run settled = authority.record(owner.accountId(), () -> restarted.settle(run, noAnswer()));
         authority.record(owner.accountId(), () -> restarted.expire(settled));
         assertThat(number("select spent_micros from qa_anthropic_months where month='2026-10-01'"))
                 .isEqualTo(anthropic.prices().cost(100, 20));
         assertThat(number("select reserved_micros from qa_anthropic_months")).isZero();
         assertThat(qa.allowance(owner).anthropicBudget().remainingUsd()).isEqualTo("20.000000");
+    }
+
+    @Test
+    void aPriceReloadAffectsNewQuestionsWhileTheWholeOldConversationKeepsItsFourRates() throws Exception {
+        Path file = directory.resolve("prices.json");
+        String catalog = Files.readString(Path.of("src/main/resources/qa/prices.json"));
+        Files.writeString(file, catalog);
+        var book = new QaPriceBook(
+                JsonMapper.shared(),
+                file,
+                Set.of(
+                        new QaPriceBook.Key("anthropic", anthropic.model()),
+                        new QaPriceBook.Key("deepseek", deepseek.model())),
+                clock);
+        models = new QaModels(anthropic, deepseek, "anthropic", book);
+        ledger = new QaLedger(jdbc, policy, candy(), clock, models);
+        qa.close();
+        qa = service();
+        var count = new AtomicInteger();
+        doAnswer(call -> {
+                    call.getArgument(2, Runnable.class).run();
+                    QaModel.Completion turn = count.getAndIncrement() == 0 ? clarification() : noAnswer();
+                    return new QaModel.Completion(turn.calls(), 2100, 10, 1000, 1000, "", "", null, false);
+                })
+                .when(claude)
+                .complete(any(), any(), any());
+        var input = new QaService.Question(UUID.randomUUID(), "Find public papers", "anthropic");
+        QaService.Reply waiting = qa.ask(owner, null, input);
+        assertThat(waiting.usage().costUsd()).isEqualTo("0.000150");
+        assertThat(waiting.usage().cacheReadTokens()).isEqualTo(1000);
+        assertThat(waiting.usage().cacheWriteTokens()).isEqualTo(1000);
+        Files.writeString(
+                file,
+                catalog.replace("0.10", "0.20")
+                        .replace("0.01", "0.02")
+                        .replace("0.125", "0.25")
+                        .replace("0.50", "1.00"));
+        clock.now = clock.now.plusSeconds(6);
+        qa.allowance(owner);
+        QaService.Reply continued =
+                qa.resume(owner, null, new QaService.Choice(input.requestId(), waiting.revision(), "One article"));
+        assertThat(continued.usage().costUsd()).isEqualTo("0.000300");
+        QaService.Reply fresh =
+                qa.ask(owner, null, new QaService.Question(UUID.randomUUID(), "Find new papers", "anthropic"));
+        assertThat(fresh.usage().costUsd()).isEqualTo("0.000300");
+        assertThat(number("select spent_micros from qa_anthropic_months")).isEqualTo(600);
+        assertThat(number("select reserved_micros from qa_anthropic_months")).isZero();
+        assertThat(number("select spent_micros from qa_budget_days")).isEqualTo(600);
     }
 
     @Test
@@ -469,6 +562,16 @@ class QaIntegrationIT {
         assertThat(jdbc.queryForList("select row_to_json(qa_runs)::text from qa_runs", String.class)
                         .toString())
                 .doesNotContain("Public provider reasoning.");
+    }
+
+    private QaModels modelSet(QaProvider chosen) {
+        return new QaModels(
+                chosen,
+                deepseek,
+                "anthropic",
+                new QaPriceBook(Map.of(
+                        new QaPriceBook.Key(chosen.id(), chosen.model()), chosen.prices(),
+                        new QaPriceBook.Key(deepseek.id(), deepseek.model()), deepseek.prices())));
     }
 
     private DefaultQaService service() {
@@ -502,6 +605,7 @@ class QaIntegrationIT {
                 List.of(new QaModel.Call("call_1", "function", new QaModel.Function(name, arguments))),
                 100,
                 20,
+                0,
                 0,
                 "",
                 "Public provider reasoning.",

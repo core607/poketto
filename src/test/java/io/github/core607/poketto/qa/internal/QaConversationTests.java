@@ -113,8 +113,8 @@ class QaConversationTests {
     @Test
     void plainTextCannotBypassTheAnswerToolAndThinkingIsPreservedForTheNextTurn() {
         var conversation = conversation();
-        var completion =
-                new QaModel.Completion(List.of(), 100, 20, 0, "An unsupported answer.", "Full reasoning.", null, false);
+        var completion = new QaModel.Completion(
+                List.of(), 100, 20, 0, 0, "An unsupported answer.", "Full reasoning.", null, false);
         assertThat(conversation.accept(completion, () -> {})).isInstanceOf(QaConversation.Continue.class);
         assertThat(conversation.messages().get(2).reasoning()).isEqualTo("Full reasoning.");
         assertThat(conversation.messages().getLast().content()).contains("Finish only with answer");
@@ -140,7 +140,7 @@ class QaConversationTests {
     }
 
     private static QaModel.Completion turn(QaModel.Call... calls) {
-        return new QaModel.Completion(List.of(calls), 100, 20, 0, "", "", null, false);
+        return new QaModel.Completion(List.of(calls), 100, 20, 0, 0, "", "", null, false);
     }
 
     private static QaModel.Call call(String id, String name, String arguments) {

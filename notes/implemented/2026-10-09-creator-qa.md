@@ -21,12 +21,17 @@ wire behavior, limits and user-visible failure handling.
 Account and shared-budget transactions reserve the complete run before any paid
 call. Every dispatch is recorded first. Unknown outcomes consume that call's
 conservative reservation rather than returning possibly spent money to admission.
-Known token reports settle against configured peak uncached prices. Failed wishes
+Known reports settle disjoint ordinary-input, cache-read, cache-write and output
+usage at the question's four snapshotted rates. Atomic price-catalog reloads affect
+new questions only; invalid updates retain the last valid catalog. Failed wishes
 refund candy independently of money already spent. Account/request identities
 remain in PostgreSQL so restart or deletion of transient text cannot allow replay.
 Database transactions never span upstream or public-content I/O.
 
-Native Anthropic and DeepSeek adapters share that ledger. Server-owned models,
+Spring AI Anthropic and DeepSeek models share that ledger. The application keeps
+the bounded tool loop; framework retries cannot create unrecorded paid work. The
+official Anthropic SDK transport uses the same Spring HTTP limits, including a
+narrow empty-response bridge for Spring AI 2.0.1's lost refusal/usage metadata. Server-owned models,
 prices and credentials keep browser selection from bypassing cost admission.
 Anthropic additionally reserves a shared UTC monthly budget under the same lock.
 An insufficient month selects DeepSeek before dispatch; errors after dispatch
@@ -62,6 +67,10 @@ private text retention and deletion duties without a current product need. Blind
 retrying a lost provider response risks a second paid operation. Reserving only an
 average request price cannot bound a multi-turn question or missing usage. Waiting
 inside a model execution slot for a user choice wastes scarce concurrency.
+Handwritten provider codecs duplicate SDK work. Reading current prices at
+settlement changes a question's admitted cost; a fixed catalog instead requires
+restarts for price edits. Invoice reconciliation remains separate from configured
+usage estimates.
 
 ## Consequences and verification
 
@@ -75,8 +84,9 @@ explicitly refuses excess capacity.
 
 `QaIntegrationIT`, `QaConversationTests`, `AnthropicQaModelTests`, `DeepSeekQaModelTests`,
 `PlazaQaSourcesTests` and the [site-corpus acceptance](../../acceptance/qa/README.md)
-pin these boundaries. Chrome verifies DeepSeek selection, public thinking/tool disclosure and cited answers
-through the real provider. Anthropic interoperability and delivery remain pending.
+pin these boundaries. Earlier native-adapter acceptance verified provider interoperability and Chrome
+questions. The Spring AI migration and classified pricing still require current
+browser/provider acceptance and delivery.
 The plaza foundation, community, [game](2026-10-09-pocket-games.md), public delivery,
 repository authority and independent retrieval records retain their respective
 scopes. This decision partially supersedes the requirements'

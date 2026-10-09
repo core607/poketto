@@ -43,7 +43,7 @@ class AnthropicQaModelTests {
                 .build();
         model = new AnthropicQaModel(
                 http,
-                URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/v1/messages"),
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort()),
                 "synthetic-anthropic-key",
                 "claude-haiku-5-5",
                 new QaPolicy(5, 2_000_000, 2, 6, 8192, 20_000_000, Duration.ofSeconds(90), ""),
@@ -58,15 +58,16 @@ class AnthropicQaModelTests {
 
     @Test
     void nativeThinkingSummaryAndOpaqueSignaturesSurviveMultipleToolResults() {
-        QaModel.Completion completion = model.complete(messages(), Duration.ofSeconds(5));
+        QaModel.Completion completion = model.complete(messages(), Duration.ofSeconds(5), () -> {});
         JsonNode request = received.get();
         assertThat(key).hasValue("synthetic-anthropic-key");
         assertThat(version).hasValue("2023-06-01");
-        assertThat(request.path("system").asText()).isEqualTo("Only public evidence.\n");
+        assertThat(request.at("/system/0/text").asText()).isEqualTo("Only public evidence.");
         assertThat(request.at("/thinking/type").asText()).isEqualTo("adaptive");
         assertThat(request.at("/thinking/display").asText()).isEqualTo("summarized");
-        assertThat(request.at("/cache_control/type").asText()).isEqualTo("ephemeral");
-        assertThat(request.at("/tool_choice/type").asText()).isEqualTo("auto");
+        assertThat(request.at("/messages/0/content/0/cache_control/type").asText())
+                .isEqualTo("ephemeral");
+        assertThat(completion.cacheReadTokens()).isEqualTo(30);
         assertThat(request.at("/tools/0/input_schema").isObject()).isTrue();
         assertThat(completion.calls()).hasSize(2);
         assertThat(completion.reasoning()).isEqualTo("I will read the sources.");
@@ -79,9 +80,11 @@ class AnthropicQaModelTests {
                         completion.assistant(),
                         QaModel.Message.tool("toolu_a", "first result"),
                         QaModel.Message.tool("toolu_b", "second result")),
-                Duration.ofSeconds(5));
+                Duration.ofSeconds(5),
+                () -> {});
         JsonNode turns = received.get().path("messages");
-        assertThat(received.get().at("/cache_control/type").asText()).isEqualTo("ephemeral");
+        assertThat(received.get().at("/messages/2/content/1/cache_control/type").asText())
+                .isEqualTo("ephemeral");
         assertThat(turns.size()).isEqualTo(3);
         assertThat(turns.get(1).path("content"))
                 .isEqualTo(json.readTree(valid()).path("content"));
@@ -109,7 +112,10 @@ class AnthropicQaModelTests {
         status = 302;
         assertUncertainOnce();
         int before = requests.get();
-        assertThatThrownBy(() -> model.validate(List.of(QaModel.Message.text("user", "字".repeat(30000)))))
+        assertThatThrownBy(() -> model.complete(
+                        List.of(QaModel.Message.text("user", "字".repeat(30000))), Duration.ofSeconds(5), () -> {
+                            throw new AssertionError("Must not dispatch oversized input");
+                        }))
                 .isInstanceOf(QaException.class);
         assertThat(requests).hasValue(before);
     }
@@ -117,22 +123,32 @@ class AnthropicQaModelTests {
     @Test
     void aCompletePlainTextTurnIsAvailableToTheBoundedToolLoop() {
         response = """
-                {"stop_reason":"end_turn","content":[{"type":"text","text":"Need sources."}],
+                {"id":"msg_fixture","type":"message","role":"assistant","model":"claude-haiku-5-5","stop_reason":"end_turn","content":[{"type":"text","text":"Need sources."}],
                 "usage":{"input_tokens":40,"output_tokens":4}}
                 """;
-        QaModel.Completion result = model.complete(messages(), Duration.ofSeconds(5));
+        QaModel.Completion result = model.complete(messages(), Duration.ofSeconds(5), () -> {});
         assertThat(result.calls()).isEmpty();
         assertThat(result.content()).isEqualTo("Need sources.");
     }
 
     @Test
+    void authorizationFailurePreventsHttpAndPreservesItsCode() {
+        assertThatThrownBy(() -> model.complete(messages(), Duration.ofSeconds(5), () -> {
+                    throw new QaException("OWNER_CONSENT_REQUIRED", "Consent was revoked");
+                }))
+                .isInstanceOf(QaException.class)
+                .satisfies(failure -> assertThat(((QaException) failure).code()).isEqualTo("OWNER_CONSENT_REQUIRED"));
+        assertThat(requests).hasValue(0);
+    }
+
+    @Test
     void refusalIsAnExplicitResultWithReportedUsageRatherThanAnUncertainEmptyTurn() {
         response = """
-                {"stop_reason":"refusal","content":[],
+                {"id":"msg_fixture","type":"message","role":"assistant","model":"claude-haiku-5-5","stop_reason":"refusal","content":[],
                 "usage":{"input_tokens":40,"output_tokens":4}}
                 """;
         int before = requests.get();
-        QaModel.Completion result = model.complete(messages(), Duration.ofSeconds(5));
+        QaModel.Completion result = model.complete(messages(), Duration.ofSeconds(5), () -> {});
         assertThat(result.refused()).isTrue();
         assertThat(result.inputTokens()).isEqualTo(40);
         assertThat(result.outputTokens()).isEqualTo(4);
@@ -141,7 +157,7 @@ class AnthropicQaModelTests {
 
     private void assertUncertainOnce() {
         int before = requests.get();
-        assertThatThrownBy(() -> model.complete(messages(), Duration.ofSeconds(5)))
+        assertThatThrownBy(() -> model.complete(messages(), Duration.ofSeconds(5), () -> {}))
                 .isInstanceOf(QaException.class)
                 .satisfies(failure -> assertThat(((QaException) failure).code()).isEqualTo("UPSTREAM_UNCERTAIN"));
         assertThat(requests).hasValue(before + 1);
@@ -156,6 +172,7 @@ class AnthropicQaModelTests {
             exchange.getResponseHeaders().set("Location", "/v1/messages");
         }
         byte[] body = response.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
         exchange.sendResponseHeaders(status, body.length);
         try {
             exchange.getResponseBody().write(body);
@@ -171,7 +188,7 @@ class AnthropicQaModelTests {
 
     private static String valid() {
         return """
-                {"stop_reason":"tool_use","content":[
+                {"id":"msg_fixture","type":"message","role":"assistant","model":"claude-haiku-5-5","stop_reason":"tool_use","content":[
                 {"type":"thinking","thinking":"I will read the sources.","signature":"opaque-signature"},
                 {"type":"redacted_thinking","data":"encrypted"},
                 {"type":"tool_use","id":"toolu_a","name":"search","input":{"query":"rain","tag":"","offset":0}},

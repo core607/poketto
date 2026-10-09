@@ -7,10 +7,12 @@ import java.util.List;
 final class QaModels {
     private final List<QaProvider> providers;
     private final String defaultProvider;
+    private final QaPriceBook prices;
 
-    QaModels(QaProvider anthropic, QaProvider deepseek, String defaultProvider) {
+    QaModels(QaProvider anthropic, QaProvider deepseek, String defaultProvider, QaPriceBook prices) {
         providers = List.of(anthropic, deepseek);
         this.defaultProvider = defaultProvider;
+        this.prices = prices;
         find(defaultProvider);
     }
 
@@ -18,6 +20,7 @@ final class QaModels {
         String selected = id == null ? defaultProvider : id;
         return providers.stream()
                 .filter(value -> value.id().equals(selected))
+                .map(value -> value.withPrices(prices.require(value.id(), value.model())))
                 .findFirst()
                 .orElseThrow(() -> new QaException("UNKNOWN_MODEL", "Select a configured QA model"));
     }
@@ -39,6 +42,10 @@ final class QaModels {
     }
 
     List<QaService.ModelOption> options(QaPolicy policy) {
-        return providers.stream().map(value -> value.option(policy)).toList();
+        return providers.stream().map(value -> find(value.id()).option(policy)).toList();
+    }
+
+    void refreshPrices() {
+        prices.refresh();
     }
 }

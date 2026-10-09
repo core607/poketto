@@ -67,6 +67,7 @@ final class DefaultQaService implements QaService, AutoCloseable {
     @Override
     public Reply ask(AuthPrincipal actor, WorkspaceId connection, Question input) {
         requireAvailable();
+        models.refreshPrices();
         QaLedger.Start started = authority.with(
                 actor,
                 connection,
@@ -127,6 +128,7 @@ final class DefaultQaService implements QaService, AutoCloseable {
     @Override
     public Allowance allowance(AuthPrincipal actor) {
         requireAvailable();
+        models.refreshPrices();
         return authority.with(actor, null, ledger::allowance);
     }
 
@@ -183,16 +185,17 @@ final class DefaultQaService implements QaService, AutoCloseable {
     private QaModel.Completion modelTurn(
             AuthPrincipal actor, WorkspaceId connection, QaLedger.Run initial, QaLedger.Run current, Session session) {
         QaModel model = models.require(current.selection().provider()).client();
-        model.validate(session.conversation.messages());
         int thinking = session.conversation
                 .activity()
                 .start("thinking", current.selection().model(), "");
-        authority.with(
-                actor,
-                connection,
-                account -> ledger.dispatch(ledger.require(account, initial.request(), credential(actor, connection))));
-        QaModel.Completion completion =
-                model.complete(session.conversation.messages(), Duration.between(clock.instant(), current.expires()));
+        QaModel.Completion completion = model.complete(
+                session.conversation.messages(),
+                Duration.between(clock.instant(), current.expires()),
+                () -> authority.with(
+                        actor,
+                        connection,
+                        account -> ledger.dispatch(
+                                ledger.require(account, initial.request(), credential(actor, connection)))));
         record(initial, () -> ledger.settle(ledger.find(initial.account(), initial.request()), completion));
         if (completion.refused()) {
             throw new QaException("MODEL_REFUSED", "The selected model declined to answer");

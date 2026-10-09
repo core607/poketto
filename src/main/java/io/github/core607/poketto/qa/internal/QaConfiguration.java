@@ -9,8 +9,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -23,6 +25,19 @@ import tools.jackson.databind.ObjectMapper;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class QaConfiguration {
+    @Bean
+    QaPriceBook qaPriceBook(
+            ObjectMapper json,
+            @Value("${poketto.qa.prices-file:}") String file,
+            @Value("${poketto.qa.anthropic.model:claude-haiku-5-5}") String anthropic,
+            @Value("${poketto.qa.deepseek.model:deepseek-flash}") String deepseek) {
+        return new QaPriceBook(
+                json,
+                file.isBlank() ? null : Path.of(file),
+                Set.of(new QaPriceBook.Key("anthropic", anthropic), new QaPriceBook.Key("deepseek", deepseek)),
+                Clock.systemUTC());
+    }
+
     @Bean
     QaPolicy qaPolicy(
             @Value("${poketto.qa.daily-questions:5}") int daily,
@@ -47,17 +62,16 @@ class QaConfiguration {
     @Bean
     QaProvider deepseekQaProvider(
             HttpClient qaHttpClient,
+            QaPriceBook prices,
             QaPolicy policy,
             ObjectMapper json,
             @Value("${poketto.qa.deepseek.api-key:${DEEPSEEK_API_KEY:}}") String key,
             @Value("${poketto.qa.deepseek.base-url:${DEEPSEEK_BASE_URL:https://api.deepseek.com}}") String base,
-            @Value("${poketto.qa.deepseek.model:deepseek-flash}") String model,
-            @Value("${poketto.qa.deepseek.input-usd-per-million:0.30}") BigDecimal input,
-            @Value("${poketto.qa.deepseek.output-usd-per-million:1.20}") BigDecimal output) {
+            @Value("${poketto.qa.deepseek.model:deepseek-flash}") String model) {
         return new QaProvider(
                 "deepseek",
                 model,
-                new QaPrices(input, output),
+                prices.require("deepseek", model),
                 new DeepSeekQaModel(qaHttpClient, endpoint(base, "/chat/completions"), key, model, policy, json),
                 !key.isBlank());
     }
@@ -65,18 +79,17 @@ class QaConfiguration {
     @Bean
     QaProvider anthropicQaProvider(
             HttpClient qaHttpClient,
+            QaPriceBook prices,
             QaPolicy policy,
             ObjectMapper json,
             @Value("${poketto.qa.anthropic.api-key:${ANTHROPIC_API_KEY:}}") String key,
-            @Value("${poketto.qa.anthropic.base-url:https://api.anthropic.com/v1}") String base,
-            @Value("${poketto.qa.anthropic.model:claude-haiku-5-5}") String model,
-            @Value("${poketto.qa.anthropic.input-usd-per-million:0.10}") BigDecimal input,
-            @Value("${poketto.qa.anthropic.output-usd-per-million:0.50}") BigDecimal output) {
+            @Value("${poketto.qa.anthropic.base-url:https://api.anthropic.com}") String base,
+            @Value("${poketto.qa.anthropic.model:claude-haiku-5-5}") String model) {
         return new QaProvider(
                 "anthropic",
                 model,
-                new QaPrices(input, output),
-                new AnthropicQaModel(qaHttpClient, endpoint(base, "/messages"), key, model, policy, json),
+                prices.require("anthropic", model),
+                new AnthropicQaModel(qaHttpClient, endpoint(base, ""), key, model, policy, json),
                 !key.isBlank());
     }
 
@@ -84,8 +97,9 @@ class QaConfiguration {
     QaModels qaModels(
             @Qualifier("anthropicQaProvider") QaProvider anthropic,
             @Qualifier("deepseekQaProvider") QaProvider deepseek,
+            QaPriceBook prices,
             @Value("${poketto.qa.default-provider:anthropic}") String selected) {
-        return new QaModels(anthropic, deepseek, selected);
+        return new QaModels(anthropic, deepseek, selected, prices);
     }
 
     @Bean(destroyMethod = "shutdownNow")

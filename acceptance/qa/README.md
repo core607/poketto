@@ -41,8 +41,12 @@ before any further experiment. `--cases` selects comma-separated fixture IDs for
 `run.py`; it does not bypass daily allowances. Once finished, dispose only of this
 fixture project's volumes using the isolated entrance's cleanup procedure.
 
-The [2026-10-09 report](2026-10-09-results.json) records the earlier DeepSeek run and source
-hashes before thinking and provider selection; it does not verify the new adapters. Required source hits and exact-quote checks passed for these fixtures;
+The [DeepSeek report](2026-10-09-results.json) records the earlier run and source
+hashes before thinking and provider selection; it does not verify the new adapters.
+The [Anthropic report](2026-10-09-anthropic-results.json) records native Haiku 5.5
+thinking-enabled HTTP/MCP acceptance, including two initial failures and explicit
+reruns after tool-contract fixes. Its revision fields distinguish those runs.
+Required source hits and exact-quote checks passed after correction;
 they do not establish general recall, semantic entailment accuracy or an advantage
 over embedding retrieval. Plain-text rendering and actual browser controls require
 their separate Chrome acceptance.
