@@ -41,7 +41,7 @@ class QaConversationTests {
         var finished = (QaConversation.Finished) outcome;
         assertThat(finished.paragraphs().getFirst().citations().getFirst().url())
                 .isEqualTo("/s/paper/read/rain");
-        assertThat(finished.notice()).contains("不代表全站穷尽统计");
+        assertThat(finished.notice()).isEmpty();
         verify(sources).search("rain", "weather", 0);
     }
 

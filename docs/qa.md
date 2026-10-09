@@ -29,7 +29,7 @@ Before returning a citation, the platform rereads its current public page and
 checks that the read text and quoted passage still match. Source changes require
 another read; withdrawn or unavailable content cannot supply a citation. This
 checks provenance and quote fidelity, not whether every model inference follows
-logically from its quotation. Answers explicitly disclaim exhaustive site counts.
+logically from its quotation. The model must qualify claims that exceed its search coverage.
 A capacity refusal returns no sampled total or partial success.
 
 When scope is unclear, the model can return two to four choices. Nothing is

@@ -16,80 +16,84 @@ function pretty(text: string) {
 }
 
 export function QaActivity({ entries }: { entries: Activity[] }) {
-  if (!entries.length) return null;
   const running = entries.find((entry) => entry.state === "RUNNING");
-  const thoughtCount = entries.filter(
-    (entry) => entry.kind === "thinking",
+  const visible = entries.filter(
+    (entry) => entry.kind !== "thinking" || entry.output.trim().length > 0,
+  );
+  if (!visible.length && !running) return null;
+  const thoughtCount = visible.filter(
+    (entry) => entry.kind === "thinking" && entry.state === "COMPLETED",
   ).length;
-  const toolCount = entries.length - thoughtCount;
+  const toolCount = visible.filter((entry) => entry.kind === "tool").length;
   return (
     <div className="qa-activity" aria-label="思考与工具记录">
       <p className="qa-progress" role="status">
         {running
           ? running.kind === "thinking"
-            ? "正在思考…"
+            ? "正在处理…"
             : `${toolNames[running.name] ?? running.name}…`
           : "本轮处理记录"}
       </p>
-      <details className="qa-process" open={!!running}>
-        <summary>
-          查看处理过程 · 思考 {thoughtCount} 轮 · 工具 {toolCount} 次
-        </summary>
-        {entries.map((entry) => {
-          const thinking = entry.kind === "thinking";
-          const title = thinking
-            ? "思考"
-            : (toolNames[entry.name] ?? entry.name);
-          const state =
-            entry.state === "RUNNING"
-              ? "进行中"
-              : entry.state === "FAILED"
-                ? "未完成"
-                : "已完成";
-          return (
-            <details className="qa-step" key={entry.id}>
-              <summary>
-                <span
-                  className={`qa-step-dot qa-step-${entry.state.toLowerCase()}`}
-                  aria-hidden="true"
-                />
-                <span className="qa-step-title">{title}</span>
-                <span className="qa-step-meta">
-                  <span>{state}</span>
-                  <span className="qa-step-time">
-                    {entry.state === "RUNNING"
-                      ? ""
-                      : entry.elapsedMillis < 100
-                        ? "<0.1 秒"
-                        : `${(entry.elapsedMillis / 1000).toFixed(1)} 秒`}
+      {visible.length > 0 && (
+        <details className="qa-process" open={!!running}>
+          <summary>
+            查看处理过程
+            {thoughtCount > 0 && ` · 思考 ${thoughtCount} 轮`}
+            {toolCount > 0 && ` · 工具 ${toolCount} 次`}
+          </summary>
+          {visible.map((entry) => {
+            const thinking = entry.kind === "thinking";
+            const title = thinking
+              ? entry.state === "FAILED"
+                ? "模型调用"
+                : "思考"
+              : (toolNames[entry.name] ?? entry.name);
+            const state =
+              entry.state === "RUNNING"
+                ? "进行中"
+                : entry.state === "FAILED"
+                  ? "未完成"
+                  : "已完成";
+            return (
+              <details className="qa-step" key={entry.id}>
+                <summary>
+                  <span
+                    className={`qa-step-dot qa-step-${entry.state.toLowerCase()}`}
+                    aria-hidden="true"
+                  />
+                  <span className="qa-step-title">{title}</span>
+                  <span className="qa-step-meta">
+                    <span>{state}</span>
+                    <span className="qa-step-time">
+                      {entry.state === "RUNNING"
+                        ? ""
+                        : entry.elapsedMillis < 100
+                          ? "<0.1 秒"
+                          : `${(entry.elapsedMillis / 1000).toFixed(1)} 秒`}
+                    </span>
                   </span>
-                </span>
-              </summary>
-              <div className="qa-step-body">
-                {thinking ? (
-                  <p className="qa-thinking">
-                    {entry.output ||
-                      (entry.state === "RUNNING"
-                        ? "等待模型返回思考内容…"
-                        : "这轮模型没有返回可展示的思考内容。")}
-                  </p>
-                ) : (
-                  <>
-                    <p>调用 · {entry.name}</p>
-                    <pre>{pretty(entry.input)}</pre>
-                    {entry.output && (
-                      <>
-                        <p>{entry.state === "FAILED" ? "错误" : "结果"}</p>
-                        <pre>{pretty(entry.output)}</pre>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            </details>
-          );
-        })}
-      </details>
+                </summary>
+                <div className="qa-step-body">
+                  {thinking ? (
+                    <p className="qa-thinking">{entry.output}</p>
+                  ) : (
+                    <>
+                      <p>调用 · {entry.name}</p>
+                      <pre>{pretty(entry.input)}</pre>
+                      {entry.output && (
+                        <>
+                          <p>{entry.state === "FAILED" ? "错误" : "结果"}</p>
+                          <pre>{pretty(entry.output)}</pre>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              </details>
+            );
+          })}
+        </details>
+      )}
     </div>
   );
 }

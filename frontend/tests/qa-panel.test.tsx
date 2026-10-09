@@ -335,6 +335,7 @@ test("read-only progress displays thinking and tool results without replaying th
         selection: fallback,
         activity: [
           activity[0],
+          { ...activity[0], id: 2, output: "" },
           {
             ...activity[1],
             state: "COMPLETED",
@@ -346,6 +347,9 @@ test("read-only progress displays thinking and tool results without replaying th
     ),
   );
   assert.match(ui.container.textContent, /"total": 2/);
+  assert.equal(ui.container.querySelectorAll("details.qa-step").length, 2);
+  assert.match(ui.container.textContent, /思考 1 轮 · 工具 1 次/);
+  assert.doesNotMatch(ui.container.textContent, /没有返回可展示的思考/);
   const previous = reads;
   await ui.act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 1150));
