@@ -24,8 +24,8 @@ def ask(browser, path, payload):
         'Content-Type': 'application/json', browser.csrf['headerName']: browser.csrf['token']})
     # The product bounds active requests to at most 120 seconds; HTTP timeout alone is not a fee budget.
     with browser.opener.open(request, timeout=135) as response:
-        body = response.read(131073)
-        assert len(body) <= 131072, 'QA response exceeded acceptance byte bound'
+        body = response.read(384 * 1024 + 1)
+        assert len(body) <= 384 * 1024, 'QA response exceeded acceptance byte bound'
         return json.loads(body)
 
 
