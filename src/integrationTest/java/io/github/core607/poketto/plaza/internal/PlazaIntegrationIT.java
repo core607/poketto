@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -72,7 +73,7 @@ class PlazaIntegrationIT {
         Flyway.configure().dataSource(data).load().migrate();
         jdbc = new JdbcTemplate(data);
         jdbc.execute(
-                "truncate table workspaces,auth_accounts,oauth_clients,machine_account_grants,plaza_notes,plaza_discoveries,plaza_wallets cascade");
+                "truncate table workspaces,auth_accounts,oauth_clients,machine_account_grants,plaza_notes,plaza_discoveries,plaza_wallets,plaza_pockets cascade");
         jdbc.execute("update auth_initialization set initialized_at=null");
         workspace = WorkspaceId.random();
         jdbc.update(
@@ -121,7 +122,7 @@ class PlazaIntegrationIT {
 
     @Test
     void pocketRequiresHolderConsentAndSurvivesAReplacementConnectionAndService() {
-        String request = UUID.randomUUID().toString();
+        String request = "1";
         assertThat(run(key, "note \"hello future\" " + request).status().code()).isEqualTo("OWNER_CONSENT_REQUIRED");
         accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
         assertThat(run(key, "note \"hello future\" " + request).status().code()).isEqualTo("OK");
@@ -143,10 +144,7 @@ class PlazaIntegrationIT {
                 .isInstanceOf(AuthException.class);
         accounts.set(member, memberKey.subjectId(), Set.of(MachinePermission.POCKET));
         accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
-        assertThat(run(memberKey, "note \"member secret\" " + UUID.randomUUID())
-                        .status()
-                        .code())
-                .isEqualTo("OK");
+        assertThat(run(memberKey, "note \"member secret\" 1").status().code()).isEqualTo("OK");
         assertThat(((DefaultPlazaService.Pocket) run(key, "pocket").data()).notes())
                 .isEmpty();
         assertThatThrownBy(() -> accounts.set(memberKey, memberKey.subjectId(), Set.of(MachinePermission.POCKET)))
@@ -156,7 +154,7 @@ class PlazaIntegrationIT {
     @Test
     void concurrentRetriesWriteOnceAndDeletionDoesNotAllowResurrection() throws Exception {
         accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
-        String command = "note \"one paper\" " + UUID.randomUUID();
+        String command = "note \"one paper\" 1";
         try (var pool = Executors.newFixedThreadPool(2)) {
             var first = pool.submit(() -> run(key, command));
             var second = pool.submit(() -> run(key, command));
@@ -168,8 +166,8 @@ class PlazaIntegrationIT {
         UUID id = ((PlazaPocket.Note) notes.getFirst()).id();
         assertThat(run(key, "note --remove " + id).status().code()).isEqualTo("OK");
         assertThat(run(key, command).status().code()).isEqualTo("NOTE_REMOVED");
-        assertThat(jdbc.queryForObject("select body from plaza_notes where note_id=?", String.class, id))
-                .isEmpty();
+        assertThat(jdbc.queryForObject("select count(*) from plaza_notes where note_id=?", Long.class, id))
+                .isZero();
     }
 
     @Test
@@ -242,6 +240,59 @@ class PlazaIntegrationIT {
         assertThat(run(key, "knock").status().code()).isEqualTo("OWNER_CONSENT_REQUIRED");
     }
 
+    @Test
+    void removingMoreThanAThousandNotesKeepsThePocketUsableWithoutOldRequestResurrection() {
+        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
+        var notes = new PlazaPocket(jdbc, Clock.systemUTC());
+        accounts.withCreator(key, workspace, identity -> {
+            for (long request = 1; request <= 1005; request++) {
+                PlazaPocket.Note written = notes.write(identity.accountId(), request, "Temporary paper", "fixture");
+                notes.remove(identity.accountId(), written.id());
+            }
+            return null;
+        });
+        assertThat(jdbc.queryForObject("select count(*) from plaza_notes", Long.class))
+                .isZero();
+        assertThat(jdbc.queryForObject("select count(*) from plaza_pockets", Long.class))
+                .isEqualTo(1);
+        assertThat(((DefaultPlazaService.Pocket) run(key, "pocket").data()).nextNoteRequest())
+                .isEqualTo("1006");
+        assertThat(run(key, "note old-request 1").status().code()).isEqualTo("NOTE_REMOVED");
+        assertThat(run(key, "note fresh-request 1006").status().code()).isEqualTo("OK");
+        assertThat(run(key, "note changed-request 1006").status().code()).isEqualTo("REQUEST_CONFLICT");
+    }
+
+    @Test
+    void aSlowPublicScanDoesNotBlockPolicyChangesAndRechecksEligibilityBeforeDelivery() throws Exception {
+        AuthPrincipal member = member();
+        AuthPrincipal reader = key(member);
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        snapshots.beforeRead = () -> {
+            entered.countDown();
+            try {
+                if (!release.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Fixture scan was not released");
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Fixture scan was interrupted", interrupted);
+            }
+        };
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var read = pool.submit(() -> run(reader, "rumor needle"));
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+            var revoked = pool.submit(
+                    () -> policy.change(owner, member.accountId(), SiteGroup.VIEWER, "Concurrent downgrade"));
+            try {
+                revoked.get(3, TimeUnit.SECONDS);
+            } finally {
+                release.countDown();
+            }
+            assertThat(read.get(5, TimeUnit.SECONDS).status().code()).isEqualTo("CREATOR_REQUIRED");
+        }
+    }
+
     private AuthPrincipal key(AuthPrincipal holder) {
         return auth.authenticateApiKey(
                 auth.createApiKey(owner, workspace, holder.accountId(), Set.of(Capability.EXECUTE_REPOSITORY))
@@ -270,6 +321,7 @@ class PlazaIntegrationIT {
 
     private static final class Snapshots implements PublicContentSnapshots {
         private PublicContentSnapshot value;
+        private Runnable beforeRead = () -> {};
 
         @Override
         public void ensureReady(WorkspaceId workspace) {
@@ -283,11 +335,13 @@ class PlazaIntegrationIT {
 
         @Override
         public PublicContentSnapshot current(WorkspaceId workspace) {
+            beforeRead.run();
             return value;
         }
 
         @Override
         public <T> T withCurrent(WorkspaceId workspace, Function<PublicContentSnapshot, T> action) {
+            beforeRead.run();
             return action.apply(value);
         }
     }

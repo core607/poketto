@@ -8,12 +8,16 @@ create table machine_account_grants (
 );
 create index machine_account_grants_holder on machine_account_grants(account_id);
 
+create table plaza_pockets (
+    account_id uuid primary key,
+    next_note_request bigint not null check (next_note_request > 0)
+);
+
 create table plaza_notes (
     note_id uuid primary key,
     account_id uuid not null,
-    request_id uuid not null,
+    request_id bigint not null check (request_id > 0),
     body text not null check (char_length(body) between 0 and 1000),
-    deleted boolean not null default false,
     client_name text not null check (char_length(client_name) <= 80),
     created_at timestamptz not null,
     unique(account_id, request_id)

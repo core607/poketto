@@ -52,10 +52,13 @@ class PublicPlazaReadsTests {
 
     @Test
     void refusalNeverReturnsPartialMatchesWhenAnotherSnapshotIsUnavailable() {
-        add("one", "/a", "Needle");
+        var own = add("one", "/a", "Needle");
         var broken = add("two", "/b", "Needle");
         snapshots.values.remove(broken.workspaceId());
         assertThatThrownBy(() -> reads().search("Needle", "", 0)).isInstanceOf(ContentRepositoryException.class);
+        assertThat(reads().mirror(own.workspaceId(), 0).items())
+                .extracting(PublicPlazaReads.Card::reference)
+                .containsExactly("one/a");
     }
 
     @Test
@@ -147,6 +150,7 @@ class PublicPlazaReadsTests {
         var publication = new WorkspacePublications.Publication(id, slug, slug, true, true, "author", "", false);
         catalogue.add(publication);
         when(publications.findPublished(slug)).thenReturn(Optional.of(publication));
+        when(publications.settings(id)).thenReturn(publication);
         var article = new PublicArticle(
                 "public/source-only-name.md",
                 route,

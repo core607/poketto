@@ -21,9 +21,12 @@ raw source paths and Git history do not.
 Private pocket notes and discovery state belong to the account. The credential
 holder grants access through a browser session, independently of workspace key
 issuance. Each operation rechecks the credential, membership, creator eligibility
-and current personal grant. Account locking orders these operations with identity
-and policy changes. Notes carry request identities; deletion clears text but keeps
-a bounded receipt so replay cannot resurrect a removed note.
+and current personal grant. Short account transactions bracket public scans, so a
+slow search cannot hold policy changes behind its work; delivery rechecks current
+eligibility. Private operations retain the account guard. Notes use account-issued
+monotonic request numbers. A permanent counter rejects consumed numbers after the
+note row is deleted, bounding storage without a lifetime creation cap. Concurrent
+clients must reread the next number after a conflict.
 
 The world provides short descriptions and useful continuations; help exposes every
 action and actual lock. Mystery belongs to discoverable material, not syntax or
@@ -63,7 +66,8 @@ account state rather than an article projection. Reading still depends on comple
 valid snapshots; measured capacity can justify an incremental lexical index, and
 semantic misses can justify embeddings. This choice establishes no superiority over
 conventional RAG. Withdrawal affects subsequent operations, not already delivered
-copies. Bounded receipt retention can refuse further notes when exhausted.
+copies. A global scan still refuses when the complete corpus exceeds its budget;
+known article reads and the single-space mirror remain independent entrances.
 
 ## Verification
 

@@ -21,7 +21,7 @@ final class PlazaPocket {
 
     List<Note> notes(UUID account) {
         return jdbc.query(
-                "select note_id,body,client_name,created_at from plaza_notes where account_id=? and not deleted "
+                "select note_id,body,client_name,created_at from plaza_notes where account_id=? "
                         + "order by created_at desc,note_id limit 20",
                 (row, number) -> new Note(
                         row.getObject(1, UUID.class),
@@ -31,12 +31,14 @@ final class PlazaPocket {
                 account);
     }
 
-    Note write(UUID account, UUID request, String body, String clientName) {
+    Note write(UUID account, long request, String body, String clientName) {
+        if (request < 1) {
+            throw new IllegalArgumentException("A note request number must be positive");
+        }
         String text = body.strip();
         if (text.isEmpty() || text.codePointCount(0, text.length()) > 1000) {
             throw new PlazaException("INVALID_NOTE", "A note needs 1–1000 characters.", "--help");
         }
-        refuseRemoved(account, request);
         List<Note> existing = jdbc.query(
                 "select note_id,body,client_name,created_at from plaza_notes " + "where account_id=? and request_id=?",
                 (row, number) -> new Note(
@@ -52,14 +54,23 @@ final class PlazaPocket {
             }
             return existing.getFirst();
         }
+        long next = nextRequest(account);
+        if (request < next) {
+            throw new PlazaException(
+                    "NOTE_REMOVED", "This request wrote a removed note; it will not be recreated.", "pocket");
+        }
+        if (request != next) {
+            throw new PlazaException("REQUEST_CONFLICT", "Use the nextNoteRequest returned by pocket.", "pocket");
+        }
         if (notes(account).size() >= 20) {
             throw new PlazaException(
                     "POCKET_FULL", "Twenty notes fill the pocket; remove one before adding another.", "pocket");
         }
-        if (jdbc.queryForObject("select count(*) from plaza_notes where account_id=?", Long.class, account) >= 1000) {
-            throw new PlazaException(
-                    "NOTE_CAPACITY", "The account's retained note receipt limit has been reached.", "pocket");
-        }
+        jdbc.update(
+                "insert into plaza_pockets(account_id,next_note_request) values (?,?) "
+                        + "on conflict(account_id) do update set next_note_request=excluded.next_note_request",
+                account,
+                Math.addExact(next, 1));
         var note = new Note(UUID.randomUUID(), text, clientName, clock.instant());
         jdbc.update(
                 "insert into plaza_notes(note_id,account_id,request_id,body,client_name,created_at) values (?,?,?,?,?,?)",
@@ -72,22 +83,14 @@ final class PlazaPocket {
         return note;
     }
 
-    void remove(UUID account, UUID id) {
-        jdbc.update(
-                "update plaza_notes set body='',client_name='',deleted=true where account_id=? and note_id=?",
-                account,
-                id);
+    long nextRequest(UUID account) {
+        List<Long> values = jdbc.queryForList(
+                "select next_note_request from plaza_pockets where account_id=?", Long.class, account);
+        return values.isEmpty() ? 1 : values.getFirst();
     }
 
-    private void refuseRemoved(UUID account, UUID request) {
-        if (Boolean.TRUE.equals(jdbc.queryForObject(
-                "select exists(select 1 from plaza_notes where account_id=? and request_id=? and deleted)",
-                Boolean.class,
-                account,
-                request))) {
-            throw new PlazaException(
-                    "NOTE_REMOVED", "This request wrote a removed note; it will not be recreated.", "pocket");
-        }
+    void remove(UUID account, UUID id) {
+        jdbc.update("delete from plaza_notes where account_id=? and note_id=?", account, id);
     }
 
     Set<String> discovered(UUID account) {
