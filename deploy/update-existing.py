@@ -25,27 +25,42 @@ class NoRedirects(urllib.request.HTTPRedirectHandler):
         return None
 
 
-IDENTITY_SETTINGS = frozenset((
+APPLICATION_SETTINGS = frozenset((
     "POKETTO_RESEND_API_KEY", "POKETTO_EMAIL_FROM", "POKETTO_EMAIL_DAILY_LIMIT",
     "POKETTO_GOOGLE_CLIENT_ID", "POKETTO_GOOGLE_CLIENT_SECRET", "POKETTO_SUPPORT_EMAIL",
     "POKETTO_GITHUB_APP_ID", "POKETTO_GITHUB_CLIENT_ID", "POKETTO_GITHUB_CLIENT_SECRET",
     "POKETTO_GITHUB_PRIVATE_KEY", "POKETTO_GITHUB_WEBHOOK_SECRET",
+    'POKETTO_PLAZA_ENABLED',
+    'POKETTO_PLAZA_INTERACTIONS_ENABLED',
+    'POKETTO_QA_ENABLED',
+    'POKETTO_QA_API_KEY',
+    'POKETTO_QA_BASE_URL',
+    'POKETTO_QA_MODEL',
+    'POKETTO_QA_DAILY_QUESTIONS',
+    'POKETTO_QA_DAILY_USD',
+    'POKETTO_QA_MAX_CONCURRENCY',
+    'POKETTO_QA_MAX_ROUNDS',
+    'POKETTO_QA_MAX_OUTPUT_TOKENS',
+    'POKETTO_QA_TIMEOUT_SECONDS',
+    'POKETTO_QA_INPUT_USD_PER_MILLION',
+    'POKETTO_QA_OUTPUT_USD_PER_MILLION',
+    'POKETTO_QA_PERSONALITY',
 ))
 
 
 def read_settings(stream):
     payload = stream.read(65537)
     if len(payload) > 65536:
-        raise DeploymentError("identity settings exceed the input limit")
+        raise DeploymentError("application settings exceed the input limit")
     settings = {}
     for line in payload.split("\n"):
         if not line:
             continue
         key, separator, value = line.partition("=")
-        if separator != "=" or key not in IDENTITY_SETTINGS or key in settings:
-            raise DeploymentError("only distinct identity settings are accepted")
+        if separator != "=" or key not in APPLICATION_SETTINGS or key in settings:
+            raise DeploymentError("only distinct application settings are accepted")
         if any(ord(char) < 32 or ord(char) == 127 for char in value):
-            raise DeploymentError("identity settings must be single-line values")
+            raise DeploymentError("application settings must be single-line values")
         settings[key] = value
     return settings
 
@@ -296,8 +311,8 @@ class Installation:
 
     def update(self, revision, app_image, frontend_image, check_only=False, settings=None):
         settings = settings or {}
-        if not settings.keys() <= IDENTITY_SETTINGS:
-            raise DeploymentError("only identity settings can be changed")
+        if not settings.keys() <= APPLICATION_SETTINGS:
+            raise DeploymentError("only application settings can be changed")
         image_refs = {"app": app_image, "frontend": frontend_image}
         image_ids = {name: self.image(reference, revision) for name, reference in image_refs.items()}
         containers = self.containers()
@@ -322,7 +337,7 @@ class Installation:
         actual_environment = declared_environment(rendered, "app")
         for name in image_refs:
             if any(declared_environment(rendered, name).get(key) != value for key, value in changes[name].items()):
-                raise DeploymentError("candidate does not preserve literal identity settings")
+                raise DeploymentError("candidate does not preserve literal application settings")
         if settings:
             validate_identity(actual_environment)
         comparable = json.loads(json.dumps(rendered))
@@ -338,7 +353,7 @@ class Installation:
             if not comparable["services"][name].get("environment") and "environment" not in before["services"][name]:
                 comparable["services"][name].pop("environment", None)
         if comparable != before:
-            raise DeploymentError("candidate changes more than selected images and identity settings")
+            raise DeploymentError("candidate changes more than selected images and application settings")
         # Every image this installation deployed stays on record until it is retired or gone.
         known = set(state.get("knownImages", [])) | set(state.get("imageIds", {}).values()) if state else set()
         if state and state["status"] == "pending":
