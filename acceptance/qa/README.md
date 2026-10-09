@@ -50,3 +50,7 @@ Required source hits and exact-quote checks passed after correction;
 they do not establish general recall, semantic entailment accuracy or an advantage
 over embedding retrieval. Plain-text rendering and actual browser controls require
 their separate Chrome acceptance.
+
+The [Spring AI report](2026-10-10-spring-ai-results.json) records classified cache
+usage through the framework-backed DeepSeek HTTP and Claude MCP paths. Provider
+refusal remains a deterministic protocol/database test, not a forced paid probe.

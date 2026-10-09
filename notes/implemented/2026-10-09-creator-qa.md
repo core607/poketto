@@ -84,9 +84,9 @@ explicitly refuses excess capacity.
 
 `QaIntegrationIT`, `QaConversationTests`, `AnthropicQaModelTests`, `DeepSeekQaModelTests`,
 `PlazaQaSourcesTests` and the [site-corpus acceptance](../../acceptance/qa/README.md)
-pin these boundaries. Earlier native-adapter acceptance verified provider interoperability and Chrome
-questions. The Spring AI migration and classified pricing still require current
-browser/provider acceptance and delivery.
+pin these boundaries. Native-adapter and Spring AI acceptance distinguish their tested revisions.
+Framework-backed DeepSeek HTTP and Claude MCP calls verify classified cache usage;
+Chrome verifies Claude thinking, human tool summaries, details and estimated costs.
 The plaza foundation, community, [game](2026-10-09-pocket-games.md), public delivery,
 repository authority and independent retrieval records retain their respective
 scopes. This decision partially supersedes the requirements'
