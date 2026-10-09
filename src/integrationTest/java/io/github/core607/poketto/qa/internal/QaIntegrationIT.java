@@ -44,6 +44,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -413,8 +415,11 @@ class QaIntegrationIT {
         verifyNoInteractions(model);
     }
 
-    @Test
-    void refusalSettlesReportedUsageRefundsCandyAndNeverExecutesToolsOrFallsBack() {
+    @ParameterizedTest
+    @EnumSource(
+            value = QaModel.Stop.class,
+            names = {"REFUSED", "INCOMPLETE"})
+    void unfinishedTurnsSettleReportedUsageRefundCandyAndNeverExecuteToolsOrFallBack(QaModel.Stop stop) {
         doAnswer(call -> {
                     call.getArgument(2, Runnable.class).run();
                     return new QaModel.Completion(
@@ -426,21 +431,22 @@ class QaIntegrationIT {
                             "Refused",
                             "",
                             null,
-                            true);
+                            stop);
                 })
                 .when(claude)
                 .complete(any(), any(), any());
         var input = new QaService.Question(UUID.randomUUID(), "Find public papers", "anthropic");
         QaService.Reply reply = qa.ask(key, workspace, input);
         assertThat(reply.status()).isEqualTo("FAILED");
-        assertThat(reply.code()).isEqualTo("MODEL_REFUSED");
+        String code = stop == QaModel.Stop.REFUSED ? "MODEL_REFUSED" : "MODEL_INCOMPLETE";
+        assertThat(reply.code()).isEqualTo(code);
         assertThat(reply.paragraphs()).isEmpty();
         assertThat(reply.usage().calls()).isEqualTo(1);
         assertThat(reply.usage().uncertain()).isFalse();
         assertThat(number("select spent_micros from qa_anthropic_months")).isEqualTo(20);
         assertThat(number("select reserved_micros from qa_anthropic_months")).isZero();
         assertThat(balance()).isEqualTo(5);
-        assertThat(qa.ask(key, workspace, input).code()).isEqualTo("MODEL_REFUSED");
+        assertThat(qa.ask(key, workspace, input).code()).isEqualTo(code);
         verify(claude, times(1)).complete(any(), any(), any());
         verifyNoInteractions(model, sources);
     }
@@ -523,7 +529,8 @@ class QaIntegrationIT {
         doAnswer(call -> {
                     call.getArgument(2, Runnable.class).run();
                     QaModel.Completion turn = count.getAndIncrement() == 0 ? clarification() : noAnswer();
-                    return new QaModel.Completion(turn.calls(), 2100, 10, 1000, 1000, "", "", null, false);
+                    return new QaModel.Completion(
+                            turn.calls(), 2100, 10, 1000, 1000, "", "", null, QaModel.Stop.COMPLETE);
                 })
                 .when(claude)
                 .complete(any(), any(), any());
@@ -610,7 +617,7 @@ class QaIntegrationIT {
                 "",
                 "Public provider reasoning.",
                 null,
-                false);
+                QaModel.Stop.COMPLETE);
     }
 
     private QaCandy candy() {

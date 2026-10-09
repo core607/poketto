@@ -123,6 +123,8 @@ Anthropic `stop_reason: "refusal"` ends the request as `MODEL_REFUSED`, with its
 reported usage settled and unused reservations released. It never executes tools
 from that response or automatically changes providers. The page offers explicit
 DeepSeek resubmission with a new request ID and allowance, or editing without a call.
+A token-limit or other incomplete turn with valid usage ends as `MODEL_INCOMPLETE`: it
+settles that usage, refunds reserved candy, and executes no tools or automatic retry.
 
 Prices follow [Haiku 5.5's short-context tier](https://platform.claude.com/docs/en/models/haiku-5-5/overview)
 and [DeepSeek's peak uncached Flash rates](https://api-docs.deepseek.com/quick_start/pricing/),

@@ -115,6 +115,17 @@ class DeepSeekQaModelTests {
     }
 
     @Test
+    void tokenLimitKeepsReportedUsageWithoutContinuingPartialTools() {
+        response =
+                new Response(200, valid().replace("\"finish_reason\":\"tool_calls\"", "\"finish_reason\":\"length\""));
+        QaModel.Completion result = model.complete(messages(), Duration.ofSeconds(5), () -> {});
+        assertThat(result.stop()).isEqualTo(QaModel.Stop.INCOMPLETE);
+        assertThat(result.inputTokens()).isEqualTo(100);
+        assertThat(result.cacheReadTokens()).isEqualTo(60);
+        assertThat(requests).hasValue(1);
+    }
+
+    @Test
     void theDeadlineCoversABodyThatStopsArrivingAfterItsHeaders() throws IOException {
         var release = new CountDownLatch(1);
         server.removeContext("/chat/completions");

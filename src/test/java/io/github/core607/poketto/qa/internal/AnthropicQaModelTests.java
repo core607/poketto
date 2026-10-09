@@ -101,7 +101,6 @@ class AnthropicQaModelTests {
                 valid().replace("\"output_tokens\":42", "\"other\":42"),
                 valid().replace("\"input_tokens\":100", "\"input_tokens\":999999"),
                 valid().replace("\"cache_creation_input_tokens\":20", "\"cache_creation_input_tokens\":-1"),
-                valid().replace("\"stop_reason\":\"tool_use\"", "\"stop_reason\":\"max_tokens\""),
                 " ".repeat(131_073))) {
             response = body;
             assertUncertainOnce();
@@ -142,6 +141,17 @@ class AnthropicQaModelTests {
     }
 
     @Test
+    void aTruncatedTurnStillReturnsItsKnownCacheUsageForSettlement() {
+        response = valid().replace("\"stop_reason\":\"tool_use\"", "\"stop_reason\":\"max_tokens\"");
+        QaModel.Completion result = model.complete(messages(), Duration.ofSeconds(5), () -> {});
+        assertThat(result.stop()).isEqualTo(QaModel.Stop.INCOMPLETE);
+        assertThat(result.inputTokens()).isEqualTo(150);
+        assertThat(result.cacheReadTokens()).isEqualTo(30);
+        assertThat(result.cacheCreationTokens()).isEqualTo(20);
+        assertThat(requests).hasValue(1);
+    }
+
+    @Test
     void refusalIsAnExplicitResultWithReportedUsageRatherThanAnUncertainEmptyTurn() {
         response = """
                 {"id":"msg_fixture","type":"message","role":"assistant","model":"claude-haiku-5-5","stop_reason":"refusal","content":[],
@@ -149,7 +159,7 @@ class AnthropicQaModelTests {
                 """;
         int before = requests.get();
         QaModel.Completion result = model.complete(messages(), Duration.ofSeconds(5), () -> {});
-        assertThat(result.refused()).isTrue();
+        assertThat(result.stop()).isEqualTo(QaModel.Stop.REFUSED);
         assertThat(result.inputTokens()).isEqualTo(40);
         assertThat(result.outputTokens()).isEqualTo(4);
         assertThat(requests).hasValue(before + 1);

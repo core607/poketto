@@ -13,7 +13,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;
-import java.util.Set;
 import org.springframework.ai.anthropic.AnthropicCacheOptions;
 import org.springframework.ai.anthropic.AnthropicCacheStrategy;
 import org.springframework.ai.anthropic.AnthropicChatModel;
@@ -80,7 +79,6 @@ final class AnthropicQaModel implements QaModel {
         Generation result = response.getResults().getLast();
         AssistantMessage assistant = result.getOutput();
         String reason = result.getMetadata().getFinishReason();
-        requireFinish(reason);
         var usage = response.getMetadata().getUsage();
         long read = usage.getCacheReadInputTokens() == null ? 0 : usage.getCacheReadInputTokens();
         long write = usage.getCacheWriteInputTokens() == null ? 0 : usage.getCacheWriteInputTokens();
@@ -100,7 +98,7 @@ final class AnthropicQaModel implements QaModel {
                 assistant.getText(),
                 thinking,
                 assistant,
-                "refusal".equals(reason));
+                stop(reason));
     }
 
     private void inspect(byte[] bytes) {
@@ -115,24 +113,25 @@ final class AnthropicQaModel implements QaModel {
             if (message.content().isEmpty()) {
                 // Spring AI 2.0.1 drops usage/stop_reason and logs the prompt on this branch.
                 String reason = message.stopReason().map(Object::toString).orElse("");
-                requireFinish(reason);
                 var usage = message.usage();
                 long read = usage.cacheReadInputTokens().orElse(0L);
                 long write = usage.cacheCreationInputTokens().orElse(0L);
                 long input = Math.addExact(usage.inputTokens(), Math.addExact(read, write));
                 requireUsage(input, usage.outputTokens());
                 throw new EmptyResponse(new Completion(
-                        List.of(), input, usage.outputTokens(), write, read, "", "", null, "refusal".equals(reason)));
+                        List.of(), input, usage.outputTokens(), write, read, "", "", null, stop(reason)));
             }
         } catch (IOException malformed) {
             throw new QaException("UPSTREAM_UNCERTAIN", "The Anthropic response was malformed", malformed);
         }
     }
 
-    private static void requireFinish(String reason) {
-        if (!Set.of("tool_use", "end_turn", "refusal").contains(reason)) {
-            throw new IllegalArgumentException("Expected a complete Anthropic tool turn");
-        }
+    private static Stop stop(String reason) {
+        return switch (reason) {
+            case "end_turn", "tool_use" -> Stop.COMPLETE;
+            case "refusal" -> Stop.REFUSED;
+            default -> Stop.INCOMPLETE;
+        };
     }
 
     private void requireUsage(long input, long output) {

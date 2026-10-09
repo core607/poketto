@@ -13,6 +13,12 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 interface QaModel {
     Completion complete(List<Message> messages, Duration remaining, Runnable beforeDispatch);
 
+    enum Stop {
+        COMPLETE,
+        REFUSED,
+        INCOMPLETE
+    }
+
     @JsonInclude(JsonInclude.Include.NON_NULL)
     record Message(
             String role,
@@ -45,8 +51,9 @@ interface QaModel {
             String content,
             String reasoning,
             AssistantMessage providerContent,
-            boolean refused) {
+            Stop stop) {
         public Completion {
+            Objects.requireNonNull(stop, "Completion stop status is required");
             if (calls == null || calls.stream().anyMatch(Objects::isNull)) {
                 throw new IllegalArgumentException("Missing tool call list");
             }

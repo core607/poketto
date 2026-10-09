@@ -71,9 +71,10 @@ final class DeepSeekQaModel implements QaModel {
 
     private Completion completion(ChatResponse response) {
         var generation = response.getResult();
-        if (!Set.of("STOP", "TOOL_CALLS").contains(generation.getMetadata().getFinishReason())) {
-            throw new IllegalArgumentException("Expected a complete DeepSeek tool turn");
-        }
+        Stop stop =
+                Set.of("STOP", "TOOL_CALLS").contains(generation.getMetadata().getFinishReason())
+                        ? Stop.COMPLETE
+                        : Stop.INCOMPLETE;
         var usage = (DeepSeekApi.Usage) response.getMetadata().getUsage().getNativeUsage();
         requireUsage(usage);
         long read = usage.promptTokensDetails() == null
@@ -93,7 +94,7 @@ final class DeepSeekQaModel implements QaModel {
                 assistant.getText(),
                 assistant.getReasoningContent(),
                 assistant,
-                false);
+                stop);
     }
 
     private void requireUsage(DeepSeekApi.Usage usage) {
