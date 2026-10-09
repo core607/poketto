@@ -9,7 +9,7 @@ test("game documents deny API connections and only their static modules receive 
   const frame = GET(new NextRequest("https://pocket.example/games/frame"));
   const policy = frame.headers.get("Content-Security-Policy")!;
   assert.match(policy, /connect-src 'none'/);
-  assert.match(policy, /worker-src blob:/);
+  assert.match(policy, /worker-src data:/);
   const scripts = policy
     .split("; ")
     .find((value) => value.startsWith("script-src"))!;
@@ -36,6 +36,27 @@ test("game documents deny API connections and only their static modules receive 
       "Content-Security-Policy",
     ),
     null,
+  );
+});
+
+test("the frame policy follows the public gateway host rather than the standalone listener", () => {
+  const response = GET(
+    new NextRequest("http://0.0.0.0:3000/games/frame", {
+      headers: { host: "pocket.example:8443", "x-forwarded-proto": "https" },
+    }),
+  );
+  const csp = response.headers.get("Content-Security-Policy")!;
+  assert.match(csp, /https:\/\/pocket\.example:8443\/games\/frame\.mjs/);
+  assert.match(csp, /https:\/\/pocket\.example:8443\/games\/runtime\.mjs/);
+  assert.doesNotMatch(csp, /0\.0\.0\.0|3000/);
+  assert.match(csp, /connect-src 'none'/);
+  assert.equal(
+    GET(
+      new NextRequest("http://localhost/games/frame", {
+        headers: { host: "user@other.example" },
+      }),
+    ).status,
+    400,
   );
 });
 
