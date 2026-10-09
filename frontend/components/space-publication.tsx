@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, message } from "../lib/browser-api";
 import { spaceHref } from "../lib/format";
 import { useConfirmation } from "./confirmation";
+import { GameValidation } from "./game-validation";
 
 import { PublicationRestrictions } from "./site-review";
 
@@ -407,6 +408,7 @@ export function SpacePublication({
           </div>
         </section>
       )}
+      <GameValidation key={workspaceId} workspaceId={workspaceId} />
     </div>
   );
 }

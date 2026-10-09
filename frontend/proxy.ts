@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { coverRoute } from "./lib/format";
 
 export function proxy(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  // The opaque game frame owns a stricter policy with no API/network access.
+  if (path === "/games/frame") return NextResponse.next();
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const csp = [
     "default-src 'self'",
@@ -24,7 +27,10 @@ export function proxy(request: NextRequest) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   // Pages carry a per-request nonce and are never reused; a header set here would replace the
   // caching that build-time files and the cover address declare for themselves.
-  const path = request.nextUrl.pathname;
+  if (path === "/games/runtime.mjs" || path === "/games/frame.mjs") {
+    response.headers.set("Access-Control-Allow-Origin", "*");
+    response.headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+  }
   if (!BUILD_FILES.has(path) && coverRoute(path) === undefined)
     response.headers.set("Cache-Control", "no-store");
   return response;

@@ -26,6 +26,7 @@ import { JsonLd, absoluteUrl } from "../../../../../components/json-ld";
 import { Markdown } from "../../../../../components/markdown";
 import { Gallery } from "../../../../../components/gallery";
 import { ArticleCommunity } from "../../../../../components/article-community";
+import { GamePlayer } from "../../../../../components/game-player";
 import {
   CollectionPanel,
   hasCollectionPanel,
@@ -252,6 +253,9 @@ export default async function Article({
             route={value.route}
             body={value.body}
           />
+        )}
+        {value.tags.includes("小游戏") && (
+          <GamePlayer space={space} articleId={value.articleId} />
         )}
         <ArticleCommunity space={space} articleId={value.articleId} />
         <ViewBeacon space={space} route={value.route} />
