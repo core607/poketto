@@ -1,6 +1,7 @@
 package io.github.core607.poketto.community.internal;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
+import io.github.core607.poketto.auth.CommunityAccounts;
 import io.github.core607.poketto.auth.MachineAccounts;
 import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.community.Community;
@@ -12,6 +13,7 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -27,6 +29,8 @@ final class JdbcMachineCommunity implements MachineCommunity {
     private final PlatformTransactionManager transactions;
     private final CommunityTargets targets;
     private final CommunityComments comments;
+    private final CommunityAccounts profiles;
+    private final CommunityActivity activity;
 
     JdbcMachineCommunity(
             JdbcTemplate jdbc,
@@ -34,13 +38,17 @@ final class JdbcMachineCommunity implements MachineCommunity {
             PublicationGuard publications,
             PlatformTransactionManager transactions,
             CommunityTargets targets,
-            CommunityComments comments) {
+            CommunityComments comments,
+            CommunityAccounts profiles,
+            CommunityActivity activity) {
         this.jdbc = jdbc;
         this.accounts = accounts;
         this.publications = publications;
         this.transactions = transactions;
         this.targets = targets;
         this.comments = comments;
+        this.profiles = profiles;
+        this.activity = activity;
     }
 
     @Override
@@ -81,6 +89,7 @@ final class JdbcMachineCommunity implements MachineCommunity {
         var input = new Signature(signature);
         accounts.withCreator(actor, connectionWorkspace, identity -> {
             requireConsent(identity);
+            activity.consume(identity.accountId(), "AGENT_SIGNATURE", 10, 100);
             jdbc.update(
                     "insert into community_agent_signatures(account_id,signature) values (?,?) "
                             + "on conflict(account_id) do update set signature=excluded.signature",
@@ -101,21 +110,33 @@ final class JdbcMachineCommunity implements MachineCommunity {
                 viewer.accountId());
         var papers = new ArrayList<Paper>();
         for (UUID id : candidates) {
-            CommunityComments.Row row = comments.get(id, false);
-            if (!comments.visible(row, viewer.accountId())) {
-                continue;
-            }
-            Optional<Community.ArticleCard> article = targets.card(row.workspace(), row.articleId());
-            if (article.isPresent()) {
-                String name = jdbc.queryForObject(
-                        "select display_name from auth_accounts where account_id=?", String.class, row.author());
-                papers.add(new Paper(id, article.get(), name, excerpt(row.body())));
-            }
+            paper(id, viewer.accountId()).ifPresent(papers::add);
             if (papers.size() == 5) {
                 break;
             }
         }
         return List.copyOf(papers);
+    }
+
+    private Optional<Paper> paper(UUID id, UUID viewer) {
+        try {
+            CommunityComments.Row row = comments.get(id, false);
+            if (!comments.visible(row, viewer)) {
+                return Optional.empty();
+            }
+            CommunityAccounts.Profile profile =
+                    profiles.profiles(Set.of(row.author())).get(row.author());
+            if (profile == null) {
+                return Optional.empty();
+            }
+            return targets.card(row.workspace(), row.articleId())
+                    .map(article -> new Paper(id, article, profile.displayName(), excerpt(row.body())));
+        } catch (CommunityException missing) {
+            if (missing.code() != CommunityException.Code.UNAVAILABLE) {
+                throw missing;
+            }
+            return Optional.empty();
+        }
     }
 
     private String attributed(String body, UUID account, String client) {
