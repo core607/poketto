@@ -426,13 +426,14 @@ class McpProtocolIntegrationIT {
         assertThat(denied.path("structuredContent").path("status").path("code").stringValue())
                 .isEqualTo("OWNER_CONSENT_REQUIRED");
         machineAccounts.set(owner, key, Set.of(MachinePermission.POCKET));
-        String command = "note \"PRIVATE_POCKET_PROTOCOL_SENTINEL\" " + UUID.randomUUID();
+        String command = "note \"PRIVATE_POCKET_PROTOCOL_SENTINEL\" 1";
         JsonNode written = call(token, first, "wander", Map.of("command", command));
         assertThat(written.path("isError").booleanValue()).isFalse();
         assertThat(written.path("content").get(0).path("text").stringValue()).endsWith("\n[ok] OK");
         JsonNode resumed = call(token, second, "wander", Map.of("command", "pocket"));
         assertThat(resumed.path("structuredContent")
                         .path("data")
+                        .path("notes")
                         .get(0)
                         .path("body")
                         .stringValue())

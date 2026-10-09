@@ -140,11 +140,24 @@ final class PublicPlazaReads {
     }
 
     Page mirror(WorkspaceId workspace, int offset) {
-        return catalogue(sources -> search(
-                sources.stream()
-                        .filter(source -> source.publication().workspaceId().equals(workspace))
-                        .toList(),
-                new DocumentSearch("", "", null, null, offset, PAGE)));
+        WorkspacePublications.Publication publication = publications.settings(workspace);
+        if (!publication.publiclyEnabled()) {
+            return new Page(List.of(), 0, null, false);
+        }
+        return snapshots.withCurrent(workspace, snapshot -> {
+            var budget = new Budget(limits, nanos);
+            for (PublicArticle article : snapshot.articles()) {
+                budget.read(article);
+            }
+            Page result = search(
+                    List.of(new Source(publication, snapshot)), new DocumentSearch("", "", null, null, offset, PAGE));
+            publications.requireEnabled(workspace);
+            if (!publication.equals(publications.settings(workspace))) {
+                throw changed();
+            }
+            budget.check();
+            return result;
+        });
     }
 
     private static int boundary(String text, int offset) {
@@ -237,7 +250,10 @@ final class PublicPlazaReads {
     }
 
     private static PlazaException capacity() {
-        return new PlazaException("CAPACITY", "The complete street cannot be read within its bounds.", "");
+        return new PlazaException(
+                "CAPACITY",
+                "The complete street exceeds scan capacity. Read a known article or inspect your own space.",
+                "--help");
     }
 
     record Source(WorkspacePublications.Publication publication, PublicContentSnapshot snapshot) {}

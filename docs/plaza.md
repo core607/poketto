@@ -40,8 +40,8 @@ bounded to 256 KiB.
 | `rumor <keywords> [offset]` | Literal keyword matches with snippets and public links |
 | `read <space/route> [offset]` | Current public article text and its next reading offset |
 | `mirror [offset]` | Public articles from the connection's own space |
-| `pocket` | This account's notes; requires pocket consent |
-| `note <text> <request-UUID>` | Write one note; keep the same UUID when retrying |
+| `pocket` | Account notes and the next note request number; requires pocket consent |
+| `note <text> <nextNoteRequest>` | Write one note using the number from `pocket`; keep it when retrying |
 | `note --remove <note-UUID>` | Remove one of the account's notes |
 
 `knock`, `wish`, `scribble`, `sign`, `play`, `peek` and `press` are listed but return
@@ -54,7 +54,9 @@ are UTF-16 positions and pages preserve surrogate pairs. Search uses the complet
 currently published catalogue, bounded to 256 spaces, 100,000 articles, 64 Mi
 characters of public text and metadata, five seconds and two concurrent scans.
 `CAPACITY`, `BUSY` or `PUBLICATION_UNAVAILABLE` returns no partial result or sampled
-total. Search does not fetch remote Git or start a repository executor.
+total. Search does not fetch remote Git or start a repository executor. A capacity refusal
+links to help; reading a known article still works, and `mirror` scans only the
+connection's own published space.
 
 Recently updated tags light up. A tag read by fewer than three accounts shows as
 `#???` until this account reads an associated article with pocket consent. Its
@@ -62,10 +64,13 @@ stable `@...` handle still opens the stall; keyword search never hides those pap
 The latest 512 tag discoveries are retained per account. This affects presentation,
 not access to public content. The well changes by UTC date without a model call.
 
-An account holds at most 20 active notes of 1–1000 Unicode characters each. Removed
-notes lose their text and client label but retain a deduplication receipt; replaying
-that request cannot recreate the note. At most 1000 note receipts are retained per
-account, after which further creation returns `NOTE_CAPACITY`. MCP client names
+An account holds at most 20 active notes of 1–1000 Unicode characters each. Removal
+permanently deletes the note row, text and client label. Each account retains one
+monotonically increasing request counter, so replaying a removed note's number
+cannot recreate it. The next request number is returned as a decimal string to
+avoid client numeric rounding. Concurrent new notes that reuse one number with
+different text receive `REQUEST_CONFLICT`; reread `pocket` before a new attempt.
+There is no lifetime note-count limit. MCP client names
 are sanitized and labelled self-reported; they do not prove an agent's identity.
 
 Website withdrawal and current snapshot validity are checked before delivery.
