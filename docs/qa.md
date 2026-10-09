@@ -5,6 +5,11 @@ administrators can ask about public articles. Anonymous readers and other accoun
 groups cannot call the question API. Model configuration enables normal operation;
 there is no separate paid-access activation step.
 
+`POKETTO_PLAZA_ENABLED` controls the MCP exploration entrance independently of web
+QA. Disabling `POKETTO_QA_ENABLED` rejects question, continuation and allowance
+requests; authenticated status reads and expiry/billing cleanup remain active so
+previously reserved work can settle.
+
 Questions and the public passages retrieved for them go to the configured model
 provider. Finished questions, answers and tool transcripts are not stored. The
 page retains its current answer until navigation. PostgreSQL retains account/request
@@ -36,7 +41,8 @@ Restart loses the transient conversation and ends it without replaying calls.
 
 Each active HTTP request has the configured time limit, with at most three active
 segments across two clarifications. The overall model and tool allowances never
-reset on clarification. UTC rollover expires waiting questions and ends an active
+reset on clarification. The first reached model, token or time limit ends the
+active request; unused rounds do not extend its deadline. UTC rollover expires waiting questions and ends an active
 question after its already sent call returns or times out, preserving concurrency
 and the original day's fee reservation until then. Text expiry runs independently of database
 availability; pending billing settlement resumes when the database is reachable.
