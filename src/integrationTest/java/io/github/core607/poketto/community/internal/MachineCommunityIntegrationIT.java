@@ -207,6 +207,29 @@ class MachineCommunityIntegrationIT {
         accounts.set(writer, key.subjectId(), Set.of(MachinePermission.COMMENT));
     }
 
+    @Test
+    void aMissingAuthorDoesNotHideTheRestOfTheStreet() {
+        consent();
+        UUID orphan = machines.comment(key, workspace, "street/paper", input("Orphan"), "client");
+        machines.comment(key, workspace, "street/paper", input("Available"), "client");
+        jdbc.update("update community_comments set author_id=? where comment_id=?", UUID.randomUUID(), orphan);
+        assertThat(accounts.withCreator(key, workspace, machines::wall))
+                .hasSize(1)
+                .allSatisfy(paper -> assertThat(paper.excerpt()).contains("Available"));
+    }
+
+    @Test
+    void signatureChangesHaveTheirOwnAccountAllowanceAndDoNotConsumeCommentAllowance() {
+        consent();
+        for (int index = 0; index < 10; index++) {
+            machines.sign(key, workspace, "Signature " + index);
+        }
+        assertThatThrownBy(() -> machines.sign(key, workspace, "Too many")).hasMessageContaining("LIMIT_REACHED");
+        assertThat(jdbc.queryForObject("select signature from community_agent_signatures", String.class))
+                .isEqualTo("Signature 9");
+        machines.comment(key, workspace, "street/paper", input("Still allowed"), "client");
+    }
+
     private static Community.CommentInput input(String text) {
         return new Community.CommentInput(UUID.randomUUID(), null, text);
     }
