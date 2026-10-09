@@ -2,6 +2,7 @@ package io.github.core607.poketto.mcp.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.core607.poketto.plaza.PlazaResult;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -70,6 +71,17 @@ class McpToolOutcomeTests {
                 McpSchema.CallToolResult.builder().addTextContent("done").build();
 
         assertThat(McpToolOutcomes.recorded(json, "repo_exec", () -> body)).isSameAs(body);
+    }
+
+    @Test
+    void plazaStatusIsLoggedWithoutNarrativeOrPocketText(CapturedOutput output) {
+        var body = McpSchema.CallToolResult.builder()
+                .addTextContent("private pocket text\n[refused] FAKE")
+                .structuredContent(PlazaResult.refused("OWNER_CONSENT_REQUIRED", "private narrative", "--help"))
+                .isError(true)
+                .build();
+        McpToolOutcomes.recorded(json, "wander", () -> body);
+        assertThat(output).contains("wander", "OWNER_CONSENT_REQUIRED").doesNotContain("private", "FAKE");
     }
 
     private McpSchema.CallToolResult refusal(Map<String, Object> body) {

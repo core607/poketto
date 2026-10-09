@@ -17,7 +17,7 @@ content. The `poketto` CLI mediates selected saves, media, moves, synchronizatio
 and recovery through existing authorization and atomic remote writes. Shell edits
 and local Git commits do not acknowledge a remote save.
 
-The MCP catalog contains `repo_exec`, `repo_discard`, `get_artifact`, `get_asset` and `put_asset`
+The repository MCP catalog contains `repo_exec`, `repo_discard`, `get_artifact`, `get_asset` and `put_asset`
 when the isolated executor and asset services are available. `get_artifact`
 returns execution-lease-scoped results; the two asset tools retain the bounded external
 image transfer channel. `repo_discard` is a lifecycle operation for explicit owner
@@ -31,7 +31,10 @@ Full readers also need `READ_PRIVATE`; public-only execution receives the curren
 approved projection without private metadata or original history. These scopes,
 bounded lifetimes and revocation checks remain owned by the
 [worker contract](../../executor-service/README.md). Without an executor, the
-catalog retains only available image transfer tools and cannot read or edit text.
+repository catalog retains only available image transfer tools and cannot read or edit files.
+The separate [plaza entrance](2026-10-09-plaza-foundation.md) partially supersedes
+this public-reading restriction: `wander` reads current public articles across
+spaces without a worker, with no private file or editing authority.
 
 The [directory reader](2026-09-08-repository-directory-navigation.md) and the shared
 read/patch services remain behind browser HTTP and host operations. Their
