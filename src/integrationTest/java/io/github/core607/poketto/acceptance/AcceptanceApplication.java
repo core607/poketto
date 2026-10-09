@@ -163,6 +163,7 @@ public final class AcceptanceApplication {
             Files.write(
                     directory.resolve("public/故障相册/00-unreadable.jpg"),
                     Base64.getDecoder().decode("/9j/4AAEQUL/wAALCAAgACABAREA/9k="));
+            seedGame(directory);
             git.add().addFilepattern(".").call();
             git.commit()
                     .setMessage("Create synthetic acceptance content")
@@ -179,6 +180,19 @@ public final class AcceptanceApplication {
         Path target = directory.resolve(relative);
         Files.createDirectories(target.getParent());
         Files.writeString(target, value);
+    }
+
+    private static void seedGame(Path directory) throws Exception {
+        String configured = System.getenv("POKETTO_ACCEPTANCE_GAME_PACKAGE");
+        if (configured == null || configured.isBlank()) {
+            return;
+        }
+        Path source = Path.of(configured).toRealPath();
+        Path target = directory.resolve("public/games/lantern");
+        Files.createDirectories(target);
+        for (String name : new String[] {"index.md", "index.md.game.json", "rules.mjs", "display.mjs"}) {
+            Files.copy(source.resolve(name), target.resolve(name));
+        }
     }
 
     private static String required(String name) {

@@ -23,43 +23,9 @@ consent, balances, daily state and operational availability.
 The foundation and account-interaction stages are implemented in the
 [plaza foundation](../implemented/2026-10-09-plaza-foundation.md) and
 [community record](../implemented/2026-09-23-community-interactions.md).
-Starting and advancing a game will include its new observation so the caller need
-not spend an extra call to see the result.
-
-### A single rule module for games
-
-A public article with a valid unique article ID may reference a versioned package
-declaring local resources, help and a JavaScript rule module exporting `init`,
-`observe`, and `act`; a presentation component is optional. Inputs and outputs use
-bounded serializable state. Random seeds are explicit state, not hidden process
-memory. Authors do not maintain separate browser and command-line game programs.
-
-Assign the reserved game marker only after package, path, module and bounded
-initialization/observation validation. Ignore an authored marker without valid
-capability; preserve source Git bytes and show author diagnostics. Validation is
-not a declaration that the code is trusted. Registered platform actions cannot be
-overwritten; author actions remain within a selected game.
-
-Web play executes locally in an isolated iframe, with a terminable rule worker,
-no login access and no direct platform API authority. Anonymous temporary games
-stay in the browser. A narrow save bridge lets logged-in accounts explicitly save
-and resume their own games. Browser saves are untrusted and confer no platform
-rewards or certified scores. They require bounded data, package-version checks,
-optimistic concurrency and idempotency.
-
-Agent play and publication validation use short-lived, independently bounded game
-jobs. Reuse worker containment and cleanup infrastructure, not repository copies,
-persistent shells or their privileged command bridge. Deploy a separate worker
-instance, execution account, admission pool and resource slice. Game jobs see only
-their package, state and action; no network, account credential or creative files.
-Containment failure never falls back to an ordinary process. Independent admission
-does not promise zero shared-host contention: measure mixed workload latency.
-
-An account can explicitly hand the same save between web and agent play. Changed
-package versions suspend older saves without automatic migration. Withdrawal
-blocks new delivery, cloud-save operations and server execution; it cannot stop
-code already downloaded into an offline browser. Ship a step-based puzzle and an
-author template. Real-time games and leaderboards are excluded.
+The [game record](../implemented/2026-10-09-pocket-games.md) owns shared rules,
+independent execution, untrusted saves and handoff, including remaining live
+acceptance. Creator QA is the remaining product target.
 
 ### Creator QA and measurement
 
@@ -94,11 +60,10 @@ uses the same budget system. Do not launch the FiQA 100-question experiment.
 
 ## Alternatives
 
-Remote browsers increase the single host's resource cost. Separate CLI and web
-game implementations can diverge. Pure browser games cannot be played by an MCP
-client without a browser. Shared rule modules retain both entrances, at the cost
-of a defined author contract and two isolated runtimes. Runtime purity is a
-contract tested for supported packages, not a security boundary.
+Building a production embedding index before measuring current retrieval would
+add synchronization and withdrawal coordination without evidence of improved
+answers. Keep the public-reading interface independent so measured corpus limits
+or semantic misses can justify that choice later.
 
 ## Consequences and delivery
 
@@ -108,9 +73,8 @@ remain unchanged. PostgreSQL stores account state, not article bodies. Follow th
 as each capability lands: move implemented rationale to its owner while keeping
 remaining targets proposed.
 
-The foundation and account interactions are implemented separately. Deliver the
-remaining capabilities in two changes: game validation, runtimes and saves; creator
-QA and evaluation.
+The foundation, account interactions and games have separate implementations.
+Deliver creator QA and its evaluation as the remaining change.
 Operations retain feature kill switches without per-call approval prompts.
 
 ## Acceptance

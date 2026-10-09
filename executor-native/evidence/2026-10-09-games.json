@@ -1,0 +1,90 @@
+{
+  "date": "2026-10-09",
+  "scenario": "games",
+  "scope": "Synthetic accounts and content, real Linux systemd/SRT containment and Java adapters; not browser or production acceptance",
+  "timings": "Single warm repository command before and during game saturation; fixture observations, not capacity sizing or a zero-contention claim",
+  "records": [
+    {
+      "result": "PASS",
+      "test": "root-owned-socket-rejects-non-root-peer",
+      "observation": {
+        "requestBytes": 0,
+        "accepted": true
+      }
+    },
+    {
+      "test": "native-game-shared-example-and-complete-utf8-save",
+      "result": "PASS",
+      "repositoryBaselineMillis": null,
+      "repositoryWithGameMillis": null
+    },
+    {
+      "test": "native-game-denies-host-files-credentials-tcp-unix-and-bridge",
+      "result": "PASS",
+      "repositoryBaselineMillis": null,
+      "repositoryWithGameMillis": null
+    },
+    {
+      "test": "native-game-output-memory-descendants-and-readmission",
+      "result": "PASS",
+      "repositoryBaselineMillis": null,
+      "repositoryWithGameMillis": null
+    },
+    {
+      "test": "native-game-admission-does-not-consume-repository-capacity",
+      "result": "PASS",
+      "repositoryBaselineMillis": 336.668533,
+      "repositoryWithGameMillis": 478.047875
+    },
+    {
+      "test": "native-game-account-revocation-terminates-active-job",
+      "result": "PASS",
+      "repositoryBaselineMillis": null,
+      "repositoryWithGameMillis": null
+    },
+    {
+      "test": "native-game-supervisor-loss-cleans-jobs-before-readmission",
+      "result": "PASS",
+      "repositoryBaselineMillis": null,
+      "repositoryWithGameMillis": null
+    },
+    {
+      "gameNative": "PASS"
+    },
+    {
+      "test": "selected-scenario-closes-worker-leases",
+      "result": "PASS"
+    },
+    {
+      "nativeCombined": "PASS",
+      "runtimeManifestSha256": "590dcdddd03968c6dc628743af1744b3d0e0af0831629ac5c067e4dcb5bd62c9",
+      "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+      "nativePoolSha256": "75faa364b576499074c2ea5b12b564c3cea5fd7506dfa9e7de5cc1e4f45460ed",
+      "workerSha256": "7d086b25cee76683b8a4aaee1bf43fbb8f0ca50876fa330ec2fc0077744db83f",
+      "launcherSha256": "5d78de271eec93446e5c8c79894ab95d60f400522371d2804386e66c5fc872f0",
+      "commandChannelSha256": "cb590bfd42a66370c451ccfe071a6a01e127de995446809db3f3712c65785655",
+      "shellLoopSha256": "3996e9f3c619d4be9e0398837c44d2b1b8750fa1b69d8210e58346311855e029",
+      "bridgeSha256": "a5ef1d64394149310c66752d8eae5df6086f3b79caeee5b15bdbf1af875d63be",
+      "cliSha256": "1d954975d69677ce38593cc5dc7ddba0ca71b4e616714898602f3535986f19d8",
+      "sessionFilesSha256": "2d87db3faca2978f42ca3aa21912a967a5957a5290a8b1736f58632e246a9a42",
+      "materializeSha256": "f1f6697a4e661859e3ea8749524de1af4147443e32fc5932019719d4eece2334",
+      "binaryCaptureSha256": "a63463b05997c6b0a595822759a3efc9ba4ede93a2653ae8b712932659efb62e",
+      "artifactsSha256": "0ab2cd12280b4c2791f37a650641cf9babd0e12f4859bbd04ffe54f4e4476799",
+      "nativeScriptSha256": "fe3795290a32b899a7e596ff44e5dff723f31efbc65a6253b8e5f2b5a5be03d6",
+      "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
+      "games": {
+        "workerSha256": "26f633b917c6db81b19948aafac4c644edb9e84cfc433a68f7a5b386f56f9f26",
+        "runtimeSha256": "8ee28e17266d6fce9f157fbc53252573150219f30a08defd0814fa064dbed1e8",
+        "entrySha256": "111c875956ba96850013fe6d2ede2e89463d73384ec028a8d466f894565c0c84",
+        "exampleSha256": "7d02464c5858e80f4d45d93234d911113de28b28abbf0715103d20cb42fb57e2",
+        "fixtureSha256": "5bb3bbf44282d1597320de0adc02db3d23c37830b26b07af1c9c2760a2b92fad"
+      },
+      "source": "synthetic-only",
+      "scenario": "games",
+      "processCase": null
+    },
+    {
+      "cleanup": "PASS"
+    }
+  ]
+}

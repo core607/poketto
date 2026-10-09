@@ -40,6 +40,8 @@ Poketto 是面向多账号的 Git 原生内容工作空间。每个空间对应�
 
 `/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key 或 OAuth 访问令牌，独立于浏览器会话。[CodeAct MCP 入口](2026-09-10-codeact-mcp-entrance.md)在隔离执行器和资产服务可用时提供 `repo_exec`、`repo_discard`、`get_artifact`、`get_asset` 和 `put_asset`。独立的[广场入口](2026-10-09-plaza-foundation.md)为当前创作者提供 `wander`，无需 worker 即可读取公开文章及使用本人授权的纸条、每日糖果和署名代发评论。没有独立仓库文件 CRUD 回退入口；私密文件访问和编辑要求经过验证的[本地 worker](../../executor-service/README.md)和 `EXECUTE_REPOSITORY` 权限。启用适配器不能替代真实进程边界验证。
 
+[口袋小游戏](2026-10-09-pocket-games.md)通过独立限额的游戏作业和本人授权的存档扩展 `wander`。匿名网页游玩在本地运行；注册账号可主动在网页和 agent 之间交接存档。
+
 Agent 使用普通目录列表、搜索、shell 和 Python 查看文件，并逐层读取内容仓库自己的 `AGENTS.md`。服务端不解释这些指引。[目录导航](2026-09-08-repository-directory-navigation.md)仍通过共享读取服务向浏览器 HTTP 提供功能，无须执行器。
 
 文件使用仓库相对路径，无须 frontmatter ID。可选的小写标准 UUID 标识使社区互动随文章移动，空间也是身份的一部分。PostgreSQL 保存互动，不保存文章正文或内容投影。浏览器读取返回权威 UTF-8 字节、解析出的提交、服务端 revision、诊断和明确的缺失状态。由宿主介入的 CLI 通过同一原子写入服务检查 base commit 及各选定文件的 revision 或缺失条件。图片使用精确 Git 版本或不可变托管版本；上传既不写 Git，也不发布。完整读取的执行会话保留原始 Git 历史；仅公开读取的会话只获得当前公开文件，不含原始历史或私密元数据。普通编辑在保存前留在本地。CLI 对媒体操作、选定文件保存、含引用修复的原子移动、[整个工作区同步](2026-09-15-workspace-synchronization.md)和不确定写入恢复执行授权。保存保留未选中编辑和各文件独立的基线。浏览器读取权威对象，shell 读取会话副本。[worker 参考文档](../../executor-service/README.md)定义已实现的 CLI 与生命周期契约，最终部署验收仍由第一阶段记录约束。

@@ -20,7 +20,7 @@ choose this origin.
 
 In account settings, open **广场上的助手**, load the connections and select each
 permission separately: pocket notes and balance (`POCKET`), candy claims and use
-(`WISH`), and account comments/signature (`COMMENT`). Only the credential's holder
+(`WISH`), account comments/signature (`COMMENT`) and game saves (`GAME_SAVE`). Only the credential's holder
 can change it. Repository permissions and other members' connections are unaffected.
 Revocation applies on the next command; another connection starts without consent.
 All consenting connections of one account share its notes, discoveries, candy and
@@ -54,10 +54,11 @@ bounded to 256 KiB.
 Removal reports `DELETED` or `ABSENT`; a UUID outside the account is indistinguishable
 from a missing note. An unpublished space's mirror reports `WEBSITE_NOT_PUBLIC`.
 
-`wish`, `play`, `peek` and `press` remain listed but return `UNAVAILABLE`; games and
-QA are not available yet. Claiming candy does not invoke a model or spend money.
+`play`, `peek` and `press` use the separate [game runtime and account saves](games.md)
+when enabled. `wish` remains listed but returns `UNAVAILABLE`; QA is not available
+yet. Claiming candy does not invoke a model or spend money.
 
-Lists contain at most ten entries. Use returned `nextOffset` values. Search offsets
+Article lists contain at most ten entries. Use returned `nextOffset` values. Search offsets
 are limited to 10,000; `refineQuery` asks for narrower keywords when further results
 cannot be paged. The reported total still counts the complete matching corpus. Read offsets
 are UTF-16 positions and pages preserve surrogate pairs. Search uses the complete

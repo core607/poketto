@@ -415,6 +415,10 @@ The [public plaza](plaza.md) adds `wander` for creator accounts to discover and 
 published spaces without a worker. Account settings separately grant access to
 private pocket notes, candy and signed account comments. Set `POKETTO_PLAZA_ENABLED=false` to disable the entrance.
 
+[Pocket games](games.md) share one rule package between anonymous browser play and
+independently isolated agent jobs. Account saves support explicit handoff under
+the separate `GAME_SAVE` grant.
+
 `/mcp` serves MCP over Streamable HTTP with a workspace Bearer credential (API key or
 OAuth access token), independently of browser sessions. The catalog always contains
 `get_asset` and `put_asset`; with the executor enabled it also contains `repo_exec`,
