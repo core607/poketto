@@ -81,7 +81,8 @@
   margin-block: 0.45rem;
 }
 .qa-step summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: 0.45rem minmax(0, 1fr) auto 1rem;
   align-items: center;
   gap: 0.65rem;
   padding: 0.65rem 0.5rem;
@@ -90,7 +91,7 @@
 }
 .qa-step summary::after {
   content: "+";
-  margin-left: auto;
+  text-align: center;
 }
 .qa-step[open] summary::after {
   content: "−";
@@ -112,7 +113,17 @@
   color: var(--danger);
 }
 .qa-step-meta {
-  margin-left: auto;
+  display: grid;
+  grid-template-columns: 3em 5.5em;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+.qa-step-title {
+  overflow-wrap: anywhere;
+}
+.qa-step-time {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .qa-step-body {
   padding: 0 1rem 1rem;

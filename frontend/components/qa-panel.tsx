@@ -337,11 +337,12 @@ export function QaPanel() {
           <p>{reply.notice}</p>
           <p>
             模型调用 {reply.usage.calls} 次 · 输入 {reply.usage.inputTokens} /
-            输出 {reply.usage.outputTokens} tokens · 按配置单价计入预算 $
-            {reply.usage.costUpperUsd}
-            {reply.usage.uncertain
-              ? "（含结果不明调用的保守上限）"
-              : "（费用上限）"}
+            输出 {reply.usage.outputTokens} tokens · 预算记账上限 $
+            {Number(reply.usage.costUpperUsd)
+              .toFixed(6)
+              .replace(/\.?0+$/, "")}
+            {reply.usage.uncertain ? "（含结果不明调用的保守上限）" : ""}
+            ，实际费用以上游账单为准。
           </p>
         </div>
       )}

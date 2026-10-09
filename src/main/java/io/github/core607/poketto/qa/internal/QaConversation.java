@@ -109,7 +109,12 @@ final class QaConversation {
         if (code.equals("ACTIVITY_LIMIT")) {
             throw new QaException(code, "The complete question activity exceeds its limit");
         }
-        String result = json.writeValueAsString(new Error(code));
+        String hint =
+                code.equals("INVALID_TOOL_ARGUMENTS") && call.function().name().equals("answer")
+                        ? "Use status answered with 1–6 supported paragraphs, or status insufficient_evidence with paragraphs: []. "
+                                + "Do not include an explanation paragraph when evidence is insufficient; the platform supplies that notice."
+                        : "";
+        String result = json.writeValueAsString(new Error(code, hint));
         activity.finish(entry, result, "FAILED");
         messages.add(QaModel.Message.tool(call.id(), result));
     }
@@ -275,7 +280,7 @@ final class QaConversation {
 
     private record Source(String sourceId, QaSources.Reading page) {}
 
-    private record Error(String code) {}
+    private record Error(String code, String hint) {}
 
     private record Clarified(String userAnswer) {}
 }

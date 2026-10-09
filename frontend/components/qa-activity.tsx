@@ -53,12 +53,16 @@ export function QaActivity({ entries }: { entries: Activity[] }) {
                   className={`qa-step-dot qa-step-${entry.state.toLowerCase()}`}
                   aria-hidden="true"
                 />
-                <span>{title}</span>
+                <span className="qa-step-title">{title}</span>
                 <span className="qa-step-meta">
-                  {state}
-                  {entry.elapsedMillis > 0
-                    ? ` · ${(entry.elapsedMillis / 1000).toFixed(1)} 秒`
-                    : ""}
+                  <span>{state}</span>
+                  <span className="qa-step-time">
+                    {entry.state === "RUNNING"
+                      ? ""
+                      : entry.elapsedMillis < 100
+                        ? "<0.1 秒"
+                        : `${(entry.elapsedMillis / 1000).toFixed(1)} 秒`}
+                  </span>
                 </span>
               </summary>
               <div className="qa-step-body">

@@ -92,6 +92,25 @@ class QaConversationTests {
     }
 
     @Test
+    void malformedNoEvidenceAnswerExplainsTheCorrectionWithoutDeliveringItsText() {
+        var conversation = conversation();
+        String invalid = """
+                {"status":"insufficient_evidence","paragraphs":[{"text":"No parking information found.",
+                "citations":[{"sourceId":"S1","quote":"Opening hours"}]}]}
+                """;
+        assertThat(conversation.accept(turn(call("bad", "answer", invalid)), () -> {}))
+                .isInstanceOf(QaConversation.Continue.class);
+        assertThat(conversation.messages().getLast().content())
+                .contains("INVALID_TOOL_ARGUMENTS", "insufficient_evidence with paragraphs: []")
+                .doesNotContain("No parking information found.");
+        assertThat(conversation.activity().snapshot().getFirst().state()).isEqualTo("FAILED");
+        QaConversation.Outcome corrected = conversation.accept(
+                turn(call("fixed", "answer", "{\"status\":\"insufficient_evidence\",\"paragraphs\":[]}")), () -> {});
+        assertThat(((QaConversation.Finished) corrected).paragraphs()).isEmpty();
+        assertThat(((QaConversation.Finished) corrected).notice()).contains("未找到足以回答的公开证据");
+    }
+
+    @Test
     void plainTextCannotBypassTheAnswerToolAndThinkingIsPreservedForTheNextTurn() {
         var conversation = conversation();
         var completion =
