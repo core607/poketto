@@ -283,7 +283,7 @@ class PublicDocumentControllerTests {
             Mockito.when(publications.settings(DEFAULT.id()))
                     .thenReturn(new WorkspacePublications.Publication(
                             DEFAULT.id(), "home", DEFAULT.displayName(), true, true, "", "", false));
-            return new PublicDocuments(snapshots, workspaces, assets, publications);
+            return new PublicDocuments(snapshots, workspaces, assets, publications, null);
         }
     }
 }

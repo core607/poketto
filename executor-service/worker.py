@@ -131,6 +131,12 @@ class Session:
 
 
 class Service:
+    OPERATIONS = ('OPEN', 'ATTACH', 'DISCARD', 'BASELINE', 'EXEC', 'RENEW', 'CLOSE', 'REVOKE',
+                  'BRIDGE_POLL', 'BRIDGE_COMPLETE', 'ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE',
+                  'MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT',
+                  'CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_BINARY', 'CAPTURE_READ', 'CAPTURE_RELEASE',
+                  'MATERIALIZE_BEGIN', 'MATERIALIZE_CHUNK', 'MATERIALIZE_COMMIT', 'MATERIALIZE_ABORT')
+
     def __init__(self, public_key, backend, config, clock=time.time):
         self.public_key = public_key
         self.backend = backend
@@ -177,12 +183,7 @@ class Service:
         expires = integer(p['expiresAt'], 0, 2**53)
         if issued > now + 2 or expires <= now or expires <= issued or expires - issued > self.config['leaseSeconds']:
             raise Rejected('LEASE_EXPIRED')
-        if p['operation'] not in ('OPEN', 'ATTACH', 'DISCARD', 'BASELINE',
-                                  'EXEC', 'RENEW', 'CLOSE', 'REVOKE', 'BRIDGE_POLL', 'BRIDGE_COMPLETE',
-                                  'ARTIFACT_CREATE', 'ARTIFACT_READ', 'ARTIFACT_REMOVE',
-                                  'MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT',
-                                  'CAPTURE_BEGIN', 'CAPTURE_OPTIONAL', 'CAPTURE_BINARY', 'CAPTURE_READ', 'CAPTURE_RELEASE', 'MATERIALIZE_BEGIN',
-                                  'MATERIALIZE_CHUNK', 'MATERIALIZE_COMMIT', 'MATERIALIZE_ABORT') or not isinstance(p['data'], dict):
+        if p['operation'] not in self.OPERATIONS or not isinstance(p['data'], dict):
             raise Rejected('INVALID_REQUEST')
         return p, hashlib.sha256(raw).hexdigest()
 
@@ -749,6 +750,7 @@ def checked(args, **kwargs):
 
 
 class SystemdBackend:
+    output_limit = MAX_OUTPUT
     def __init__(self, config):
         self.c = config
         self.pool = None
@@ -778,7 +780,7 @@ class SystemdBackend:
     def mount_path(self, s):
         return self.sessions / identifier(s.id)
 
-    def prepare_files(self, s, target):
+    def prepare_bootstrap(self, target):
         os.chown(target, 0, self.user.pw_gid)
         os.chmod(target, 0o750)
         bootstrap = target / 'bootstrap'
@@ -795,6 +797,10 @@ class SystemdBackend:
             directory = bootstrap / name
             directory.mkdir(mode=0o555)
             directory.chmod(0o555)
+        return bootstrap
+
+    def prepare_files(self, s, target):
+        bootstrap = self.prepare_bootstrap(target)
         # The untrusted account can replace only children, never the root mountpoint or records.
         for name in ('work', 'home', 'tmp'):
             path = target / name
@@ -1026,12 +1032,8 @@ class SystemdBackend:
                 s.cancelled.set()
                 s.reason = 'sandbox_failed'
 
-    def unit_arguments(self, s, payload, timeout_ms):
-        self.pool.verify()
+    def sandbox_policy(self, s, payload):
         target = self.mount_path(s)
-        operation = str(uuid.uuid4())
-        record = self.records / (operation + '.json')
-        settings = self.records / (operation + '.srt.json')
         read_paths = ['/usr', '/bin', '/lib', '/lib64', '/dev', '/proc',
                       '/etc/ld.so.cache', str(Path(self.c['toolsRoot'])), str(target / 'bootstrap'),
                       str(target / 'bridge/lock'), str(target / 'bridge/state'), str(target / 'bridge/responses')]
@@ -1040,10 +1042,18 @@ class SystemdBackend:
         write_paths = [str(target / 'work'), str(target / 'home'), str(target / 'bridge/requests'), '/tmp']
         if payload['mode'] == 'baseline':
             read_paths.append(str(target / 'baseline.bundle'))
-        settings.write_text(json.dumps({'network': {'allowedDomains': [], 'deniedDomains': [], 'allowAllUnixSockets': False},
+        return {'network': {'allowedDomains': [], 'deniedDomains': [], 'allowAllUnixSockets': False},
             'filesystem': {'denyRead': ['/'], 'allowRead': read_paths,
             'allowWrite': write_paths, 'denyWrite': []},
-            'enableWeakerNestedSandbox': False}))
+            'enableWeakerNestedSandbox': False}
+
+    def unit_arguments(self, s, payload, timeout_ms):
+        self.pool.verify()
+        target = self.mount_path(s)
+        operation = str(uuid.uuid4())
+        record = self.records / (operation + '.json')
+        settings = self.records / (operation + '.srt.json')
+        settings.write_text(json.dumps(self.sandbox_policy(s, payload)))
         record.write_text(json.dumps({**payload, 'root': str(target), 'tools': self.c['toolsRoot'], 'settings': str(settings)}))
         for file in (record, settings):
             os.chmod(file, 0o440)
@@ -1093,7 +1103,7 @@ class SystemdBackend:
                     if not part:
                         selector.unregister(key.fileobj)
                         continue
-                    available = MAX_OUTPUT - sum(len(x) for x in output)
+                    available = self.output_limit - sum(len(x) for x in output)
                     output[key.data].extend(part[:available])
                     if len(part) > available:
                         truncated[key.data] = True
@@ -1116,7 +1126,7 @@ class SystemdBackend:
                 s.reason = reason
                 s.cancelled.set()
             return {'commit': s.commit, 'exitCode': exit_code,
-                    **retain_output(None, output, truncated),
+                    **self.run_output(output, truncated),
                     'timedOut': reason == 'timeout', 'terminationReason': reason}
         finally:
             with s.files_lock:
@@ -1129,6 +1139,9 @@ class SystemdBackend:
                 settings.unlink(missing_ok=True)
                 s.unit = ''
                 self.release_command_files(s)
+
+    def run_output(self, output, truncated):
+        return retain_output(None, output, truncated)
 
     def assert_empty(self, unit):
         result = checked(['systemctl', 'show', unit, '-p', 'ControlGroup', '--value']).stdout.decode().strip()

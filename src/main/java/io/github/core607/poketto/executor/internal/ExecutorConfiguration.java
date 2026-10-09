@@ -78,7 +78,7 @@ class ExecutorConfiguration {
                 Duration.ofSeconds(closeSeconds));
     }
 
-    WorkerClient workerClient(ObjectMapper json, Path socket, Path key) {
+    static WorkerClient workerClient(ObjectMapper json, Path socket, Path key) {
         return new WorkerClient(
                 socket,
                 privateKey(key),

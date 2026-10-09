@@ -1,0 +1,20 @@
+[Unit]
+Description=Poketto isolated game supervisor
+After=local-fs.target
+Requires=pokettogames.slice
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0077
+Slice=pokettogames.slice
+ExecStart=/opt/poketto-executor/venv/bin/python /opt/poketto-games/game_worker.py --config /etc/poketto-games/worker.json
+ExecStopPost=/opt/poketto-executor/venv/bin/python /opt/poketto-games/game_worker.py --config /etc/poketto-games/worker.json --cleanup
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

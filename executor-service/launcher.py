@@ -64,6 +64,10 @@ def main():
         command = ['/usr/bin/python3', '-I', str(root / 'bootstrap/shell_loop.py'), str(root / 'work/repository')]
     elif record['mode'] == 'baseline':
         command = ['/usr/bin/python3', '-c', INSTALL_BASELINE, str(root), record['commit']]
+    elif record['mode'] == 'game':
+        env.pop('POKETTO_BRIDGE')
+        command = [str(tools / 'node'), '--max-old-space-size=64',
+                   str(root / 'bootstrap/game-entry.mjs'), str(root / 'input.json')]
     else:
         raise SystemExit('Invalid execution mode')
     os.close(bootstrap_fd)
