@@ -103,12 +103,9 @@ class CommunityConfiguration {
             PublicContentSnapshots snapshots,
             PlatformTransactionManager transactions) {
         var targets = new CommunityTargets(publications, snapshots);
+        var activity = new CommunityActivity(jdbc, clock);
         var comments = new CommunityComments(
-                jdbc,
-                accounts,
-                new CommunityScope(transactions, accounts, guard, snapshots),
-                targets,
-                new CommunityActivity(jdbc, clock));
-        return new JdbcMachineCommunity(jdbc, machines, guard, transactions, targets, comments);
+                jdbc, accounts, new CommunityScope(transactions, accounts, guard, snapshots), targets, activity);
+        return new JdbcMachineCommunity(jdbc, machines, guard, transactions, targets, comments, accounts, activity);
     }
 }
