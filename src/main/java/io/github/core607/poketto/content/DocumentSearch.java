@@ -69,12 +69,13 @@ public record DocumentSearch(String query, String tag, Instant from, Instant to,
     }
 
     /**
-     * The excerpt shown beside a hit, cut around the first occurrence of the query. Both edges are
+     * The excerpt shown beside a hit, cut around the first occurrence of the query; without a query
+     * it is the document's {@linkplain MarkdownText#lead lead prose}. Both edges are
      * kept outside surrogate pairs, so the excerpt never ends in half of a character that the
      * reader would receive as a replacement glyph.
      */
     public String snippet(String title, String markdown) {
-        String body = MarkdownText.summary(title, markdown);
+        String body = query.isEmpty() ? MarkdownText.lead(title, markdown) : MarkdownText.summary(title, markdown);
         int match = query.isEmpty() ? 0 : Math.max(0, body.indexOf(query));
         int lead = Math.min(SNIPPET_LEAD, SNIPPET_LENGTH - query.length());
         int start = Math.max(0, match - lead);

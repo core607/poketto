@@ -10,17 +10,22 @@ import org.commonmark.ext.footnotes.FootnoteDefinition;
 import org.commonmark.ext.footnotes.FootnoteReference;
 import org.commonmark.ext.footnotes.FootnotesExtension;
 import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension;
+import org.commonmark.ext.gfm.tables.TableBlock;
 import org.commonmark.ext.gfm.tables.TableCell;
 import org.commonmark.ext.gfm.tables.TablesExtension;
 import org.commonmark.ext.task.list.items.TaskListItemsExtension;
 import org.commonmark.node.Block;
 import org.commonmark.node.Code;
 import org.commonmark.node.DefinitionMap;
+import org.commonmark.node.Emphasis;
 import org.commonmark.node.FencedCodeBlock;
 import org.commonmark.node.HardLineBreak;
 import org.commonmark.node.Heading;
+import org.commonmark.node.Image;
 import org.commonmark.node.IndentedCodeBlock;
+import org.commonmark.node.Link;
 import org.commonmark.node.Node;
+import org.commonmark.node.Paragraph;
 import org.commonmark.node.SoftLineBreak;
 import org.commonmark.node.Text;
 import org.commonmark.parser.Parser;
@@ -51,6 +56,92 @@ public final class MarkdownText {
             }
         }
         return text(root);
+    }
+
+    /**
+     * The prose a reader meets first, for excerpts that answer no query. Headings, code, tables,
+     * image alt text and the emphasized caption paragraph under a figure describe the page rather
+     * than say what it is about. A document without such prose falls back to its summary.
+     */
+    public static String lead(String title, String markdown) {
+        Node root = parse(markdown);
+        boolean afterFigure = false;
+        Node block = root.getFirstChild();
+        while (block != null) {
+            Node following = block.getNext();
+            boolean figure = block instanceof Paragraph paragraph && figure(paragraph);
+            if (figure
+                    || block instanceof Heading
+                    || block instanceof FencedCodeBlock
+                    || block instanceof IndentedCodeBlock
+                    || block instanceof TableBlock
+                    || (afterFigure && caption(block))) {
+                block.unlink();
+            } else {
+                unlinkImages(block);
+            }
+            afterFigure = figure;
+            block = following;
+        }
+        String lead = text(root);
+        return lead.isEmpty() ? summary(title, markdown) : lead;
+    }
+
+    // A paragraph of images, linked images and their inline captions, with no prose around them.
+    private static boolean figure(Paragraph paragraph) {
+        boolean image = false;
+        for (Node child = paragraph.getFirstChild(); child != null; child = child.getNext()) {
+            if (child instanceof Image || (child instanceof Link link && onlyImages(link))) {
+                image = true;
+            } else if (!(child instanceof Emphasis || blank(child))) {
+                return false;
+            }
+        }
+        return image;
+    }
+
+    private static boolean onlyImages(Node parent) {
+        Node child = parent.getFirstChild();
+        if (child == null) {
+            return false;
+        }
+        for (; child != null; child = child.getNext()) {
+            if (!(child instanceof Image || blank(child))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean caption(Node block) {
+        if (!(block instanceof Paragraph)) {
+            return false;
+        }
+        int emphasis = 0;
+        for (Node child = block.getFirstChild(); child != null; child = child.getNext()) {
+            if (child instanceof Emphasis) {
+                emphasis++;
+            } else if (!blank(child)) {
+                return false;
+            }
+        }
+        return emphasis == 1;
+    }
+
+    private static boolean blank(Node node) {
+        return node instanceof SoftLineBreak
+                || node instanceof HardLineBreak
+                || (node instanceof Text text && text.getLiteral().isBlank());
+    }
+
+    private static void unlinkImages(Node root) {
+        var images = new ArrayList<Image>();
+        for (Node node = root; node != null; node = next(node, root)) {
+            if (node instanceof Image image) {
+                images.add(image);
+            }
+        }
+        images.forEach(Node::unlink);
     }
 
     private static Node parse(String markdown) {
