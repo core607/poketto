@@ -6,6 +6,14 @@ import { Window } from "happy-dom";
 import { renderToStaticMarkup } from "react-dom/server";
 import Home from "../app/page";
 import { DiscoveryCover } from "../components/discovery-cover";
+import { coverFace, splitLead } from "../lib/cover-face";
+
+const face = coverFace({
+  space: "space",
+  spaceName: "公开空间",
+  tags: ["旅行"],
+  lead: "",
+});
 
 test("discovery covers keep unsafe sources in the safe placeholder", () => {
   const valid = renderToStaticMarkup(
@@ -13,6 +21,7 @@ test("discovery covers keep unsafe sources in the safe placeholder", () => {
       src="/api/public/assets/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
       href="/s/space/read/album"
       title="公开相册"
+      face={face}
     />,
   );
   assert.match(valid, /<img[^>]+src="\/api\/public\/assets\/A+/);
@@ -24,10 +33,50 @@ test("discovery covers keep unsafe sources in the safe placeholder", () => {
       src="https://external.example/cover.jpg"
       href="/s/space/read/album"
       title="公开相册"
+      face={face}
     />,
   );
   assert.doesNotMatch(unsafe, /<img/);
-  assert.match(unsafe, /封面暂时不可用 · 打开相册/);
+  assert.match(unsafe, /aria-label="打开相册：公开相册"/);
+  assert.match(unsafe, /data-layout="seal"[^>]*>.*旅行.*公/);
+});
+
+test("a card without an image moves its opening sentence onto the cover", () => {
+  assert.deepEqual(
+    splitLead("TL;DR：总统称 AI 需要“强大且聪明（高 IQ！）的总统”。后文继续。"),
+    {
+      lead: "总统称 AI 需要“强大且聪明（高 IQ！）的总统”。",
+      rest: "后文继续。",
+    },
+  );
+  assert.deepEqual(splitLead("Version 2.5 ships. More follows"), {
+    lead: "Version 2.5 ships.",
+    rest: "More follows",
+  });
+  // A sentence too long for the cover keeps the whole snippet in the card body.
+  const long = "长".repeat(120) + "。";
+  assert.deepEqual(splitLead(long), { lead: "", rest: long });
+
+  const poem = coverFace({
+    space: "space",
+    spaceName: "公开空间",
+    tags: ["诗"],
+    lead: "月亮落在窗台上。",
+  });
+  assert.equal(poem.vertical, true);
+  assert.equal(poem.hue, face.hue);
+  const html = renderToStaticMarkup(
+    <DiscoveryCover
+      src={null}
+      href="/s/space/read/poem"
+      title="诗"
+      album={false}
+      face={poem}
+    />,
+  );
+  assert.match(html, /data-layout="vertical"/);
+  assert.match(html, /月亮落在窗台上。/);
+  assert.match(html, /aria-label="阅读：诗"/);
 });
 
 test("home keeps simultaneous album and collection labels on a discovery card", async (t: TestContext) => {
@@ -131,6 +180,7 @@ test("a changed thumbnail grant restores the image after an earlier error", asyn
           src={src}
           href="/s/space/read/album"
           title="公开相册"
+          face={face}
         />,
       ),
     );
@@ -145,7 +195,7 @@ test("a changed thumbnail grant restores the image after an earlier error", asyn
 
   await act(async () => image!.dispatchEvent(new window.Event("error")));
   assert.equal(container.querySelector("img"), null);
-  assert.match(container.textContent ?? "", /封面暂时不可用/);
+  assert.ok(container.querySelector('.cover-face[data-layout="seal"]'));
 
   await render(second);
   image = container.querySelector("img");

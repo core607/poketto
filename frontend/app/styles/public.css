@@ -236,7 +236,7 @@
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-  align-items: start;
+  align-items: stretch;
   gap: 1.25rem;
 }
 .card {
@@ -260,8 +260,9 @@
 }
 .card-cover {
   display: block;
+  container-type: inline-size;
   margin: -1.25rem -1.3rem 0.35rem;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
   background: linear-gradient(135deg, var(--bg-sunken), var(--accent-soft));
@@ -275,12 +276,107 @@
 .card:hover .card-cover img {
   transform: scale(1.03);
 }
-.card-cover-empty {
+/* Typeset cover for cards without an image; --hue is a warm hue fixed per space. */
+.cover-face {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.6rem;
+  height: 100%;
+  padding: 1.1rem 1.3rem 1rem;
+  overflow: hidden;
+  background: hsl(var(--hue) 46% var(--avatar-bg, 86%));
+  color: hsl(var(--hue) 42% var(--avatar-fg, 28%));
+  font-family: var(--font-serif);
+}
+/* Sizes follow the cover width, so the same number of characters fits at every card width. */
+.cover-lead {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: clamp(0.8rem, 4.5cqi, 1.1rem);
+  font-weight: 600;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+.cover-lead[data-short] {
+  font-size: clamp(1rem, 6cqi, 1.45rem);
+  line-height: 1.45;
+  -webkit-line-clamp: 3;
+}
+.cover-lead::before {
+  content: "“";
+  margin-right: 0.15em;
+  font-size: 1.6em;
+  line-height: 0;
+  opacity: 0.45;
+  vertical-align: -0.3em;
+}
+.cover-space {
+  align-self: flex-end;
+  max-width: 100%;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  opacity: 0.75;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cover-face[data-layout="vertical"] {
+  flex-direction: row-reverse;
+  align-items: stretch;
+}
+.cover-face[data-layout="vertical"] .cover-lead {
+  display: block;
+  font-size: clamp(0.85rem, 4.5cqi, 1.1rem);
+  letter-spacing: 0.12em;
+  line-height: 1.9;
+  writing-mode: vertical-rl;
+}
+.cover-face[data-layout="vertical"] .cover-lead::before {
+  content: none;
+}
+.cover-face[data-layout="vertical"] .cover-space {
+  align-self: flex-end;
+}
+.cover-label {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 1.9rem;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.cover-label::before {
+  content: "#";
+  margin-right: 0.1em;
+  opacity: 0.45;
+}
+.cover-face[data-layout="mark"] {
+  justify-content: center;
+}
+.cover-face[data-layout="mark"] .cover-seal {
+  align-self: center;
+  width: 3.4rem;
+  height: 3.4rem;
+  font-size: 1.9rem;
+}
+.cover-seal {
   display: grid;
   place-items: center;
-  height: 100%;
-  color: var(--muted);
-  font-size: var(--text-sm);
+  align-self: flex-end;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 2px solid currentColor;
+  border-radius: 5px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  opacity: 0.7;
+  transform: rotate(-6deg);
 }
 .card-meta {
   display: flex;
@@ -312,12 +408,40 @@
   color: var(--accent-ink);
   font-weight: 650;
 }
+.card .card-meta {
+  flex-wrap: nowrap;
+  height: 1.6rem;
+  min-width: 0;
+  white-space: nowrap;
+}
+.card .space-link {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.card .space-link > span:last-child,
+.card .author-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card .author-name {
+  min-width: 0;
+}
+.card .kind,
+.card .card-meta time {
+  flex: none;
+}
+/* Title and snippet keep their full height, so snippets and tags start level across a row. */
 .card-title {
+  display: -webkit-box;
+  min-height: calc(2em * 1.4);
   margin: 0;
+  overflow: hidden;
   font-family: var(--font-serif);
   font-size: 1.22rem;
   font-weight: 600;
   line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .card-title a::after {
   content: "";
@@ -330,6 +454,7 @@
 }
 .card-snippet {
   display: -webkit-box;
+  min-height: calc(3em * 1.8);
   margin: 0;
   overflow: hidden;
   color: var(--ink-2);
@@ -343,6 +468,17 @@
   flex-wrap: wrap;
   gap: 0.2rem 0.75rem;
   margin-top: 0.1rem;
+}
+.card .card-tags {
+  flex-wrap: nowrap;
+  margin-top: auto;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.card .card-tags .tag {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Lists inside a space */

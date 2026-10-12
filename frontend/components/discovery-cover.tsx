@@ -1,17 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import type { CoverFace } from "../lib/cover-face";
 import { safeImage } from "../lib/format";
 
 export function DiscoveryCover({
   src,
   href,
   title,
+  face,
   album = true,
 }: {
   src: string | null;
   href: string;
   title: string;
+  /** The typeset cover shown when there is no image or the image fails to load. */
+  face: CoverFace;
   /** Album covers name the album; article covers show the article's first image. */
   album?: boolean;
 }) {
@@ -32,10 +36,43 @@ export function DiscoveryCover({
           onError={() => setFailedSource(image)}
         />
       ) : (
-        <span className="card-cover-empty">
-          {album ? "封面暂时不可用 · 打开相册" : "图片暂时不可用"}
-        </span>
+        <TypesetCover face={face} />
       )}
     </a>
+  );
+}
+
+function TypesetCover({ face }: { face: CoverFace }) {
+  const layout = face.lead
+    ? face.vertical
+      ? "vertical"
+      : "quote"
+    : face.label
+      ? "seal"
+      : "mark";
+  return (
+    <span
+      className="cover-face"
+      data-layout={layout}
+      style={{ "--hue": face.hue } as React.CSSProperties}
+      aria-hidden
+    >
+      {face.lead ? (
+        <>
+          <span
+            className="cover-lead"
+            data-short={[...face.lead].length <= 36 || undefined}
+          >
+            {face.lead}
+          </span>
+          <span className="cover-space">{face.spaceName}</span>
+        </>
+      ) : (
+        <>
+          {face.label && <span className="cover-label">{face.label}</span>}
+          <span className="cover-seal">{face.seal}</span>
+        </>
+      )}
+    </span>
   );
 }
