@@ -81,9 +81,10 @@ security in the diff. Losing it silently is the whole defect.
 
 ## Consequences
 
-A pull request that falls behind `main` now costs one more review cycle before it can merge, because
-the head created by `update-branch` is a head nobody has reviewed. That cycle was already being paid
-for and discarded.
+A pull request that falls behind `main` gets a new head from `update-branch` that needs its own
+status before it can merge. Since [review rounds](2026-10-13-review-rounds.md), a head whose own change
+is unchanged receives that status without a model call; before it, each such head cost a full review
+cycle.
 
 A head carries the status only while the review workflow can set it. If the provider is down or the
 budget is exhausted, there is none, and the merge decision becomes explicit rather than silent. A run

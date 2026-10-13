@@ -74,12 +74,14 @@ class SessionTests(unittest.TestCase):
     def test_scope_keeps_runtime_and_excludes_tests_even_when_mixed_with_binary_assets(self):
         for path in ["src/main/java/App.java", "src/main/java/Contest.java", "frontend/app/page.tsx", "executor-service/worker.py",
                      "deploy/compose.yaml", "build.gradle.kts", "gradle/wrapper/gradle-wrapper.jar",
-                     ".github/workflows/ci.yml", "frontend/package-lock.json", ".agents/skills/x/run.py"]:
+                     ".github/workflows/ci.yml", "frontend/package-lock.json", ".agents/skills/x/run.py",
+                     ".github/review/prompt.md", ".github/review/review.py"]:
             self.assertTrue(is_core(path), path)
         for path in ["src/test/java/AppTests.java", "src/integrationTest/resources/db.yaml",
                      "frontend/tests/page.test.tsx", "executor-service/test_worker.py", "deploy/tests/lib.sh",
                      "executor-service/Dockerfile.tests", "executor-native/probe.py", "docs/usage.md",
-                     "AGENTS.md", ".agents/skills/x/SKILL.md", "executor-service/native_probe.py", "acceptance/seed.py"]:
+                     "AGENTS.md", ".agents/skills/x/SKILL.md", "executor-service/native_probe.py", "acceptance/seed.py",
+                     ".github/review/test_rounds.py"]:
             self.assertFalse(is_core(path), path)
         _, state, _, _ = self.run_at(self.second)
         body = json.dumps(state["requests"], ensure_ascii=False)
