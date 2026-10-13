@@ -61,6 +61,7 @@ CONFIG_KEYS=(
     POKETTO_EXECUTOR_METADATA_DIR_HOST
     POKETTO_EXECUTOR_MAX_SESSIONS POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS
     POKETTO_EXECUTOR_MAX_BUNDLE_BYTES POKETTO_EXECUTOR_EXPORT_TIMEOUT_SECONDS
+    POKETTO_GAMES_ENABLED POKETTO_GAMES_RUNTIME_DIR_HOST POKETTO_GAMES_SIGNING_KEY_HOST POKETTO_GAMES_MAX_JOBS
     POKETTO_HEALTH_TIMEOUT POKETTO_MIN_FREE_MB POKETTO_APP_UID
     POKETTO_LOG_FORMAT
     POKETTO_PLAZA_ENABLED
@@ -182,6 +183,7 @@ LOCK_DIR="$ROOT/.deploy.lock.d"
 compose() {
     local files=(-f "$COMPOSE_FILE")
     if [ "${POKETTO_EXECUTOR_ENABLED:-false}" = true ]; then files+=(-f "$ROOT/compose.executor.yaml"); fi
+    if [ "${POKETTO_GAMES_ENABLED:-false}" = true ]; then files+=(-f "$ROOT/compose.games.yaml"); fi
     "$DOCKER" compose --env-file /dev/null --project-directory "$ROOT" "${files[@]}" "$@"
 }
 
@@ -255,7 +257,7 @@ apply_sync() {
     if [ -f "$SYNC_FROM/deploy.sh" ] && ! cmp -s "$SYNC_FROM/deploy.sh" "${BASH_SOURCE[0]}"; then
         reexec=1
     fi
-    for file in compose.yaml compose.executor.yaml Caddyfile deploy.sh; do
+    for file in compose.yaml compose.executor.yaml compose.games.yaml Caddyfile deploy.sh; do
         [ -f "$SYNC_FROM/$file" ] || continue
         mv -f "$SYNC_FROM/$file" "$ROOT/$file"
     done
@@ -433,6 +435,8 @@ load_configuration() {
     [[ "$POKETTO_PUBLIC_DOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] && [ "${#POKETTO_PUBLIC_DOMAIN}" -le 253 ] \
         || fail "POKETTO_PUBLIC_DOMAIN must be one lowercase DNS name without a scheme, port or path"
     case "${POKETTO_EXECUTOR_ENABLED:-false}" in true|false) ;; *) fail "POKETTO_EXECUTOR_ENABLED must be true or false" ;; esac
+    case "${POKETTO_GAMES_ENABLED:-false}" in true|false) ;; *) fail "POKETTO_GAMES_ENABLED must be true or false" ;; esac
+    [[ "${POKETTO_GAMES_MAX_JOBS:-2}" =~ ^([1-9]|1[0-6])$ ]] || fail "POKETTO_GAMES_MAX_JOBS must be between 1 and 16"
     if [ -n "${POKETTO_RESEND_API_KEY:-}" ]; then
         [ -n "${POKETTO_EMAIL_FROM:-}" ] || fail "POKETTO_RESEND_API_KEY requires POKETTO_EMAIL_FROM"
     fi
@@ -604,6 +608,26 @@ check_executor() {
     check_free_space "$staging"
 }
 
+# Games run in their own supervisor, which refuses to share a runtime directory, account or slice
+# with the repository worker; this checks only what the application container is handed.
+check_games() {
+    [ "${POKETTO_GAMES_ENABLED:-false}" = true ] || return 0
+    local key runtime signing
+    for key in POKETTO_GAMES_RUNTIME_DIR_HOST POKETTO_GAMES_SIGNING_KEY_HOST; do
+        [[ "${!key:-}" = /* ]] || fail "$key must be an absolute path to an installed game supervisor prerequisite"
+    done
+    systemctl is-active --quiet poketto-games.service         || fail "the installed poketto-games.service must be active before enabling games"
+    runtime="$POKETTO_GAMES_RUNTIME_DIR_HOST"
+    signing="$POKETTO_GAMES_SIGNING_KEY_HOST"
+    [ -f "$ROOT/compose.games.yaml" ] || fail "missing games Compose overlay"
+    [ "$runtime" != "${POKETTO_EXECUTOR_RUNTIME_DIR_HOST:-}" ] && [ "$signing" != "${POKETTO_EXECUTOR_SIGNING_KEY_HOST:-}" ]         || fail "games need their own runtime directory and signing key, separate from the executor"
+    [ -d "$runtime" ] && [ ! -L "$runtime" ] && [ "$(owner_uid "$runtime")" = 0 ]         || fail "game runtime directory must already exist and be owned by root"
+    [ -S "$runtime/control.sock" ] && [ ! -L "$runtime/control.sock" ]         || fail "game control.sock is unavailable; install/start the game supervisor first"
+    [ "$(owner_uid "$runtime/control.sock")" = 0 ] && [ "$(stat -c %a "$runtime/control.sock")" = 660 ] && [ "$(stat -c %g "$runtime/control.sock")" = "$APP_UID" ]         || fail "game socket must be root-owned mode 0660 with the application's group"
+    [ -f "$signing" ] && [ ! -L "$signing" ] && [ "$(owner_uid "$signing")" = "$APP_UID" ]         || fail "game signing key must already exist and be owned by the application uid"
+    [ "$(stat -c %a "$signing")" = 600 ] || fail "game signing key must have mode 0600"
+}
+
 check_host() {
     "$DOCKER" info >/dev/null 2>&1 || fail "docker daemon is not reachable by $(id -un)"
     compose version >/dev/null 2>&1 || fail "docker compose plugin is not installed"
@@ -622,6 +646,7 @@ check_host() {
         else fail "gateway certificate directory must be owned by uid $GATEWAY_UID"; fi
     fi
     check_executor
+    check_games
 
     # Images and container layers land below the daemon's data root, which may be a different
     # filesystem than any directory this script manages.
