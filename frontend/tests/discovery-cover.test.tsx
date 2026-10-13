@@ -110,6 +110,20 @@ test("home keeps simultaneous album and collection labels on a discovery card", 
             cover:
               "/api/public/assets/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
           },
+          {
+            space: "space",
+            spaceName: "公开空间",
+            authorName: "作者",
+            route: "/note",
+            title: "无图笔记",
+            snippet: "开头一句。后文。",
+            tags: [],
+            createdAt: "2026-09-02T00:00:00Z",
+            folderPage: false,
+            album: false,
+            collection: false,
+            cover: null,
+          },
         ],
       }),
     );
@@ -131,6 +145,12 @@ test("home keeps simultaneous album and collection labels on a discovery card", 
     await Home({ searchParams: Promise.resolve({ batch: "batch-1" }) }),
   );
   assert.match(html, /相册 · 合集/);
+  assert.match(html, /<p class="card-snippet">一段公开摘要<\/p>/);
+  assert.match(html, /class="cover-lead"[^>]*>开头一句。</);
+  assert.match(
+    html,
+    /<p class="card-snippet"><span class="sr-only">开头一句。<\/span>后文。<\/p>/,
+  );
   assert.match(html, /打开相册/);
   assert.match(html, /src="\/api\/public\/assets\/A+/);
 });

@@ -265,7 +265,11 @@ function DiscoveryCard({ item }: { item: DiscoveryPage["items"][number] }) {
       <h2 className="card-title" title={item.title}>
         <a href={href}>{item.title}</a>
       </h2>
-      <p className="card-snippet">{rest}</p>
+      <p className="card-snippet">
+        {/* The cover is hidden from assistive technology, so the lifted sentence stays here. */}
+        {lead && <span className="sr-only">{lead}</span>}
+        {rest}
+      </p>
       {item.tags.length > 0 && (
         <div className="card-tags">
           {item.tags.slice(0, 3).map((tag) => (
