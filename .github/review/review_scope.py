@@ -17,6 +17,10 @@ def is_core(path):
             or ".test." in name or ".spec." in name or name.startswith(("vitest.config.", "jest.config.", "playwright.config."))
             or ".tests" in name):
         return False
+    # The reviewer's own prompt is Markdown but it is runtime input to every review, so the review
+    # directory is core before the document suffixes are excluded.
+    if path.startswith(".github/review/"):
+        return True
     if p.suffix.lower() in {".md", ".mdx", ".txt", ".rst", ".png", ".jpg", ".jpeg", ".gif",
                             ".webp", ".ico", ".svg", ".pdf", ".mp3", ".mp4", ".woff", ".woff2"}:
         return False

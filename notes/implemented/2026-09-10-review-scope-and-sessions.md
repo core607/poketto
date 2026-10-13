@@ -9,7 +9,7 @@ Repeated reviews of a large pull request rebuild the same investigation from an 
 
 ## Decision
 
-The AI review workflow evaluates runtime source, runtime scripts, dependencies, build configuration, deployment configuration and runtime or release workflows. Tests, test-only configuration, documents and static media are excluded from the submitted diff. The reviewer may read tests and documents as supporting evidence, but reports no findings about those files and does not request additional tests or documentation. Deterministic CI remains independent and runs normally.
+The AI review workflow evaluates runtime source, runtime scripts, dependencies, build configuration, deployment configuration and runtime or release workflows, and the review's own code and prompt under `.github/review/`, whose Markdown prompt is runtime input to every review. Tests, test-only configuration, other documents and static media are excluded from the submitted diff. The reviewer may read tests and documents as supporting evidence, but reports no findings about those files and does not request additional tests or documentation. Deterministic CI remains independent and runs normally.
 
 `.github/review/review_scope.py` owns classification. Git lists changed paths with NUL delimiters and rename detection disabled, then generates a diff using literal selected paths. Moves across the scope boundary therefore retain the runtime addition or deletion. Binary assets outside scope do not prevent review; unsupported binary or non-UTF-8 changes inside scope remain explicit failures. Scope is based on file purpose and location rather than changed-line counts.
 

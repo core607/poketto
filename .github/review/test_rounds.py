@@ -146,8 +146,38 @@ class FindingsAuditTests(unittest.TestCase):
         self.assertIn("不在本 PR 的改动文件里", problems[2])
         self.assertIn("X1", problems[3])
 
+    def test_a_long_list_of_problems_is_cut_to_a_readable_note(self):
+        problems = self.audit([{"id": f"S{i}", "severity": "major"} for i in range(30)])
+        self.assertEqual(review.AUDIT_LINES + 1, len(problems))
+        self.assertIn("另有 20 条", problems[-1])
+
     def test_without_the_file_list_only_the_shape_is_checked(self):
         self.assertEqual([], self.audit([{"id": "B1", "severity": "blocking", "file": "src/gone.py"}], changed=None))
+
+
+class AuthorReplyTests(unittest.TestCase):
+    def test_replies_are_owner_comments_after_the_latest_review_fetched_since_it(self):
+        github = review.GitHub("owner/project", 25, review.Budget())
+        paths = []
+
+        def api(path):
+            paths.append(path)
+            if "/reviews" in path:
+                return [{"user": {"login": review.REVIEW_BOT}, "submitted_at": "2026-10-13T00:00:00Z"},
+                        {"user": {"login": review.REVIEW_BOT}, "submitted_at": "2026-10-13T02:00:00Z"},
+                        {"user": {"login": "someone"}, "submitted_at": "2026-10-13T05:00:00Z"}]
+            return [{"author_association": "OWNER", "created_at": "2026-10-13T01:00:00Z", "body": "old"},
+                    {"author_association": "OWNER", "created_at": "2026-10-13T03:00:00Z", "body": "fixed in abc"},
+                    {"author_association": "NONE", "created_at": "2026-10-13T04:00:00Z", "body": "drive-by"}]
+
+        github.api = api
+        self.assertEqual([{"at": "2026-10-13T03:00:00Z", "body": "fixed in abc"}], github.author_replies())
+        self.assertIn("since=2026-10-13T02%3A00%3A00Z", paths[-1])
+
+    def test_no_earlier_review_means_no_replies(self):
+        github = review.GitHub("owner/project", 25, review.Budget())
+        github.api = lambda path: []
+        self.assertEqual([], github.author_replies())
 
 
 class CiTriggerTests(unittest.TestCase):
