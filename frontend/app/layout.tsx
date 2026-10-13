@@ -5,7 +5,7 @@ import "./globals.css";
 import { SiteBar, SiteFooter } from "../components/site-chrome";
 import { GoogleReturnNotice } from "../components/google-login";
 import { publicOrigin } from "../lib/public-api";
-import { themeScript } from "../lib/theme";
+import { DEFAULT_THEME, themeScript } from "../lib/theme";
 import { SHARE_IMAGE } from "../lib/format";
 
 export function generateMetadata(): Metadata {
@@ -38,7 +38,7 @@ export default async function Layout({
   // The proxy issues a per-request nonce; the CSP admits only scripts carrying it.
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="zh-CN" data-theme={DEFAULT_THEME} suppressHydrationWarning>
       <head>
         <script
           nonce={nonce}

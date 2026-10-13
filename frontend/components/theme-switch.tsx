@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Icon, type IconName } from "./ui/icons";
-import { THEME_KEY as KEY } from "../lib/theme";
+import { DEFAULT_THEME, THEME_KEY as KEY } from "../lib/theme";
 
 type Theme = "system" | "light" | "dark";
 const choices: { value: Theme; label: string; icon: IconName }[] = [
@@ -13,15 +13,17 @@ const choices: { value: Theme; label: string; icon: IconName }[] = [
 function stored(): Theme {
   try {
     const value = localStorage.getItem(KEY);
-    return value === "light" || value === "dark" ? value : "system";
+    return value === "light" || value === "dark" || value === "system"
+      ? value
+      : DEFAULT_THEME;
   } catch {
-    return "system";
+    return DEFAULT_THEME;
   }
 }
 
-/** A per-browser appearance choice; storage failures fall back to the system preference. */
+/** A per-browser appearance choice; storage failures fall back to the default theme. */
 export function ThemeSwitch({ compact = false }: { compact?: boolean }) {
-  const [theme, setTheme] = useState<Theme>("system");
+  const [theme, setTheme] = useState<Theme>(DEFAULT_THEME);
   useEffect(() => setTheme(stored()), []);
   function choose(next: Theme) {
     setTheme(next);
@@ -29,8 +31,7 @@ export function ThemeSwitch({ compact = false }: { compact?: boolean }) {
     if (next === "system") delete root.dataset.theme;
     else root.dataset.theme = next;
     try {
-      if (next === "system") localStorage.removeItem(KEY);
-      else localStorage.setItem(KEY, next);
+      localStorage.setItem(KEY, next);
     } catch {
       // The choice still applies to this page view.
     }
