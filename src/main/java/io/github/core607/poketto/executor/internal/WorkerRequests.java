@@ -9,6 +9,8 @@ import static io.github.core607.poketto.executor.internal.ProtocolValues.uuid;
 import static io.github.core607.poketto.executor.internal.ProtocolValues.withoutNul;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.github.core607.poketto.games.GameBundle;
+import io.github.core607.poketto.games.GameRunner;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -48,6 +50,7 @@ final class WorkerRequests {
                     Close,
                     DiskCopy,
                     Exec,
+                    Game,
                     MaterializeBegin,
                     MoveBegin,
                     Open,
@@ -55,6 +58,13 @@ final class WorkerRequests {
                     Revoke,
                     Transfer,
                     TransferChunk {}
+
+    record Game(GameBundle bundle, GameRunner.Request request) implements Data {
+        Game {
+            require(bundle != null, "bundle", "must be present");
+            require(request != null, "request", "must be present");
+        }
+    }
 
     private static String retainedScope(String value) {
         require("full".equals(value) || "public".equals(value), "scope", "must be full or public");

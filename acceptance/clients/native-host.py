@@ -41,6 +41,8 @@ def main():
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--port', type=int, default=38189)
     parser.add_argument('--lifetime-seconds', type=int, default=1800)
+    parser.add_argument('--games', action='store_true')
+    parser.add_argument('--origin', help='Browser gateway origin; defaults to the API loopback origin')
     args = parser.parse_args()
     assert os.geteuid() == 0 and 1024 <= args.port <= 65535 and 60 <= args.lifetime_seconds <= 3600
     runtime, source, tools, java = [p.resolve(strict=True) for p in
@@ -68,6 +70,7 @@ def main():
     users, db_attempted, worker_config = [], False, None
     disk_pool, disk_mounted = root / "pool", False
     exports = disk_pool / "exports"
+    game_fixture = None
     try:
         pool.start()
         for user in (app_user, exec_user):
@@ -129,11 +132,19 @@ def main():
             assert time.monotonic() < deadline, 'disposable PostgreSQL did not become ready'
             time.sleep(.25)
         app_environment = root / 'app.env'
+        game_settings = {}
+        if args.games:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'executor-native'))
+            from game_fixture import GameFixture
+            game_fixture = GameFixture(root, source, tools, app_account, exec_user, pool.name)
+            game_settings = game_fixture.start()
         app_environment.write_text('\n'.join([
             'SPRING_DATASOURCE_URL=jdbc:postgresql://' + binding + '/acceptance',
             'SPRING_DATASOURCE_USERNAME=acceptance', 'SPRING_DATASOURCE_PASSWORD=' + password,
             'POKETTO_ACCEPTANCE_ROOT=' + str(root / 'content'), 'POKETTO_ACCEPTANCE_PASSWORD=' + password,
-            'POKETTO_ACCEPTANCE_ORIGIN=http://127.0.0.1:' + str(args.port),
+            'POKETTO_ACCEPTANCE_ORIGIN=' + (args.origin or 'http://127.0.0.1:' + str(args.port)),
+            'POKETTO_PLAZA_PUBLIC_URL=' + (args.origin or 'http://127.0.0.1:' + str(args.port)),
+            'POKETTO_ACCEPTANCE_GAME_PACKAGE=' + (str(runtime / 'game-example') if args.games else ''),
             'POKETTO_SESSION_COOKIE_SECURE=false', 'HOME=' + str(root / 'home')]) + '\n')
         app_environment.chmod(0o600)
         copy_args = [
@@ -141,6 +152,10 @@ def main():
             '--poketto.executor.copies.pool-bytes=536870912',
             '--poketto.executor.copies.original-bytes=67108864',
             '--poketto.executor.copies.original-expanded-bytes=268435456']
+        if args.games:
+            copy_args.extend(['--poketto.games.enabled=true', '--poketto.games.max-jobs=1',
+                '--poketto.games.socket=' + game_settings['gameSocket'],
+                '--poketto.games.signing-key=' + game_settings['gamePrivateKey']])
         run(['systemd-run', '--quiet', '--unit', app_unit, '-p', 'User=' + app_user,
              '-p', 'EnvironmentFile=' + str(app_environment), '-p', 'UMask=0077',
              '-p', 'MemoryMax=768M', '-p', 'TasksMax=256', '-p', 'CPUQuota=100%',
@@ -189,6 +204,8 @@ def main():
         if worker_config is not None:
             attempt('worker cleanup', lambda: run([
                 sys.executable, str(root / 'worker.py'), '--config', str(worker_config), '--cleanup']))
+        if game_fixture is not None:
+            attempt('game worker cleanup', game_fixture.close)
         # Stop the owned slice even when another component failed. Never remove a
         # mounted fixture or an unverified container just to report successful cleanup.
         attempt('resource pool cleanup', pool.close)

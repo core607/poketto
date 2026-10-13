@@ -22,6 +22,10 @@ the probe verifies every manifest entry and rejects unlisted files. Copy that di
 `session_files.py`, `binary_capture.py`, `materialize.py`, `artifacts.py` and `disk_pool.py`. Never stage
 operator settings or credentials.
 
+For `--scenario games`, also stage `game_fixture.py` beside `probe.py`. Run
+`./gradlew stageGameWorker` and add its `game_worker.py`, `game-entry.mjs`,
+`game-runtime.mjs` and `game-example.mjs` to the staged worker sources.
+
 The host needs cgroup v2, systemd, root access, Git, Python with the worker's pinned dependencies and
 its prepared SRT toolchain. The probe requires a Java 26 runtime; `prepare-jdk.sh NEW_DIRECTORY`
 downloads an isolated Temurin 26.0.2+10 archive and verifies its pinned SHA-256 without installing it
@@ -50,6 +54,7 @@ synthetic authority, and checks cleanup. A focused result does not prove the omi
 | `public-scope` | Real public projection: no private files, metadata or history, unchanged copy after a permission increase, publication checks on artifact delivery and after withdrawal |
 | `admission` | Worker capacity refusal and a retry that does not leak a copy |
 | `peer-only` | Refusal of a non-root worker peer before it receives request bytes |
+| `games` | Separate game worker and slice: shared puzzle, complete saves, host/network denial, resource exhaustion, descendants, revocation, restart and repository execution during full game admission |
 | `cli-save`, `cli-save-recovery`, `cli-media-import`, `cli-media-link`, `cli-move`, `cli-move-installation`, `cli-move-recovery` | One CLI handler each; `cli-save` includes workspace sync and conflicts, and the recovery modes cover uncertain remote acknowledgement or local installation without repeating the original write |
 | `retained-process` | Independent producer and recovery JVMs with external SIGKILL; `--process-case` selects one of `acknowledged`, `interrupted`, `uncertain`, `beforepublish`, `afterpublish`, `discarding` or `expired` |
 
@@ -82,7 +87,8 @@ For the peer check, a root-owned socket is served by the application account. Th
 accepted connection and zero request bytes, because the production check must reject it before writing;
 an ordinary EOF cannot satisfy that assertion.
 
-Success requires exit zero, Java `summary: PASS`, controller `nativeCombined: PASS` and `cleanup: PASS`.
+Success requires exit zero, Java scenario assertions (`gameNative: PASS` for games),
+controller `nativeCombined: PASS` and `cleanup: PASS`.
 Cleanup stops all temporary units, checks mounts and process ownership, and removes both accounts, the
 signing key and the fixture; runtime staging and the isolated JDK remain for later runs. Output records
 the scenario, runtime manifest and source hashes, and a different build requires new evidence.

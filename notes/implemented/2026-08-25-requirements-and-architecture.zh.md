@@ -15,7 +15,7 @@ Date: 2026-08-25
 ## 定位
 
 Poketto 是面向多账号的 Git 原生内容工作空间。每个空间对应一个 Git 仓库：成员在浏览器中创作，其 AI 通过 MCP 操作同一仓库，已发布的空间把公开内容呈现为网站。同一份 Markdown 既支撑公开展示，也作为受控 AI 的长期记忆。
-空间网站包含服务端渲染的文章、目录、相册与合集页面、标签、归档和有界搜索。根站点另提供跨空间搜索、已发布空间的发现批次、覆盖所有已发布空间的 sitemap，以及默认空间的 RSS。限额访客问答仍是后续产品目标。
+空间网站包含服务端渲染的文章、目录、相册与合集页面、标签、归档和有界搜索。根站点另提供跨空间搜索、已发布空间的发现批次、覆盖所有已发布空间的 sitemap，以及默认空间的 RSS。[创作者问答](2026-10-09-creator-qa.md)提供预算封顶的公开内容问答，匿名访客及其他账号分组仍不可使用。
 
 ## 设计原则
 
@@ -30,7 +30,7 @@ Poketto 是面向多账号的 Git 原生内容工作空间。每个空间对应�
 2. 写入模型：每个工作空间内容仓的远端 `main` 分支即真理。管理端与 MCP 共用有界 UTF-8 补丁服务，保留未修改的源码，构建带调用者归属的候选提交，并且只从预期 base 推进远端 ref。竞争 push 返回冲突；回包丢失时须向远端 `main` 对账，绝不盲目重试。可选元数据错误与不安全文件产生文件级诊断；无效发布策略关闭公开服务。仓库确认与快照安装是独立状态。
 3. 检索采用[仓库原生](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md)方式：agent 在仓库上组合使用普通的列目录、搜索与读取工具。本文最初选定的 PostgreSQL 全文检索方案（zhparser、tsvector）从未实现。embedding 检索只在独立的[检索实验室](2026-09-24-retrieval-lab.md)中评测，经过真实查询评测后才可进入产品。
 4. 信任分层。工作空间所有者可直接通过私有远程仓库创作；Poketto 观察新的远端 `main`，不会把缓存改动当作内容。MCP 入口为成员 AI 使用作用域 API key。能力包括 READ_PRIVATE、WRITE_PRIVATE、PUBLISH、MANAGE_KEYS、EXECUTE_REPOSITORY 与 [CAPTURE](2026-09-24-capture-inbox.md)；CAPTURE 只能在 `private/inbox/` 中新建 Markdown 笔记并上传其图片，WRITE_PRIVATE 隐含该能力。AI key 默认不含 PUBLISH、MANAGE_KEYS 与 EXECUTE_REPOSITORY。公开搜索在内部固定公开范围；成员与 key 必须通过当前工作空间授权后才能私有读写。[显式成员权限](2026-09-12-member-content-permissions.md)分别控制私密读取、私密修改和公开发布；普通成员与邀请默认仅能读取当前公开范围。连接不能超出持有人的权限，也不会随其权限增加而自动扩大。
-5. 工作空间隔离。工作空间是租户、安全与数据销毁边界。模块操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间。[托管仓库连接](2026-09-11-managed-workspace-connections.md)可将已有私有仓库连接为更多空间，[GitHub 授权个人空间](2026-09-21-github-authorized-personal-spaces.md)允许具备资格的账号在自己的 GitHub 账号下创建仓库作为新空间。[浏览器与 MCP 路由](2026-09-11-workspace-browser-and-mcp-routing.md)将管理请求绑定到明确的空间路径，将机器会话绑定到凭据所属空间。跨空间公开发现由[多用户交付契约](2026-09-11-multiuser-workspaces-and-discovery.md)定义。
+5. 工作空间隔离。工作空间是仓库操作的租户、安全与数据销毁边界；[广场状态](2026-10-09-plaza-foundation.md)属于账号，需要其单独授予个人权限。空间操作、PostgreSQL 行、内容路径、blob、缓存、预算、审计记录和后台任务都显式携带 `WorkspaceId`；入口先解析出已授权工作空间，再调用这些操作。对象不存在与未授权不得泄露其他工作空间是否存在。默认部署创建一个工作空间。[托管仓库连接](2026-09-11-managed-workspace-connections.md)可将已有私有仓库连接为更多空间，[GitHub 授权个人空间](2026-09-21-github-authorized-personal-spaces.md)允许具备资格的账号在自己的 GitHub 账号下创建仓库作为新空间。[浏览器与 MCP 路由](2026-09-11-workspace-browser-and-mcp-routing.md)将管理请求绑定到明确的空间路径，将机器会话绑定到凭据所属空间。跨空间公开发现由[多用户交付契约](2026-09-11-multiuser-workspaces-and-discovery.md)定义。
 
 从仓库路径派生或由可选元数据指定的[路由](2026-09-06-logical-repository-routes.md)保留原始名称，包括空格、`%`、`?` 和 `#`，不做 URI 编码、解码或首尾裁剪。原有路径安全与长度限制继续适用；调用方在 URI 边界编码逻辑路由。
 
@@ -38,7 +38,9 @@ Poketto 是面向多账号的 Git 原生内容工作空间。每个空间对应�
 
 内容格式采用独立的 `public/` 和 `private/` 根目录，新内容默认私有。只有精确 `public/` 下符合条件的路径才能在已启用的 `public-root` 策略下发布；排除路径、指引和隐藏路径保持私有。默认文章路由省略根目录前缀，显式路由不赋予公开权限。[内容契约](2026-09-09-codeact-content-and-media.md)定义协调转换与格式边界。
 
-`/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key 或 OAuth 访问令牌，独立于浏览器会话。[CodeAct MCP 入口](2026-09-10-codeact-mcp-entrance.md)在隔离执行器和资产服务可用时提供 `repo_exec`、`repo_discard`、`get_artifact`、`get_asset` 和 `put_asset`。没有独立文件 CRUD 回退入口；文件访问要求经过验证的[本地 worker](../../executor-service/README.md)和 `EXECUTE_REPOSITORY` 权限。启用适配器不能替代真实进程边界验证。
+`/mcp` 使用 Streamable HTTP 和工作空间 Bearer API key 或 OAuth 访问令牌，独立于浏览器会话。[CodeAct MCP 入口](2026-09-10-codeact-mcp-entrance.md)在隔离执行器和资产服务可用时提供 `repo_exec`、`repo_discard`、`get_artifact`、`get_asset` 和 `put_asset`。独立的[广场入口](2026-10-09-plaza-foundation.md)为当前创作者提供 `wander`，无需 worker 即可读取公开文章及使用本人授权的纸条、每日糖果和署名代发评论。没有独立仓库文件 CRUD 回退入口；私密文件访问和编辑要求经过验证的[本地 worker](../../executor-service/README.md)和 `EXECUTE_REPOSITORY` 权限。启用适配器不能替代真实进程边界验证。
+
+[口袋小游戏](2026-10-09-pocket-games.md)通过独立限额的游戏作业和本人授权的存档扩展 `wander`。匿名网页游玩在本地运行；注册账号可主动在网页和 agent 之间交接存档。
 
 Agent 使用普通目录列表、搜索、shell 和 Python 查看文件，并逐层读取内容仓库自己的 `AGENTS.md`。服务端不解释这些指引。[目录导航](2026-09-08-repository-directory-navigation.md)仍通过共享读取服务向浏览器 HTTP 提供功能，无须执行器。
 
@@ -46,9 +48,9 @@ Agent 使用普通目录列表、搜索、shell 和 Python 查看文件，并逐
 
 [副本身份契约](2026-09-14-account-working-copies.md)要求每次执行请求明确新建副本，或携带此前返回的副本 ID。ID 不匹配时在执行前拒绝，即使重连后的 commit 相同也如此。账号工作副本的文件在传输关闭、重连和应用重启后仍然保留：只有显式丢弃或连续七天没有授权使用才会删除它们，运行租约结束只丢失其运行时状态：shell 状态、私有 `/tmp` 与保留的产物。未保存的工作没有异地备份。
 
-## 后续访客问答设计
+## 创作者问答与不可信内容
 
-上游 LLM 的 key 只存在于服务端环境变量。日预算按整次 agent run 预留：按最坏情况（逐轮膨胀的上下文 + 输出上限 × 轮数上限）预扣，预留不足则不开始，结束后按真实用量结算。单 IP 令牌桶限流（JVM 内存实现）。价格表配置化。
+[问答决策](2026-10-09-creator-qa.md)定义创作者资格、账号额度、整次运行费用预留、不确定调用和临时文本。单价上限与模型密钥由服务端配置。问答复用广场的只读公开边界，不能抓取 URL 或执行仓库工具。
 clip_url 的 SSRF 防护：仅 http/https；DNS 解析后拦截私网、回环、link-local 与云 metadata 地址；每一跳 redirect 重新校验；超时、大小、content-type 限制。抓回内容视为不可信数据，其中的指令性文字不作为指令执行。
 渲染管道：raw HTML 禁用、URL 消毒、输出端 HTML sanitizer、CSP 响应头。
 

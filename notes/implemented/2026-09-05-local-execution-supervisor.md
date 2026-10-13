@@ -21,6 +21,9 @@ quotas, shared copy identity, expiry and restart persistence, and
 reuse and reset reporting. Runtime leases and command containment remain separate
 from stored-copy lifetime.
 
+[Pocket games](2026-10-09-pocket-games.md) reuse containment and cleanup in a
+separate worker and resource pool, without repository copies or a command bridge.
+
 ### Supervisor and worker
 
 A small root resource supervisor sits behind a permissioned local UNIX socket.

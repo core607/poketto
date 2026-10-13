@@ -107,7 +107,8 @@ public interface Community {
             Instant createdAt,
             boolean deleted,
             long replies,
-            boolean mayDelete) {}
+            boolean mayDelete,
+            boolean agentPosted) {}
 
     record ArticleCard(
             String space,

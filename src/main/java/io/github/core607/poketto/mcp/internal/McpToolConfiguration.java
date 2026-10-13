@@ -4,7 +4,9 @@ import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.assets.ImageTransfers;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
+import io.github.core607.poketto.plaza.PlazaService;
 import io.modelcontextprotocol.server.McpServerFeatures;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -25,7 +27,13 @@ class McpToolConfiguration {
             ObjectProvider<AssetService> assets,
             ObjectProvider<RepositoryExecutor> executors,
             ObjectMapper json,
-            ObjectProvider<ImageTransfers> transfers) {
-        return new RepositoryMcpTools(sessions, auth, assets, executors, json, transfers).specifications();
+            ObjectProvider<ImageTransfers> transfers,
+            ObjectProvider<PlazaService> plaza) {
+        var tools = new ArrayList<>(
+                new RepositoryMcpTools(sessions, auth, assets, executors, json, transfers).specifications());
+        if (plaza.getIfAvailable() != null) {
+            tools.add(new PlazaMcpTool(sessions, plaza.getObject(), json).specification());
+        }
+        return List.copyOf(tools);
     }
 }

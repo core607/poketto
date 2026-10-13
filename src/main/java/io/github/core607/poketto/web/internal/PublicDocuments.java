@@ -5,6 +5,8 @@ import io.github.core607.poketto.content.DocumentSearch;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.games.GameContentSnapshots;
+import io.github.core607.poketto.games.GameLibrary;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePublications;
@@ -17,16 +19,19 @@ final class PublicDocuments {
     private final WorkspaceCatalog workspaces;
     private final AssetService assets;
     private final WorkspacePublications publications;
+    private final GameLibrary games;
 
     PublicDocuments(
             PublicContentSnapshots snapshots,
             WorkspaceCatalog workspaces,
             AssetService assets,
-            WorkspacePublications publications) {
+            WorkspacePublications publications,
+            GameLibrary games) {
         this.snapshots = snapshots;
         this.workspaces = workspaces;
         this.assets = assets;
         this.publications = publications;
+        this.games = games;
     }
 
     Page search(String query, String tag, Instant from, Instant to, int offset, int limit) {
@@ -74,7 +79,7 @@ final class PublicDocuments {
         }
         return assets.publicDocument(workspace, route)
                 .map(value -> PublicDocument.of(
-                        value.article(),
+                        GameContentSnapshots.article(value.article(), value.snapshot(), games),
                         value.snapshot(),
                         value.media(),
                         publications.settings(workspace).authorName()))

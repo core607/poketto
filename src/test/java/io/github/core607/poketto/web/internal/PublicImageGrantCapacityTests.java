@@ -94,7 +94,7 @@ class PublicImageGrantCapacityTests {
                 Clock.fixed(at, ZoneOffset.UTC),
                 new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO));
         var mvc = MockMvcBuilders.standaloneSetup(new PublicDocumentController(
-                        new PublicDocuments(snapshots, catalog, service, publications(workspace))))
+                        new PublicDocuments(snapshots, catalog, service, publications(workspace), null)))
                 .setControllerAdvice(new ProblemResponses())
                 .build();
         for (String state : List.of("PARTIAL", "UNAVAILABLE")) {
@@ -162,7 +162,7 @@ class PublicImageGrantCapacityTests {
                 Clock.fixed(at, ZoneOffset.UTC),
                 memory);
         var mvc = MockMvcBuilders.standaloneSetup(new PublicDocumentController(
-                        new PublicDocuments(snapshots, catalog, service, publications(workspace))))
+                        new PublicDocuments(snapshots, catalog, service, publications(workspace), null)))
                 .setControllerAdvice(new ProblemResponses())
                 .addFilters(new ImageMemoryFilter(memory))
                 .build();

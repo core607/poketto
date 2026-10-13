@@ -1,0 +1,130 @@
+{
+  "date": "2026-10-09",
+  "scope": "Synthetic site corpus, real auth/PostgreSQL/DeepSeek QA; not browser or a general RAG benchmark",
+  "modelConfigured": "deepseek-flash",
+  "compiledRuntimeSha256": "873dca0adfdedcef0e418e0cfbe5b24ade5a85841b6f681e92ce07119450b648",
+  "corpusSha256": "8a72578cade3cbd6cf4eae0e6193b5c99360498898f906ac9aa8c0ea15287d60",
+  "clientSha256": "49781194c18628b16b5fe9b4bca587b3c3cc02c232382060939a603da8b3cce8",
+  "wishClientSha256": "dd73bd1429153a3b5da1747d403c14e2e58599a72b0c1cb406ea2b87566f5641",
+  "cases": [
+    {
+      "id": "tag",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 2871,
+      "usage": {
+        "calls": 3,
+        "inputTokens": 3774,
+        "outputTokens": 296,
+        "costUpperUsd": "0.001488",
+        "uncertain": false
+      },
+      "sources": [
+        "home/qa/garden/rain"
+      ],
+      "sourceQuotesSupported": true,
+      "result": "PASS"
+    },
+    {
+      "id": "rephrase",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 3869,
+      "usage": {
+        "calls": 4,
+        "inputTokens": 5640,
+        "outputTokens": 566,
+        "costUpperUsd": "0.002372",
+        "uncertain": false
+      },
+      "sources": [
+        "home/qa/garden/hours",
+        "home/qa/reading/library"
+      ],
+      "sourceQuotesSupported": true,
+      "result": "PASS"
+    },
+    {
+      "id": "cross-article",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 3070,
+      "usage": {
+        "calls": 3,
+        "inputTokens": 4123,
+        "outputTokens": 386,
+        "costUpperUsd": "0.001702",
+        "uncertain": false
+      },
+      "sources": [
+        "home/qa/garden/hours",
+        "home/qa/garden/tickets"
+      ],
+      "sourceQuotesSupported": true,
+      "result": "PASS"
+    },
+    {
+      "id": "no-answer",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 6043,
+      "usage": {
+        "calls": 6,
+        "inputTokens": 11146,
+        "outputTokens": 693,
+        "costUpperUsd": "0.004178",
+        "uncertain": false
+      },
+      "sources": [],
+      "sourceQuotesSupported": true,
+      "result": "PASS"
+    },
+    {
+      "id": "adversarial",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 5089,
+      "usage": {
+        "calls": 5,
+        "inputTokens": 8394,
+        "outputTokens": 690,
+        "costUpperUsd": "0.003348",
+        "uncertain": false
+      },
+      "sources": [
+        "home/qa/garden/rain",
+        "home/qa/reading/paper"
+      ],
+      "sourceQuotesSupported": true,
+      "result": "PASS"
+    }
+  ],
+  "wish": {
+    "result": "PASS",
+    "usage": {
+      "calls": 4,
+      "inputTokens": 5380,
+      "outputTokens": 438,
+      "costUpperUsd": "0.002141",
+      "uncertain": false
+    },
+    "candySpent": 1,
+    "sources": [
+      "home/qa/garden/rain"
+    ],
+    "continuationAcrossFreshTransports": true,
+    "statusAndDuplicateCallsSpendNothing": true,
+    "credentialRevoked": true
+  },
+  "databaseReadback": {
+    "completedQuestions": 6,
+    "calls": 25,
+    "inputTokens": 38457,
+    "outputTokens": 3069,
+    "costUpperUsd": "0.015229",
+    "reservedMicros": 0,
+    "candyBalance": 4
+  },
+  "applicationLogsContainNoTestQuestionsOrProviderKey": true,
+  "limits": "Configured peak uncached prices are a conservative estimate, not an invoice; quote fidelity is not semantic accuracy; Chrome acceptance remains untested."
+}

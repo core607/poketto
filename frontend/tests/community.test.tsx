@@ -135,6 +135,7 @@ test("viewer comments remain plain text and existing bookmarks can be removed", 
           deleted: false,
           replies: 0,
           mayDelete: false,
+          agentPosted: true,
         },
       ],
     },
@@ -162,6 +163,7 @@ test("viewer comments remain plain text and existing bookmarks can be removed", 
   t.after(() => ui.cleanup());
   assert.equal(ui.container.querySelector("img"), null);
   assert.match(ui.container.textContent!, /<img src=x/);
+  assert.match(ui.container.textContent!, /由 agent 代发/);
   assert.match(
     ui.container.textContent!,
     /评论显示账号昵称；文章署名由作者自行填写/,

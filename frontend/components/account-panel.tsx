@@ -2,6 +2,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, message } from "../lib/browser-api";
 import { AccountSecurity } from "./account-security";
+import { MachineGrants } from "./machine-grants";
 import { CreateWorkspace } from "./create-workspace";
 import { GitHubSpace } from "./github-space";
 import { SiteGroup, siteGroups } from "./site-accounts";
@@ -92,6 +93,8 @@ export function AccountPanel({
         </button>
       </section>
       {security && <AccountSecurity onDisplayName={onDisplayName} />}
+      {(profile.account.group === "CREATOR" ||
+        profile.account.group === "ADMINISTRATOR") && <MachineGrants />}
       <div className="panel-intro">
         <h2>我的空间</h2>
         <p className="muted">

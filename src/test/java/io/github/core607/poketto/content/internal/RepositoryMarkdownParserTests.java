@@ -2,10 +2,19 @@ package io.github.core607.poketto.content.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class RepositoryMarkdownParserTests {
+    @Test
+    void authoredGameLabelNeverGrantsExecutableCapability() {
+        var result = new RepositoryMarkdownParser()
+                .parse("public/note.md", "---\ntags: [小游戏, puzzle]\n---\n# A game claim\nOrdinary article");
+        assertThat(result.tags()).containsExactly("puzzle");
+        assertThat(result.body()).contains("Ordinary article");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"true", "false", "'true'", "[true]", "null", "0"})
     void onlyAnAuthoredBooleanEnablesTheOptionalFeaturedSignal(String value) {

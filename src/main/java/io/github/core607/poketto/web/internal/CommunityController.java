@@ -210,7 +210,7 @@ class CommunityController {
         HttpStatus status =
                 switch (failure.code()) {
                     case UNAVAILABLE -> HttpStatus.NOT_FOUND;
-                    case PARTICIPATION_REQUIRED, DENIED -> HttpStatus.FORBIDDEN;
+                    case PARTICIPATION_REQUIRED, OWNER_CONSENT_REQUIRED, DENIED -> HttpStatus.FORBIDDEN;
                     case LIMIT_REACHED -> HttpStatus.TOO_MANY_REQUESTS;
                     case REQUEST_CONFLICT, REPLY_UNAVAILABLE, BASE_CHANGED -> HttpStatus.CONFLICT;
                 };

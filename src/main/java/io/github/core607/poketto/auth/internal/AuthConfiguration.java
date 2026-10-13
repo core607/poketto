@@ -3,6 +3,7 @@ package io.github.core607.poketto.auth.internal;
 import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.CommunityAccounts;
+import io.github.core607.poketto.auth.MachineAccounts;
 import io.github.core607.poketto.auth.SitePolicyService;
 import java.time.Clock;
 import java.util.Map;
@@ -19,6 +20,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class AuthConfiguration {
+    @Bean
+    MachineAccounts machineAccounts(
+            JdbcTemplate jdbc, Accounts accounts, AuthService auth, PlatformTransactionManager manager) {
+        return new MachineAccounts(jdbc, accounts, auth, manager);
+    }
+
     @Bean
     CommunityAccounts communityAccounts(JdbcTemplate jdbc, Accounts accounts) {
         return new CommunityAccounts(jdbc, accounts);

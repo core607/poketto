@@ -1,0 +1,10 @@
+services:
+  app:
+    environment:
+      POKETTO_QA_DEFAULT_PROVIDER: "${POKETTO_QA_DEFAULT_PROVIDER:-deepseek}"
+      POKETTO_QA_ANTHROPIC_API_KEY: "${POKETTO_QA_ANTHROPIC_API_KEY:-}"
+      POKETTO_QA_ANTHROPIC_MONTHLY_USD: "${POKETTO_QA_ANTHROPIC_MONTHLY_USD:-20}"
+      POKETTO_QA_DEEPSEEK_API_KEY: "${POKETTO_QA_DEEPSEEK_API_KEY:?Set a provider key only for the explicit paid QA acceptance}"
+      POKETTO_QA_DEEPSEEK_BASE_URL: "${POKETTO_QA_DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
+      POKETTO_QA_DAILY_USD: "${POKETTO_QA_DAILY_USD:-0.50}"
+      POKETTO_ACCEPTANCE_QA_CORPUS: /runtime/qa-fixture/corpus.json

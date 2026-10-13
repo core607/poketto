@@ -7,6 +7,7 @@ import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -81,6 +82,12 @@ final class McpToolOutcomes {
      * caller input, so it is named instead of hidden.
      */
     private static String field(ObjectMapper json, McpSchema.CallToolResult result, String name) {
+        if (result.structuredContent() != null) {
+            JsonNode status = json.valueToTree(result.structuredContent()).path("status");
+            if (status.path("code").isString()) {
+                return name.equals("code") ? status.path("code").stringValue() : "NONE";
+            }
+        }
         if (result.content().isEmpty()) {
             return "UNREPORTED";
         }

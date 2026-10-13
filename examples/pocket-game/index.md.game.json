@@ -1,0 +1,8 @@
+{
+  "protocol": 1,
+  "articleId": "69eec28b-8e1e-458f-a4a1-951a3b6d6bd4",
+  "entry": "rules.mjs",
+  "presentation": "display.mjs",
+  "help": "Inspect the bench, light the lantern, then open the gate. Actions always include their next observation.",
+  "resources": []
+}

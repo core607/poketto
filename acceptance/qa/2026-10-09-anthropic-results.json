@@ -1,0 +1,139 @@
+{
+  "date": "2026-10-09",
+  "scope": "Invented site corpus, real Anthropic Messages API, account/PostgreSQL/MCP budget entrance; development acceptance across the listed revisions, not an unbiased model benchmark. Browser observations are described in the pull request.",
+  "model": "claude-haiku-5-5",
+  "thinking": {
+    "type": "adaptive",
+    "display": "summarized"
+  },
+  "corpusSha256": "8a72578cade3cbd6cf4eae0e6193b5c99360498898f906ac9aa8c0ea15287d60",
+  "cases": [
+    {
+      "id": "cross-article",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 8121,
+      "usage": {
+        "calls": 4,
+        "inputTokens": 8495,
+        "outputTokens": 991,
+        "costUpperUsd": "0.001347",
+        "uncertain": false
+      },
+      "sourceRevision": "c692dd70",
+      "result": "FAIL: supporting articles missed"
+    },
+    {
+      "id": "cross-article",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 5032,
+      "usage": {
+        "calls": 3,
+        "inputTokens": 6764,
+        "outputTokens": 552,
+        "costUpperUsd": "0.000954",
+        "uncertain": false
+      },
+      "sources": [
+        "home/qa/garden/hours",
+        "home/qa/garden/tickets"
+      ],
+      "sourceQuotesSupported": true,
+      "result": "PASS",
+      "sourceRevision": "35beca87"
+    },
+    {
+      "id": "rephrase",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 7857,
+      "usage": {
+        "calls": 3,
+        "inputTokens": 6290,
+        "outputTokens": 671,
+        "costUpperUsd": "0.000967",
+        "uncertain": false
+      },
+      "sources": [
+        "home/qa/reading/library"
+      ],
+      "sourceQuotesSupported": true,
+      "result": "PASS",
+      "sourceRevision": "35beca87"
+    },
+    {
+      "id": "no-answer",
+      "state": "FAILED",
+      "code": "MODEL_LIMIT",
+      "latencyMillis": 12819,
+      "usage": {
+        "calls": 6,
+        "inputTokens": 20708,
+        "outputTokens": 2071,
+        "costUpperUsd": "0.003109",
+        "uncertain": false
+      },
+      "sourceRevision": "35beca87",
+      "result": "FAIL: model limit after repeated invalid no-evidence arguments"
+    },
+    {
+      "id": "adversarial",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 9124,
+      "usage": {
+        "calls": 3,
+        "inputTokens": 7343,
+        "outputTokens": 770,
+        "costUpperUsd": "0.001121",
+        "uncertain": false
+      },
+      "sources": [
+        "home/qa/garden/rain",
+        "home/qa/reading/paper"
+      ],
+      "sourceQuotesSupported": true,
+      "result": "PASS",
+      "sourceRevision": "35beca87"
+    },
+    {
+      "id": "no-answer",
+      "state": "COMPLETED",
+      "code": "OK",
+      "latencyMillis": 9650,
+      "usage": {
+        "calls": 5,
+        "inputTokens": 15312,
+        "outputTokens": 1134,
+        "costUpperUsd": "0.002101",
+        "uncertain": false
+      },
+      "sources": [],
+      "sourceQuotesSupported": true,
+      "result": "PASS",
+      "sourceRevision": "3c5ded25",
+      "correctedAfterArgumentHint": true
+    }
+  ],
+  "wish": {
+    "result": "PASS",
+    "usage": {
+      "calls": 4,
+      "inputTokens": 10224,
+      "outputTokens": 813,
+      "costUpperUsd": "0.001430",
+      "uncertain": false
+    },
+    "candySpent": 1,
+    "sources": [
+      "home/qa/garden/rain"
+    ],
+    "continuationAcrossFreshTransports": true,
+    "statusAndDuplicateCallsSpendNothing": true,
+    "credentialRevoked": true
+  },
+  "httpAndMcpCostUpperUsd": "0.011029",
+  "firstAttemptFailures": 2,
+  "limits": "Failures and their paid usage are retained. Explicit reruns followed tool-contract fixes; fixture questions and expected answers were unchanged. Prices are conservative configured accounting rates, not an invoice. This small corpus establishes neither general recall nor an advantage over RAG."
+}

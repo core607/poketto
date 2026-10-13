@@ -94,7 +94,7 @@ public final class AcceptanceApplication {
             write(
                     directory,
                     "public/随记/雨后.md",
-                    "---\ntitle: 雨停之后，留一页给散步\npublic_author: 雨后散步者\nauthor: PRIVATE_AUTHOR_ACCEPTANCE_SENTINEL\ntags: [日常, 观察]\ncreated_at: 2026-09-01T08:00:00Z\n---\n\n# 雨停之后\n\n街边的叶子还亮着。把今天读到的一句话收好，回家再慢慢想。\n\n![验收图片](../sample.png)\n\n## 留下来的东西\n\n- 一段可以检索的中文文字\n- 一个带有 Git 历史的普通文件\n\n```text\n原文、路径和修改记录都属于内容仓。\n```\n");
+                    "---\nid: 57a3d652-3e6f-4ba9-b47d-b0a62ca77710\ntitle: 雨停之后，留一页给散步\npublic_author: 雨后散步者\nauthor: PRIVATE_AUTHOR_ACCEPTANCE_SENTINEL\ntags: [日常, 观察]\ncreated_at: 2026-09-01T08:00:00Z\n---\n\n# 雨停之后\n\n街边的叶子还亮着。把今天读到的一句话收好，回家再慢慢想。\n\n![验收图片](../sample.png)\n\n## 留下来的东西\n\n- 一段可以检索的中文文字\n- 一个带有 Git 历史的普通文件\n\n```text\n原文、路径和修改记录都属于内容仓。\n```\n");
             write(
                     directory,
                     "public/手册/index.md",
@@ -163,6 +163,8 @@ public final class AcceptanceApplication {
             Files.write(
                     directory.resolve("public/故障相册/00-unreadable.jpg"),
                     Base64.getDecoder().decode("/9j/4AAEQUL/wAALCAAgACABAREA/9k="));
+            seedGame(directory);
+            AcceptanceQaCorpus.seed(directory);
             git.add().addFilepattern(".").call();
             git.commit()
                     .setMessage("Create synthetic acceptance content")
@@ -179,6 +181,19 @@ public final class AcceptanceApplication {
         Path target = directory.resolve(relative);
         Files.createDirectories(target.getParent());
         Files.writeString(target, value);
+    }
+
+    private static void seedGame(Path directory) throws Exception {
+        String configured = System.getenv("POKETTO_ACCEPTANCE_GAME_PACKAGE");
+        if (configured == null || configured.isBlank()) {
+            return;
+        }
+        Path source = Path.of(configured).toRealPath();
+        Path target = directory.resolve("public/games/lantern");
+        Files.createDirectories(target);
+        for (String name : new String[] {"index.md", "index.md.game.json", "rules.mjs", "display.mjs"}) {
+            Files.copy(source.resolve(name), target.resolve(name));
+        }
     }
 
     private static String required(String name) {

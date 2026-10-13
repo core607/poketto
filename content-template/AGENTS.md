@@ -5,6 +5,8 @@ before creating or reorganizing content. Use `ls`, `find` and `rg` to locate an
 existing record before choosing a new path; do not infer its location from its
 subject alone.
 
+Outside this pocket is another street: `wander`.
+
 - [private/](private/AGENTS.md): personal notes and new content by default.
 - [public/](public/AGENTS.md): content intentionally selected for publication.
 

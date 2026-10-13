@@ -85,6 +85,7 @@ export function CommunityCommentItem({
         {comment.author && (
           <span title={`账号标识：${comment.author.accountId}`}>站内账号</span>
         )}
+        {comment.agentPosted && !comment.deleted && <span>由 agent 代发</span>}
         <time dateTime={comment.createdAt}>{date(comment.createdAt)}</time>
       </div>
       {!comment.deleted && (

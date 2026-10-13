@@ -135,6 +135,22 @@ assert_status 0
 assert_contains "$(cat "$FAKE_STATE/repository-credential-key")" 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 assert_not_contains "$OUT$ERR" 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
 
+# QA settings remain literal and private while reaching the application configuration.
+setup_root
+have_image "$DIGEST_IMAGE"
+set +e
+OUT="$(printf '%s\n' 'POKETTO_QA_DEEPSEEK_API_KEY=qa-$literal-$(not-a-command)' 'POKETTO_QA_DAILY_USD=0.50' \
+    'POKETTO_QA_PERSONALITY=Speak briefly' 'POKETTO_PLAZA_ENABLED=false' \
+    | POKETTO_CAPTURE_ENV=1 bash "$ROOT/deploy.sh" --set-stdin 2> "$PWD/stderr")"
+STATUS=$?
+set -e
+ERR="$(cat "$PWD/stderr")"
+assert_status 0
+assert_contains "$(cat "$FAKE_STATE/POKETTO_QA_DEEPSEEK_API_KEY")" 'qa-$literal-$(not-a-command)'
+assert_contains "$(cat "$FAKE_STATE/POKETTO_QA_DAILY_USD")" '0.50'
+assert_contains "$(cat "$FAKE_STATE/POKETTO_QA_PERSONALITY")" 'Speak briefly'
+assert_not_contains "$OUT$ERR" 'qa-$literal'
+
 # Unknown keys cannot alter the deployment process environment.
 setup_root
 printf '%s\n' 'PATH=/tmp/untrusted' >> "$ROOT/.env"

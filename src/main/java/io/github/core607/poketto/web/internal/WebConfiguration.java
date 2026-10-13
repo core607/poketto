@@ -5,10 +5,13 @@ import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.PublicRevisionHistory;
 import io.github.core607.poketto.content.WebsiteContentSnapshots;
+import io.github.core607.poketto.games.GameContentSnapshots;
+import io.github.core607.poketto.games.GameLibrary;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.time.Clock;
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -25,8 +28,11 @@ class WebConfiguration {
     }
 
     @Bean
-    PublicSiteSearch publicSiteSearch(PublicContentSnapshots snapshots, WorkspacePublications publications) {
-        return new PublicSiteSearch(publications, new WebsiteContentSnapshots(snapshots, publications));
+    PublicSiteSearch publicSiteSearch(
+            PublicContentSnapshots snapshots, WorkspacePublications publications, ObjectProvider<GameLibrary> games) {
+        return new PublicSiteSearch(
+                publications,
+                new GameContentSnapshots(new WebsiteContentSnapshots(snapshots, publications), games.getIfAvailable()));
     }
 
     @Bean
@@ -42,9 +48,15 @@ class WebConfiguration {
 
     @Bean
     PublicDiscovery publicDiscovery(
-            PublicContentSnapshots snapshots, WorkspacePublications publications, AssetService assets) {
+            PublicContentSnapshots snapshots,
+            WorkspacePublications publications,
+            AssetService assets,
+            ObjectProvider<GameLibrary> games) {
         return new PublicDiscovery(
-                publications, new WebsiteContentSnapshots(snapshots, publications), assets, Clock.systemUTC());
+                publications,
+                new GameContentSnapshots(new WebsiteContentSnapshots(snapshots, publications), games.getIfAvailable()),
+                assets,
+                Clock.systemUTC());
     }
 
     // Ordered ahead of every other filter so a request rejected by admission, origin, or
@@ -73,7 +85,14 @@ class WebConfiguration {
             PublicContentSnapshots store,
             WorkspaceCatalog workspaces,
             AssetService assets,
-            WorkspacePublications publications) {
-        return new PublicDocuments(new WebsiteContentSnapshots(store, publications), workspaces, assets, publications);
+            WorkspacePublications publications,
+            ObjectProvider<GameLibrary> games) {
+        GameLibrary library = games.getIfAvailable();
+        return new PublicDocuments(
+                new GameContentSnapshots(new WebsiteContentSnapshots(store, publications), library),
+                workspaces,
+                assets,
+                publications,
+                library);
     }
 }
