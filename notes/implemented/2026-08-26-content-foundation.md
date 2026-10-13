@@ -3,8 +3,6 @@
 Date: 2026-08-26
 Status: Implemented
 
-[Chinese](2026-08-26-content-foundation.zh.md)
-
 ## Problem
 
 Poketto needs a durable content boundary before it can implement writes, projection, search, rendering, or MCP tools. At the time, the [requirements](2026-08-25-requirements-and-architecture.md) made a separate git repository the source of truth, document identity a repository-wide UUID, and revisions content hashes. The implemented [workspace boundary](2026-08-27-workspace-tenancy.md) assigns one repository to each workspace. This decision defines the repository bootstrap contract, managed path layout, frontmatter schema, canonical machine-written form, and revision encoding.

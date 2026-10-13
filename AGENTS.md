@@ -2,7 +2,7 @@
 
 Poketto is a Git-native content workspace: members and their agents author each space's repository through the browser and MCP, and published spaces serve public websites. Remote Git is content authority; workspace repositories cached locally are disposable. The [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) owns implemented product boundaries; proposed notes own accepted targets awaiting implementation and must not be described as shipped.
 
-The public README, [usage reference](docs/usage.md), requirements note and [content foundation](notes/implemented/2026-08-26-content-foundation.md) have .zh.md counterparts; make the smallest corresponding edit to both sides in the same change.
+The public README and [usage reference](docs/usage.md) have .zh.md counterparts; make the smallest corresponding edit to both sides in the same change. Notes are English-only.
 
 ## Arrival guide
 
@@ -41,7 +41,7 @@ Use [pre-push-checks](.agents/skills/pre-push-checks/SKILL.md) for delivery veri
 
 - The directory encodes status: proposed/ holds proposals awaiting implementation, implemented/ holds settled decisions, rejected/ holds declined proposals, archived/ holds frozen history. A decision that needs no implementation goes directly into implemented/.
 - Write or update a note only for lasting rationale that code, tests, and current docs do not explain: a real alternative, a trade-off, or an ownership, security, durability, or reintroduction rule. What a feature does belongs in docs/ or its README; local UI and mechanical changes need no note. Updating the note that owns the decision satisfies the rule ([rationale](notes/implemented/2026-09-25-note-lifecycle-and-document-budgets.md)).
-- Proposals must land in the repository: work agreed in conversation exists only once written as a proposed note, because a future implementer may not have that conversation. Whoever implements it, in the same change, either moves it into implemented/ rewritten as what was built, or deletes it when it holds no lasting rationale once the behavior is documented where it belongs.
+- Work agreed in conversation but not implemented in the same change must land as a proposed note, because a future implementer may not have that conversation. Work implemented in the change that agrees it needs no proposal; its lasting rationale, if any, goes straight into implemented/. Whoever implements a proposal, in the same change, either moves it into implemented/ rewritten as what was built, or deletes it when it holds no lasting rationale once the behavior is documented where it belongs.
 - Every note must stand alone: a reader who sees only the repository must be able to resolve every reference, so cite committed paths and never a chat, a plan, a review round, or a private machine path. A well-written proposed note can serve directly as a subagent's task brief.
 - File name: yyyy-mm-dd-topic.md. A note records the problem, the decision or proposal, real alternatives, and consequences; its verification names the tests or checks that pin the decision without restating their cases.
 - Never rewrite an old note into a different decision. A reversal gets a new cross-linked note or consolidates the old one into it; an implemented note keeps its paths, names, and other facts current.
@@ -64,7 +64,7 @@ Runbooks tied to a specific machine or environment never enter this repository; 
 
 ## Rules
 
-- Agent instructions and skills are English-only. Notes are English by default unless covered by the bilingual pairs declared above.
+- Agent instructions, skills and notes are English-only.
 - Preserve factual obligations, conditions, exceptions, and consequences; remove repetition and authoring-session narration. Use [prose-standard](.agents/skills/prose-standard/SKILL.md) for substantive writing, rewriting, or prose audits.
 - Never replace an explicitly required repository or platform check with an invented manual equivalent. If that required capability is unavailable, report it and block actions and completion claims that depend on it; continue only authorized work whose outcome does not depend on that check, without claiming the check passed.
 - Commit messages use conventional commits (feat / fix / docs / test / chore / refactor / ci / build); commit in small steps.

@@ -119,10 +119,6 @@ tasks.register("repoCheck") {
         val requiredPairs = listOf(
             "README.md" to "README.zh.md",
             "docs/usage.md" to "docs/usage.zh.md",
-            "notes/implemented/2026-08-25-requirements-and-architecture.md" to
-                "notes/implemented/2026-08-25-requirements-and-architecture.zh.md",
-            "notes/implemented/2026-08-26-content-foundation.md" to
-                "notes/implemented/2026-08-26-content-foundation.zh.md",
         )
         requiredPairs.forEach { (english, chinese) ->
             if (!Files.isRegularFile(repositoryRoot.resolve(english))) {
