@@ -46,6 +46,21 @@ class MarkdownTextTests {
     }
 
     @Test
+    void leadSkipsFiguresCaptionsHeadingsAndCode() {
+        String markdown = "# 另一个标题\n\n![论文要点的可视化总结](cover.png)\n\n*配图为 AI 生成。*\n\n"
+                + "[![链接图](a.png)](https://example.org)\n\n## 小节\n\n```\ncode\n```\n\n"
+                + "| 列 |\n| --- |\n| 格 |\n\n**TL;DR**：第一句。图![行内](b.png)在中间。\n\n*强调开头的正文*也保留。";
+        assertThat(MarkdownText.lead("标题", markdown)).isEqualTo("TL;DR：第一句。图在中间。 强调开头的正文也保留。");
+        assertThat(MarkdownText.lead("标题", "*没有配图时的强调段落*")).isEqualTo("没有配图时的强调段落");
+        assertThat(MarkdownText.lead("相册", "# 相册\n\n![第一张](1.png)\n\n![第二张](2.png)"))
+                .isEqualTo("第一张 第二张");
+        assertThat(new DocumentSearch("", "", null, null, 0, 10).snippet("标题", markdown))
+                .startsWith("TL;DR：第一句。");
+        assertThat(new DocumentSearch("小节", "", null, null, 0, 10).snippet("标题", markdown))
+                .contains("小节");
+    }
+
+    @Test
     void readsGfmContentWithoutTableDelimitersTasksOrStrikeMarkup() {
         String markdown = "| 地点 | 天气 |\n| --- | --- |\n| 公园 | ~~下雨~~晴天 |\n\n"
                 + "- [x] 出门\n- [ ] 回家\n\n正文[^note]\n\n[^note]: 补充内容";

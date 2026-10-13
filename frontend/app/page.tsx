@@ -3,6 +3,7 @@ import { discovery, PublicApiError } from "../lib/public-api";
 import type { DiscoveryPage } from "../lib/types";
 import { articleHref, date, spaceHref } from "../lib/format";
 import { DiscoveryCover } from "../components/discovery-cover";
+import { coverFace, splitLead } from "../lib/cover-face";
 import { HomeNavigation } from "../components/home-navigation";
 import { CommunityDashboard } from "../components/community-dashboard";
 import { Avatar, Icon } from "../components/ui/icons";
@@ -236,20 +237,24 @@ function DiscoveryCard({ item }: { item: DiscoveryPage["items"][number] }) {
       : item.folderPage
         ? "目录"
         : null;
+  // A card without an image lifts its opening sentence onto the cover instead of repeating it.
+  const { lead, rest } =
+    item.album || item.cover
+      ? { lead: "", rest: item.snippet }
+      : splitLead(item.snippet);
   return (
     <article className="card">
-      {(item.album || item.cover) && (
-        <DiscoveryCover
-          src={item.cover}
-          href={href}
-          title={item.title}
-          album={item.album}
-        />
-      )}
+      <DiscoveryCover
+        src={item.cover}
+        href={href}
+        title={item.title}
+        album={item.album}
+        face={coverFace({ ...item, lead })}
+      />
       <div className="card-meta">
         <a className="space-link" href={spaceHref(item.space)}>
           <Avatar name={item.spaceName} />
-          {item.spaceName}
+          <span>{item.spaceName}</span>
         </a>
         {item.authorName !== item.spaceName && (
           <span className="author-name">{item.authorName}</span>
@@ -257,13 +262,17 @@ function DiscoveryCard({ item }: { item: DiscoveryPage["items"][number] }) {
         {kind && <span className="kind">{kind}</span>}
         <time dateTime={item.createdAt}>{date(item.createdAt)}</time>
       </div>
-      <h2 className="card-title">
+      <h2 className="card-title" title={item.title}>
         <a href={href}>{item.title}</a>
       </h2>
-      {item.snippet && <p className="card-snippet">{item.snippet}</p>}
+      <p className="card-snippet">
+        {/* The cover is hidden from assistive technology, so the lifted sentence stays here. */}
+        {lead && <span className="sr-only">{lead}</span>}
+        {rest}
+      </p>
       {item.tags.length > 0 && (
         <div className="card-tags">
-          {item.tags.slice(0, 4).map((tag) => (
+          {item.tags.slice(0, 3).map((tag) => (
             <a
               className="tag"
               href={"/?tag=" + encodeURIComponent(tag)}
