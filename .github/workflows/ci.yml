@@ -2,7 +2,9 @@ name: CI
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    # No `edited`: a title or description edit reran the whole matrix and, through the PR
+    # concurrency group, cancelled the run already verifying the same head.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches:
       - main

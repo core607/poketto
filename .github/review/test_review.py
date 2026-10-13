@@ -24,6 +24,10 @@ class FakeGitHub:
         self.status_fails = None
         self.reads = 0
         self.drift_after = None
+        self.replies = []
+
+    def author_replies(self):
+        return self.replies
 
     def current(self):
         self.reads += 1
@@ -54,7 +58,7 @@ class FakeProvider:
         self.requests.append(body)
         if self.fail_at == len(self.requests):
             raise review.Incomplete("Fixture provider failure.")
-        return {"role": "assistant", "content": "Fixture review: inspect the caller and consumer together. @literal"}, {"prompt_tokens": 1000, "completion_tokens": 10}
+        return {"role": "assistant", "content": "Fixture review: inspect the caller and consumer together. @literal <!-- findings: [] -->"}, {"prompt_tokens": 1000, "completion_tokens": 10}
 
 
 def final_request(request):
@@ -277,7 +281,7 @@ class ReviewTests(unittest.TestCase):
                 request = json.loads(body)
                 if final_request(request):
                     self.assertNotIn("tool_choice", request)
-                    return {"role": "assistant", "content": "Final observed findings."}, {
+                    return {"role": "assistant", "content": "Final observed findings. <!-- findings: [] -->"}, {
                         "prompt_tokens": 1000, "completion_tokens": 10}
                 return {"role": "assistant", "content": "", "tool_calls": [{
                     "id": "call_" + str(len(self.provider.requests)), "type": "function", "function": {
@@ -310,7 +314,7 @@ class ReviewTests(unittest.TestCase):
             request = json.loads(body)
             usage = {"prompt_tokens": 1000, "completion_tokens": 10}
             if final_request(request):
-                return {"role": "assistant", "content": f"Final observed findings {number}."}, usage
+                return {"role": "assistant", "content": f"Final observed findings {number}. <!-- findings: [] -->"}, usage
             return {"role": "assistant", "content": "", "tool_calls": [{
                 "id": f"read_{number}", "type": "function", "function": {
                     "name": "repository", "arguments": json.dumps({"action": "read", "revision": "head",
@@ -337,7 +341,7 @@ class ReviewTests(unittest.TestCase):
         self.assertNotIn("notice", json.loads(requests[1]["messages"][-1]["content"]))
         self.assertEqual(review.FINAL_NOTICE, json.loads(requests[2]["messages"][-1]["content"])["notice"])
         self.assertNotIn("tool_choice", requests[-1])
-        self.assertEqual([{"commit_id": self.head, "body": "Final observed findings 3."}], self.github.posts)
+        self.assertEqual([{"commit_id": self.head, "body": "Final observed findings 3. <!-- findings: [] -->"}], self.github.posts)
         manifest = json.loads((self.output / "manifest.json").read_bytes())
         self.assertEqual(3, manifest["max_turns"])
         self.assertEqual(3, manifest["used_turns"])
@@ -383,7 +387,7 @@ class ReviewTests(unittest.TestCase):
         # Each stage's first call is its last: the user instruction and tool_choice: none remain.
         self.assertTrue(all(json.loads(body)["tool_choice"] == "none" for body in self.provider.requests))
         self.assertTrue(all(json.loads(body)["messages"][-1] == review.FINAL_MESSAGE for body in self.provider.requests))
-        self.assertEqual([{"commit_id": self.head, "body": "Final observed findings 3."}], self.github.posts)
+        self.assertEqual([{"commit_id": self.head, "body": "Final observed findings 3. <!-- findings: [] -->"}], self.github.posts)
         manifest = json.loads((self.output / "manifest.json").read_bytes())
         self.assertEqual(data, b"".join((self.output / f"part-{part['part']:02d}.diff").read_bytes()
                                        for part in manifest["parts"]))
@@ -398,7 +402,7 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(8, manifest["max_turns"])
         self.assertEqual(8, manifest["used_turns"])
         self.assertEqual("complete", manifest["state"])
-        self.assertEqual([{"commit_id": self.head, "body": "Final observed findings 8."}], self.github.posts)
+        self.assertEqual([{"commit_id": self.head, "body": "Final observed findings 8. <!-- findings: [] -->"}], self.github.posts)
 
     def test_leaving_peak_does_not_grow_the_running_review_budget(self):
         self.now = self.now.replace(hour=17, minute=59)
