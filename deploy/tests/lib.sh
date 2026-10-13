@@ -21,7 +21,7 @@ unset DOCKER_CONFIG POKETTO_DEPLOY_LOCK_FD POKETTO_DEPLOY_LOCK_HELD
 setup_root() {
     rm -rf "$ROOT" "$FAKE_STATE"
     mkdir -p "$ROOT" "$FAKE_STATE"
-    cp "$DEPLOY_DIR/compose.yaml" "$DEPLOY_DIR/compose.executor.yaml" "$DEPLOY_DIR/Caddyfile" "$DEPLOY_DIR/deploy.sh" "$ROOT/"
+    cp "$DEPLOY_DIR/compose.yaml" "$DEPLOY_DIR/compose.executor.yaml" "$DEPLOY_DIR/compose.games.yaml" "$DEPLOY_DIR/Caddyfile" "$DEPLOY_DIR/deploy.sh" "$ROOT/"
     cat > "$ROOT/.env" <<EOF
 POKETTO_APP_IMAGE=$DIGEST_IMAGE
 POKETTO_APP_REVISION=$REVISION

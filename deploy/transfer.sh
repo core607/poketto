@@ -5,7 +5,7 @@
 #
 # Usage: transfer.sh --target USER@HOST --root DIR --image REF --frontend-image REF
 #                    --revision COMMIT [--sync] [--set-stdin] [--pull] [--existing]
-# --sync stages compose.yaml, compose.executor.yaml, Caddyfile and deploy.sh with checksums.
+# --sync stages compose.yaml, compose.executor.yaml, compose.games.yaml, Caddyfile and deploy.sh with checksums.
 # --set-stdin forwards literal settings and temporary registry credentials without argv exposure.
 # --existing calls the preinstalled privileged updater; it preserves operator Compose and settings.
 # POKETTO_SSH overrides the SSH command; only trusted operator configuration supplies this value.
@@ -121,7 +121,7 @@ if [ "$SYNC" = 1 ]; then
     # compose.yaml or deploy.sh.
     incoming="$ROOT/.incoming/$REVISION"
     remote "mkdir -p '$incoming'" < /dev/null || fail "cannot create $incoming on $TARGET"
-    for file in compose.yaml compose.executor.yaml Caddyfile deploy.sh; do
+    for file in compose.yaml compose.executor.yaml compose.games.yaml Caddyfile deploy.sh; do
         checksum="$(sha256sum "$HERE/$file" | cut -d ' ' -f 1)"
         remote "set -e; cat > '$incoming/$file.tmp';             echo '$checksum' '$incoming/$file.tmp' | sha256sum --check --status                 || { rm -f '$incoming/$file.tmp'; echo 'sync checksum mismatch' >&2; exit 1; };             mv -f '$incoming/$file.tmp' '$incoming/$file'" < "$HERE/$file"             || fail "cannot sync $file to $TARGET"
     done
@@ -129,7 +129,7 @@ if [ "$SYNC" = 1 ]; then
         SYNC_ARGS="--sync-from '$incoming'"
     else
         # No entrance exists yet, so there is no lock to respect; install the first copy directly.
-        remote "set -e; mv -f '$incoming/compose.yaml' '$ROOT/compose.yaml'; mv -f '$incoming/compose.executor.yaml' '$ROOT/compose.executor.yaml'; mv -f '$incoming/Caddyfile' '$ROOT/Caddyfile';             mv -f '$incoming/deploy.sh' '$ROOT/deploy.sh'; chmod 755 '$ROOT/deploy.sh'; rmdir '$incoming'" < /dev/null             || fail "cannot install the entrance on $TARGET"
+        remote "set -e; mv -f '$incoming/compose.yaml' '$ROOT/compose.yaml'; mv -f '$incoming/compose.executor.yaml' '$ROOT/compose.executor.yaml'; mv -f '$incoming/compose.games.yaml' '$ROOT/compose.games.yaml'; mv -f '$incoming/Caddyfile' '$ROOT/Caddyfile';             mv -f '$incoming/deploy.sh' '$ROOT/deploy.sh'; chmod 755 '$ROOT/deploy.sh'; rmdir '$incoming'" < /dev/null             || fail "cannot install the entrance on $TARGET"
     fi
 fi
 
