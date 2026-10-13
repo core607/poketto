@@ -1,0 +1,22 @@
+# Applied only after deploy.sh verifies the independently installed game supervisor.
+services:
+  app:
+    environment:
+      POKETTO_GAMES_ENABLED: "true"
+      POKETTO_GAMES_SOCKET: /run/poketto-games/control.sock
+      POKETTO_GAMES_SIGNING_KEY: /run/poketto-secrets/games-private.pem
+      POKETTO_GAMES_MAX_JOBS: "${POKETTO_GAMES_MAX_JOBS:-2}"
+    volumes:
+      # Mount the parent, so supervisor restarts can replace the socket inode.
+      - type: bind
+        source: "${POKETTO_GAMES_RUNTIME_DIR_HOST:?game runtime directory is required}"
+        target: /run/poketto-games
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${POKETTO_GAMES_SIGNING_KEY_HOST:?game signing key is required}"
+        target: /run/poketto-secrets/games-private.pem
+        read_only: true
+        bind:
+          create_host_path: false

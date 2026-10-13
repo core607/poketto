@@ -113,6 +113,16 @@ runtime. Use [the worker example](../executor-service/game-config.example.json),
 [slice](../executor-service/pokettogames.slice) with the existing pinned SRT
 toolchain described in the [worker reference](../executor-service/README.md).
 Replace example paths and IDs with operator configuration outside the repository.
+
+With the bundled deployment entrance, set `POKETTO_GAMES_ENABLED=true`,
+`POKETTO_GAMES_RUNTIME_DIR_HOST`, `POKETTO_GAMES_SIGNING_KEY_HOST` and optionally
+`POKETTO_GAMES_MAX_JOBS` in `.env`. `deploy.sh` then adds
+[the games overlay](../deploy/compose.games.yaml) only after `poketto-games.service` is
+active, its root-owned runtime directory is mode 0751, its root-owned socket is mode 0660
+with the application's group, and the signing key
+is application-owned mode 0600, none of them shared with the executor. Existing
+installations set the same application properties in their own Compose file; their
+settings channel accepts no host-prerequisite keys, as with the executor.
 The root supervisor verifies signed frames and launches code under a separate
 unprivileged game account. The application needs only its signing key and access to
 the root-owned game socket, never root privileges or a Docker socket.

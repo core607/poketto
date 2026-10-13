@@ -69,6 +69,22 @@ assert_status 1
 assert_contains "$ERR" "installed host executor prerequisite"
 [ "$(up_count)" = 0 ]
 
+# Enabling games likewise refuses to start without the installed game supervisor.
+setup_root
+have_image "$DIGEST_IMAGE"
+printf '%s
+' 'POKETTO_GAMES_ENABLED=true' >> "$ROOT/.env"
+run_deploy
+assert_status 1
+assert_contains "$ERR" "installed game supervisor prerequisite"
+[ "$(up_count)" = 0 ]
+setup_root
+printf '%s
+' 'POKETTO_GAMES_MAX_JOBS=17' >> "$ROOT/.env"
+run_deploy
+assert_status 1
+assert_contains "$ERR" "POKETTO_GAMES_MAX_JOBS must be between 1 and 16"
+
 # Exercise the shipped route/config declarations. Actual Caddy container routing is a separate
 # native runtime gate; these assertions do not claim an HTTPS/browser acceptance.
 grep -Fq '@management path /actuator /actuator/*' "$DEPLOY_DIR/Caddyfile"
@@ -105,3 +121,4 @@ assert_not_contains "$frontend" 'TOKEN'
 assert_not_contains "$frontend" 'SIGNING'
 assert_not_contains "$frontend" 'volumes:'
 grep -Fq 'create_host_path: false' "$DEPLOY_DIR/compose.executor.yaml"
+[ "$(grep -c 'create_host_path: false' "$DEPLOY_DIR/compose.games.yaml")" = 2 ]

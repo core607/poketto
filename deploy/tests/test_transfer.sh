@@ -110,6 +110,7 @@ assert_not_contains "$(docker_log)" "pull"
 assert_contains "$(cat "$FAKE_STATE/deploy-calls")" "--frontend-image '$FRONTEND_IMAGE'"
 assert_contains "$(cat "$FAKE_STATE/sync.log")" "Caddyfile.tmp"
 assert_contains "$(cat "$FAKE_STATE/sync.log")" "compose.executor.yaml.tmp"
+assert_contains "$(cat "$FAKE_STATE/sync.log")" "compose.games.yaml.tmp"
 run_transfer --target ops@host --root /srv/poketto --image "$TAG_IMAGE" --frontend-image "$FRONTEND_IMAGE" --revision "$REVISION" --pull
 assert_status 1
 assert_contains "$ERR" "requires immutable registry digests"
