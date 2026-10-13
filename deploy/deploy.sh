@@ -622,6 +622,7 @@ check_games() {
     [ -f "$ROOT/compose.games.yaml" ] || fail "missing games Compose overlay"
     [ "$runtime" != "${POKETTO_EXECUTOR_RUNTIME_DIR_HOST:-}" ] && [ "$signing" != "${POKETTO_EXECUTOR_SIGNING_KEY_HOST:-}" ]         || fail "games need their own runtime directory and signing key, separate from the executor"
     [ -d "$runtime" ] && [ ! -L "$runtime" ] && [ "$(owner_uid "$runtime")" = 0 ]         || fail "game runtime directory must already exist and be owned by root"
+    [ "$(stat -c %a "$runtime")" = 751 ] || fail "game runtime directory must have mode 0751"
     [ -S "$runtime/control.sock" ] && [ ! -L "$runtime/control.sock" ]         || fail "game control.sock is unavailable; install/start the game supervisor first"
     [ "$(owner_uid "$runtime/control.sock")" = 0 ] && [ "$(stat -c %a "$runtime/control.sock")" = 660 ] && [ "$(stat -c %g "$runtime/control.sock")" = "$APP_UID" ]         || fail "game socket must be root-owned mode 0660 with the application's group"
     [ -f "$signing" ] && [ ! -L "$signing" ] && [ "$(owner_uid "$signing")" = "$APP_UID" ]         || fail "game signing key must already exist and be owned by the application uid"
