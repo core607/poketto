@@ -62,6 +62,7 @@ class PlazaMcpToolTests {
                 .apply(exchange, new McpSchema.CallToolRequest("wander", Map.of("command", "look")));
         assertThat(result.isError()).isFalse();
         assertThat(tool.specification().tool().name()).isEqualTo("wander");
+        assertThat(tool.specification().tool().annotations().destructiveHint()).isTrue();
     }
 
     @Test
