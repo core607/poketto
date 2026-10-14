@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -91,7 +92,7 @@ class WorkspaceSynchronizationTests {
             write(journal, mapper.writeValueAsString(snapshot));
         });
         var sync = new WorkspaceSynchronization(saves);
-        assertThatThrownBy(() -> sync.run(actor, workspace, resumed, localFiles(local)))
+        assertThatThrownBy(() -> sync.run(actor, workspace, resumed, () -> false, localFiles(local)))
                 .isSameAs(failure);
         assertThat(resumed.baseCommit).isEqualTo(previous);
         assertThat(resumed.baseline("AGENTS.md")).isEqualTo(previous);
@@ -101,7 +102,9 @@ class WorkspaceSynchronizationTests {
         assertThat(stored.sync().current().path()).isEqualTo("AGENTS.md");
         var reopened = SelectedFileSaves.State.restore(
                 stored, snapshot -> write(journal, mapper.writeValueAsString(snapshot)));
-        assertThat(sync.run(actor, workspace, reopened, localFiles(local)).ok()).isTrue();
+        assertThat(sync.run(actor, workspace, reopened, () -> false, localFiles(local))
+                        .ok())
+                .isTrue();
         assertThat(reopened.sync).isNull();
         assertThat(reopened.baseCommit).isEqualTo(fixedRemote);
         assertThat(saves.baselineFile(actor, workspace, reopened, "AGENTS.md").source())
@@ -112,6 +115,37 @@ class WorkspaceSynchronizationTests {
                         .getFile(actor, workspace, Optional.empty(), "AGENTS.md")
                         .source())
                 .contains("later remote version");
+    }
+
+    @Test
+    void spentCommandTimeStopsEachRunAfterOnePathAndJournalsProgressUntilTheLastRunFinishes() throws Exception {
+        var competitor = new SelectedFileSaves.State(fixture.sourceCommit());
+        var added = Map.of("private/one.md", "one", "private/two.md", "two", "private/three.md", "three");
+        assertThat(saves.save(actor, workspace, competitor, added, List.of()).ok())
+                .isTrue();
+        Path local = Files.createDirectory(root.resolve("local"));
+        var journal = new AtomicReference<RetainedSaveState>();
+        var state = new SelectedFileSaves.State(fixture.sourceCommit(), journal::set);
+        var sync = new WorkspaceSynchronization(saves);
+
+        BridgeReplies.Reply reply = sync.run(actor, workspace, state, () -> true, localFiles(local));
+        assertThat(reply.code()).isEqualTo("SYNC_INCOMPLETE");
+        assertThat(journal.get().sync().next()).isEqualTo(1);
+        int total = journal.get().sync().paths().size();
+        int runs = 1;
+        while (!reply.ok()) {
+            var reopened = SelectedFileSaves.State.restore(journal.get(), journal::set);
+            reply = sync.run(actor, workspace, reopened, () -> true, localFiles(local));
+            runs++;
+        }
+
+        assertThat(runs).isEqualTo(total);
+        assertThat(reply.code()).isEqualTo("SYNCHRONIZED");
+        assertThat(journal.get().sync()).isNull();
+        assertThat(journal.get().baseCommit()).isEqualTo(competitor.baseCommit);
+        for (var file : added.entrySet()) {
+            assertThat(Files.readString(local.resolve(file.getKey()))).isEqualTo(file.getValue());
+        }
     }
 
     private void saveGuide(SelectedFileSaves.State state, String text) {

@@ -193,7 +193,7 @@ MARKDOWN
 
 `poketto save` 提交选定文件和明确删除，其他编辑留在本地，并逐项检查所选文件与远端的冲突。完整读取副本的保存或移动得到确认后，还会更新本地 Git HEAD；`repo_exec.commit` 与 `poketto status.gitCommit` 报告这个基线。状态显示 `localBaselinePending` 时，使用 `poketto recover`，不要重复保存。
 
-完整读取副本的 `poketto status` 会把远端 main 与最近一次确认的基线比较：`remote.state` 为 `MATCHES_BASE`、`DIFFERS_FROM_BASE` 或 `UNAVAILABLE`。状态查询不修改文件。`poketto sync` 将整个工作空间与同一个远端版本合并，保留仅存在于本地的文件及冲突的二进制内容，重叠的文本修改写入 LOCAL/BASE/REMOTE 冲突标记；它不会保存远端。中断后，状态显示 `syncPending`；`poketto recover` 继续执行，`poketto recover --skip-local` 解除待处理状态，但不撤销已安装的文件。详见[工作空间同步](../notes/implemented/2026-09-15-workspace-synchronization.md)。
+完整读取副本的 `poketto status` 会把远端 main 与最近一次确认的基线比较：`remote.state` 为 `MATCHES_BASE`、`DIFFERS_FROM_BASE` 或 `UNAVAILABLE`。状态查询不修改文件。`poketto sync` 将整个工作空间与同一个远端版本合并，保留仅存在于本地的文件及冲突的二进制内容，重叠的文本修改写入 LOCAL/BASE/REMOTE 冲突标记；它不会保存远端。中断后，状态显示 `syncPending`；`poketto recover` 继续执行，`poketto recover --skip-local` 解除待处理状态，但不撤销已安装的文件。命令时间不足时，同步以 `SYNC_INCOMPLETE` 提前停止并保留进度；再次运行 `poketto sync`，或为 `repo_exec` 设置更大的 `timeoutSeconds`。详见[工作空间同步](../notes/implemented/2026-09-15-workspace-synchronization.md)。
 
 `poketto move SOURCE DESTINATION` 移动已保存的文件、目录和索引媒体，并在同一次远端提交中修复 Markdown 引用；选定文件有未保存修改或目标已占用时拒绝。随后本地安装待完成时，先使用 `poketto recover`，再继续保存、移动或同步。本地修改导致无法安装时，`poketto recover --skip-local` 确认远端移动且不改动本地文件；保存相关路径前先运行 `poketto sync`。
 

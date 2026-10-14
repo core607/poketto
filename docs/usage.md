@@ -503,7 +503,9 @@ revision, keeping local-only files and conflicting binary bytes and marking
 overlapping text edits with LOCAL/BASE/REMOTE sections; it saves nothing remotely.
 After an interruption, status shows `syncPending`; `poketto recover` continues and
 `poketto recover --skip-local` releases the operation without undoing installed
-files. See [workspace synchronization](../notes/implemented/2026-09-15-workspace-synchronization.md).
+files. A sync that runs short of command time stops with `SYNC_INCOMPLETE` and keeps
+its progress; run `poketto sync` again or give `repo_exec` a larger `timeoutSeconds`.
+See [workspace synchronization](../notes/implemented/2026-09-15-workspace-synchronization.md).
 
 `poketto move SOURCE DESTINATION` moves saved files, directories and indexed media
 and repairs Markdown references in one remote commit; dirty selected files and
