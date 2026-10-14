@@ -52,6 +52,8 @@ final class ExecutionSession {
     UUID priorPrincipal;
     String closeReason;
     volatile long nextRenew;
+    /** {@link System#nanoTime()} at which the running command's worker timeout ends it. */
+    volatile long commandDeadline;
 
     ExecutionSession(ExecutionSession.Key key, AuthPrincipal principal, boolean fullRead, UUID copyId, UUID leaseId) {
         this(key, principal, fullRead, copyId, leaseId, false);

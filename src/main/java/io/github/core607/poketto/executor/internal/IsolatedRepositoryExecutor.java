@@ -369,6 +369,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     // The EXEC request runs on its own thread while this one serves the worker's bridge requests
     // until the command finishes, the session stops, or the worker reports the lease closed.
     private JsonNode executeWithBridge(ExecutionSession session, String executionId, String command, Duration timeout) {
+        // Taken before the worker starts its own clock, so host work that honours it ends earlier.
+        session.commandDeadline = System.nanoTime() + timeout.toNanos();
         var running = commandIo.submit(() -> io.request(
                 session,
                 "EXEC",

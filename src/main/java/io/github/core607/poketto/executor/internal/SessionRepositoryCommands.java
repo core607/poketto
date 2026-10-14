@@ -21,6 +21,11 @@ import tools.jackson.databind.JsonNode;
 /** Coordinates remote write receipts with local file and Git baseline installation. */
 final class SessionRepositoryCommands {
     private static final Logger log = LoggerFactory.getLogger(SessionRepositoryCommands.class);
+    /** How long the sandbox CLI waits for one bridge reply: {@code call} in executor-service/cli.py. */
+    private static final Duration CLI_REPLY_WAIT = Duration.ofSeconds(55);
+    /** Kept for the path already started, its journal entry and the reply once synchronization stops. */
+    private static final Duration SYNC_RESERVE = Duration.ofSeconds(5);
+
     private final SessionWorker io;
     private final SessionFileTransfers files;
     private final SelectedFileSaves saves;
@@ -214,12 +219,20 @@ final class SessionRepositoryCommands {
         return synchronizeWorkspace(session, executionId);
     }
 
+    /**
+     * Stops before the command or the waiting CLI would give up. A worker timeout during the run
+     * would otherwise end the command under a host operation whose outcome then reads as unknown.
+     */
     private BridgeReplies.Reply synchronizeWorkspace(ExecutionSession session, String executionId) {
+        long replyWait = System.nanoTime() + CLI_REPLY_WAIT.toNanos();
+        long end = session.commandDeadline - replyWait < 0 ? session.commandDeadline : replyWait;
+        long stopAt = end - SYNC_RESERVE.toNanos();
         return new WorkspaceSynchronization(saves)
                 .run(
                         session.principal,
                         session.key.workspace(),
                         session.saveState,
+                        () -> System.nanoTime() - stopAt >= 0,
                         new WorkspaceSynchronization.Files() {
                             @Override
                             public WorkspaceSynchronization.Local read(String path) {
