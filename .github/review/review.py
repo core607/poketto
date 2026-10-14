@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -45,6 +46,8 @@ REVIEW_STATUS = "ai-review"
 # The account the workflow posts reviews as, and the bound on author replies carried into a re-review.
 REVIEW_BOT = "github-actions[bot]"
 REPLY_BYTES = 24_000
+# The audit note is for a person, and an unbounded findings list must not make the review unpostable.
+AUDIT_LINES = 10
 FINDINGS = re.compile(r"<!--\s*findings:\s*(\[.*?\])\s*-->", re.DOTALL)
 # The system prompt lives beside this file so it can be read and edited as a document; the trusted
 # main checkout supplies it like the rest of the review code. notes/implemented/2026-10-13-review-rounds.md
@@ -153,7 +156,8 @@ class GitHub:
                      if r.get("user", {}).get("login") == REVIEW_BOT and r.get("submitted_at")), default=None)
         if since is None:
             return []
-        comments = self.api(f"issues/{self.number}/comments?per_page=100")
+        # `since` keeps the newest replies on the first page however long the thread has grown.
+        comments = self.api(f"issues/{self.number}/comments?per_page=100&since={urllib.parse.quote(since)}")
         return [{"at": c["created_at"], "body": c.get("body") or ""} for c in comments
                 if c.get("author_association") == "OWNER" and c.get("created_at", "") > since]
 
@@ -608,6 +612,8 @@ def audit_findings(body, changed, lines_at_head):
             problems.append(f"{label} 引用的行号 {line} 超出 `{path[:200]}` 的 {count} 行。")
         if item.get("severity") == "blocking" and path not in changed:
             problems.append(f"{label} 是阻塞项，但 `{path[:200]}` 不在本 PR 的改动文件里；请确认问题确实由本次改动引起。")
+    if len(problems) > AUDIT_LINES:
+        problems = problems[:AUDIT_LINES] + [f"另有 {len(problems) - AUDIT_LINES} 条校验问题未列出。"]
     return problems
 
 
