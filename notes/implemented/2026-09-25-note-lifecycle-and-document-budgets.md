@@ -18,7 +18,9 @@ An implemented note could only stay active or be archived. The archive test, whe
 
 **Creation.** A note is written or updated only for lasting rationale that code, tests and current docs do not explain: a real alternative, a trade-off, or an ownership, security, durability or reintroduction rule. What a feature does belongs in docs/ or its README. Local UI and mechanical changes need no note, and updating the note that already owns a decision satisfies the rule.
 
-**Proposals.** Agreed work still lands as a proposed note, which serves as the implementer's brief. The implementing change either moves it into implemented/ rewritten as what shipped, or deletes it when nothing in it outlasts the work, after documenting the behavior in its current-state home.
+**Proposals.** Agreed work that the agreeing change does not implement lands as a proposed note, which serves as the implementer's brief. The implementing change either moves it into implemented/ rewritten as what shipped, or deletes it when nothing in it outlasts the work, after documenting the behavior in its current-state home. Until 2026-10-13 every agreed task started as a proposal, including work implemented in the same change, which wrote the brief and then rewrote or deleted it with no reader in between; the brief exists for an implementer who lacks the conversation, and that implementer does not exist when the conversation's own change ships the work.
+
+**Languages.** Notes are English-only. The requirements note and content foundation lost their Chinese counterparts on 2026-10-13: both sides were read by agents (one 19-day agent session read them 51 times between them) and every edit had to land twice, while their readers are contributors who read the English. The README and usage reference keep their pairs for public readers.
 
 **Removal.** The [maintain-notes](../../.agents/skills/maintain-notes/SKILL.md) skill classifies each note as kept, deleted, consolidated, archived or rejected. The classes are adapted from the note rules of [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/skills/dsh-archive-agent-notes/SKILL.md):
 

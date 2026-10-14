@@ -22,6 +22,8 @@ When the merge base moves between reviews, by a merge of `main` or a new base, t
 
 CI no longer runs on `edited`.
 
+A review with no blocker is a merge verdict. [pre-push-checks](../../.agents/skills/pre-push-checks/SKILL.md) has the author fix blockers, decline suggestions with a reason, and carry suggestions worth taking into a later change rather than pushing them onto the reviewed head. Branch protection no longer requires an up-to-date branch, so a pull request merges `main` only to resolve a conflict; the CI run on `main` that precedes every deployment is the integration check.
+
 ## Alternatives
 
 **Keep the persona and cap its length.** A shorter monologue still occupies the reader on every clean round and still asks the model to invent content when it finds nothing. The persona was chosen for entertainment when a person was the expected reader; that reader is now rarely the one acting.
@@ -30,11 +32,13 @@ CI no longer runs on `edited`.
 
 **Re-review merge-only heads with the merged diff.** That is what the session continuation did, and it is how `main`'s code reached reviews of pull requests that never touched it.
 
+**Keep requiring an up-to-date branch.** It catches a semantic conflict between two pull requests before either reaches `main`, but every merge forced each open pull request through another CI run and, before the merge-only skip, another review. The main CI run already stops a broken integration from deploying; the cost of the remaining risk is a fix-forward on `main`.
+
 **Rewrite or drop findings that fail the audit.** The audit cannot tell a wrong path from a correct one the model misnamed, so it annotates and leaves the decision to the reader.
 
 ## Consequences
 
-A head that only merged `main` costs a CI run and no review. A semantic conflict between the pull request and `main`'s new code is then left to CI, not to the reviewer; a full re-review on the next real change still covers the whole pull request against the new base.
+A head that only merged `main` costs a CI run and no review. Suggestions accumulate instead of being applied inside the reviewed pull request, so a worthwhile one waits for a later change, and two pull requests that each pass alone can still break `main` together; the deployment waits for that main run, not for the pull requests. A semantic conflict between the pull request and `main`'s new code is then left to CI, not to the reviewer; a full re-review on the next real change still covers the whole pull request against the new base.
 
 Replies make declined findings stick, so an author's mistaken refusal also sticks until new evidence appears. The reviewer reads only comments by the repository owner.
 

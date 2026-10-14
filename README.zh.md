@@ -4,7 +4,7 @@
 
 Agent 在隔离环境中使用 shell、Python 和 Git，Poketto 控制授权、持久化与发布。
 
-[English](README.md) · [线上实例](https://poketto.top) · [开始使用](docs/usage.zh.md) · [架构](notes/implemented/2026-08-25-requirements-and-architecture.zh.md)
+[English](README.md) · [线上实例](https://poketto.top) · [开始使用](docs/usage.zh.md) · [架构（英文）](notes/implemented/2026-08-25-requirements-and-architecture.md)
 
 ## 项目亮点
 
