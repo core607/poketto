@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.Set;
 import tools.jackson.core.StreamReadConstraints;
 import tools.jackson.core.json.JsonFactory;
@@ -45,7 +46,8 @@ final class RetainedRecordFiles {
                 .build();
     }
 
-    void write(Path temporary, Object record, long available) throws IOException {
+    /** Returns the hex SHA-256 of the JSON payload, which {@link #read(Path, Class, String)} can require. */
+    String write(Path temporary, Object record, long available) throws IOException {
         long limit = Math.min(maximum, available) - OVERHEAD;
         if (limit < 1) {
             throw new SizeLimit();
@@ -57,14 +59,21 @@ final class RetainedRecordFiles {
             writeFully(file, ByteBuffer.allocate(16).put(MAGIC).putLong(0).flip());
             var output = new BoundedDigestOutput(Channels.newOutputStream(file), limit);
             json.writeValue(output, record);
-            writeFully(file, ByteBuffer.wrap(output.digest.digest()));
+            byte[] digest = output.digest.digest();
+            writeFully(file, ByteBuffer.wrap(digest));
             file.position(8);
             writeFully(file, ByteBuffer.allocate(8).putLong(output.count).flip());
             file.force(true);
+            return HexFormat.of().formatHex(digest);
         }
     }
 
     <T> T read(Path path, Class<T> type) throws IOException {
+        return read(path, type, null);
+    }
+
+    /** A non-null {@code sha256} must equal the payload digest the frame itself verifies. */
+    <T> T read(Path path, Class<T> type, String sha256) throws IOException {
         try (FileChannel file = FileChannel.open(path, READ, NOFOLLOW_LINKS)) {
             long size = file.size();
             if (size < OVERHEAD || size > maximum) {
@@ -78,13 +87,16 @@ final class RetainedRecordFiles {
             if (!Arrays.equals(magic, MAGIC) || length != size - OVERHEAD) {
                 throw new IOException("retained record frame header is invalid");
             }
-            verifyDigest(file, length);
+            byte[] digest = verifyDigest(file, length);
+            if (sha256 != null && !MessageDigest.isEqual(digest, HexFormat.of().parseHex(sha256))) {
+                throw new IOException("retained record differs from its referenced digest");
+            }
             file.position(16);
             return json.readValue(new LimitedInput(Channels.newInputStream(file), length), type);
         }
     }
 
-    private static void verifyDigest(FileChannel file, long length) throws IOException {
+    private static byte[] verifyDigest(FileChannel file, long length) throws IOException {
         MessageDigest digest = RetainedBaselineIo.sha256();
         var buffer = ByteBuffer.allocate(65536);
         long remaining = length;
@@ -99,9 +111,11 @@ final class RetainedRecordFiles {
         }
         var expected = ByteBuffer.allocate(32);
         readFully(file, expected);
-        if (!MessageDigest.isEqual(digest.digest(), expected.array())) {
+        byte[] actual = digest.digest();
+        if (!MessageDigest.isEqual(actual, expected.array())) {
             throw new IOException("retained record checksum mismatch");
         }
+        return actual;
     }
 
     private static void readFully(FileChannel file, ByteBuffer buffer) throws IOException {

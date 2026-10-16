@@ -6,7 +6,6 @@ import java.util.UUID;
 
 /** Account-owned disk work and its host write journal; OAuth grant identity belongs to the lease. */
 record AccountCopyRecord(
-        int format,
         Owner owner,
         UUID copyId,
         long revision,
@@ -19,7 +18,6 @@ record AccountCopyRecord(
         RepositorySnapshotExports.PublicExport publicExport,
         Original original) {
     AccountCopyRecord {
-        ProtocolValues.require(format == 1, "account copy format", "must be 1");
         Objects.requireNonNull(owner, "copy owner must be present");
         Objects.requireNonNull(copyId, "copy ID must be present");
         ProtocolValues.inRange(revision, 0, ProtocolValues.MAX_SAFE_INTEGER - 1, "copy revision");
@@ -47,7 +45,6 @@ record AccountCopyRecord(
             return this;
         }
         return new AccountCopyRecord(
-                format,
                 owner,
                 copyId,
                 revision + 1,

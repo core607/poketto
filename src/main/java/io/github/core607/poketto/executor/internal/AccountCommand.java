@@ -86,7 +86,6 @@ final class AccountCommand implements AutoCloseable {
         if (record() != null && replacesRefreshing(copy, phase)) {
             var current = record();
             lease.write(new AccountCopyRecord(
-                    1,
                     owner,
                     copy,
                     current.revision() + 1,
@@ -104,12 +103,11 @@ final class AccountCommand implements AutoCloseable {
             throw new RetainedCopyException(RetainedCopyException.Reason.STALE);
         }
         lease.write(new AccountCopyRecord(
-                1, owner, copy, 0, store.nextExpiry(), writer, phase, null, null, state, projection, null));
+                owner, copy, 0, store.nextExpiry(), writer, phase, null, null, state, projection, null));
         if (owner.fullRead()) {
             var original = lease.captureOriginal(source);
             var current = record();
             lease.write(new AccountCopyRecord(
-                    1,
                     owner,
                     copy,
                     1,
@@ -235,7 +233,6 @@ final class AccountCommand implements AutoCloseable {
             long expiresAt) {
         var current = record();
         lease.write(new AccountCopyRecord(
-                1,
                 owner,
                 current.copyId(),
                 current.revision() + 1,
