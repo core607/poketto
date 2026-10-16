@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -82,6 +83,43 @@ class GameLibraryTests {
                     Instant.now().plusSeconds(300),
                     List.of());
             assertThat(library.find("street", articleId)).isEmpty();
+        }
+    }
+
+    @Test
+    void anUnchangedPublicationIsNotScannedAgainUntilItsCommitChanges() {
+        var workspace = WorkspaceId.random();
+        var publication =
+                new WorkspacePublications.Publication(workspace, "street", "Street", true, true, "", "", false);
+        var publications = mock(WorkspacePublications.class);
+        when(publications.publishedAfter(any(), anyInt())).thenReturn(List.of(publication));
+        var article = new PublicArticle(
+                "public/essay.md",
+                "/essay",
+                "Essay",
+                "Intro",
+                List.of(),
+                Instant.now(),
+                Instant.now(),
+                false,
+                "",
+                UUID.randomUUID(),
+                false);
+        var snapshots = new Snapshots();
+        snapshots.value = snapshot(workspace, article, "a");
+        var packages = mock(GamePackages.class);
+        when(packages.find(any(), any())).thenReturn(Optional.empty());
+        var runner = mock(GameRunner.class);
+        try (var library = new DefaultGameLibrary(publications, snapshots, packages, runner, JsonMapper.shared())) {
+            library.refresh();
+            library.refresh();
+            library.refresh();
+            verify(packages, times(1)).find(any(), any());
+
+            snapshots.value = snapshot(workspace, article, "b");
+            library.refresh();
+            verify(packages, times(2)).find(any(), any());
+            verifyNoInteractions(runner);
         }
     }
 

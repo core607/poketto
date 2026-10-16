@@ -13,6 +13,7 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePublications;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,6 +36,7 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(DefaultGameLibrary.class);
     private static final int MAX_GAMES = 64;
     private static final int MAX_BYTES = 16 * 1024 * 1024;
+    private static final long RESCAN_NANOS = TimeUnit.MINUTES.toNanos(15);
     private final WorkspacePublications publications;
     private final PublicContentSnapshots snapshots;
     private final GamePackages packages;
@@ -49,6 +51,10 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
     private String scannedCommit = "";
     private int offset;
     private Set<UUID> priority = Set.of();
+    /** Spaces whose current commit a full pass already validated; skipped until it changes. */
+    private final Map<WorkspaceId, Scanned> scanned = new HashMap<>();
+
+    private boolean deferred;
 
     DefaultGameLibrary(
             WorkspacePublications publications,
@@ -135,6 +141,12 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
             scanning = page.getFirst().workspaceId();
             offset = 0;
             scannedCommit = "";
+            deferred = false;
+            if (unchanged(scanning)) {
+                cursor = scanning;
+                scanning = null;
+                return;
+            }
         }
         var next = new LinkedHashMap<>(entries);
         try {
@@ -146,16 +158,44 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
             update(next, batch);
             offset = batch.nextOffset();
             if (offset < 0) {
+                if (!deferred) {
+                    scanned.put(scanning, new Scanned(scannedCommit, System.nanoTime()));
+                }
                 cursor = scanning;
                 scanning = null;
             }
-            entries = Map.copyOf(next);
+            replaceEntries(next);
         } catch (ContentRepositoryException | PublicationUnavailableException unavailable) {
             next.keySet().removeIf(key -> key.workspace().equals(scanning));
-            entries = Map.copyOf(next);
+            scanned.remove(scanning);
+            replaceEntries(next);
             cursor = scanning;
             scanning = null;
         }
+    }
+
+    /**
+     * A pass that deferred nothing stays valid for its commit. A rescan bound keeps it from
+     * hiding a change this check cannot see, such as a game worker that recovered.
+     */
+    private boolean unchanged(WorkspaceId workspace) {
+        Scanned last = scanned.get(workspace);
+        if (last == null || System.nanoTime() - last.at() > RESCAN_NANOS) {
+            return false;
+        }
+        try {
+            return snapshots.current(workspace).commit().orElse("").equals(last.commit());
+        } catch (ContentRepositoryException | PublicationUnavailableException unavailable) {
+            return false;
+        }
+    }
+
+    /** A removal frees catalogue capacity that a deferred game in an unchanged space may now use. */
+    private void replaceEntries(Map<Key, Entry> next) {
+        if (!next.keySet().containsAll(entries.keySet())) {
+            scanned.clear();
+        }
+        entries = Map.copyOf(next);
     }
 
     private void pruneWithdrawn() {
@@ -172,7 +212,7 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
         checks.retainWorkspaces(workspaces);
         var retained = new LinkedHashMap<>(entries);
         retained.keySet().removeIf(key -> !workspaces.contains(key.workspace()));
-        entries = Map.copyOf(retained);
+        replaceEntries(retained);
     }
 
     private void update(Map<Key, Entry> next, Batch batch) {
@@ -188,6 +228,7 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
                     .mapToInt(item -> json.writeValueAsBytes(item.getValue().published()).length)
                     .sum();
             if (next.size() >= MAX_GAMES && !next.containsKey(key)) {
+                deferred = true;
                 checks.record(
                         batch.snapshot(),
                         candidate.article(),
@@ -198,6 +239,7 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
             }
             if (retained + json.writeValueAsBytes(entry.published()).length > MAX_BYTES) {
                 next.remove(key);
+                deferred = true;
                 checks.record(
                         batch.snapshot(),
                         candidate.article(),
@@ -348,4 +390,6 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
 
     private record Batch(
             PublicContentSnapshot snapshot, List<Candidate> candidates, List<UUID> articleIds, int nextOffset) {}
+
+    private record Scanned(String commit, long at) {}
 }

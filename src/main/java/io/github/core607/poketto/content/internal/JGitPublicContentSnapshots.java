@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,6 +31,14 @@ import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
 final class JGitPublicContentSnapshots implements PublicContentSnapshots {
+    private static final int CACHED_POLICIES = 256;
+    private static final Map<String, RepositoryPublishingPolicy> POLICIES =
+            new LinkedHashMap<>(CACHED_POLICIES, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, RepositoryPublishingPolicy> eldest) {
+                    return size() > CACHED_POLICIES;
+                }
+            };
     private final RepositoryAuthority authority;
     private final JGitRepositoryContentReader reader;
     private final Clock clock;
@@ -233,7 +242,32 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
         }
     }
 
+    /**
+     * A commit ID names its whole tree, so the policy it carries never changes. The cache is
+     * consulted only for a commit present in the reader's own repository, which keeps a commit
+     * missing here an error rather than another repository's answer.
+     */
     static RepositoryPublishingPolicy policy(ObjectReader objects, String commit) {
+        ObjectId id = ObjectId.fromString(commit);
+        RepositoryPublishingPolicy cached;
+        synchronized (POLICIES) {
+            cached = POLICIES.get(commit);
+        }
+        try {
+            if (cached != null && objects.has(id, Constants.OBJ_COMMIT)) {
+                return cached;
+            }
+        } catch (IOException exception) {
+            throw new ContentRepositoryException("publishing policy object cannot be read", exception);
+        }
+        RepositoryPublishingPolicy read = readPolicy(objects, commit);
+        synchronized (POLICIES) {
+            POLICIES.put(commit, read);
+        }
+        return read;
+    }
+
+    private static RepositoryPublishingPolicy readPolicy(ObjectReader objects, String commit) {
         try (RevWalk commits = new RevWalk(objects);
                 TreeWalk entry = TreeWalk.forPath(
                         objects,

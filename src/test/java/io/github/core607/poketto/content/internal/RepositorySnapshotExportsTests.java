@@ -388,6 +388,22 @@ class RepositorySnapshotExportsTests {
     }
 
     @Test
+    void anIncrementalExportBoundsOnlyTheObjectsItAdds() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var baseline = fixture.commitRemote(workspace, Map.of("large.txt", new byte[32_000]));
+        var next = fixture.commitRemote(workspace, Map.of("private/新增.md", text("# 新增\n")));
+        var exports = exporter(fixture, 1024);
+
+        assertThatThrownBy(() -> exports.create(actor, workspace, Optional.of(next.name())))
+                .isInstanceOf(ContentRepositoryException.class);
+        var value = exports.update(actor, workspace, baseline.name(), next.name());
+
+        assertThat(value.commit()).isEqualTo(next.name());
+        assertThat(value.bundleBytes()).isLessThan(32_000);
+        exports.release(value.exportId());
+    }
+
+    @Test
     void deniedPrincipalNeverReadsRepositoryOrCreatesStagingFiles() {
         RepositoryAuthority authority = mock(RepositoryAuthority.class);
         doThrow(new SecurityException("denied"))
