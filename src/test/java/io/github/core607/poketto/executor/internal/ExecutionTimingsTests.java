@@ -27,23 +27,43 @@ class ExecutionTimingsTests {
 
         String line = recordLine(output);
         assertThat(line).doesNotContain("=-1");
-        assertThat(line).contains("bridgeMs=7", "bridgeRequests=2");
+        assertThat(line).contains("stoppedIn=none", "bridgeMs=7", "bridgeRequests=2");
         assertThat(Long.parseLong(value(line, "commandMs"))).isGreaterThanOrEqualTo(10);
         assertThat(Long.parseLong(value(line, "totalMs")))
                 .isGreaterThanOrEqualTo(Long.parseLong(value(line, "commandMs")));
     }
 
     @Test
-    void aRefusedCallShowsWhereItStopped(CapturedOutput output) {
+    void aRefusedCallShowsWhereItStoppedAndHowLongItSpentThere(CapturedOutput output) throws Exception {
         var timings = new ExecutionTimings();
         timings.end(ExecutionTimings.Stage.AUTHORIZE);
         timings.end(ExecutionTimings.Stage.JOURNAL);
+        Thread.sleep(10);
 
         timings.record();
 
         String line = recordLine(output);
-        assertThat(value(line, "journalMs")).isNotEqualTo("-1");
-        assertThat(line).contains("permitMs=-1", "admitMs=-1", "commandMs=-1", "bridgeRequests=0");
+        assertThat(line).contains("stoppedIn=permitMs");
+        assertThat(Long.parseLong(value(line, "permitMs"))).isGreaterThanOrEqualTo(10);
+        assertThat(line).contains("admitMs=-1", "commandMs=-1", "completeMs=-1", "bridgeRequests=0");
+    }
+
+    @Test
+    void aCommandThatFailsAfterStartingReportsItsRunningTime(CapturedOutput output) throws Exception {
+        var timings = new ExecutionTimings();
+        for (ExecutionTimings.Stage stage : ExecutionTimings.Stage.values()) {
+            if (stage == ExecutionTimings.Stage.COMMAND) {
+                break;
+            }
+            timings.end(stage);
+        }
+        Thread.sleep(10);
+
+        timings.record();
+
+        String line = recordLine(output);
+        assertThat(line).contains("stoppedIn=commandMs", "completeMs=-1");
+        assertThat(Long.parseLong(value(line, "commandMs"))).isGreaterThanOrEqualTo(10);
     }
 
     private static String recordLine(CapturedOutput output) {
