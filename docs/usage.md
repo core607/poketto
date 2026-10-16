@@ -632,10 +632,11 @@ outcome code the caller received for tool calls. Records carry a request identif
 that is never returned to callers, so correlate a reported failure by workspace,
 caller and time. Records never contain request bodies, tool arguments, query strings,
 repository file paths, document content or image grants; container health probes are
-not recorded. A `repo_exec` call also leaves one `repo_exec stages` record with the
-milliseconds spent in each stage (`authorizeMs`, `journalMs`, `permitMs`, `admitMs`,
-`prepareMs`, `commandMs`, `completeMs`), the bridge time and request count, and the
-total; a stage the call never reached reads `-1`.
+not recorded. A `repo_exec` call also leaves one `repo_exec stages` record:
+milliseconds per stage (`authorizeMs`, `journalMs`, `permitMs`, `admitMs`,
+`prepareMs`, `commandMs`, `completeMs`), bridge time and request count, the total,
+and `stoppedIn`, the stage an early end stopped in (`none` otherwise); stages never
+entered read `-1`.
 
 Permission changes and authentication outcomes are recorded under the logger name
 `poketto.audit`, naming the action (such as `member.access.granted` or

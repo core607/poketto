@@ -9,14 +9,17 @@ import org.slf4j.LoggerFactory;
  * Wall time of each stage of one {@code repo_exec} call, recorded once when the call ends.
  *
  * <p>The record carries durations and a bridge request count only; the request identifier the
- * diagnostics filter attaches joins it to the call's outcome record. A stage the call never
- * reached is reported as {@code -1}, so a refusal shows where it stopped.
+ * diagnostics filter attaches joins it to the call's outcome record. Stages run in a fixed order,
+ * so a call that ends early stopped in the stage after the last one it finished: that stage
+ * reports the time spent in it and is named by {@code stoppedIn}, and only stages the call never
+ * entered read {@code -1}.
  */
 final class ExecutionTimings {
     private static final Logger log = LoggerFactory.getLogger(ExecutionTimings.class);
     private final long started = System.nanoTime();
     private final long[] stages = new long[Stage.values().length];
     private long mark = started;
+    private int finished = -1;
     private long bridgeNanos;
     private int bridgeRequests;
 
@@ -29,6 +32,7 @@ final class ExecutionTimings {
         long now = System.nanoTime();
         stages[stage.ordinal()] = now - mark;
         mark = now;
+        finished = stage.ordinal();
     }
 
     void bridged(long nanos) {
@@ -37,14 +41,21 @@ final class ExecutionTimings {
     }
 
     void record() {
-        var entry = log.atInfo();
-        var message = new StringBuilder("repo_exec stages");
+        long now = System.nanoTime();
+        Stage[] all = Stage.values();
+        String stoppedIn = "none";
+        if (finished < all.length - 1) {
+            stages[finished + 1] = now - mark;
+            stoppedIn = all[finished + 1].key;
+        }
+        var entry = log.atInfo().addKeyValue("stoppedIn", stoppedIn);
+        var message = new StringBuilder("repo_exec stages stoppedIn=").append(stoppedIn);
         for (Stage stage : Stage.values()) {
             long milliseconds = milliseconds(stages[stage.ordinal()]);
             entry = entry.addKeyValue(stage.key, milliseconds);
             message.append(' ').append(stage.key).append('=').append(milliseconds);
         }
-        long total = milliseconds(System.nanoTime() - started);
+        long total = milliseconds(now - started);
         entry.addKeyValue("bridgeMs", milliseconds(bridgeNanos))
                 .addKeyValue("bridgeRequests", bridgeRequests)
                 .addKeyValue("totalMs", total)
@@ -60,7 +71,10 @@ final class ExecutionTimings {
         return nanos < 0 ? -1 : TimeUnit.NANOSECONDS.toMillis(nanos);
     }
 
-    /** In call order; {@link #COMMAND} includes the bridge requests answered while it ran. */
+    /**
+     * In call order. {@link #AUTHORIZE} includes input validation, and {@link #COMMAND} includes the
+     * bridge requests answered while it ran.
+     */
     enum Stage {
         AUTHORIZE("authorizeMs"),
         JOURNAL("journalMs"),
