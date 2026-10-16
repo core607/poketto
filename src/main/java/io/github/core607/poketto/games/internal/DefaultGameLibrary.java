@@ -147,6 +147,9 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
                 scanning = null;
                 return;
             }
+            // Only the latest pass may vouch for a space: an older record must not outlive a pass
+            // that then defers, or a later return to that commit would skip entries of another.
+            scanned.remove(scanning);
         }
         var next = new LinkedHashMap<>(entries);
         try {
@@ -159,7 +162,10 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
             offset = batch.nextOffset();
             if (offset < 0) {
                 if (!deferred) {
-                    scanned.put(scanning, new Scanned(scannedCommit, System.nanoTime()));
+                    scanned.put(
+                            scanning,
+                            new Scanned(
+                                    scannedCommit, batch.snapshot().articles().size(), System.nanoTime()));
                 }
                 cursor = scanning;
                 scanning = null;
@@ -184,7 +190,10 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
             return false;
         }
         try {
-            return snapshots.current(workspace).commit().orElse("").equals(last.commit());
+            // Scheduled articles change the view within one commit, so the article count is compared too.
+            var current = snapshots.current(workspace);
+            return current.commit().orElse("").equals(last.commit())
+                    && current.articles().size() == last.articles();
         } catch (ContentRepositoryException | PublicationUnavailableException unavailable) {
             return false;
         }
@@ -391,5 +400,5 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
     private record Batch(
             PublicContentSnapshot snapshot, List<Candidate> candidates, List<UUID> articleIds, int nextOffset) {}
 
-    private record Scanned(String commit, long at) {}
+    private record Scanned(String commit, int articles, long at) {}
 }

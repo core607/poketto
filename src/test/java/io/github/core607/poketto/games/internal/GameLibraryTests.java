@@ -120,6 +120,33 @@ class GameLibraryTests {
             library.refresh();
             verify(packages, times(2)).find(any(), any());
             verifyNoInteractions(runner);
+
+            // Returning to an earlier commit is not vouched for by the record of a superseded pass.
+            snapshots.value = snapshot(workspace, article, "a");
+            library.refresh();
+            verify(packages, times(3)).find(any(), any());
+
+            // A scheduled article that falls due changes the view without a new commit.
+            var scheduled = new PublicArticle(
+                    "public/later.md",
+                    "/later",
+                    "Later",
+                    "Intro",
+                    List.of(),
+                    Instant.now(),
+                    Instant.now(),
+                    false,
+                    "",
+                    UUID.randomUUID(),
+                    false);
+            snapshots.value = new PublicContentSnapshot(
+                    workspace,
+                    Optional.of("a".repeat(40)),
+                    Instant.now(),
+                    Instant.now().plusSeconds(300),
+                    List.of(article, scheduled));
+            library.refresh();
+            verify(packages, times(5)).find(any(), any());
         }
     }
 
