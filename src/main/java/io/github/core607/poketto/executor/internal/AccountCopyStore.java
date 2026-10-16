@@ -24,6 +24,7 @@ final class AccountCopyStore {
     private final Path root;
     private final RetainedDirectory directory;
     private final RetainedRecordFiles files;
+    private final AccountFileBaselines baselines;
     private final Limits limits;
     private final Clock clock;
     private String collectionCursor = "";
@@ -44,6 +45,7 @@ final class AccountCopyStore {
         } catch (IOException failure) {
             throw unavailable(failure);
         }
+        baselines = new AccountFileBaselines(this.root, directory, files, limits.recordBytes());
     }
 
     RepositoryBaselineLimits traversalLimits() {
@@ -62,9 +64,13 @@ final class AccountCopyStore {
     }
 
     boolean collectible(AccountCopyRecord record) {
-        return expired(record)
-                || record.phase() == AccountCopyRecord.Phase.DISCARDING
-                || record.phase() == AccountCopyRecord.Phase.INITIALIZING;
+        return collectible(record.phase(), record.expiresAt());
+    }
+
+    private boolean collectible(AccountCopyRecord.Phase phase, long expiresAt) {
+        return expiresAt <= clock.millis()
+                || phase == AccountCopyRecord.Phase.DISCARDING
+                || phase == AccountCopyRecord.Phase.INITIALIZING;
     }
 
     List<AccountCopyRecord.Owner> collectionCandidates(int maximum) {
@@ -94,11 +100,11 @@ final class AccountCopyStore {
                 collectionCursor = name;
                 Path path = root.resolve(name);
                 directory.checkFile(path);
-                var record = files.read(path, AccountCopyRecord.class);
+                var record = files.read(path, StoredAccountCopy.class);
                 if (!path.equals(recordPath(record.owner()))) {
                     throw new IOException("Account journal owner differs from its address");
                 }
-                if (collectible(record)) {
+                if (collectible(record.phase(), record.expiresAt())) {
                     owners.add(record.owner());
                 }
             }
@@ -115,12 +121,12 @@ final class AccountCopyStore {
         }
         try (var index = index()) {
             index.requireValid();
-            var current = load(permitted);
+            var current = stored(permitted);
             if (current != null && current.copyId().toString().equals(copyId)) {
                 return permitted;
             }
             var publicOwner = new AccountCopyRecord.Owner(permitted.accountId(), permitted.workspaceId(), false);
-            var publicCopy = load(publicOwner);
+            var publicCopy = stored(publicOwner);
             return publicCopy != null && publicCopy.copyId().toString().equals(copyId) ? publicOwner : permitted;
         } catch (IOException failure) {
             throw unavailable(failure);
@@ -137,7 +143,15 @@ final class AccountCopyStore {
             }
             var held = RetainedFileLocks.acquire(lock, () -> directory.openLock(lock));
             try {
-                return new Lease(owner, held, load(owner));
+                var stored = stored(owner);
+                if (stored == null) {
+                    // A removal deletes its journal before the versions it referenced.
+                    baselines.retainOnly(key(owner), null);
+                    return new Lease(owner, held, null, null);
+                }
+                String digest = stored.state().fileBaselines();
+                var versions = baselines.read(key(owner), stored.copyId(), digest);
+                return new Lease(owner, held, stored.restore(versions), digest);
             } catch (RuntimeException | IOException failure) {
                 held.close();
                 throw failure;
@@ -147,13 +161,13 @@ final class AccountCopyStore {
         }
     }
 
-    private AccountCopyRecord load(AccountCopyRecord.Owner owner) throws IOException {
+    private StoredAccountCopy stored(AccountCopyRecord.Owner owner) throws IOException {
         Path path = recordPath(owner);
         if (!Files.exists(path, NOFOLLOW_LINKS)) {
             return null;
         }
         directory.checkFile(path);
-        AccountCopyRecord record = files.read(path, AccountCopyRecord.class);
+        StoredAccountCopy record = files.read(path, StoredAccountCopy.class);
         ProtocolValues.require(record.owner().equals(owner), "copy owner", "must match its journal address");
         return record;
     }
@@ -275,12 +289,18 @@ final class AccountCopyStore {
         private final RetainedFileLocks.Held held;
         private final AccountOriginalFiles originals;
         private AccountCopyRecord current;
+        private String currentBaselines;
         private boolean uncertain;
 
-        private Lease(AccountCopyRecord.Owner owner, RetainedFileLocks.Held held, AccountCopyRecord current) {
+        private Lease(
+                AccountCopyRecord.Owner owner,
+                RetainedFileLocks.Held held,
+                AccountCopyRecord current,
+                String currentBaselines) {
             this.owner = owner;
             this.held = held;
             this.current = current;
+            this.currentBaselines = currentBaselines;
             originals = new AccountOriginalFiles(root, key(owner), directory, limits.originalFiles(), this::liveRecord);
         }
 
@@ -359,7 +379,8 @@ final class AccountCopyStore {
             try (var index = index()) {
                 index.requireValid();
                 try {
-                    files.write(temporary, next, limits.recordBytes());
+                    String versions = baselinesFor(next);
+                    files.write(temporary, StoredAccountCopy.of(next, versions), limits.recordBytes());
                     directory.checkFile(temporary);
                     Files.move(
                             temporary,
@@ -367,7 +388,12 @@ final class AccountCopyStore {
                             StandardCopyOption.ATOMIC_MOVE,
                             StandardCopyOption.REPLACE_EXISTING);
                     RetainedDirectory.sync(root);
+                    String previous = currentBaselines;
                     current = next;
+                    currentBaselines = versions;
+                    if (!versions.equals(previous)) {
+                        baselines.retainOnly(key(owner), versions);
+                    }
                 } finally {
                     Files.deleteIfExists(temporary);
                 }
@@ -379,6 +405,16 @@ final class AccountCopyStore {
 
         private void requireNext(AccountCopyRecord next) {
             requireTransition(owner, current, next, nextExpiry());
+        }
+
+        /** Most journal writes keep the acknowledged versions; only a change publishes a new file. */
+        private String baselinesFor(AccountCopyRecord next) throws IOException {
+            if (current != null
+                    && current.copyId().equals(next.copyId())
+                    && current.state().fileBaselines().equals(next.state().fileBaselines())) {
+                return currentBaselines;
+            }
+            return baselines.publish(key(owner), next.copyId(), next.state().fileBaselines());
         }
 
         /** Caller first confirms worker disposal; deleting metadata does not delete disk work. */
@@ -396,6 +432,8 @@ final class AccountCopyStore {
                 Files.delete(recordPath(owner));
                 RetainedDirectory.sync(root);
                 current = null;
+                currentBaselines = null;
+                baselines.retainOnly(key(owner), null);
             } catch (IOException failure) {
                 uncertain = true;
                 throw unavailable(failure);

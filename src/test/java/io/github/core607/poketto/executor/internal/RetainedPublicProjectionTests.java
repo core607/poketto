@@ -44,7 +44,6 @@ class RetainedPublicProjectionTests {
 
     private AccountCopyRecord record(boolean fullRead, RepositorySnapshotExports.PublicExport projection) {
         return new AccountCopyRecord(
-                1,
                 new AccountCopyRecord.Owner(UUID.randomUUID(), workspace, fullRead),
                 UUID.randomUUID(),
                 0,

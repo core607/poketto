@@ -55,7 +55,6 @@ class AccountCopyTransitionTests {
         var writer = new AccountCopyRecord.Writer(
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
         return new AccountCopyRecord(
-                1,
                 owner,
                 copy,
                 revision,

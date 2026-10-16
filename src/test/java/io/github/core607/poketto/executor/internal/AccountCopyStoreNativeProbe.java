@@ -38,7 +38,6 @@ record AccountCopyStoreNativeProbe(Path root) {
                 Optional.of(state.baseCommit),
                 List.of(new RepositoryTextChange("private/草稿.md", true, Optional.empty(), Optional.of("等待核对的写入\n"))));
         var record = new AccountCopyRecord(
-                1,
                 OWNER,
                 COPY,
                 0,
@@ -56,7 +55,6 @@ record AccountCopyStoreNativeProbe(Path root) {
             lease.write(record);
             var original = lease.captureOriginal(sink -> sink.accept(originalFile()));
             lease.write(new AccountCopyRecord(
-                    1,
                     OWNER,
                     COPY,
                     1,
@@ -88,7 +86,6 @@ record AccountCopyStoreNativeProbe(Path root) {
             assertThat(store.expired(recovered)).isFalse();
             assertOriginal(lease);
             var continued = new AccountCopyRecord(
-                    1,
                     OWNER,
                     COPY,
                     2,
