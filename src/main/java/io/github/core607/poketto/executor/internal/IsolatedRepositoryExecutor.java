@@ -98,27 +98,45 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             String command,
             Duration timeout,
             ExecutionCancellation cancellation) {
-        var access = io.authorize(principal, workspace);
-        validateExecution(serverSessionId, expected, requested, command, timeout);
-        var owner = new AccountCopyRecord.Owner(
-                principal.accountId(), workspace.value(), access.capabilities().contains(Capability.READ_PRIVATE));
-        try (var held = new AccountCommand(accounts, accounts.ownerFor(owner, expected.id()), cancellation)) {
-            acquireExecution(cancellation);
-            try {
-                var admitted = refresh.current(
-                        accountSession(principal, workspace, expected, held, cancellation), held, cancellation);
-                ExecutionSession session = admitted.session();
+        var timings = new ExecutionTimings();
+        try {
+            var access = io.authorize(principal, workspace);
+            validateExecution(serverSessionId, expected, requested, command, timeout);
+            timings.end(ExecutionTimings.Stage.AUTHORIZE);
+            var owner = new AccountCopyRecord.Owner(
+                    principal.accountId(),
+                    workspace.value(),
+                    access.capabilities().contains(Capability.READ_PRIVATE));
+            try (var held = new AccountCommand(accounts, accounts.ownerFor(owner, expected.id()), cancellation)) {
+                timings.end(ExecutionTimings.Stage.JOURNAL);
+                acquireExecution(cancellation);
+                timings.end(ExecutionTimings.Stage.PERMIT);
                 try {
-                    return executeAccount(
-                            session, held, requested, command, timeout, cancellation, admitted.refreshed());
+                    var admitted = refresh.current(
+                            accountSession(principal, workspace, expected, held, cancellation), held, cancellation);
+                    timings.end(ExecutionTimings.Stage.ADMIT);
+                    ExecutionSession session = admitted.session();
+                    try {
+                        return executeAccount(
+                                session,
+                                held,
+                                requested,
+                                command,
+                                timeout,
+                                cancellation,
+                                admitted.refreshed(),
+                                timings);
+                    } finally {
+                        session.busy.set(false);
+                    }
                 } finally {
-                    session.busy.set(false);
+                    registry.releaseOperation();
                 }
-            } finally {
-                registry.releaseOperation();
+            } catch (RuntimeException failure) {
+                throw admissionFailure(failure, null);
             }
-        } catch (RuntimeException failure) {
-            throw admissionFailure(failure, null);
+        } finally {
+            timings.record();
         }
     }
 
@@ -234,7 +252,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             String command,
             Duration timeout,
             ExecutionCancellation cancellation,
-            boolean refreshed) {
+            boolean refreshed,
+            ExecutionTimings timings) {
         boolean attempted = false;
         try (var registration = cancellation.onCancel(() -> lifecycle.stopAndAwait(session, "cancelled"))) {
             requireLive(session);
@@ -264,7 +283,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             held.begin(execution);
             session.accountRecord = held.record();
             attempted = true;
-            JsonNode response = executeWithBridge(session, execution.toString(), command, timeout);
+            timings.end(ExecutionTimings.Stage.PREPARE);
+            JsonNode response = executeWithBridge(session, execution.toString(), command, timeout, timings);
+            timings.end(ExecutionTimings.Stage.COMMAND);
             if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
                 attempted = false;
                 held.refused();
@@ -278,6 +299,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             held.complete(session.saveState.snapshot());
             session.accountRecord = held.record();
             ExecutionResult result = result(response.path("result"), session, refreshed, held.view());
+            timings.end(ExecutionTimings.Stage.COMPLETE);
             if (!response.path("state").asString("").equals("READY")) {
                 lifecycle.stopAndAwait(session, "cancelled");
             }
@@ -368,7 +390,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
 
     // The EXEC request runs on its own thread while this one serves the worker's bridge requests
     // until the command finishes, the session stops, or the worker reports the lease closed.
-    private JsonNode executeWithBridge(ExecutionSession session, String executionId, String command, Duration timeout) {
+    private JsonNode executeWithBridge(
+            ExecutionSession session, String executionId, String command, Duration timeout, ExecutionTimings timings) {
         // Taken before the worker starts its own clock, so host work that honours it ends earlier.
         session.commandDeadline = System.nanoTime() + timeout.toNanos();
         var running = commandIo.submit(() -> io.request(
@@ -389,7 +412,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 requireOk(polled.orElseThrow(), session);
                 JsonNode request = polled.orElseThrow().path("bridgeRequest");
                 if (!request.isMissingNode() && !request.isNull()) {
+                    long answering = System.nanoTime();
                     answerBridgeRequest(session, executionId, polled.orElseThrow(), request);
+                    timings.bridged(System.nanoTime() - answering);
                 }
             }
             // The EXEC reply owns its terminal result; closing the mailbox during cancellation
