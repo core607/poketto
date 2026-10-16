@@ -55,7 +55,10 @@ session capacity with untrusted public content.
 ## Consequences and verification
 
 Validation consumes bounded native jobs in the background; anonymous delivery does
-not trigger execution. Its bounded catalogue can delay admission and temporarily
+not trigger execution. A space whose current commit and article view a complete pass
+validated is skipped until either changes, a catalogue removal frees capacity, or
+fifteen minutes pass. A pass that deferred a game for capacity does not count as
+complete, and starting a pass discards the space's earlier record. Its bounded catalogue can delay admission and temporarily
 omit a marker after publication changes. Saves are account data in PostgreSQL, not
 rebuildable content projections, and provide no certified game outcomes.
 

@@ -44,7 +44,9 @@ class GameCatalogueTests {
                         assertThat(item.articlePath()).isEqualTo("public/game.md");
                     });
             verify(fixture.runner).run(any(), any(), any());
+            // A package version is derived from committed files, so a new version arrives with a new commit.
             fixture.version = "sha256:" + "b".repeat(64);
+            fixture.snapshots.value = fixture.snapshot(List.of(fixture.article), "b");
             fixture.library.refresh();
             verify(fixture.runner, times(2)).run(any(), any(), any());
         }

@@ -367,7 +367,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                             throw unavailable();
                         }
                         requireReachable(repository, head, commit, deadline);
-                        preflight(repository, commit, deadline);
+                        preflight(repository, commit, baseline, deadline);
                         safeStaging();
                         clearAbandoned();
                         MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -408,9 +408,15 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         }
     }
 
-    private void preflight(Repository repository, String commit, long deadline) throws IOException {
+    // Bounds exactly what the bundle carries: an incremental bundle assumes its baseline, so the
+    // baseline's history is neither exported nor counted.
+    private void preflight(Repository repository, String commit, Optional<String> baseline, long deadline)
+            throws IOException {
         try (ObjectWalk walk = new ObjectWalk(repository)) {
             walk.markStart(walk.parseCommit(ObjectId.fromString(commit)));
+            if (baseline.isPresent()) {
+                walk.markUninteresting(walk.parseCommit(ObjectId.fromString(baseline.orElseThrow())));
+            }
             int count = 0;
             while (walk.next() != null) {
                 checkDeadline(deadline);
