@@ -18,9 +18,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /** One private journal per account/workspace/read scope, using the existing bounded durable codec. */
 final class AccountCopyStore {
+    private static final Logger log = LoggerFactory.getLogger(AccountCopyStore.class);
     private final Path root;
     private final RetainedDirectory directory;
     private final RetainedRecordFiles files;
@@ -392,7 +395,7 @@ final class AccountCopyStore {
                     current = next;
                     currentBaselines = versions;
                     if (!versions.equals(previous)) {
-                        baselines.retainOnly(key(owner), versions);
+                        discardSuperseded(versions);
                     }
                 } finally {
                     Files.deleteIfExists(temporary);
@@ -405,6 +408,15 @@ final class AccountCopyStore {
 
         private void requireNext(AccountCopyRecord next) {
             requireTransition(owner, current, next, nextExpiry());
+        }
+
+        /** The journal already names {@code kept}; a leftover file is retried by the next change or removal. */
+        private void discardSuperseded(String kept) {
+            try {
+                baselines.retainOnly(key(owner), kept);
+            } catch (IOException failure) {
+                log.warn("Superseded acknowledged file versions remain after a durable journal write", failure);
+            }
         }
 
         /** Most journal writes keep the acknowledged versions; only a change publishes a new file. */
