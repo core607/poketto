@@ -6,6 +6,7 @@ import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.RepositoryExecutor.CopyRetention;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -17,9 +18,25 @@ final class AccountCommand implements AutoCloseable {
     private boolean resumed;
 
     AccountCommand(AccountCopyStore store, AccountCopyRecord.Owner owner, ExecutionCancellation cancellation) {
+        this(store, owner, acquire(store, owner, cancellation));
+    }
+
+    private AccountCommand(AccountCopyStore store, AccountCopyRecord.Owner owner, AccountCopyStore.Lease lease) {
         this.store = store;
         this.owner = owner;
-        lease = acquire(store, owner, cancellation);
+        this.lease = lease;
+    }
+
+    /** The owner's journal if no other command holds it right now; never waits. */
+    static Optional<AccountCommand> ifIdle(AccountCopyStore store, AccountCopyRecord.Owner owner) {
+        try {
+            return Optional.of(new AccountCommand(store, owner, store.acquire(owner)));
+        } catch (RetainedCopyException busy) {
+            if (busy.reason() != RetainedCopyException.Reason.BUSY) {
+                throw busy;
+            }
+            return Optional.empty();
+        }
     }
 
     private static AccountCopyStore.Lease acquire(

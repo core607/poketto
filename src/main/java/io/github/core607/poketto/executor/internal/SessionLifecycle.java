@@ -220,9 +220,13 @@ final class SessionLifecycle {
         }
     }
 
+    /** Each copy has its own lease: a fork's scope hash also names its copy. */
     static ExecutionSession.Key keyFor(AccountCopyRecord.Owner owner) {
+        String scope = owner.fullRead() ? "full" : "public";
         return new ExecutionSession.Key(
-                owner.accountId(), new WorkspaceId(owner.workspaceId()), hash(owner.fullRead() ? "full" : "public"));
+                owner.accountId(),
+                new WorkspaceId(owner.workspaceId()),
+                hash(owner.fork() == null ? scope : scope + ":" + owner.fork()));
     }
 
     ExecutionSession refreshLease(ExecutionSession previous, AuthPrincipal principal) {

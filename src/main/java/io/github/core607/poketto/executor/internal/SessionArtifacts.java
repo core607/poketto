@@ -9,6 +9,7 @@ import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.RepositoryExecutor.ArtifactChunk;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,16 +43,30 @@ final class SessionArtifacts {
             ExecutionCancellation cancellation) {
         var access = io.authorize(principal, workspace);
         validateArtifactRequest(artifactId, offset, limit);
-        List<Boolean> scopes =
-                access.capabilities().contains(Capability.READ_PRIVATE) ? List.of(true, false) : List.of(false);
-        for (boolean full : scopes) {
-            var owner = new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), full);
-            try (var held = new AccountCommand(accounts, owner, cancellation)) {
-                if (held.record() == null || accounts.expired(held.record())) {
+        boolean readsPrivate = access.capabilities().contains(Capability.READ_PRIVATE);
+        // Idle copies first, without waiting: a command running in one copy of the account must
+        // not hold up a read from another. Copies busy then are waited for afterwards, as before.
+        var busy = new ArrayList<AccountCopyRecord.Owner>();
+        for (var owner : owners(principal, workspace, readsPrivate)) {
+            try {
+                var idle = AccountCommand.ifIdle(accounts, owner);
+                if (idle.isEmpty()) {
+                    busy.add(owner);
                     continue;
                 }
-                held.requireLive();
-                var page = readAccount(principal, workspace, artifactId, offset, limit, cancellation, held);
+                try (var held = idle.get()) {
+                    var page = readHeld(principal, workspace, artifactId, offset, limit, cancellation, held);
+                    if (page.isPresent()) {
+                        return page;
+                    }
+                }
+            } catch (RuntimeException failure) {
+                throw IsolatedRepositoryExecutor.admissionFailure(failure, null);
+            }
+        }
+        for (var owner : busy) {
+            try (var held = new AccountCommand(accounts, owner, cancellation)) {
+                var page = readHeld(principal, workspace, artifactId, offset, limit, cancellation, held);
                 if (page.isPresent()) {
                     return page;
                 }
@@ -60,6 +75,44 @@ final class SessionArtifacts {
             }
         }
         return Optional.empty();
+    }
+
+    private Optional<ArtifactChunk> readHeld(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            String artifactId,
+            long offset,
+            int limit,
+            ExecutionCancellation cancellation,
+            AccountCommand held) {
+        if (held.record() == null || accounts.expired(held.record())) {
+            return Optional.empty();
+        }
+        held.requireLive();
+        return readAccount(principal, workspace, artifactId, offset, limit, cancellation, held);
+    }
+
+    /**
+     * The copies whose leases may hold the artifact: the default copy of each readable scope, and
+     * every fork of the account with a live lease, since an artifact lives only as long as its lease.
+     */
+    private List<AccountCopyRecord.Owner> owners(AuthPrincipal principal, WorkspaceId workspace, boolean readsPrivate) {
+        var owners = new ArrayList<AccountCopyRecord.Owner>();
+        for (boolean full : readsPrivate ? List.of(true, false) : List.of(false)) {
+            owners.add(new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), full));
+        }
+        for (var session : registry.all()) {
+            var record = session.accountRecord;
+            if (record != null
+                    && record.owner().fork() != null
+                    && record.owner().accountId().equals(principal.accountId())
+                    && record.owner().workspaceId().equals(workspace.value())
+                    && (readsPrivate || !record.owner().fullRead())
+                    && !owners.contains(record.owner())) {
+                owners.add(record.owner());
+            }
+        }
+        return owners;
     }
 
     private Optional<ArtifactChunk> readAccount(
