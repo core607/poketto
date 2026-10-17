@@ -23,6 +23,7 @@ import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MembershipRole;
+import io.github.core607.poketto.auth.SiteGroup;
 import io.github.core607.poketto.auth.WorkspaceAccess;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PortableContentExports;
@@ -119,7 +120,7 @@ class WorkerSocketTests {
                         fullAuth(),
                         exports,
                         peer.client(),
-                        8,
+                        ExecutionLimits.sessions(8),
                         Duration.ofSeconds(8),
                         Duration.ofSeconds(3))) {
             peer.baselineUnavailable = true;
@@ -217,7 +218,7 @@ class WorkerSocketTests {
                         fullAuth(),
                         exports(),
                         peer.client(),
-                        8,
+                        ExecutionLimits.sessions(8),
                         Duration.ofSeconds(8),
                         Duration.ofSeconds(3))) {
             peer.bridgeCommand =
@@ -324,7 +325,7 @@ class WorkerSocketTests {
                         auth,
                         exports(),
                         peer.client(),
-                        8,
+                        ExecutionLimits.sessions(8),
                         Duration.ofSeconds(8),
                         Duration.ofSeconds(3))) {
             peer.bridgeCommand =
@@ -501,7 +502,7 @@ class WorkerSocketTests {
                         fullAuth(),
                         exports(),
                         peer.client(),
-                        8,
+                        ExecutionLimits.sessions(8),
                         Duration.ofSeconds(8),
                         Duration.ofSeconds(3))) {
             var first = client.execute(
@@ -956,7 +957,7 @@ class WorkerSocketTests {
                 auth,
                 exports,
                 peer.client(),
-                8,
+                ExecutionLimits.sessions(8),
                 Duration.ofSeconds(8),
                 Duration.ofSeconds(3));
     }
@@ -1169,7 +1170,7 @@ class WorkerSocketTests {
                         fullAuth(),
                         exports,
                         peer.client(),
-                        1,
+                        ExecutionLimits.sessions(1),
                         Duration.ofSeconds(3),
                         Duration.ofSeconds(1))) {
             assertThatThrownBy(() -> client.execute(
@@ -1210,7 +1211,7 @@ class WorkerSocketTests {
                             fullAuth(),
                             exports(),
                             peer.client(),
-                            1,
+                            ExecutionLimits.sessions(1),
                             Duration.ofSeconds(3),
                             Duration.ofSeconds(1))) {
                 var first = command(executor, actor, "new");
@@ -1250,7 +1251,7 @@ class WorkerSocketTests {
                             fullAuth(),
                             exports(),
                             peer.client(),
-                            capacity,
+                            ExecutionLimits.sessions(capacity),
                             Duration.ofSeconds(3),
                             Duration.ofSeconds(1))) {
                 var first = command(executor, actor, "new");
@@ -1267,6 +1268,32 @@ class WorkerSocketTests {
                 assertThat(peer.operations("ATTACH")).hasSize(2);
                 assertThat(peer.operations("EXEC")).hasSize(3);
             }
+        }
+    }
+
+    @Test
+    void anAccountQuotaOfOneReleasesItsSlotAfterEveryCommand() throws Exception {
+        var auth = fullAuth();
+        when(auth.siteGroup(any())).thenReturn(SiteGroup.VIEWER);
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = new IsolatedRepositoryExecutor(
+                        peer.accounts.store(),
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        auth,
+                        exports(),
+                        peer.client(),
+                        new ExecutionLimits(4, 4, Map.of(SiteGroup.VIEWER, 1)),
+                        Duration.ofSeconds(3),
+                        Duration.ofSeconds(1))) {
+            var first = command(executor, actor, "new");
+            for (int i = 0; i < 3; i++) {
+                assertThat(command(executor, actor, first.copyId()).copyId()).isEqualTo(first.copyId());
+            }
+            assertThat(peer.operations("EXEC")).hasSize(4);
+            verify(auth, times(4)).siteGroup(actor);
         }
     }
 

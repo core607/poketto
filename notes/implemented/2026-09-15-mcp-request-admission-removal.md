@@ -56,9 +56,9 @@ request slot.
 
 Existing bounds retain distinct meanings. `poketto.executor.max-sessions` defaults
 to four active execution leases. Command admission separately permits four concurrent
-commands and serializes access to one copy. The MCP transport keeps no protocol
-sessions and no per-session call limit. Command deadlines and permission boundaries
-remain unchanged.
+commands site-wide, bounds each account's commands by its site group, and serializes
+access to one copy. The MCP transport keeps no protocol sessions and no per-session
+call limit. Command deadlines and permission boundaries remain unchanged.
 
 Refusal results expose `code` and `reason`, and `McpToolOutcomes` records both without
 commands, paths, image URLs or credentials. Existing execution refusal reasons and

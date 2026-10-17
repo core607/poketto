@@ -224,7 +224,7 @@ public final class ExecutorNativeProbe {
                         JSON,
                         socket,
                         path("privateKey"),
-                        maxSessions,
+                        ExecutionLimits.sessions(maxSessions),
                         45,
                         8);
     }
@@ -666,7 +666,7 @@ public final class ExecutorNativeProbe {
                                 JSON,
                                 path("socket"),
                                 path("privateKey"),
-                                8,
+                                ExecutionLimits.sessions(8),
                                 45,
                                 8)) {
                     String command = "set -eu; printf 'unsaved-export-needle' > scratch.txt; "
@@ -858,7 +858,7 @@ public final class ExecutorNativeProbe {
                         JSON,
                         path("socket"),
                         path("privateKey"),
-                        8,
+                        ExecutionLimits.sessions(8),
                         45,
                         8)) {
             var imported = client.execute(
@@ -1105,7 +1105,7 @@ public final class ExecutorNativeProbe {
                         JSON,
                         path("socket"),
                         path("privateKey"),
-                        8,
+                        ExecutionLimits.sessions(8),
                         45,
                         8)) {
             var linked = execute(
@@ -1250,7 +1250,7 @@ public final class ExecutorNativeProbe {
                         JSON,
                         path("socket"),
                         path("privateKey"),
-                        8,
+                        ExecutionLimits.sessions(8),
                         45,
                         8)) {
             var first = client.execute(
@@ -1325,7 +1325,7 @@ public final class ExecutorNativeProbe {
                         JSON,
                         path("socket"),
                         path("privateKey"),
-                        8,
+                        ExecutionLimits.sessions(8),
                         45,
                         8)) {
             var fetched = client.execute(
@@ -1406,7 +1406,7 @@ public final class ExecutorNativeProbe {
                         JSON,
                         path("socket"),
                         path("privateKey"),
-                        8,
+                        ExecutionLimits.sessions(8),
                         45,
                         8);
     }
@@ -1444,7 +1444,7 @@ public final class ExecutorNativeProbe {
                 auth,
                 fixture.exports(),
                 intercepted,
-                8,
+                ExecutionLimits.sessions(8),
                 Duration.ofSeconds(45),
                 Duration.ofSeconds(8))) {
             var moved = client.execute(
@@ -1699,7 +1699,7 @@ public final class ExecutorNativeProbe {
                         JSON,
                         path("socket"),
                         path("privateKey"),
-                        8,
+                        ExecutionLimits.sessions(8),
                         45,
                         8)) {
             var unknown = client.execute(
@@ -1766,7 +1766,7 @@ public final class ExecutorNativeProbe {
                         JSON,
                         path("socket"),
                         path("privateKey"),
-                        8,
+                        ExecutionLimits.sessions(8),
                         45,
                         8)) {
             var saved = client.execute(

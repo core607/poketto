@@ -142,7 +142,7 @@ public final class RetainedProcessNativeProbe {
                         JSON,
                         path("socket"),
                         path("privateKey"),
-                        4,
+                        ExecutionLimits.sessions(4),
                         45,
                         8);
     }
