@@ -66,6 +66,11 @@ final class AccountCopyStore {
         return record.expiresAt() <= clock.millis();
     }
 
+    /** Whether a command ran in the copy within the window; every command moves its expiry forward. */
+    boolean recentlyUsed(AccountCopyRecord record, Duration window) {
+        return record.expiresAt() - limits.idle().toMillis() > clock.millis() - window.toMillis();
+    }
+
     boolean collectible(AccountCopyRecord record) {
         return collectible(record.phase(), record.expiresAt());
     }
@@ -148,6 +153,29 @@ final class AccountCopyStore {
                 }
             }
             return permitted;
+        } catch (IOException failure) {
+            throw unavailable(failure);
+        }
+    }
+
+    /** The forks of the owner's account, workspace and scope that have a record. */
+    List<AccountCopyRecord.Owner> forksOf(AccountCopyRecord.Owner owner) {
+        try (var index = index()) {
+            index.requireValid();
+            var forks = new ArrayList<AccountCopyRecord.Owner>();
+            try (var entries = Files.newDirectoryStream(root, "*.account")) {
+                for (Path entry : entries) {
+                    directory.checkFile(entry);
+                    var stored = files.read(entry, StoredAccountCopy.class).owner();
+                    if (stored.fork() != null
+                            && stored.accountId().equals(owner.accountId())
+                            && stored.workspaceId().equals(owner.workspaceId())
+                            && stored.fullRead() == owner.fullRead()) {
+                        forks.add(stored);
+                    }
+                }
+            }
+            return forks;
         } catch (IOException failure) {
             throw unavailable(failure);
         }

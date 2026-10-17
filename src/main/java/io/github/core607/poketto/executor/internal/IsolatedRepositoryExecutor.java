@@ -40,6 +40,9 @@ import tools.jackson.databind.JsonNode;
 /** Owns account-copy admission, command execution and lease containment; the bridge handles CLI operations. */
 final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(IsolatedRepositoryExecutor.class);
+    // An agent thinks between its commands; a copy used within this window still belongs to it,
+    // so another agent asking for a new copy gets its own rather than a turn in this one.
+    private static final Duration AGENT_CLAIM = Duration.ofMinutes(2);
     private final SessionWorker io;
     private final SessionRepositoryCommands repository;
     private final BridgedCommands commands;
@@ -158,9 +161,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     /**
-     * The command's copy. {@code new} takes the account's default copy unless another command
-     * holds it; then, within the account's copy quota, it opens a fork, so agents that start in
-     * parallel do not queue behind each other. A named copy waits for its own journal.
+     * The command's copy. {@code new} takes the account's default copy unless another agent holds
+     * or has just used it, then an idle fork nobody has just used, and only then, within the
+     * account's copy quota, opens a fork. Agents of one account that work in parallel therefore
+     * get a copy each instead of converging on the default copy between their commands, and the
+     * forks stay as many as the agents working at once. A named copy waits for its own journal.
      */
     private AccountCommand command(
             AuthPrincipal principal,
@@ -170,15 +175,33 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (!NEW_COPY.equals(expected.id())) {
             return new AccountCommand(accounts, accounts.ownerFor(owner, expected.id()), cancellation);
         }
-        var idle = AccountCommand.ifIdle(accounts, owner);
-        if (idle.isPresent()) {
-            return idle.get();
+        var unclaimed = unclaimed(owner);
+        if (unclaimed.isPresent()) {
+            return unclaimed.get();
+        }
+        for (var fork : accounts.forksOf(owner)) {
+            unclaimed = unclaimed(fork);
+            if (unclaimed.isPresent()) {
+                return unclaimed.get();
+            }
         }
         Integer quota = copyQuotas.isEmpty() ? null : copyQuotas.get(groups.apply(principal));
         if (quota == null || accounts.copiesOf(owner.accountId(), owner.workspaceId()) < quota) {
             return new AccountCommand(accounts, owner.forked(UUID.randomUUID()), cancellation);
         }
         return new AccountCommand(accounts, owner, cancellation);
+    }
+
+    /** The copy held without waiting, when no command runs in it and none ran within the claim. */
+    private Optional<AccountCommand> unclaimed(AccountCopyRecord.Owner owner) {
+        var idle = AccountCommand.ifIdle(accounts, owner);
+        if (idle.isEmpty()
+                || idle.get().record() == null
+                || !accounts.recentlyUsed(idle.get().record(), AGENT_CLAIM)) {
+            return idle;
+        }
+        idle.get().close();
+        return Optional.empty();
     }
 
     /** The account's slot, then a site-wide permit; each waits at most five seconds. */
