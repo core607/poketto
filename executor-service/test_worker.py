@@ -157,6 +157,20 @@ class ProtocolTests(unittest.TestCase):
         first.channel, first.state = None, 'READY'
         self.assertTrue(self.send(self.execution())['ok'])
 
+    def test_a_connection_beyond_capacity_is_closed_unread_and_logged(self):
+        from worker import Server
+        server = Server.__new__(Server)
+        server.capacity = threading.BoundedSemaphore(1)
+        server.capacity.acquire()
+        request = Mock()
+        with self.assertLogs('poketto.worker', 'WARNING') as logged:
+            server.process_request(request, None)
+            server.process_request(Mock(), None)
+        request.close.assert_called_once_with()
+        # Refusals in a burst are logged once, not once each.
+        self.assertEqual(1, len(logged.output))
+        self.assertIn('maxConnections', logged.output[0])
+
     def test_idle_configuration_is_explicit_and_bounded(self):
         example = json.loads(Path(__file__).with_name('config.example.json').read_text())
         with tempfile.TemporaryDirectory() as directory:
