@@ -171,6 +171,23 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(1, len(logged.output))
         self.assertIn('maxConnections', logged.output[0])
 
+    def test_each_refusal_reason_is_logged_with_the_refusals_it_counted(self):
+        from worker import Server
+        server = Server.__new__(Server)
+        with self.assertLogs('poketto.worker', 'WARNING') as logged:
+            server.refuse(Mock(), 'maxConnections reached')
+            server.refuse(Mock(), 'maxConnections reached')
+            server.refuse(Mock(), 'maxConnections reached')
+            # Another reason inside the same second still gets its own line.
+            server.refuse(Mock(), 'no thread could be started')
+            server.refusals['maxConnections reached'] = (time.monotonic() - 1, 2)
+            server.refuse(Mock(), 'maxConnections reached')
+        self.assertEqual([
+            'refused 1 connection(s) unread: maxConnections reached',
+            'refused 1 connection(s) unread: no thread could be started',
+            'refused 3 connection(s) unread: maxConnections reached',
+        ], [line.split(':', 2)[2] for line in logged.output])
+
     def test_idle_configuration_is_explicit_and_bounded(self):
         example = json.loads(Path(__file__).with_name('config.example.json').read_text())
         with tempfile.TemporaryDirectory() as directory:
