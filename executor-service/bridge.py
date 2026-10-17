@@ -192,12 +192,15 @@ class LeaseBridge:
         with self.closer:
             if self.closed:
                 return
-            self.closed = True
-            self._wake()
+            # reset_command checks closed and wakes under condition, so it never writes a closed pipe.
+            with self.condition:
+                self.closed = True
+                self._wake()
             with self.reader:
-                os.close(self.input)
-                os.close(self.wake)
-                os.close(self.waker)
+                with self.condition:
+                    os.close(self.input)
+                    os.close(self.wake)
+                    os.close(self.waker)
                 self.buffer.clear()
             with self.condition:
                 for request_id in self.pending:
