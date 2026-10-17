@@ -30,10 +30,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -44,7 +42,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private static final Logger log = LoggerFactory.getLogger(IsolatedRepositoryExecutor.class);
     private final SessionWorker io;
     private final SessionRepositoryCommands repository;
-    private final ExecutorBridge bridge;
+    private final BridgedCommands commands;
     private final WorkerClient worker;
     private final AccountCopyStore accounts;
     private final SessionRegistry registry;
@@ -78,7 +76,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         var files = new SessionFileTransfers(io);
         this.repository = new SessionRepositoryCommands(io, files, saves, exports, openTimeout);
         var mediaCommands = new SessionMediaCommands(io, files, auth, media, saves);
-        this.bridge = new ExecutorBridge(io, files, repository, mediaCommands, saves, packages);
+        this.commands = new BridgedCommands(
+                io, new ExecutorBridge(io, files, repository, mediaCommands, saves, packages), commandIo);
         this.registry = new SessionRegistry(maxSessions);
         this.lifecycle = new SessionLifecycle(
                 registry, io, worker, exports, packages, saves, accounts, openTimeout, closeTimeout);
@@ -284,7 +283,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             session.accountRecord = held.record();
             attempted = true;
             timings.end(ExecutionTimings.Stage.PREPARE);
-            JsonNode response = executeWithBridge(session, execution.toString(), command, timeout, timings);
+            JsonNode response = commands.execute(session, execution.toString(), command, timeout, timings);
             timings.end(ExecutionTimings.Stage.COMMAND);
             if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
                 attempted = false;
@@ -388,101 +387,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         registry.bindMetrics(meters);
     }
 
-    // The EXEC request runs on its own thread while this one serves the worker's bridge requests
-    // until the command finishes, the session stops, or the worker reports the lease closed.
-    private JsonNode executeWithBridge(
-            ExecutionSession session, String executionId, String command, Duration timeout, ExecutionTimings timings) {
-        // Taken before the worker starts its own clock, so host work that honours it ends earlier.
-        session.commandDeadline = System.nanoTime() + timeout.toNanos();
-        var running = commandIo.submit(() -> io.request(
-                session,
-                "EXEC",
-                new WorkerRequests.Exec(executionId, session.commit, command, timeout.toMillis()),
-                timeout.plusSeconds(5)));
-        long deadline = System.nanoTime() + timeout.plusSeconds(5).toNanos();
-        try {
-            while (!running.isDone() && !session.stopping.get()) {
-                Optional<JsonNode> polled = pollBridge(session, deadline);
-                if (polled.isEmpty()
-                        || running.isDone()
-                        || session.stopping.get()
-                        || closedByWorker(polled.orElseThrow())) {
-                    break;
-                }
-                requireOk(polled.orElseThrow(), session);
-                JsonNode request = polled.orElseThrow().path("bridgeRequest");
-                if (!request.isMissingNode() && !request.isNull()) {
-                    long answering = System.nanoTime();
-                    answerBridgeRequest(session, executionId, polled.orElseThrow(), request);
-                    timings.bridged(System.nanoTime() - answering);
-                }
-            }
-            // The EXEC reply owns its terminal result; closing the mailbox during cancellation
-            // must not turn a confirmed cancelled command into an unknown transport outcome.
-            return running.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new WorkerUnavailableException(interrupted);
-        } catch (ExecutionException failed) {
-            if (failed.getCause() instanceof RuntimeException failure) {
-                throw failure;
-            }
-            throw new WorkerUnavailableException();
-        } catch (TimeoutException expired) {
-            throw new WorkerUnavailableException(expired);
-        } finally {
-            running.cancel(true);
-        }
-    }
-
-    // One poll of the worker's bridge mailbox. A poll that fails while the session is stopping
-    // ends the loop and leaves the command's own reply to decide the outcome.
-    private Optional<JsonNode> pollBridge(ExecutionSession session, long deadline) {
-        io.authorize(session);
-        if (System.nanoTime() - deadline >= 0) {
-            throw new WorkerUnavailableException();
-        }
-        try {
-            return Optional.of(
-                    io.request(session, "BRIDGE_POLL", new WorkerRequests.BridgePoll(), Duration.ofSeconds(3)));
-        } catch (RuntimeException failed) {
-            if (session.stopping.get()) {
-                return Optional.empty();
-            }
-            throw failed;
-        }
-    }
-
-    private static boolean closedByWorker(JsonNode polled) {
-        return !polled.path("ok").asBoolean(false)
-                && Set.of("LEASE_EXPIRED", "BRIDGE_UNAVAILABLE", "AUTH_REVOKED")
-                        .contains(polled.path("code").asString(""));
-    }
-
-    // A bridge request belongs to this execution and names a well-formed request id; the session
-    // must still be live and authorized both before and after the reply is computed.
-    private void answerBridgeRequest(ExecutionSession session, String executionId, JsonNode polled, JsonNode request) {
-        if (!executionId.equals(polled.path("executionId").asString(""))) {
-            throw new WorkerUnavailableException();
-        }
-        String requestId = request.path("requestId").stringValue();
-        if (!UUID.fromString(requestId).toString().equals(requestId)) {
-            throw new WorkerUnavailableException();
-        }
-        requireLive(session);
-        io.authorize(session);
-        var reply = bridge.bridgeReply(session, executionId, request);
-        requireLive(session);
-        io.authorize(session);
-        requireOk(
-                io.request(
-                        session,
-                        "BRIDGE_COMPLETE",
-                        new WorkerRequests.BridgeComplete(executionId, requestId, reply),
-                        Duration.ofSeconds(3)),
-                session);
-    }
-
     @EventListener
     void revoked(AuthRevocation event) {
         List<ExecutionSession> affected = registry.affectedBy(event);
@@ -536,6 +440,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
         lifecycle.shutdownControls();
         commandIo.shutdownNow();
+        commands.close();
     }
 
     private static ExecutionResult result(

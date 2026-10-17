@@ -117,7 +117,7 @@ The worker rejects `data` with a missing or extra field; [java-frames.json](java
 | `DISCARD` | Deletes an owner-matched copy once no lease holds its lock. Returns DISCARDED or ABSENT, or `COPY_BUSY`. |
 | `EXEC` | Runs `command` (1 byte to 64 KiB of UTF-8, no NUL) within `timeoutMillis`, at most `maxTimeoutMillis`. Requires READY and the pinned `commit`; blocks until completion or containment. |
 | `RENEW` | Extends an unexpired INITIALIZING, READY or RUNNING lease to `expiresAt`. Nothing else renews. |
-| `BRIDGE_POLL` | Claims one pending CLI request of the running command, or returns null when idle or after a bounded wait. Never takes the command lock or cancels on contention. |
+| `BRIDGE_POLL` | Claims one pending CLI request of the command it was dispatched for, or returns null when idle, after a bounded wait, or as soon as that command's cleanup begins. Never takes the command lock or cancels on contention. |
 | `BRIDGE_COMPLETE` | Publishes one bounded reply to that pending request of that running execution. |
 | `CAPTURE_BEGIN` | Captures up to 64 selected UTF-8 files and 4 MiB plus explicit deletions; returns a capture ID and an ordered path/length/SHA-256 manifest. |
 | `CAPTURE_OPTIONAL` | Captures one text file, or its absence, for synchronization. |

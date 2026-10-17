@@ -38,6 +38,15 @@ def encode(value):
     return result
 
 
+def _drain(fd):
+    while True:
+        try:
+            if not os.read(fd, 65536):
+                return
+        except BlockingIOError:
+            return
+
+
 def identifier(value):
     try:
         if str(uuid.UUID(value)) != value:
@@ -65,6 +74,9 @@ class LeaseBridge:
         self.execution_id = ''
         self.buffer = bytearray()
         self.frame_started = None
+        # A reset or close waiting for reader wakes the poll that holds it.
+        self.resets = 0
+        self.wake, self.waker = os.pipe2(os.O_NONBLOCK | os.O_CLOEXEC)
         self.path.mkdir(mode=0o750)
         os.chown(self.path, -1, gid)
         os.chmod(self.path, 0o750)
@@ -111,7 +123,8 @@ class LeaseBridge:
             self.pending[request_id] = {'completed': False}
             return value
 
-    def poll(self, timeout=0.2):
+    def poll(self, timeout=0.2, execution_id=None):
+        """Return a request of execution_id, the current execution when omitted."""
         wait = min(max(timeout, 0), 2)
         deadline = time.monotonic() + wait
         # Command cleanup drains the same input while holding reader. Contention
@@ -122,6 +135,10 @@ class LeaseBridge:
             while True:
                 if self.closed:
                     raise BridgeRejected('Session closed')
+                # A poll left from an ended command must not take the next command's frames.
+                with self.condition:
+                    if self.resets or execution_id is not None and execution_id != self.execution_id:
+                        return None
                 now = time.monotonic()
                 if self.frame_started is not None and now - self.frame_started > 5:
                     raise BridgeRejected('Bridge frame deadline exceeded')
@@ -141,8 +158,8 @@ class LeaseBridge:
                 remaining = deadline - now
                 if remaining <= 0:
                     return None
-                ready, _, _ = select.select([self.input], [], [], min(remaining, 0.05))
-                if ready:
+                ready, _, _ = select.select([self.input, self.wake], [], [], min(remaining, 0.05))
+                if self.input in ready:
                     if self.frame_started is None:
                         self.frame_started = time.monotonic()
                     self.buffer.extend(os.read(self.input, min(65536, MAX_FRAME + 4 - len(self.buffer))))
@@ -175,9 +192,15 @@ class LeaseBridge:
         with self.closer:
             if self.closed:
                 return
-            self.closed = True
+            # reset_command checks closed and wakes under condition, so it never writes a closed pipe.
+            with self.condition:
+                self.closed = True
+                self._wake()
             with self.reader:
-                os.close(self.input)
+                with self.condition:
+                    os.close(self.input)
+                    os.close(self.wake)
+                    os.close(self.waker)
                 self.buffer.clear()
             with self.condition:
                 for request_id in self.pending:
@@ -190,6 +213,24 @@ class LeaseBridge:
         """Call with the cgroup empty or frozen; late background calls keep their old execution ID."""
         if execution_id:
             identifier(execution_id)
+        with self.condition:
+            if self.closed:
+                return
+            self.resets += 1
+            self._wake()
+        try:
+            self._reset(execution_id)
+        finally:
+            with self.condition:
+                self.resets -= 1
+
+    def _wake(self):
+        try:
+            os.write(self.waker, b'.')
+        except BlockingIOError:
+            pass
+
+    def _reset(self, execution_id):
         with self.reader:
             with self.condition:
                 if self.closed:
@@ -199,12 +240,8 @@ class LeaseBridge:
                 self.pending.clear()
                 self.buffer.clear()
                 self.frame_started = None
-                while True:
-                    try:
-                        if not os.read(self.input, 65536):
-                            break
-                    except BlockingIOError:
-                        break
+                _drain(self.input)
+                _drain(self.wake)
                 self.seen.clear()
                 self.execution_id = execution_id
                 (self.path / 'state').write_bytes(execution_id.encode('ascii'))

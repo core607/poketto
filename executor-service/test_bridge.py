@@ -30,6 +30,25 @@ class LeaseBridgeTests(unittest.TestCase):
         _send(self.path, current, time.monotonic() + 2)
         self.assertEqual(current, self.bridge.poll(timeout=1))
 
+    def test_a_poll_of_an_ended_command_leaves_the_next_command_frames(self):
+        previous = self.execution_id
+        self.execution_id = str(uuid.uuid4())
+        self.bridge.reset_command(self.execution_id)
+        current = {'requestId': str(uuid.uuid4()), 'executionId': self.execution_id, 'operation': 'save', 'arguments': {}}
+        _send(self.path, current, time.monotonic() + 2)
+        self.assertIsNone(self.bridge.poll(timeout=0.05, execution_id=previous))
+        self.assertFalse(self.bridge.pending)
+        self.assertEqual(current, self.bridge.poll(timeout=1, execution_id=self.execution_id))
+
+    def test_a_command_reset_wakes_the_poll_that_holds_the_reader(self):
+        with ThreadPoolExecutor() as pool:
+            waiting = pool.submit(self.bridge.poll, 2)
+            time.sleep(0.1)
+            started = time.monotonic()
+            self.bridge.reset_command()
+            self.assertLess(time.monotonic() - started, 0.5)
+            self.assertIsNone(waiting.result(timeout=1))
+
     def test_stdin_and_files_preserve_large_utf8_text_through_the_real_bridge(self):
         text = ('中文 "$HOME" `not a command` \'quoted\'\n' * 1500) + '\n'
         source = Path(self.temporary.name) / 'article.txt'
