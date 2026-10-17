@@ -7,6 +7,7 @@ import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
@@ -60,6 +61,10 @@ final class RemoteRepositoryFixture {
         this(root.resolve("data"), root.resolve("remotes"), transport, 32);
     }
 
+    RemoteRepositoryFixture(Path root, RemoteGitTransport transport, Duration readFetchReuse) {
+        this(root.resolve("data"), root.resolve("remotes"), transport, 32, Clock.systemUTC(), readFetchReuse);
+    }
+
     RemoteRepositoryFixture(Path dataRoot, Path remoteRoot, RemoteGitTransport transport) {
         this(dataRoot, remoteRoot, transport, 32);
     }
@@ -70,6 +75,16 @@ final class RemoteRepositoryFixture {
 
     RemoteRepositoryFixture(
             Path dataRoot, Path remoteRoot, RemoteGitTransport transport, int maxCachedWorkspaces, Clock clock) {
+        this(dataRoot, remoteRoot, transport, maxCachedWorkspaces, clock, Duration.ZERO);
+    }
+
+    RemoteRepositoryFixture(
+            Path dataRoot,
+            Path remoteRoot,
+            RemoteGitTransport transport,
+            int maxCachedWorkspaces,
+            Clock clock,
+            Duration readFetchReuse) {
         remotes = remoteRoot.toAbsolutePath();
         paths = new WorkspacePaths(dataRoot.toAbsolutePath());
         bindings = workspaceId -> {
@@ -81,7 +96,8 @@ final class RemoteRepositoryFixture {
                 throw new IllegalStateException("test remote cannot be bound", exception);
             }
         };
-        authority = new JGitRemoteRepositoryAuthority(paths, bindings, transport, maxCachedWorkspaces, clock);
+        authority = new JGitRemoteRepositoryAuthority(
+                paths, bindings, transport, maxCachedWorkspaces, clock, readFetchReuse);
     }
 
     WorkspacePaths paths() {

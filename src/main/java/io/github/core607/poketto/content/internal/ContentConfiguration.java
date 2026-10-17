@@ -70,9 +70,15 @@ class ContentConfiguration {
             WorkspacePaths paths,
             RepositoryBindingSource bindings,
             RemoteGitTransport transport,
-            RepositoryProperties properties) {
+            RepositoryProperties properties,
+            @Value("${poketto.repository.read-fetch-reuse-millis:0}") long readFetchReuse) {
         return new JGitRemoteRepositoryAuthority(
-                paths, bindings, transport, properties.cacheMaxWorkspaces(), Clock.systemUTC());
+                paths,
+                bindings,
+                transport,
+                properties.cacheMaxWorkspaces(),
+                Clock.systemUTC(),
+                Duration.ofMillis(readFetchReuse));
     }
 
     @Bean
