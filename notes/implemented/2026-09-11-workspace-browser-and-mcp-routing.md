@@ -14,7 +14,7 @@ Invalid or expired invitations receive a locally defined message chosen by the a
 
 [OAuth consent](2026-09-11-mcp-oauth.md) loads account and request information without requiring default-space membership. The user selects one joined space before approving permissions within their current grants. An account without an eligible space receives a create/join entrance and can refresh its choices without restarting an otherwise valid authorization request. Rejection requires no space. Approved connections permanently retain the selected workspace in their backing key; refresh cannot select another one.
 
-The `/mcp` resource remains shared. Both its authentication filter and SDK session identity resolve the workspace from the durable key row, including OAuth backing keys. Browser state and caller headers never select the machine workspace. A session is bound to both the key and its workspace; a different key cannot reuse it, even when held by the same account.
+The `/mcp` resource remains shared. Its authentication filter and each request's MCP identity resolve the workspace from the durable key row, including OAuth backing keys. Browser state and caller headers never select the machine workspace. The transport keeps no sessions, so no state carries one key's workspace into another key's request, even when both keys belong to the same account.
 
 ## Alternatives and consequences
 
@@ -24,4 +24,4 @@ The browser URL contains workspace identity and navigation only, never repositor
 
 ## Verification
 
-PostgreSQL and real HTTP integration tests, including a two-space concurrent save into two Git authorities and `McpProtocolIntegrationIT`'s cross-key session rejection, pin membership isolation and credential-derived machine scope; frontend tests cover OAuth space selection and retrying a durable creation request without storing its provider token.
+PostgreSQL and real HTTP integration tests, including a two-space concurrent save into two Git authorities and `McpProtocolIntegrationIT`'s per-key authorization, pin membership isolation and credential-derived machine scope; frontend tests cover OAuth space selection and retrying a durable creation request without storing its provider token.

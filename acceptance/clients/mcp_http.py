@@ -84,7 +84,9 @@ class Mcp:
         assert code == expected, f'MCP initialization returned HTTP {code}, expected {expected}'
         if expected != 200:
             return None
-        session = next(value for name, value in headers.items() if name.lower() == 'mcp-session-id')
+        # The server is stateless: initialization issues no session ID.
+        session = next((value for name, value in headers.items() if name.lower() == 'mcp-session-id'), None)
+        assert session is None, 'stateless MCP issued a session ID'
         assert self.envelope(body)['result']['serverInfo']['name'] == 'poketto'
         assert self.send(session, 'notifications/initialized', notification=True)[0] == 202
         return session
@@ -107,7 +109,7 @@ class Mcp:
             return envelope['result']
         finally:
             code, _, _ = self.send(session, '', verb='DELETE')
-            assert code in (200, 204), f'MCP session deletion returned HTTP {code}'
+            assert code == 405, f'stateless MCP DELETE returned HTTP {code}'
 
     def call(self, name, arguments, error=False):
         result = self.rpc('tools/call', {'name': name, 'arguments': arguments})

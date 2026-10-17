@@ -372,7 +372,6 @@ public final class ExecutorNativeProbe {
             assertThatThrownBy(() -> executor.execute(
                             principal,
                             workspace,
-                            "cancel",
                             new RepositoryExecutor.CopyRequest(ended.copyId()),
                             Optional.empty(),
                             "printf unexpected > rejected-command",
@@ -384,7 +383,6 @@ public final class ExecutorNativeProbe {
             var restarted = executor.execute(
                     principal,
                     workspace,
-                    "cancel",
                     new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "set -eu; test ! -e rejected-command; git rev-parse HEAD",
@@ -489,7 +487,6 @@ public final class ExecutorNativeProbe {
             var left = executor.execute(
                     principal,
                     workspace,
-                    "guard-left",
                     new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "printf left > local-draft; poketto status; exit 7",
@@ -504,7 +501,6 @@ public final class ExecutorNativeProbe {
             var right = executor.execute(
                     principal,
                     workspace,
-                    "guard-right",
                     new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "set -eu; test ! -e local-draft; printf right > local-draft",
@@ -515,7 +511,6 @@ public final class ExecutorNativeProbe {
             assertThatThrownBy(() -> executor.execute(
                             principal,
                             workspace,
-                            "guard-right",
                             new RepositoryExecutor.CopyRequest(left.copyId()),
                             Optional.empty(),
                             "printf corrupted > local-draft",
@@ -525,7 +520,6 @@ public final class ExecutorNativeProbe {
             assertThat(executor.execute(
                                     principal,
                                     workspace,
-                                    "guard-right",
                                     new RepositoryExecutor.CopyRequest(right.copyId()),
                                     Optional.empty(),
                                     "cat local-draft",
@@ -536,7 +530,6 @@ public final class ExecutorNativeProbe {
             assertThat(executor.execute(
                                     principal,
                                     workspace,
-                                    "guard-left",
                                     new RepositoryExecutor.CopyRequest(left.copyId()),
                                     Optional.empty(),
                                     "cat local-draft",
@@ -548,7 +541,6 @@ public final class ExecutorNativeProbe {
             assertThatThrownBy(() -> executor.execute(
                             principal,
                             workspace,
-                            "guard-reconnected",
                             new RepositoryExecutor.CopyRequest(left.copyId()),
                             Optional.empty(),
                             "printf unexpected > rejected-command",
@@ -561,7 +553,6 @@ public final class ExecutorNativeProbe {
             var fresh = executor.execute(
                     principal,
                     workspace,
-                    "guard-reconnected",
                     new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "set -eu; test ! -e rejected-command; test ! -e local-draft",
@@ -589,16 +580,16 @@ public final class ExecutorNativeProbe {
         assertThat(descriptor.path("ok").booleanValue()).isTrue();
         String id = descriptor.path("artifact").path("artifactId").stringValue();
         assertThat(readArtifact(executor, "first", id)).isEqualTo("original-artifact".getBytes(StandardCharsets.UTF_8));
-        assertThat(executor.readArtifact(principal, workspace, "other-client", id, 0, 64, new Cancellation()))
+        assertThat(executor.readArtifact(principal, workspace, id, 0, 64, new Cancellation()))
                 .isEmpty();
-        assertThat(executor.readArtifact(principal, WorkspaceId.random(), "first", id, 0, 64, new Cancellation()))
+        assertThat(executor.readArtifact(principal, WorkspaceId.random(), id, 0, 64, new Cancellation()))
                 .isEmpty();
-        assertThat(executor.readArtifact(principal(), workspace, "first", id, 0, 64, new Cancellation()))
+        assertThat(executor.readArtifact(principal(), workspace, id, 0, 64, new Cancellation()))
                 .isEmpty();
         assertThat(execute(executor, "first", "poketto artifact remove " + id, new Cancellation())
                         .exitCode())
                 .isZero();
-        assertThat(executor.readArtifact(principal, workspace, "first", id, 0, 64, new Cancellation()))
+        assertThat(executor.readArtifact(principal, workspace, id, 0, 64, new Cancellation()))
                 .isEmpty();
         passed("artifact-capture-is-immutable-protected-and-bound-to-workspace-key-and-client");
 
@@ -636,7 +627,7 @@ public final class ExecutorNativeProbe {
         var output = new ByteArrayOutputStream();
         RepositoryExecutor.ArtifactChunk chunk;
         do {
-            chunk = executor.readArtifact(principal, workspace, session, id, output.size(), 65536, new Cancellation())
+            chunk = executor.readArtifact(principal, workspace, id, output.size(), 65536, new Cancellation())
                     .orElseThrow();
             output.write(chunk.bytes());
         } while (output.size() < chunk.size());
@@ -806,7 +797,6 @@ public final class ExecutorNativeProbe {
             assertThatThrownBy(() -> executor.execute(
                             actor,
                             workspace,
-                            "same-restart",
                             new RepositoryExecutor.CopyRequest(old.copyId()),
                             Optional.empty(),
                             "touch rejected-sentinel",
@@ -816,7 +806,6 @@ public final class ExecutorNativeProbe {
             var fresh = executor.execute(
                     actor,
                     workspace,
-                    "same-restart",
                     new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "test ! -e rejected-sentinel && git rev-parse HEAD",
@@ -835,7 +824,6 @@ public final class ExecutorNativeProbe {
         var old = executor.execute(
                 actor,
                 workspace,
-                "same-restart",
                 new RepositoryExecutor.CopyRequest("new"),
                 Optional.empty(),
                 "pwd",
@@ -844,7 +832,6 @@ public final class ExecutorNativeProbe {
         var active = CompletableFuture.supplyAsync(() -> executor.execute(
                 actor,
                 workspace,
-                "same-restart",
                 new RepositoryExecutor.CopyRequest(old.copyId()),
                 Optional.empty(),
                 descendant(),
@@ -1924,7 +1911,6 @@ public final class ExecutorNativeProbe {
                 var result = executor.execute(
                         principal,
                         selected,
-                        "capacity",
                         new RepositoryExecutor.CopyRequest("new"),
                         Optional.empty(),
                         "printf occupied",
@@ -1937,7 +1923,6 @@ public final class ExecutorNativeProbe {
             assertThatThrownBy(() -> executor.execute(
                             principal,
                             waiting,
-                            "capacity",
                             new RepositoryExecutor.CopyRequest("new"),
                             Optional.empty(),
                             "touch never-started",
@@ -1958,7 +1943,6 @@ public final class ExecutorNativeProbe {
             var result = executor.execute(
                     principal,
                     waiting,
-                    "capacity-retry",
                     new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "test ! -e never-started && printf admitted",
@@ -2036,8 +2020,8 @@ public final class ExecutorNativeProbe {
                     .doesNotContain("secret-needle");
             passed("permission-increase-does-not-expand-existing-public-worker-files");
             fixture.withdraw();
-            assertThatThrownBy(() -> executor.readArtifact(
-                            principal, workspace, "public-native", publicArtifactId, 0, 64, new Cancellation()))
+            assertThatThrownBy(() ->
+                            executor.readArtifact(principal, workspace, publicArtifactId, 0, 64, new Cancellation()))
                     .isInstanceOf(RuntimeException.class);
             passed("public-artifact-delivery-rechecks-publication-before-returning-bytes");
             assertThatThrownBy(() -> client.execute(

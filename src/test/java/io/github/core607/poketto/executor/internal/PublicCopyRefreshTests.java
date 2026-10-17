@@ -547,7 +547,6 @@ class PublicCopyRefreshTests {
         return executor.execute(
                 caller,
                 WORKSPACE,
-                "transport",
                 new RepositoryExecutor.CopyRequest(copy),
                 Optional.empty(),
                 command,

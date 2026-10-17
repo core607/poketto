@@ -27,7 +27,6 @@ final class RememberingExecutorClient {
         var result = executor.execute(
                 principal,
                 workspace,
-                session,
                 copies.getOrDefault(key, new RepositoryExecutor.CopyRequest(RepositoryExecutor.NEW_COPY)),
                 commit,
                 command,

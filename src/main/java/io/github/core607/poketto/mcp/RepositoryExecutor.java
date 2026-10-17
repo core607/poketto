@@ -62,8 +62,8 @@ public interface RepositoryExecutor {
     }
 
     /**
-     * The transport ID comes from the server SDK after principal/workspace validation. The account
-     * and workspace own the copy; transports do not own its lifetime. "new" opens the default copy,
+     * The principal and workspace are validated by the caller. The account and workspace own the
+     * copy; no transport owns its lifetime. "new" opens the default copy,
      * creating it only when absent. An explicit ID must match before this command can execute.
      * Reconnection restores local work and the acknowledged baseline automatically. Retention reports
      * renewed expiry and any earlier interrupted command; inspect uncertain writes before retrying.
@@ -73,18 +73,16 @@ public interface RepositoryExecutor {
     ExecutionResult execute(
             AuthPrincipal principal,
             WorkspaceId workspace,
-            String serverSessionId,
             CopyRequest expectedCopy,
             Optional<String> commit,
             String command,
             Duration timeout,
             ExecutionCancellation cancellation);
 
-    /** Reads one bounded chunk from this live MCP session; unknown or expired artifacts return empty. */
+    /** Reads one bounded chunk of a live lease's artifact; unknown or expired artifacts return empty. */
     Optional<ArtifactChunk> readArtifact(
             AuthPrincipal principal,
             WorkspaceId workspace,
-            String serverSessionId,
             String artifactId,
             long offset,
             int limit,

@@ -532,7 +532,7 @@ original reads are busy. See `poketto --help` and the
 [worker reference](../executor-service/README.md) for limits and conflicts.
 
 `poketto artifact create FILE --type MIME` keeps an immutable, temporary result that
-`get_artifact` returns to any MCP session of the same account, workspace and reading
+`get_artifact` returns to any MCP request of the same account, workspace and reading
 scope, as a rendered image or text or binary pages; long command output also supplies
 artifact handles. Handles expire after five minutes or when the lease closes, for
 example when another credential of the account takes over the copy. See

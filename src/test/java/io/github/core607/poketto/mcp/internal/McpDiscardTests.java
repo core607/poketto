@@ -16,8 +16,7 @@ import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.modelcontextprotocol.common.McpTransportContext;
-import io.modelcontextprotocol.server.McpServerFeatures;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.List;
 import java.util.Map;
@@ -33,17 +32,16 @@ class McpDiscardTests {
     private final AuthService auth = mock(AuthService.class);
     private final WorkspaceId workspace = WorkspaceId.random();
     private final ObjectMapper json = new ObjectMapper();
-    private final McpSyncServerExchange exchange = mock(McpSyncServerExchange.class);
-    private final McpServerFeatures.SyncToolSpecification tool;
+    private final McpTransportContext context =
+            McpTransportContext.create(Map.of(McpCancellation.CONTEXT_KEY, new McpCancellation()));
+    private final McpStatelessServerFeatures.SyncToolSpecification tool;
 
     McpDiscardTests() {
-        var sessions = mock(McpSessions.class);
-        when(sessions.resolve(exchange)).thenReturn(new McpSessions.Identity(principal, workspace));
-        when(exchange.transportContext())
-                .thenReturn(McpTransportContext.create(Map.of(McpCancellation.CONTEXT_KEY, new McpCancellation())));
+        var identities = mock(McpIdentities.class);
+        when(identities.resolve(context)).thenReturn(new McpIdentities.Identity(principal, workspace));
         var beans = new StaticListableBeanFactory(Map.of("executor", executor));
         tool = new RepositoryMcpTools(
-                        sessions,
+                        identities,
                         auth,
                         beans.getBeanProvider(AssetService.class),
                         beans.getBeanProvider(RepositoryExecutor.class),
@@ -118,7 +116,7 @@ class McpDiscardTests {
     }
 
     private McpSchema.CallToolResult call(Map<String, Object> arguments) {
-        return tool.callHandler().apply(exchange, new McpSchema.CallToolRequest("repo_discard", arguments));
+        return tool.callHandler().apply(context, new McpSchema.CallToolRequest("repo_discard", arguments));
     }
 
     private JsonNode body(McpSchema.CallToolResult result) {
