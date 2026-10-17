@@ -32,24 +32,27 @@ import java.util.function.Supplier;
  * and disk work stay outside the monitor as they always did.
  */
 final class SessionRegistry {
-    /** Concurrent operations across all sessions; the executor's gauge reports what is in use. */
-    private static final int MAX_OPERATIONS = 4;
-
     private final int maxSessions;
+    /** Concurrent operations across all sessions; the executor's gauge reports what is in use. */
+    private final int maxOperations;
+
     private final Map<ExecutionSession.Key, ExecutionSession> sessions = new LinkedHashMap<>();
     private final Map<UUID, ExecutionSession> closingLeases = new LinkedHashMap<>();
-    private final Semaphore executions = new Semaphore(MAX_OPERATIONS, true);
+    private final Semaphore executions;
     private final LongAdder createdCopies = new LongAdder();
     private final LongAdder releasedCopies = new LongAdder();
     private final Map<String, LongAdder> rejected = Map.of(
             "copy_mismatch", new LongAdder(),
             "session_limit", new LongAdder(),
             "operation_limit", new LongAdder(),
+            "account_limit", new LongAdder(),
             "session_busy", new LongAdder());
     private volatile boolean closed;
 
-    SessionRegistry(int maxSessions) {
+    SessionRegistry(int maxSessions, int maxOperations) {
         this.maxSessions = maxSessions;
+        this.maxOperations = maxOperations;
+        executions = new Semaphore(maxOperations, true);
     }
 
     boolean isClosed() {
@@ -86,7 +89,7 @@ final class SessionRegistry {
 
     /** Admits a new session under the capacity bounds and registers it busy. */
     synchronized ExecutionSession reserve(ExecutionSession.Key key, Supplier<ExecutionSession> factory) {
-        if (closed || activeSessions() >= maxSessions || sessions.size() >= 1024) {
+        if (closed || activeSessions() >= maxSessions || sessions.size() >= ExecutionLimits.CEILING) {
             throw rejected("session_limit");
         }
         ExecutionSession current = factory.get();
@@ -221,7 +224,7 @@ final class SessionRegistry {
         registry.gauge(
                 "poketto.executor.operations.active",
                 this,
-                value -> MAX_OPERATIONS - value.executions.availablePermits());
+                value -> value.maxOperations - value.executions.availablePermits());
         FunctionCounter.builder("poketto.executor.sessions.created", createdCopies, LongAdder::doubleValue)
                 .register(registry);
         FunctionCounter.builder("poketto.executor.sessions.released", releasedCopies, LongAdder::doubleValue)

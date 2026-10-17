@@ -524,7 +524,7 @@ class PublicCopyRefreshTests {
                 auth,
                 exports,
                 worker.client(),
-                maxSessions,
+                ExecutionLimits.sessions(maxSessions),
                 Duration.ofSeconds(8),
                 Duration.ofSeconds(3));
     }

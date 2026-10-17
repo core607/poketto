@@ -436,8 +436,9 @@ the repository's `AGENTS.md` files as you go. See the
 `POKETTO_EXECUTOR_SIGNING_KEY` and `POKETTO_EXECUTOR_STAGING_DIRECTORY` on the Linux
 application, then install and verify the root supervisor and unprivileged SRT account
 as the [worker reference](../executor-service/README.md) describes. The application
-admits four sessions (`POKETTO_EXECUTOR_MAX_SESSIONS`) and 128 MiB bundles by default;
-keep these within the worker's limits. A missing worker or unsupported isolation never
+admits four sessions, four concurrent commands and 128 MiB bundles by default, within the
+worker's limits; [.env.example](../deploy/.env.example) also lists per-account command limits
+by site group. A missing worker or unsupported isolation never
 falls back to an ordinary subprocess.
 
 Request bodies are limited to 128 KiB (413 before any tool runs), a command to 16,384

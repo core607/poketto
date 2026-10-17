@@ -57,7 +57,8 @@ calls through a global request slot.
 
 Existing bounds retain distinct meanings. `poketto.executor.max-sessions` defaults
 to four active execution leases. Command admission separately permits four concurrent
-commands and serializes access to one copy. `poketto.mcp.max-sessions` defaults to
+commands site-wide, bounds each account's commands by its site group, and serializes access
+to one copy. `poketto.mcp.max-sessions` defaults to
 128 protocol sessions, each of which can use several HTTP requests or streams.
 `CancellableMcpSession` permits four active tool calls per session. Their cleanup,
 command deadlines and permission boundaries remain unchanged.

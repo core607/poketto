@@ -2,6 +2,7 @@ package io.github.core607.poketto.executor.internal;
 
 import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.SiteGroup;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
 import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.RepositoryMoveService;
@@ -19,6 +20,7 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.Map;
 import jdk.net.ExtendedSocketOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,18 +53,13 @@ class ExecutorConfiguration {
             ObjectMapper json,
             @Value("${poketto.executor.socket}") Path socket,
             @Value("${poketto.executor.signing-key}") Path key,
-            @Value("${poketto.executor.max-sessions:4}") int maxSessions,
+            ExecutionLimits limits,
             @Value("${poketto.executor.open-timeout-seconds:60}") long openSeconds,
             @Value("${poketto.executor.close-timeout-seconds:15}") long closeSeconds) {
         if (!System.getProperty("os.name").equalsIgnoreCase("Linux")) {
             throw new IllegalStateException("The isolated execution service requires Linux");
         }
-        if (maxSessions < 1
-                || maxSessions > 64
-                || openSeconds < 1
-                || openSeconds > 300
-                || closeSeconds < 1
-                || closeSeconds > 60) {
+        if (openSeconds < 1 || openSeconds > 300 || closeSeconds < 1 || closeSeconds > 60) {
             throw new IllegalArgumentException("Invalid isolated executor bounds");
         }
         return new IsolatedRepositoryExecutor(
@@ -73,9 +70,23 @@ class ExecutorConfiguration {
                 auth,
                 exports,
                 workerClient(json, socket, key),
-                maxSessions,
+                limits,
                 Duration.ofSeconds(openSeconds),
                 Duration.ofSeconds(closeSeconds));
+    }
+
+    /** Administrators have no per-account entry: only the site-wide ceilings bound them. */
+    @Bean
+    ExecutionLimits executionLimits(
+            @Value("${poketto.executor.max-sessions:4}") int maxSessions,
+            @Value("${poketto.executor.max-operations:4}") int maxOperations,
+            @Value("${poketto.executor.account-operations.viewer:1}") int viewer,
+            @Value("${poketto.executor.account-operations.community:2}") int community,
+            @Value("${poketto.executor.account-operations.creator:4}") int creator) {
+        return new ExecutionLimits(
+                maxSessions,
+                maxOperations,
+                Map.of(SiteGroup.VIEWER, viewer, SiteGroup.COMMUNITY, community, SiteGroup.CREATOR, creator));
     }
 
     static WorkerClient workerClient(ObjectMapper json, Path socket, Path key) {
