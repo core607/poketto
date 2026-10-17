@@ -349,6 +349,15 @@ class Service:
                 self.executions.add(execution_key)
                 s.state = 'RUNNING'
                 s.execution_id = d['executionId']
+        # A command that would start a unit first makes room among the live units. When none can
+        # stop, the command is refused before it runs and the lease stays usable.
+        if op == 'EXEC' and s.channel is None and not self.make_room(s):
+            with self.lock:
+                self.executions.discard(execution_key)
+                if s.state == 'RUNNING':
+                    s.state = 'READY'
+                    s.execution_id = ''
+            raise Rejected('EXECUTION_CAPACITY')
         try:
             with s.operation:
                 if s.cancelled.is_set():
@@ -721,21 +730,7 @@ class Service:
                     s.state = 'UPDATING'
                     idle.append(s)
         for s in idle:
-            try:
-                with s.files_lock:
-                    self.backend.stop_unit(s)
-                    s.bridge.reset_command()
-                with self.lock:
-                    if not s.cancelled.is_set():
-                        s.state = 'READY'
-            except Exception:
-                with self.lock:
-                    self.cancel(s, 'sandbox_failed')
-            finally:
-                s.operation.release()
-                if s.cancelled.is_set():
-                    with self.lock:
-                        self.cancel(s, s.reason)
+            self.stop_idle_unit(s)
         for s in retained:
             failed = False
             if s.files_lock.acquire(blocking=False):
@@ -749,6 +744,46 @@ class Service:
             if failed:
                 with self.lock:
                     self.cancel(s, 'sandbox_failed')
+
+    def stop_idle_unit(self, s):
+        """Stops the unit of a session claimed as UPDATING with its operation lock held; the lease stays."""
+        try:
+            with s.files_lock:
+                self.backend.stop_unit(s)
+                s.bridge.reset_command()
+            with self.lock:
+                if not s.cancelled.is_set():
+                    s.state = 'READY'
+        except Exception:
+            with self.lock:
+                self.cancel(s, 'sandbox_failed')
+        finally:
+            s.operation.release()
+            if s.cancelled.is_set():
+                with self.lock:
+                    self.cancel(s, s.reason)
+
+    def make_room(self, s):
+        """Before s starts a unit, stop the least recently used idle units beyond maxLiveUnits.
+
+        False when every other live unit is running a command; s then starts nothing.
+        """
+        limit = self.config.get('maxLiveUnits')
+        while limit:
+            with self.lock:
+                live = [x for x in self.sessions.values() if x is not s and x.channel is not None]
+                if len(live) < limit:
+                    return True
+                victim = None
+                for candidate in sorted(live, key=lambda x: x.idle_since):
+                    if candidate.state == 'READY' and candidate.operation.acquire(blocking=False):
+                        candidate.state = 'UPDATING'
+                        victim = candidate
+                        break
+                if victim is None:
+                    return False
+            self.stop_idle_unit(victim)
+        return True
 
     def shutdown(self):
         with self.lock:
@@ -1385,6 +1420,8 @@ def load_config(path):
                  'maxConnections', 'maxExecutionsPerSession', 'temporaryBytes', 'temporaryInodes'):
         integer(c[name], 1, 2**40)
     integer(c['idleUnitSeconds'], 1, 86400)
+    if 'maxLiveUnits' in c:
+        integer(c['maxLiveUnits'], 1, c['maxSessions'])
     if c['renewAfterSeconds'] >= c['leaseSeconds'] or not re.fullmatch(r'poketto-exec-[a-z0-9]+-', c['unitPrefix']):
         raise ValueError('Invalid executor configuration')
     root = Path(c['copyRoot'])
