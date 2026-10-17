@@ -42,11 +42,8 @@ import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
 final class JGitRepositoryContentReader implements RepositoryContentReader {
-    /** Tree entries one scan visits, from the repository authoring record. */
-    private static final int MAX_TREE_ENTRIES = 100_000;
-
     private final RepositoryAuthority authority;
-    private final RepositoryMarkdownParser parser = new RepositoryMarkdownParser();
+    private final RepositoryDocumentScanner scanner = new RepositoryDocumentScanner();
 
     JGitRepositoryContentReader(RepositoryAuthority authority) {
         this.authority = Objects.requireNonNull(authority);
@@ -122,7 +119,11 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         if (!path.isEmpty()) {
             RepositoryPathRules.validate(path);
         }
-        if (offset < 0 || offset > MAX_TREE_ENTRIES || limit < 1 || limit > 200 || (offset > 0 && commit.isEmpty())) {
+        if (offset < 0
+                || offset > RepositoryDocumentScanner.MAX_TREE_ENTRIES
+                || limit < 1
+                || limit > 200
+                || (offset > 0 && commit.isEmpty())) {
             throw new IllegalArgumentException("directory pages require valid bounds and a pinned continuation commit");
         }
         return resolveCurrent(
@@ -143,7 +144,11 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         if (!path.isEmpty()) {
             RepositoryPathRules.validate(path);
         }
-        if (offset < 0 || offset > MAX_TREE_ENTRIES || limit < 1 || limit > 200 || (offset > 0 && commit.isEmpty())) {
+        if (offset < 0
+                || offset > RepositoryDocumentScanner.MAX_TREE_ENTRIES
+                || limit < 1
+                || limit > 200
+                || (offset > 0 && commit.isEmpty())) {
             throw new IllegalArgumentException("directory pages require valid bounds and a pinned continuation commit");
         }
         return resolve(workspaceId, commit, (repository, resolved) -> {
@@ -197,7 +202,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
             }
             if (entries.size() == limit) {
                 nextOffset = offset + entries.size();
-                if (nextOffset > MAX_TREE_ENTRIES) {
+                if (nextOffset > RepositoryDocumentScanner.MAX_TREE_ENTRIES) {
                     throw new ContentRepositoryException("directory continuation exceeds the maximum offset");
                 }
                 break;
@@ -280,7 +285,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
             entries.addTree(tree);
             entries.setRecursive(true);
             while (entries.next()) {
-                if (gitPaths.size() == MAX_TREE_ENTRIES) {
+                if (gitPaths.size() == RepositoryDocumentScanner.MAX_TREE_ENTRIES) {
                     throw new ContentRepositoryException("logical directory exceeds the repository entry bound");
                 }
                 if (entries.getPathLength() > ContentLimits.MAX_PATH_LENGTH * 4) {
@@ -304,7 +309,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         exists |= !ordered.isEmpty();
         int end = (int) Math.min(ordered.size(), (long) offset + limit);
         Integer next = end < ordered.size() ? end : null;
-        if (next != null && next > MAX_TREE_ENTRIES) {
+        if (next != null && next > RepositoryDocumentScanner.MAX_TREE_ENTRIES) {
             throw new ContentRepositoryException("directory continuation exceeds the maximum offset");
         }
         return new RepositoryDirectoryPage(
@@ -343,13 +348,18 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
 
     /** Caller holds the authority lock and supplies a server-resolved snapshot. Does not fetch. */
     RepositoryTree readSnapshot(WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot) {
-        return readSnapshot(workspaceId, snapshot, path -> true);
+        try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspaceId)) {
+            return readTreeObjects(workspaceId, repository, snapshot.commitId(), path -> true);
+        } catch (IOException exception) {
+            throw new ContentRepositoryException("repository snapshot objects cannot be read", exception);
+        }
     }
 
+    /** The public snapshot's read: unchanged documents of its previous build are reused, not parsed again. */
     RepositoryTree readSnapshot(
             WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot, Predicate<String> eligible) {
         try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspaceId)) {
-            return readTreeObjects(workspaceId, repository, snapshot.commitId(), eligible);
+            return readTreeObjects(workspaceId, repository, snapshot.commitId(), eligible, true);
         } catch (IOException exception) {
             throw new ContentRepositoryException("repository snapshot objects cannot be read", exception);
         }
@@ -358,10 +368,20 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
     private RepositoryTree readTreeObjects(
             WorkspaceId workspaceId, Repository repository, Optional<String> resolved, Predicate<String> eligible)
             throws IOException {
+        return readTreeObjects(workspaceId, repository, resolved, eligible, false);
+    }
+
+    private RepositoryTree readTreeObjects(
+            WorkspaceId workspaceId,
+            Repository repository,
+            Optional<String> resolved,
+            Predicate<String> eligible,
+            boolean keep)
+            throws IOException {
         if (resolved.isEmpty()) {
             return new RepositoryTree(workspaceId, resolved, List.of(), List.of());
         }
-        Scan scan = scan(workspaceId, repository, resolved, eligible);
+        var scan = scanner.scan(workspaceId, repository, resolved, eligible, keep);
         List<RepositoryDiagnostic> diagnostics = scan.diagnostics();
         List<String> fallbackPaths = scan.parsed().stream()
                 .filter(document -> (document.metadata().createdAt().isEmpty()
@@ -373,7 +393,7 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
                 .toList();
         var history = new RepositoryHistoryDates().read(repository, resolved.orElseThrow(), fallbackPaths);
         List<RepositoryDocument> documents = new ArrayList<>();
-        for (ParsedDocument parsed : scan.parsed()) {
+        for (RepositoryDocumentScanner.Parsed parsed : scan.parsed()) {
             documents.add(document(parsed, history.get(parsed.file().path()), diagnostics));
         }
         FolderLandings.preferIndex(documents, diagnostics);
@@ -385,67 +405,11 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         return new RepositoryTree(workspaceId, resolved, documents, diagnostics);
     }
 
-    /** Every eligible Markdown path, the documents that parsed, and the diagnostics collected so far. */
-    private record Scan(List<String> paths, List<ParsedDocument> parsed, List<RepositoryDiagnostic> diagnostics) {}
-
-    // One recursive walk within the entry, document count and text byte bounds.
-    private Scan scan(
-            WorkspaceId workspaceId, Repository repository, Optional<String> resolved, Predicate<String> eligible)
-            throws IOException {
-        var policy = PublicRepositoryDirectories.publicPolicy(repository, resolved);
-        List<RepositoryDiagnostic> diagnostics = new ArrayList<>();
-        List<String> paths = new ArrayList<>();
-        long total = 0;
-        List<ParsedDocument> parsed = new ArrayList<>();
-        int entries = 0;
-        try (RevWalk revisions = new RevWalk(repository);
-                TreeWalk tree = new TreeWalk(repository)) {
-            tree.addTree(revisions
-                    .parseCommit(ObjectId.fromString(resolved.orElseThrow()))
-                    .getTree());
-            tree.setRecursive(true);
-            while (tree.next()) {
-                if (++entries > MAX_TREE_ENTRIES) {
-                    throw new ContentRepositoryException("repository tree entry limit exceeded");
-                }
-                String path = tree.getPathString();
-                if (!RepositoryPathRules.markdown(path) || RepositoryPathRules.reserved(path) || !eligible.test(path)) {
-                    continue;
-                }
-                if (paths.size() >= ContentLimits.MAX_DOCUMENTS_PER_WORKSPACE) {
-                    throw new ContentRepositoryException("repository Markdown count limit exceeded");
-                }
-                paths.add(path);
-                FileMode mode = tree.getFileMode(0);
-                if (RepositoryBlobs.isFile(mode)) {
-                    long size = tree.getObjectReader().getObjectSize(tree.getObjectId(0), Constants.OBJ_BLOB);
-                    if (size <= ContentLimits.MAX_DOCUMENT_BYTES) {
-                        total += size;
-                        if (total > ContentLimits.MAX_WORKSPACE_BYTES) {
-                            throw new ContentRepositoryException("repository text byte limit exceeded");
-                        }
-                    }
-                }
-                RepositoryFile file = JGitRepositoryFileReader.read(
-                        repository, workspaceId, resolved, path, policy.permitsPath(path));
-                diagnostics.addAll(file.diagnostics());
-                if (file.source().isEmpty() || !file.diagnostics().isEmpty()) {
-                    continue;
-                }
-                try {
-                    var metadata = parser.parse(path, file.source().orElseThrow());
-                    parsed.add(new ParsedDocument(file, metadata));
-                } catch (IllegalArgumentException exception) {
-                    diagnostics.add(diagnostic(path, "INVALID_MARKDOWN", exception.getMessage()));
-                }
-            }
-        }
-        return new Scan(paths, parsed, diagnostics);
-    }
-
     // Authored dates win; history dates fill the gaps and are reported as inferred metadata.
     private static RepositoryDocument document(
-            ParsedDocument document, RepositoryHistoryDates.Dates dates, List<RepositoryDiagnostic> diagnostics) {
+            RepositoryDocumentScanner.Parsed document,
+            RepositoryHistoryDates.Dates dates,
+            List<RepositoryDiagnostic> diagnostics) {
         RepositoryFile file = document.file();
         var metadata = document.metadata();
         Optional<Instant> release = metadata.release(file.path());
@@ -594,6 +558,4 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
     private interface Reader<T> {
         T read(Repository repository, Optional<String> commit) throws IOException;
     }
-
-    private record ParsedDocument(RepositoryFile file, RepositoryMarkdownParser.Metadata metadata) {}
 }
