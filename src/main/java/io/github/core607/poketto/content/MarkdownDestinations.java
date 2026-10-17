@@ -7,6 +7,7 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -19,13 +20,49 @@ import org.commonmark.parser.Parser;
 /** CommonMark AST destinations, not regular-expression matches inside code or raw HTML. */
 public final class MarkdownDestinations {
     private static final Parser PARSER = Parser.builder().build();
+    /**
+     * Characters of the bodies whose destinations are remembered, the least recently used going
+     * first. Each entry also counts a fixed cost for its map entry and sets, so many short bodies
+     * cannot hold more memory than a few long ones.
+     */
+    private static final long REMEMBERED_CHARACTERS = 16L * 1024 * 1024;
+
+    private static final int ENTRY_COST = 512;
+
+    private static final Map<String, Destinations> REMEMBERED = new LinkedHashMap<>(64, 0.75f, true);
+    private static long remembered;
 
     private MarkdownDestinations() {}
 
+    /**
+     * The same body always has the same destinations, and a public snapshot rebuild or a page
+     * render asks again for bodies it has already parsed, so results are remembered by body.
+     */
     public static Destinations parse(String body) {
         if (body == null || body.length() > ContentLimits.MAX_DOCUMENT_BYTES) {
             throw new IllegalArgumentException("Markdown resolution exceeds its bound");
         }
+        synchronized (REMEMBERED) {
+            Destinations known = REMEMBERED.get(body);
+            if (known != null) {
+                return known;
+            }
+        }
+        Destinations parsed = parseUncached(body);
+        synchronized (REMEMBERED) {
+            if (REMEMBERED.putIfAbsent(body, parsed) == null) {
+                remembered += body.length() + ENTRY_COST;
+                var oldest = REMEMBERED.entrySet().iterator();
+                while (remembered > REMEMBERED_CHARACTERS && oldest.hasNext()) {
+                    remembered -= oldest.next().getKey().length() + ENTRY_COST;
+                    oldest.remove();
+                }
+            }
+        }
+        return parsed;
+    }
+
+    private static Destinations parseUncached(String body) {
         Set<String> links = new LinkedHashSet<>();
         Set<String> images = new LinkedHashSet<>();
         Node root = PARSER.parse(body);
