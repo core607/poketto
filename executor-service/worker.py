@@ -766,9 +766,12 @@ class Service:
     def make_room(self, s):
         """Before s starts a unit, stop the least recently used idle units beyond maxLiveUnits.
 
-        False when every other live unit is running a command; s then starts nothing.
+        False when every other live unit is running a command; s then starts nothing. A unit
+        that idle cleanup or another opener is already stopping frees its place soon, so that
+        case waits for it, up to the time a stop is allowed to take, instead of refusing.
         """
         limit = self.config.get('maxLiveUnits')
+        deadline = time.monotonic() + 20
         while limit:
             with self.lock:
                 live = [x for x in self.sessions.values() if x is not s and x.channel is not None]
@@ -780,9 +783,13 @@ class Service:
                         candidate.state = 'UPDATING'
                         victim = candidate
                         break
-                if victim is None:
-                    return False
-            self.stop_idle_unit(victim)
+                stopping = any(x.state == 'UPDATING' for x in live)
+            if victim is not None:
+                self.stop_idle_unit(victim)
+            elif not stopping or time.monotonic() >= deadline:
+                return False
+            else:
+                time.sleep(0.05)
         return True
 
     def shutdown(self):
