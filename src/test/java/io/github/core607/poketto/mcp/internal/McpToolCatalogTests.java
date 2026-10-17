@@ -5,7 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import io.github.core607.poketto.assets.AssetService;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
-import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
@@ -41,7 +41,7 @@ class McpToolCatalogTests {
                         new ObjectMapper(),
                         null)
                 .specifications().stream()
-                        .map(McpServerFeatures.SyncToolSpecification::tool)
+                        .map(McpStatelessServerFeatures.SyncToolSpecification::tool)
                         .filter(candidate -> candidate.name().equals("repo_exec"))
                         .findFirst()
                         .orElseThrow();
