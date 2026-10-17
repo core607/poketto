@@ -208,7 +208,10 @@ final class JGitPublicContentSnapshots implements PublicContentSnapshots {
             throw unavailable();
         }
         List<PublicArticle> articles = List.of();
-        if (policy.state() == RepositoryPublishingPolicy.State.ENABLED) {
+        if (policy.state() != RepositoryPublishingPolicy.State.ENABLED) {
+            // An unpublished space keeps no documents for a next build to reuse.
+            reader.forgetSnapshot(workspaceId);
+        } else {
             articles = reader.readSnapshot(workspaceId, snapshot, policy::permitsPath).documents().stream()
                     .map(document -> new PublicArticle(
                             document.file().path(),
