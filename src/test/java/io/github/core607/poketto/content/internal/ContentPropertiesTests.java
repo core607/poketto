@@ -10,6 +10,17 @@ import org.junit.jupiter.api.Test;
 class ContentPropertiesTests {
 
     @Test
+    void aReadFetchReuseWindowMustStayBelowTheRefreshInterval() {
+        var properties = new RepositoryProperties(null, null, null, null, null, 30, null);
+        var configuration = new ContentConfiguration();
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> configuration.repositoryAuthority(null, null, null, properties, 30_000))
+                .withMessageContaining("read-fetch-reuse-millis");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> configuration.repositoryAuthority(null, null, null, properties, -1));
+    }
+
+    @Test
     void requiresAnExplicitAbsoluteDataDirectory() {
         Path absolute =
                 Path.of(System.getProperty("java.io.tmpdir"), "poketto-data").toAbsolutePath();
