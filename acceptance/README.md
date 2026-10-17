@@ -92,6 +92,8 @@ For image-memory admission, stage the current runtime and run `python acceptance
 
 The probe writes source hashes, resource samples and results to its `.gradle/image-memory-*` directory, then removes only its uniquely labelled containers and volumes. Failure diagnostics are kept there for inspection. A passing resource sample supports that fixture and pinned runtime; it does not establish safety for every repository workload.
 
+For concurrent agents, `python acceptance/agent-load.py --endpoint URL --token-file FILE --agents N --report FILE` runs N simulated `repo_exec` agents with think time against a live MCP endpoint, and reports latency percentiles and outcomes per operation. `--saves` bounds the probe files it saves, and `--cleanup` removes them.
+
 For a container-headroom comparison, `--memory-mib 1024` keeps the maximum heap at 500 MiB while increasing only the sample container limit. The default 768 MiB sample uses the deployment heap percentage. This comparison does not change deployment configuration.
 
 The [repository initialization browser run](evidence/2026-09-17-repository-initialization.json)
