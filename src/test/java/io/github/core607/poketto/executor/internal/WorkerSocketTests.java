@@ -424,7 +424,63 @@ class WorkerSocketTests {
     }
 
     @Test
-    void overlappingInitialCallsWaitForTheSameAcknowledgedCopy() throws Exception {
+    void overlappingInitialCallsOpenSeparateCopiesUntilTheAccountsCopyQuota() throws Exception {
+        for (Integer quota : java.util.Arrays.asList(null, 1)) {
+            var auth = fullAuth();
+            when(auth.siteGroup(any())).thenReturn(SiteGroup.CREATOR);
+            var actor = principal();
+            try (var peer = new Peer();
+                    var executor = new IsolatedRepositoryExecutor(
+                            peer.accounts.store(),
+                            mock(PortableContentExports.class),
+                            mock(MediaFileService.class),
+                            mock(SelectedFileSaves.class),
+                            auth,
+                            exports(),
+                            peer.client(),
+                            new ExecutionLimits(
+                                    8, 4, Map.of(), quota == null ? Map.of() : Map.of(SiteGroup.CREATOR, quota)),
+                            Duration.ofSeconds(8),
+                            Duration.ofSeconds(3))) {
+                peer.stallExec = true;
+                var first = CompletableFuture.supplyAsync(() -> client.execute(
+                        executor,
+                        actor,
+                        WORKSPACE,
+                        "one",
+                        Optional.empty(),
+                        "pwd",
+                        Duration.ofSeconds(2),
+                        new Cancellation()));
+                assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+                var second = client.execute(
+                        executor,
+                        actor,
+                        WORKSPACE,
+                        "two",
+                        Optional.empty(),
+                        "pwd",
+                        Duration.ofSeconds(2),
+                        new Cancellation());
+                String firstCopy = first.get(5, TimeUnit.SECONDS).copyId();
+                assertThat(peer.operations("EXEC")).hasSize(2);
+                if (quota == null) {
+                    // The default copy was busy, so the second agent got a copy of its own.
+                    assertThat(second.copyId()).isNotEqualTo(firstCopy);
+                    assertThat(peer.operations("OPEN")).hasSize(2);
+                    assertThat(command(executor, actor, second.copyId()).copyId())
+                            .isEqualTo(second.copyId());
+                } else {
+                    // At the quota, new waits for the default copy as before.
+                    assertThat(second.copyId()).isEqualTo(firstCopy);
+                    assertThat(peer.operations("OPEN")).hasSize(1);
+                }
+            }
+        }
+    }
+
+    @Test
+    void anExpiredForkIsFencedAndDiscardedUnderItsOwnLeaseIdentity() throws Exception {
         var actor = principal();
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports(), peer)) {
@@ -439,7 +495,7 @@ class WorkerSocketTests {
                     Duration.ofSeconds(2),
                     new Cancellation()));
             assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
-            var second = client.execute(
+            var fork = client.execute(
                     executor,
                     actor,
                     WORKSPACE,
@@ -448,9 +504,76 @@ class WorkerSocketTests {
                     "pwd",
                     Duration.ofSeconds(2),
                     new Cancellation());
-            assertThat(second.copyId()).isEqualTo(first.get(5, TimeUnit.SECONDS).copyId());
-            assertThat(peer.operations("EXEC")).hasSize(2);
-            assertThat(peer.operations("OPEN")).hasSize(1);
+            assertThat(fork.copyId())
+                    .isNotEqualTo(first.get(5, TimeUnit.SECONDS).copyId());
+
+            peer.accounts.expireAll();
+            assertThat(executor.collectExpiredCopies()).isEqualTo(2);
+
+            assertThat(peer.operations("DISCARD"))
+                    .extracting(request -> request.path("data").path("copyId").asString(""))
+                    .contains(fork.copyId());
+            String forkLease = peer.operations("OPEN").stream()
+                    .filter(request ->
+                            request.path("data").path("copyId").asString("").equals(fork.copyId()))
+                    .findFirst()
+                    .orElseThrow()
+                    .path("leaseId")
+                    .asString("");
+            // Every request about the fork's lease carries the identity it was opened with.
+            assertThat(peer.requests.stream()
+                            .filter(request ->
+                                    request.path("leaseId").asString("").equals(forkLease))
+                            .map(request -> request.path("serverSessionHash").asString(""))
+                            .distinct())
+                    .hasSize(1);
+        }
+    }
+
+    @Test
+    void anArtifactInAForkIsReadWhileTheDefaultCopyRunsACommand() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.holdFirstExec.set(true);
+            var first = CompletableFuture.supplyAsync(() -> client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "one",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(10),
+                    new Cancellation()));
+            assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            var fork = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "two",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            peer.artifactLease = peer.operations("OPEN").stream()
+                    .filter(request ->
+                            request.path("data").path("copyId").asString("").equals(fork.copyId()))
+                    .findFirst()
+                    .orElseThrow()
+                    .path("leaseId")
+                    .asString("");
+            String artifact = UUID.randomUUID().toString();
+
+            // The default copy is still inside its command; the read must not wait for it.
+            var page = CompletableFuture.supplyAsync(
+                            () -> executor.readArtifact(actor, WORKSPACE, artifact, 0, 2, new Cancellation()))
+                    .get(1, TimeUnit.SECONDS);
+
+            assertThat(page)
+                    .hasValueSatisfying(chunk -> assertThat(chunk.bytes()).hasSize(2));
+            assertThat(first).isNotDone();
+            peer.execHold.countDown();
+            assertThat(first.get(5, TimeUnit.SECONDS).exitCode()).isZero();
         }
     }
 
@@ -1331,7 +1454,7 @@ class WorkerSocketTests {
                         auth,
                         exports(),
                         peer.client(),
-                        new ExecutionLimits(4, 4, Map.of(SiteGroup.VIEWER, 1)),
+                        new ExecutionLimits(4, 4, Map.of(SiteGroup.VIEWER, 1), Map.of()),
                         Duration.ofSeconds(3),
                         Duration.ofSeconds(1))) {
             var first = command(executor, actor, "new");
@@ -1450,6 +1573,9 @@ class WorkerSocketTests {
         private volatile boolean oversizedHello;
         private volatile int codeActProtocol = 1;
         private volatile int artifactProtocol = 1;
+        private volatile String artifactLease = "";
+        private final AtomicBoolean holdFirstExec = new AtomicBoolean();
+        private final CountDownLatch execHold = new CountDownLatch(1);
         private volatile int moveProtocol = 1;
         private volatile int exportProtocol = 1;
         private volatile boolean wrongRequestId;
@@ -1701,6 +1827,9 @@ class WorkerSocketTests {
                     if (stallExec) {
                         Thread.sleep(500);
                     }
+                    if (holdFirstExec.compareAndSet(true, false)) {
+                        assertThat(execHold.await(8, TimeUnit.SECONDS)).isTrue();
+                    }
                     var result = new LinkedHashMap<String, Object>(Map.of(
                             "commit",
                             COMMIT,
@@ -1737,6 +1866,24 @@ class WorkerSocketTests {
                     }
                 }
                 case "BRIDGE_COMPLETE" -> bridgeCompleted.countDown();
+                case "ARTIFACT_READ" -> {
+                    if (!lease.equals(artifactLease)) {
+                        response.put("ok", false);
+                        response.put("code", "ARTIFACT_UNAVAILABLE");
+                    } else {
+                        response.put(
+                                "artifactId",
+                                request.path("data").path("artifactId").asString(""));
+                        response.put("name", "out.txt");
+                        response.put("mediaType", "text/plain");
+                        response.put("bytes", 2);
+                        response.put("sha256", "0".repeat(64));
+                        response.put("truncated", false);
+                        response.put("expiresInSeconds", 60);
+                        response.put("offset", 0);
+                        response.put("data", "b2s=");
+                    }
+                }
                 case "CLOSE" -> {
                     if (dropClose) {
                         return null;

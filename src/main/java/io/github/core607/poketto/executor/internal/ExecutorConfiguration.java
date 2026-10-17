@@ -82,11 +82,21 @@ class ExecutorConfiguration {
             @Value("${poketto.executor.max-operations:4}") int maxOperations,
             @Value("${poketto.executor.account-operations.viewer:1}") int viewer,
             @Value("${poketto.executor.account-operations.community:2}") int community,
-            @Value("${poketto.executor.account-operations.creator:4}") int creator) {
+            @Value("${poketto.executor.account-operations.creator:4}") int creator,
+            @Value("${poketto.executor.account-copies.viewer:2}") int viewerCopies,
+            @Value("${poketto.executor.account-copies.community:4}") int communityCopies,
+            @Value("${poketto.executor.account-copies.creator:16}") int creatorCopies) {
         return new ExecutionLimits(
                 maxSessions,
                 maxOperations,
-                Map.of(SiteGroup.VIEWER, viewer, SiteGroup.COMMUNITY, community, SiteGroup.CREATOR, creator));
+                Map.of(SiteGroup.VIEWER, viewer, SiteGroup.COMMUNITY, community, SiteGroup.CREATOR, creator),
+                Map.of(
+                        SiteGroup.VIEWER,
+                        viewerCopies,
+                        SiteGroup.COMMUNITY,
+                        communityCopies,
+                        SiteGroup.CREATOR,
+                        creatorCopies));
     }
 
     static WorkerClient workerClient(ObjectMapper json, Path socket, Path key) {

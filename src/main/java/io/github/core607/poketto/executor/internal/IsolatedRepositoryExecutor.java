@@ -1,6 +1,5 @@
 package io.github.core607.poketto.executor.internal;
 
-import static io.github.core607.poketto.executor.internal.SessionWorker.hash;
 import static io.github.core607.poketto.executor.internal.SessionWorker.requireLive;
 import static io.github.core607.poketto.executor.internal.SessionWorker.requireOk;
 
@@ -10,6 +9,7 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.SiteGroup;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.RepositoryEmptyException;
@@ -32,6 +32,7 @@ import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -47,6 +48,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final AccountCopyStore accounts;
     private final SessionRegistry registry;
     private final AccountOperations accountOperations;
+    private final Map<SiteGroup, Integer> copyQuotas;
+    private final Function<AuthPrincipal, SiteGroup> groups;
     private final SessionLifecycle lifecycle;
     private final CopyDisposal disposal;
     private final PublicCopyRefresh refresh;
@@ -81,6 +84,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 io, new ExecutorBridge(io, files, repository, mediaCommands, saves, packages), commandIo);
         this.registry = new SessionRegistry(limits.maxSessions(), limits.maxOperations());
         this.accountOperations = new AccountOperations(limits.accountOperations(), auth::siteGroup);
+        this.copyQuotas = limits.accountCopies();
+        this.groups = auth::siteGroup;
         this.lifecycle = new SessionLifecycle(
                 registry, io, worker, exports, packages, saves, accounts, openTimeout, closeTimeout);
         this.closeTimeout = closeTimeout;
@@ -107,7 +112,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     principal.accountId(),
                     workspace.value(),
                     access.capabilities().contains(Capability.READ_PRIVATE));
-            try (var held = new AccountCommand(accounts, accounts.ownerFor(owner, expected.id()), cancellation)) {
+            try (var held = command(principal, owner, expected, cancellation)) {
                 timings.end(ExecutionTimings.Stage.JOURNAL);
                 var slot = acquireExecution(principal, cancellation);
                 timings.end(ExecutionTimings.Stage.PERMIT);
@@ -154,6 +159,30 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 || requested.filter(value -> !value.matches("[0-9a-f]{40}")).isPresent()) {
             throw new IllegalArgumentException("Invalid bounded execution request");
         }
+    }
+
+    /**
+     * The command's copy. {@code new} takes the account's default copy unless another command
+     * holds it; then, within the account's copy quota, it opens a fork, so agents that start in
+     * parallel do not queue behind each other. A named copy waits for its own journal.
+     */
+    private AccountCommand command(
+            AuthPrincipal principal,
+            AccountCopyRecord.Owner owner,
+            CopyRequest expected,
+            ExecutionCancellation cancellation) {
+        if (!NEW_COPY.equals(expected.id())) {
+            return new AccountCommand(accounts, accounts.ownerFor(owner, expected.id()), cancellation);
+        }
+        var idle = AccountCommand.ifIdle(accounts, owner);
+        if (idle.isPresent()) {
+            return idle.get();
+        }
+        Integer quota = copyQuotas.isEmpty() ? null : copyQuotas.get(groups.apply(principal));
+        if (quota == null || accounts.copiesOf(owner.accountId(), owner.workspaceId()) < quota) {
+            return new AccountCommand(accounts, owner.forked(UUID.randomUUID()), cancellation);
+        }
+        return new AccountCommand(accounts, owner, cancellation);
     }
 
     /** The account's slot, then a site-wide permit; each waits at most five seconds. */
@@ -227,7 +256,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
         }
         releaseIdleCapacity();
-        return reserveAccount(principal, key, hello, record);
+        return reserveAccount(principal, held.owner(), key, hello, record);
     }
 
     private void releaseIdleCapacity() {
@@ -242,11 +271,18 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private ExecutionSession reserveAccount(
-            AuthPrincipal principal, ExecutionSession.Key key, WorkerClient.Hello hello, AccountCopyRecord record) {
+            AuthPrincipal principal,
+            AccountCopyRecord.Owner owner,
+            ExecutionSession.Key key,
+            WorkerClient.Hello hello,
+            AccountCopyRecord record) {
         return registry.reserve(key, () -> {
-            boolean full = key.scopeHash().equals(hash("full"));
             var current = new ExecutionSession(
-                    key, principal, full, record == null ? UUID.randomUUID() : record.copyId(), UUID.randomUUID());
+                    key,
+                    principal,
+                    owner.fullRead(),
+                    record == null ? owner.newCopyId() : record.copyId(),
+                    UUID.randomUUID());
             current.hello = hello;
             if (record != null) {
                 current.attaching = true;
