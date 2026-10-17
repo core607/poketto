@@ -64,8 +64,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -1146,6 +1148,50 @@ class WorkerSocketTests {
     }
 
     @Test
+    void everyAdmittedOperationReachesTheWorkerAtOnce() throws Exception {
+        int operations = 12;
+        try (var peer = new Peer();
+                var callers = Executors.newVirtualThreadPerTaskExecutor();
+                var executor = new IsolatedRepositoryExecutor(
+                        peer.accounts.store(),
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        new ExecutionLimits(16, operations, Map.of(), Map.of()),
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            peer.holdEveryExec = true;
+            var running = new ArrayList<Future<RepositoryExecutor.ExecutionResult>>();
+            for (int i = 0; i < operations; i++) {
+                var actor = principal();
+                running.add(callers.submit(() -> client.execute(
+                        executor,
+                        actor,
+                        WORKSPACE,
+                        "held",
+                        Optional.empty(),
+                        "pwd",
+                        Duration.ofSeconds(5),
+                        new Cancellation())));
+            }
+
+            // Every command the registry admitted is in the worker together; none waits on a pool.
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (peer.execsEntered.get() < operations && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(peer.execsEntered.get()).isEqualTo(operations);
+            peer.execHold.countDown();
+            for (var command : running) {
+                assertThat(command.get(5, TimeUnit.SECONDS).exitCode()).isZero();
+            }
+        }
+    }
+
+    @Test
     void cancellingDuringExportCannotRaceIntoAnOpenRequest() throws Exception {
         var exports = exports();
         var entered = new CountDownLatch(1);
@@ -1635,6 +1681,8 @@ class WorkerSocketTests {
         private volatile int artifactProtocol = 1;
         private volatile String artifactLease = "";
         private final AtomicBoolean holdFirstExec = new AtomicBoolean();
+        private volatile boolean holdEveryExec;
+        private final AtomicInteger execsEntered = new AtomicInteger();
         private final CountDownLatch execHold = new CountDownLatch(1);
         private volatile int moveProtocol = 1;
         private volatile int exportProtocol = 1;
@@ -1875,6 +1923,7 @@ class WorkerSocketTests {
                     }
                     executionId = request.path("data").path("executionId").asString("");
                     execEntered.countDown();
+                    execsEntered.incrementAndGet();
                     if (holdExecReply && !execReplyRelease.await(5, TimeUnit.SECONDS)) {
                         throw new IllegalStateException("Test did not release the execution reply");
                     }
@@ -1886,6 +1935,9 @@ class WorkerSocketTests {
                     }
                     if (stallExec) {
                         Thread.sleep(500);
+                    }
+                    if (holdEveryExec) {
+                        assertThat(execHold.await(8, TimeUnit.SECONDS)).isTrue();
                     }
                     if (holdFirstExec.compareAndSet(true, false)) {
                         assertThat(execHold.await(8, TimeUnit.SECONDS)).isTrue();
