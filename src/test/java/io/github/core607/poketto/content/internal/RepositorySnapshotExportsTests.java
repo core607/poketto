@@ -37,6 +37,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.ObjectWalk;
 import org.eclipse.jgit.revwalk.RevObject;
 import org.junit.jupiter.api.Test;
@@ -385,6 +387,39 @@ class RepositorySnapshotExportsTests {
                 assertThat(files).isEmpty();
             }
         }
+    }
+
+    @Test
+    void anIncrementalExportOfTheRecordedMainMakesNoFetch() throws Exception {
+        var fetches = new AtomicInteger();
+        var transport = new JGitRemoteGitTransport();
+        var fixture = new RemoteRepositoryFixture(directory, new RemoteGitTransport() {
+            @Override
+            public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
+                fetches.incrementAndGet();
+                return transport.fetchMain(repository, binding);
+            }
+
+            @Override
+            public PushStatus pushMain(
+                    Repository repository,
+                    RepositoryBinding binding,
+                    ObjectId expectedCommit,
+                    ObjectId candidateCommit) {
+                return transport.pushMain(repository, binding, expectedCommit, candidateCommit);
+            }
+        });
+        var baseline = fixture.commitRemote(workspace, Map.of("private/a.md", text("a")));
+        var next = fixture.commitRemote(workspace, Map.of("private/b.md", text("b")));
+        var exports = exporter(fixture, 1024 * 1024);
+        exports.release(exports.create(actor, workspace, Optional.empty()).exportId());
+        int afterCreate = fetches.get();
+
+        var value = exports.update(actor, workspace, baseline.name(), next.name());
+
+        assertThat(value.commit()).isEqualTo(next.name());
+        assertThat(fetches.get()).isEqualTo(afterCreate);
+        exports.release(value.exportId());
     }
 
     @Test

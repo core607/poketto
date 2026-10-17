@@ -101,7 +101,10 @@ final class JGitRepositoryWrites {
             return authority.withPreparedCredentials(
                     workspace,
                     () -> auth.withAuthorization(
-                            principal, workspace, capabilities, () -> authority.writeObjects(workspace, write::run)));
+                            principal,
+                            workspace,
+                            capabilities,
+                            () -> authority.writeObjects(workspace, write.knownBase(), write::run)));
         } catch (RuntimeException exception) {
             throw write.outcome(exception);
         }
@@ -134,6 +137,11 @@ final class JGitRepositoryWrites {
             this.recovery = recovery;
             this.checkpoint = checkpoint;
             this.preparer = preparer;
+        }
+
+        /** A recovery must learn where remote main stands, so only a fresh write names its base. */
+        Optional<String> knownBase() {
+            return recovery.isEmpty() ? baseCommit : Optional.empty();
         }
 
         RepositoryPatchResult run(RepositoryAuthority.Snapshot snapshot, RepositoryAuthority.RefAdvancer advancer) {
