@@ -10,7 +10,6 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.RepositoryEmptyException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.modelcontextprotocol.common.McpTransportContext;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -20,15 +19,14 @@ import tools.jackson.databind.ObjectMapper;
 
 /** An empty repository is a named condition with its own code, not an unavailable authority. */
 class McpEmptyRepositoryTests {
-    private final McpSessions sessions = mock(McpSessions.class);
+    private final McpIdentities identities = mock(McpIdentities.class);
     private final ObjectMapper json = new ObjectMapper();
-    private final McpSyncServerExchange exchange = mock(McpSyncServerExchange.class);
+    private final McpTransportContext context =
+            McpTransportContext.create(Map.of(McpCancellation.CONTEXT_KEY, new McpCancellation()));
 
     @Test
     void anEmptyRepositoryIsReportedByItsOwnCodeNamingTheRepositoryConnection() {
-        when(exchange.transportContext())
-                .thenReturn(McpTransportContext.create(Map.of(McpCancellation.CONTEXT_KEY, new McpCancellation())));
-        when(sessions.resolve(exchange)).thenThrow(new RepositoryEmptyException());
+        when(identities.resolve(context)).thenThrow(new RepositoryEmptyException());
         var beans = new StaticListableBeanFactory(Map.of(
                 "assets",
                 mock(AssetService.class),
@@ -37,7 +35,7 @@ class McpEmptyRepositoryTests {
                 "executor",
                 mock(RepositoryExecutor.class)));
         var tool = new RepositoryMcpTools(
-                        sessions,
+                        identities,
                         mock(AuthService.class),
                         beans.getBeanProvider(AssetService.class),
                         beans.getBeanProvider(RepositoryExecutor.class),
@@ -50,7 +48,7 @@ class McpEmptyRepositoryTests {
 
         var result = tool.callHandler()
                 .apply(
-                        exchange,
+                        context,
                         new McpSchema.CallToolRequest("repo_exec", Map.of("expectedCopyId", "new", "command", "ls")));
 
         JsonNode body = json.readTree(((McpSchema.TextContent) result.content().getFirst()).text());

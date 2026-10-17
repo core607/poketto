@@ -12,8 +12,7 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.modelcontextprotocol.common.McpTransportContext;
-import io.modelcontextprotocol.server.McpServerFeatures;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.io.IOException;
 import java.util.List;
@@ -37,16 +36,15 @@ class McpPutAssetInputTests {
     private static final String KEY = "llm-homogenization-img-2026-09-16";
     private final AuthService auth = mock(AuthService.class);
     private final ImageTransfers transfers = mock(ImageTransfers.class);
-    private final McpSessions sessions = mock(McpSessions.class);
+    private final McpIdentities identities = mock(McpIdentities.class);
     private final ObjectMapper json = new ObjectMapper();
-    private final McpSyncServerExchange exchange = mock(McpSyncServerExchange.class);
-    private final McpServerFeatures.SyncToolSpecification tool;
+    private final McpTransportContext context =
+            McpTransportContext.create(Map.of(McpCancellation.CONTEXT_KEY, new McpCancellation()));
+    private final McpStatelessServerFeatures.SyncToolSpecification tool;
 
     McpPutAssetInputTests() {
-        when(sessions.resolve(exchange))
-                .thenReturn(new McpSessions.Identity(mock(AuthPrincipal.class), WorkspaceId.random()));
-        when(exchange.transportContext())
-                .thenReturn(McpTransportContext.create(Map.of(McpCancellation.CONTEXT_KEY, new McpCancellation())));
+        when(identities.resolve(context))
+                .thenReturn(new McpIdentities.Identity(mock(AuthPrincipal.class), WorkspaceId.random()));
         var beans = new StaticListableBeanFactory(Map.of(
                 "assets",
                 mock(AssetService.class),
@@ -55,7 +53,7 @@ class McpPutAssetInputTests {
                 "executor",
                 mock(RepositoryExecutor.class)));
         tool = new RepositoryMcpTools(
-                        sessions,
+                        identities,
                         auth,
                         beans.getBeanProvider(AssetService.class),
                         beans.getBeanProvider(RepositoryExecutor.class),
@@ -125,7 +123,7 @@ class McpPutAssetInputTests {
 
     @Test
     void anUnexpectedFailureIsRecordedByItsTypesAlone(CapturedOutput output) {
-        when(sessions.resolve(exchange))
+        when(identities.resolve(context))
                 .thenThrow(new IllegalStateException(
                         "registry offline at /srv/private/notes", new IOException("/srv/private/notes/socket")));
 
@@ -138,7 +136,7 @@ class McpPutAssetInputTests {
     }
 
     private McpSchema.CallToolResult call(Map<String, Object> arguments) {
-        return tool.callHandler().apply(exchange, new McpSchema.CallToolRequest("put_asset", arguments));
+        return tool.callHandler().apply(context, new McpSchema.CallToolRequest("put_asset", arguments));
     }
 
     private JsonNode body(McpSchema.CallToolResult result) {

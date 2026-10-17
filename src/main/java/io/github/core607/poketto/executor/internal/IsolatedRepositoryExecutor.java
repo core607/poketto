@@ -93,7 +93,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     public ExecutionResult execute(
             AuthPrincipal principal,
             WorkspaceId workspace,
-            String serverSessionId,
             CopyRequest expected,
             Optional<String> requested,
             String command,
@@ -102,7 +101,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         var timings = new ExecutionTimings();
         try {
             var access = io.authorize(principal, workspace);
-            validateExecution(serverSessionId, expected, requested, command, timeout);
+            validateExecution(expected, requested, command, timeout);
             timings.end(ExecutionTimings.Stage.AUTHORIZE);
             var owner = new AccountCopyRecord.Owner(
                     principal.accountId(),
@@ -143,12 +142,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     private static void validateExecution(
-            String transport, CopyRequest expected, Optional<String> requested, String command, Duration timeout) {
+            CopyRequest expected, Optional<String> requested, String command, Duration timeout) {
         Objects.requireNonNull(expected, "copy request must be present");
-        if (transport == null
-                || transport.isBlank()
-                || transport.length() > 128
-                || command == null
+        if (command == null
                 || command.isBlank()
                 || command.length() > 16384
                 || timeout.isNegative()
@@ -392,12 +388,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     public Optional<ArtifactChunk> readArtifact(
             AuthPrincipal principal,
             WorkspaceId workspace,
-            String serverSessionId,
             String artifactId,
             long offset,
             int limit,
             ExecutionCancellation cancellation) {
-        return artifacts.read(principal, workspace, serverSessionId, artifactId, offset, limit, cancellation);
+        return artifacts.read(principal, workspace, artifactId, offset, limit, cancellation);
     }
 
     void bindMetrics(MeterRegistry meters) {

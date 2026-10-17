@@ -477,7 +477,7 @@ public final class RetainedProcessNativeProbe {
             RepositoryExecutor.CopyRequest copy,
             String command) {
         var result = executor.execute(
-                actor, workspace, transport, copy, Optional.empty(), command, Duration.ofSeconds(30), CANCELLATION);
+                actor, workspace, copy, Optional.empty(), command, Duration.ofSeconds(30), CANCELLATION);
         assertThat(result.exitCode())
                 .as("%s %s", result.stdout(), result.stderr())
                 .isZero();

@@ -227,25 +227,18 @@ try:
     mcp_headers = {'Authorization': 'Bearer ' + key, 'Accept': 'application/json, text/event-stream'}
     initialize = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-11-25', 'capabilities': {}, 'clientInfo': {'name': 'image-memory-probe', 'version': '1'}}}
     _, headers = expect('POST', '/mcp', 200, json.dumps(initialize).encode(), 'application/json', mcp_headers, False)
-    mcp_headers['Mcp-Session-Id'] = headers['mcp-session-id']
+    assert 'mcp-session-id' not in headers, 'stateless MCP issued a session ID'
     mcp_headers['MCP-Protocol-Version'] = '2025-11-25'
     expect('POST', '/mcp', 202, b'{"jsonrpc":"2.0","method":"notifications/initialized"}', 'application/json', mcp_headers, False)
-    # Alternate persistent calls with short-lived sessions, as real clients do.
+    # Interleave reinitializations with calls, as clients that reconnect do.
     # A held image below also checks that text requests do not need image admission.
     for attempt in range(100):
-        current = dict(mcp_headers)
         if attempt % 2:
-            _, opened = expect('POST', '/mcp', 200, json.dumps(initialize).encode(),
-                               'application/json', {'Authorization': 'Bearer ' + key,
-                               'Accept': 'application/json, text/event-stream'}, False)
-            current['Mcp-Session-Id'] = opened['mcp-session-id']
-            expect('POST', '/mcp', 202, b'{"jsonrpc":"2.0","method":"notifications/initialized"}',
-                   'application/json', current, False)
+            expect('POST', '/mcp', 200, json.dumps(initialize).encode(), 'application/json', mcp_headers, False)
         query = {'jsonrpc': '2.0', 'id': 100 + attempt, 'method': 'tools/list'}
-        expect('POST', '/mcp', 200, json.dumps(query).encode(), 'application/json', current, False)
-        if attempt % 2:
-            expect('DELETE', '/mcp', 200, extra=current, browser=False)
-    proof['checks'].append('100 persistent/new-session calls and 50 immediate DELETEs complete without request-slot exhaustion')
+        expect('POST', '/mcp', 200, json.dumps(query).encode(), 'application/json', mcp_headers, False)
+    expect('DELETE', '/mcp', 405, extra=mcp_headers, browser=False)
+    proof['checks'].append('100 calls with 50 reinitializations complete without request-slot exhaustion; DELETE is not served')
     get_image = {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call', 'params': {'name': 'get_asset', 'arguments': {'source': {'kind': 'managed', **reference}}}}
     get_payload = json.dumps(get_image).encode()
     for i in range(2):

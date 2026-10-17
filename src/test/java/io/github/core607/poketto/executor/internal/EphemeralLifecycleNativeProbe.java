@@ -179,7 +179,6 @@ record EphemeralLifecycleNativeProbe(
         return executor.execute(
                 current,
                 workspace,
-                "transport-" + UUID.randomUUID(),
                 new RepositoryExecutor.CopyRequest(copy),
                 Optional.empty(),
                 command,

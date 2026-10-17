@@ -201,7 +201,7 @@ MARKDOWN
 
 `poketto media import` 存储不可变原件并更新本地媒体索引；将索引与引用它的文本一起保存，引用才会持久化。`poketto media link PATH --asset ID --revision REV` 接入已上传的原件。`poketto media fetch` 和 `poketto media list` 读取本地索引，完整读取会话也可用 `--commit` 指定历史提交；公开会话只能看到已批准的媒体。`media list` 使用返回的 `nextOffset` 和 `indexVersion` 翻页，期间保持 `--prefix` 与 `--commit` 不变。原件读取繁忙时，历史列表可能返回 `MEDIA_UNAVAILABLE`。命令见 `poketto --help`，限制与冲突处理见 [worker 参考文档](../executor-service/README.md)。
 
-`poketto artifact create FILE --type MIME` 保留不可变的临时结果，同一账号、同一空间和读取范围内的任何 MCP 会话都可通过 `get_artifact` 读取，以位图或文本、二进制分页返回；长命令输出也会附带制品句柄。句柄在五分钟后或租约关闭时失效，例如该账号以另一凭证接管副本时。详见[返回制品](../executor-service/README.md#returned-artifacts)。
+`poketto artifact create FILE --type MIME` 保留不可变的临时结果，同一账号、同一空间和读取范围内的任何 MCP 请求都可通过 `get_artifact` 读取，以位图或文本、二进制分页返回；长命令输出也会附带制品句柄。句柄在五分钟后或租约关闭时失效，例如该账号以另一凭证接管副本时。详见[返回制品](../executor-service/README.md#returned-artifacts)。
 
 `put_asset` 导入图片并返回 `assetId`、`revision`、`reference`、`mediaType` 和 `size`；用 `poketto media link` 接入后，保存文章和 `.poketto/assets.json`。仅上传不会保存或发布。每次调用携带 `operationKey`（相同重试沿用），并提供一种来源：
 

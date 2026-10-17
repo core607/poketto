@@ -10,7 +10,7 @@ import java.util.UUID;
 
 /** Temporary authorized packages. A handle never grants access independently of its owner and scope. */
 public interface PortableContentExports {
-    /** Client identity, when supplied, is the server-issued MCP session hash, never a sandbox argument. */
+    /** Client identity, when supplied, is the hash of the execution lease's scope, never a sandbox argument. */
     Export create(
             AuthPrincipal actor,
             WorkspaceId workspace,
@@ -25,7 +25,7 @@ public interface PortableContentExports {
 
     void release(AuthPrincipal actor, WorkspaceId workspace, UUID handle, Optional<String> client);
 
-    /** Trusted session-lifecycle callback; permits cleanup after revocation without returning any content. */
+    /** Trusted lease-lifecycle callback; permits cleanup after revocation without returning any content. */
     void closeClient(AuthPrincipal actor, WorkspaceId workspace, String client);
 
     record Export(UUID handle, boolean publicOnly, long bytes, String sha256, Instant expiresAt) {}
