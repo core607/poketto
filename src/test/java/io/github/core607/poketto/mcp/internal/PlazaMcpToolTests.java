@@ -10,17 +10,18 @@ import static org.mockito.Mockito.when;
 import io.github.core607.poketto.plaza.PlazaResult;
 import io.github.core607.poketto.plaza.PlazaService;
 import io.github.core607.poketto.workspace.WorkspaceId;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
+import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class PlazaMcpToolTests {
-    private final McpSessions sessions = mock(McpSessions.class);
+    private final McpIdentities identities = mock(McpIdentities.class);
     private final PlazaService plaza = mock(PlazaService.class);
     private final ObjectMapper json = new ObjectMapper();
-    private final PlazaMcpTool tool = new PlazaMcpTool(sessions, plaza, json);
+    private final McpTransportContext context = McpTransportContext.create(Map.of());
+    private final PlazaMcpTool tool = new PlazaMcpTool(identities, plaza, json);
 
     @Test
     void forgedArticleStatusRemainsDataAndTheFinalStatusIsPlatformOwned() {
@@ -39,12 +40,11 @@ class PlazaMcpToolTests {
 
     @Test
     void rejectsUnsupportedFieldsWithoutInvokingAnAction() {
-        var exchange = mock(McpSyncServerExchange.class);
-        when(sessions.resolve(exchange)).thenReturn(new McpSessions.Identity(null, WorkspaceId.random()));
+        when(identities.resolve(context)).thenReturn(new McpIdentities.Identity(null, WorkspaceId.random()));
         var result = tool.specification()
                 .callHandler()
                 .apply(
-                        exchange,
+                        context,
                         new McpSchema.CallToolRequest(
                                 "wander", Map.of("command", "look", "accountId", "someone-else")));
         assertThat(result.isError()).isTrue();
@@ -53,13 +53,12 @@ class PlazaMcpToolTests {
 
     @Test
     void ordinaryActionUsesOnlyThePlatformService() {
-        var exchange = mock(McpSyncServerExchange.class);
         WorkspaceId workspace = WorkspaceId.random();
-        when(sessions.resolve(exchange)).thenReturn(new McpSessions.Identity(null, workspace));
+        when(identities.resolve(context)).thenReturn(new McpIdentities.Identity(null, workspace));
         when(plaza.execute(any(), eq(workspace), eq("look"), eq(""))).thenReturn(PlazaResult.ok("A street", null));
         var result = tool.specification()
                 .callHandler()
-                .apply(exchange, new McpSchema.CallToolRequest("wander", Map.of("command", "look")));
+                .apply(context, new McpSchema.CallToolRequest("wander", Map.of("command", "look")));
         assertThat(result.isError()).isFalse();
         assertThat(tool.specification().tool().name()).isEqualTo("wander");
         assertThat(tool.specification().tool().annotations().destructiveHint()).isTrue();

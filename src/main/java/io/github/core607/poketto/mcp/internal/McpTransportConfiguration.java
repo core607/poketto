@@ -2,28 +2,15 @@ package io.github.core607.poketto.mcp.internal;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.assets.ImageMemoryAdmission;
-import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
-import io.github.core607.poketto.mcp.McpSessionClosed;
-import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.json.jackson3.JacksonMcpJsonMapper;
-import io.modelcontextprotocol.spec.McpError;
-import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
-import java.time.Clock;
-import java.time.Duration;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import org.springframework.ai.mcp.server.webmvc.transport.WebMvcStreamableServerTransportProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-import org.springframework.web.servlet.function.EntityResponse;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerResponse;
 import tools.jackson.databind.ObjectMapper;
@@ -36,82 +23,40 @@ import tools.jackson.databind.json.JsonMapper;
         matchIfMissing = true)
 class McpTransportConfiguration {
     @Bean
-    McpSessions mcpSessions(
-            AuthService auth,
-            ApplicationEventPublisher events,
-            @Value("${poketto.mcp.session-idle-seconds:1800}") long idleSeconds,
-            @Value("${poketto.mcp.max-sessions:128}") int maxSessions) {
-        return new McpSessions(auth, events, Clock.systemUTC(), Duration.ofSeconds(idleSeconds), maxSessions);
+    McpIdentities mcpIdentities(AuthService auth) {
+        return new McpIdentities(auth);
     }
 
     @Bean
-    WebMvcStreamableServerTransportProvider webMvcStreamableServerTransportProvider(
-            @Qualifier("mcpServerJsonMapper") JsonMapper mapper,
-            McpSessions sessions,
-            @Value("${poketto.mcp.session-idle-seconds:1800}") long idleSeconds,
-            @Value("${poketto.mcp.max-sessions:128}") int maxSessions) {
-        return WebMvcStreamableServerTransportProvider.builder()
-                // Preserve explicit null protocol fields, including optional repository source commits.
-                .jsonMapper(new JacksonMcpJsonMapper(mapper.rebuild()
-                        .changeDefaultPropertyInclusion(
-                                inclusion -> inclusion.withContentInclusion(JsonInclude.Include.ALWAYS))
-                        .build()))
-                .mcpEndpoint("/mcp")
-                .maxSessions(maxSessions)
-                .sessionIdleTimeout(Duration.ofSeconds(idleSeconds))
-                .contextExtractor(request -> {
-                    var context = new HashMap<String, Object>();
-                    context.put(McpSessions.IDENTITY_CONTEXT, sessions.currentIdentity());
-                    return McpTransportContext.create(context);
-                })
-                .build();
+    McpCalls mcpCalls() {
+        return new McpCalls();
     }
 
+    /** Replaces the SDK's stateless transport, whose bean remains unused; the stateless server takes this one. */
     @Bean
     @Primary
-    McpStreamableServerTransportProvider boundMcpTransport(
-            WebMvcStreamableServerTransportProvider delegate,
-            McpSessions sessions,
+    StatelessMcpTransport statelessMcpTransport(
+            @Qualifier("mcpServerJsonMapper") JsonMapper mapper,
+            McpIdentities identities,
+            McpCalls calls,
             ImageMemoryAdmission memory,
             ObjectMapper json) {
-        return new BoundMcpTransport(delegate, sessions, memory, json);
+        return new StatelessMcpTransport(
+                // Preserve explicit null protocol fields, including optional repository source commits.
+                new JacksonMcpJsonMapper(mapper.rebuild()
+                        .changeDefaultPropertyInclusion(
+                                inclusion -> inclusion.withContentInclusion(JsonInclude.Include.ALWAYS))
+                        .build()),
+                identities,
+                calls,
+                memory,
+                json);
     }
 
-    @Bean(name = "webMvcStreamableServerRouterFunction")
-    RouterFunction<ServerResponse> mcpRouter(WebMvcStreamableServerTransportProvider delegate, McpSessions sessions) {
-        return delegate.getRouterFunction().filter((request, next) -> {
-            var headers = request.headers().header("Mcp-Session-Id");
-            if (headers.size() > 1) {
-                return rejected(400);
-            }
-            String sessionId = headers.isEmpty() ? null : headers.getFirst();
-            try {
-                var identity = sessions.currentIdentity();
-                if (sessionId != null) {
-                    if (!sessionId.matches("[A-Za-z0-9._:-]{1,128}")) {
-                        return rejected(404);
-                    }
-                    sessions.check(sessionId, identity);
-                }
-                ServerResponse response = next.handle(request);
-                if (request.method().name().equals("DELETE")
-                        && sessionId != null
-                        && response.statusCode().is2xxSuccessful()) {
-                    sessions.remove(sessionId, McpSessionClosed.Reason.CLIENT_DELETE);
-                }
-                return normalizeError(response);
-            } catch (AuthException | SecurityException exception) {
-                return rejected(404);
-            }
-        });
-    }
-
-    static ServerResponse normalizeError(ServerResponse response) {
-        if (response instanceof EntityResponse<?> entity && entity.entity() instanceof McpError error) {
-            // SDK transport errors have no request ID. Never serialize the Throwable envelope.
-            return ServerResponse.from(response).body(Map.of("jsonrpc", "2.0", "error", error.getJsonRpcError()));
-        }
-        return response;
+    /** Takes the SDK router's bean name, so only this transport serves /mcp. */
+    @Bean(name = "webMvcStatelessServerRouterFunction")
+    RouterFunction<ServerResponse> mcpRouter(StatelessMcpTransport transport) {
+        return transport.routerFunction();
     }
 
     @Bean
@@ -119,13 +64,6 @@ class McpTransportConfiguration {
         var registration = new FilterRegistrationBean<>(new McpBodyLimitFilter(json));
         registration.setUrlPatterns(List.of("/mcp"));
         registration.setOrder(-99);
-        registration.setAsyncSupported(true);
         return registration;
-    }
-
-    private static ServerResponse rejected(int status) {
-        return ServerResponse.status(status)
-                .header("Cache-Control", "no-store")
-                .body(Map.of("type", "about:blank", "title", "MCP session unavailable", "status", status));
     }
 }

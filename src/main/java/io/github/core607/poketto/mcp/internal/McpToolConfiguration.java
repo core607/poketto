@@ -5,7 +5,7 @@ import io.github.core607.poketto.assets.ImageTransfers;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.plaza.PlazaService;
-import io.modelcontextprotocol.server.McpServerFeatures;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
@@ -21,8 +21,8 @@ import tools.jackson.databind.ObjectMapper;
         matchIfMissing = true)
 class McpToolConfiguration {
     @Bean
-    List<McpServerFeatures.SyncToolSpecification> repositoryMcpTools(
-            McpSessions sessions,
+    List<McpStatelessServerFeatures.SyncToolSpecification> repositoryMcpTools(
+            McpIdentities identities,
             AuthService auth,
             ObjectProvider<AssetService> assets,
             ObjectProvider<RepositoryExecutor> executors,
@@ -30,9 +30,9 @@ class McpToolConfiguration {
             ObjectProvider<ImageTransfers> transfers,
             ObjectProvider<PlazaService> plaza) {
         var tools = new ArrayList<>(
-                new RepositoryMcpTools(sessions, auth, assets, executors, json, transfers).specifications());
+                new RepositoryMcpTools(identities, auth, assets, executors, json, transfers).specifications());
         if (plaza.getIfAvailable() != null) {
-            tools.add(new PlazaMcpTool(sessions, plaza.getObject(), json).specification());
+            tools.add(new PlazaMcpTool(identities, plaza.getObject(), json).specification());
         }
         return List.copyOf(tools);
     }

@@ -256,7 +256,6 @@ class WorkerSocketTests {
             var next = executor.execute(
                     actor,
                     WORKSPACE,
-                    "after-idle",
                     new RepositoryExecutor.CopyRequest(first.copyId()),
                     Optional.empty(),
                     "pwd",
@@ -269,7 +268,6 @@ class WorkerSocketTests {
             assertThatThrownBy(() -> executor.execute(
                             actor,
                             WORKSPACE,
-                            "after-idle",
                             new RepositoryExecutor.CopyRequest(UUID.randomUUID().toString()),
                             Optional.empty(),
                             "must-not-run",
@@ -334,7 +332,6 @@ class WorkerSocketTests {
             assertThat(executor.execute(
                                     actor,
                                     WORKSPACE,
-                                    "publisher-recover",
                                     new RepositoryExecutor.CopyRequest("new"),
                                     Optional.empty(),
                                     "poketto recover",
@@ -363,7 +360,6 @@ class WorkerSocketTests {
             var left = executor.execute(
                     principal,
                     WORKSPACE,
-                    "left",
                     new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "pwd",
@@ -372,7 +368,6 @@ class WorkerSocketTests {
             var right = executor.execute(
                     principal,
                     WORKSPACE,
-                    "right",
                     new RepositoryExecutor.CopyRequest("new"),
                     Optional.empty(),
                     "pwd",
@@ -382,7 +377,6 @@ class WorkerSocketTests {
             assertThat(executor.execute(
                                     principal,
                                     WORKSPACE,
-                                    "right",
                                     new RepositoryExecutor.CopyRequest(left.copyId()),
                                     Optional.empty(),
                                     "pwd",
@@ -393,7 +387,6 @@ class WorkerSocketTests {
             assertThatThrownBy(() -> executor.execute(
                             principal(),
                             WORKSPACE,
-                            "right",
                             new RepositoryExecutor.CopyRequest(right.copyId()),
                             Optional.empty(),
                             "write-sentinel",
@@ -405,7 +398,6 @@ class WorkerSocketTests {
             assertThatThrownBy(() -> executor.execute(
                             principal,
                             WorkspaceId.random(),
-                            "right",
                             new RepositoryExecutor.CopyRequest(right.copyId()),
                             Optional.empty(),
                             "write-sentinel",
@@ -419,7 +411,6 @@ class WorkerSocketTests {
             assertThatThrownBy(() -> executor.execute(
                             principal,
                             WORKSPACE,
-                            "right",
                             new RepositoryExecutor.CopyRequest(left.copyId()),
                             Optional.empty(),
                             "write-sentinel",
@@ -770,7 +761,6 @@ class WorkerSocketTests {
             assertThatThrownBy(() -> executor.execute(
                             principal,
                             WORKSPACE,
-                            "lost",
                             new RepositoryExecutor.CopyRequest(UUID.randomUUID().toString()),
                             Optional.empty(),
                             "touch local.txt",
@@ -883,7 +873,6 @@ class WorkerSocketTests {
             assertThatThrownBy(() -> executor.execute(
                             actor,
                             WORKSPACE,
-                            "discard",
                             new RepositoryExecutor.CopyRequest("new"),
                             Optional.empty(),
                             "must not run",
@@ -940,7 +929,6 @@ class WorkerSocketTests {
         return executor.execute(
                 actor,
                 WORKSPACE,
-                "transport",
                 new RepositoryExecutor.CopyRequest(id),
                 Optional.empty(),
                 "pwd",
@@ -1057,7 +1045,6 @@ class WorkerSocketTests {
                     () -> executor.execute(
                             actor,
                             WORKSPACE,
-                            "queued",
                             new RepositoryExecutor.CopyRequest("new"),
                             Optional.empty(),
                             "must-not-run",

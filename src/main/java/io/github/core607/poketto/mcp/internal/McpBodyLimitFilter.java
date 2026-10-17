@@ -1,6 +1,5 @@
 package io.github.core607.poketto.mcp.internal;
 
-import jakarta.servlet.AsyncContext;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ReadListener;
@@ -82,16 +81,6 @@ final class McpBodyLimitFilter implements Filter {
 
     private static final class BufferedRequest extends HttpServletRequestWrapper {
         private final ServletInputStream bounded;
-
-        @Override
-        public AsyncContext startAsync() {
-            return McpStreamCompletion.watch(super.startAsync());
-        }
-
-        @Override
-        public AsyncContext startAsync(ServletRequest request, ServletResponse response) {
-            return McpStreamCompletion.watch(super.startAsync(request, response));
-        }
 
         private BufferedRequest(HttpServletRequest request, byte[] body) {
             super(request);

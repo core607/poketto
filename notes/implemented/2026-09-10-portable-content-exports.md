@@ -49,7 +49,7 @@ before building, the handle is published only after the ZIP is closed and verifi
 and failed builds remove partial files. A restart removes abandoned disposable packages.
 
 Handles bind workspace, principal, scope and expiry. CLI handles additionally bind
-the server-issued MCP session; they are not bearer public links. Browser downloads
+the execution lease's scope; they are not bearer public links. Browser downloads
 and CLI materialization recheck current authorization while transferring bytes.
 Public exports also revalidate their admitted article/media projection, so
 withdrawal or changed public eligibility invalidates an outstanding package.
@@ -96,7 +96,7 @@ shared incoming-file channel also preserves a stored-original receipt when a
 media import cannot update its local index, so retrying the same key after
 freeing space completes the index without creating another original.
 
-Browser handles bind owner, workspace and expiry and do not claim MCP-session
+Browser handles bind owner, workspace and expiry and do not claim lease
 cleanup. A handle received after the dialog was cancelled is released; a handle
 already offered for download remains valid until expiry.
 
