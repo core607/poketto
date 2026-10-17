@@ -467,6 +467,51 @@ class RepositoryPatchServiceTests {
     }
 
     @Test
+    void aWriteFromTheRecordedBaseSkipsTheFetchAndAStaleBaseStillConflicts() throws Exception {
+        var fetches = new AtomicInteger();
+        var fixture = new RemoteRepositoryFixture(directory, countingFetches(fetches));
+        var base = fixture.commitRemote(workspace, Map.of("private/note.md", bytes("one")));
+        var service = service(fixture, (id, snapshot) -> {});
+        var first = service.apply(principal, workspace, patch(base, update("private/note.md", "one", "two")));
+        int afterFirst = fetches.get();
+
+        var second = service.apply(
+                principal,
+                workspace,
+                patch(ObjectId.fromString(first.commit()), update("private/note.md", "two", "3")));
+        assertThat(fetches.get()).isEqualTo(afterFirst);
+
+        var foreign = fixture.commitRemote(workspace, Map.of("private/other.md", bytes("elsewhere")));
+        assertThatThrownBy(() -> service.apply(
+                        principal,
+                        workspace,
+                        patch(ObjectId.fromString(second.commit()), update("private/note.md", "3", "4"))))
+                .isInstanceOf(RepositoryConflictException.class);
+        assertThat(fixture.authority().readCache(workspace, RepositoryAuthority.Snapshot::commitId))
+                .contains(foreign.name());
+    }
+
+    private static RemoteGitTransport countingFetches(AtomicInteger fetches) {
+        var transport = new JGitRemoteGitTransport();
+        return new RemoteGitTransport() {
+            @Override
+            public ObjectId fetchMain(Repository repository, RepositoryBinding binding) {
+                fetches.incrementAndGet();
+                return transport.fetchMain(repository, binding);
+            }
+
+            @Override
+            public PushStatus pushMain(
+                    Repository repository,
+                    RepositoryBinding binding,
+                    ObjectId expectedCommit,
+                    ObjectId candidateCommit) {
+                return transport.pushMain(repository, binding, expectedCommit, candidateCommit);
+            }
+        };
+    }
+
+    @Test
     void createsUnbornMainWithExactBytesAndAcknowledgedSnapshot() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         AtomicInteger installed = new AtomicInteger();

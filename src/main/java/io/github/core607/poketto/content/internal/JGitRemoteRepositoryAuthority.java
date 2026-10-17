@@ -73,8 +73,14 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
 
     @Override
     public <T> T readObjects(WorkspaceId workspaceId, SnapshotReader<T> reader) {
+        return readObjects(workspaceId, Optional.empty(), reader);
+    }
+
+    @Override
+    public <T> T readObjects(WorkspaceId workspaceId, Optional<String> knownMain, SnapshotReader<T> reader) {
         Objects.requireNonNull(reader, "snapshot reader must not be null");
-        return inCache(workspaceId, (repository, binding, commit) -> reader.read(snapshot(repository, commit)));
+        return inCache(
+                workspaceId, knownMain, (repository, binding, commit) -> reader.read(snapshot(repository, commit)));
     }
 
     @Override
@@ -182,9 +188,15 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
 
     @Override
     public <T> T writeObjects(WorkspaceId workspaceId, CandidateWriter<T> writer) {
+        return writeObjects(workspaceId, Optional.empty(), writer);
+    }
+
+    @Override
+    public <T> T writeObjects(WorkspaceId workspaceId, Optional<String> declaredBase, CandidateWriter<T> writer) {
         Objects.requireNonNull(writer, "candidate writer must not be null");
         return inCache(
                 workspaceId,
+                declaredBase,
                 (repository, binding, baseCommit) -> writer.write(snapshot(repository, baseCommit), candidateCommit -> {
                     ObjectId candidate = parseCommit(candidateCommit);
                     advance(workspaceId, repository, binding, baseCommit, candidate);
@@ -198,6 +210,10 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     private <T> T inCache(WorkspaceId workspaceId, CacheAction<T> action) {
+        return inCache(workspaceId, Optional.empty(), action);
+    }
+
+    private <T> T inCache(WorkspaceId workspaceId, Optional<String> knownMain, CacheAction<T> action) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
         CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
         workspaceLock.lock.lock();
@@ -215,10 +231,16 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             }
             ObjectId commit;
             try {
-                commit = transport.fetchMain(opened, binding);
-                // An unborn remote removes local main. Readers of already selected immutable
-                // objects may still be active, and the object store they read is kept.
-                RepositoryCaches.updateObjectRef(opened, commit);
+                Optional<ObjectId> recorded = knownMain.flatMap(known -> recordedMain(opened, known));
+                if (recorded.isPresent()) {
+                    // A write's exact-ref push still checks remote main, and a named read pins it.
+                    commit = recorded.get();
+                } else {
+                    commit = transport.fetchMain(opened, binding);
+                    // An unborn remote removes local main. Readers of already selected immutable
+                    // objects may still be active, and the object store they read is kept.
+                    RepositoryCaches.updateObjectRef(opened, commit);
+                }
             } catch (RuntimeException exception) {
                 opened.close();
                 throw exception;
@@ -232,6 +254,16 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         } finally {
             workspaceLock.lock.unlock();
             releaseWorkspaceLock(workspaceId, workspaceLock);
+        }
+    }
+
+    /** The cache's recorded main when it is exactly {@code known}; anything else needs a fetch. */
+    private static Optional<ObjectId> recordedMain(Repository repository, String known) {
+        try {
+            ObjectId main = repository.resolve(RepositoryCaches.MAIN);
+            return main != null && main.name().equals(known) ? Optional.of(main) : Optional.empty();
+        } catch (IOException unreadable) {
+            return Optional.empty();
         }
     }
 

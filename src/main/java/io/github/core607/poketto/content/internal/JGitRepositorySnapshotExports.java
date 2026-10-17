@@ -355,38 +355,42 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                 actor,
                 workspace,
                 Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY),
-                () -> authority.readObjects(workspace, snapshot -> {
-                    // Named before the export's own failure handling: an unborn main is the owner's to initialize.
-                    String head = snapshot.commitId().orElseThrow(RepositoryEmptyException::new);
-                    UUID id = UUID.randomUUID();
-                    Path pending = staging.resolve(id + ".pending");
-                    try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspace)) {
-                        long deadline = System.nanoTime() + timeout.toNanos();
-                        String commit = requested.orElse(head);
-                        if (!commit.matches("[0-9a-f]{40}")) {
-                            throw unavailable();
-                        }
-                        requireReachable(repository, head, commit, deadline);
-                        preflight(repository, commit, baseline, deadline);
-                        safeStaging();
-                        clearAbandoned();
-                        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                        writeSnapshotBundle(
-                                repository, ObjectId.fromString(commit), baseline, pending, digest, deadline);
-                        long size = Files.size(pending);
-                        Files.move(pending, staging.resolve(id + ".bundle"), StandardCopyOption.ATOMIC_MOVE);
-                        exports.add(id);
-                        return new Export(id, commit, HexFormat.of().formatHex(digest.digest()), size);
-                    } catch (Exception exception) {
-                        try {
-                            Files.deleteIfExists(pending);
-                        } catch (IOException ignored) {
-                            /* Disposable incomplete export. */
-                        }
-                        throw new ContentRepositoryException(
-                                "repository execution snapshot could not be exported within its bounds", exception);
-                    }
-                }));
+                // An incremental export pins a commit this host acknowledged, which needs no fetch.
+                () -> authority.readObjects(
+                        workspace, baseline.isPresent() ? requested : Optional.empty(), snapshot -> {
+                            // Named before the export's own failure handling: an unborn main is the owner's to
+                            // initialize.
+                            String head = snapshot.commitId().orElseThrow(RepositoryEmptyException::new);
+                            UUID id = UUID.randomUUID();
+                            Path pending = staging.resolve(id + ".pending");
+                            try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspace)) {
+                                long deadline = System.nanoTime() + timeout.toNanos();
+                                String commit = requested.orElse(head);
+                                if (!commit.matches("[0-9a-f]{40}")) {
+                                    throw unavailable();
+                                }
+                                requireReachable(repository, head, commit, deadline);
+                                preflight(repository, commit, baseline, deadline);
+                                safeStaging();
+                                clearAbandoned();
+                                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                                writeSnapshotBundle(
+                                        repository, ObjectId.fromString(commit), baseline, pending, digest, deadline);
+                                long size = Files.size(pending);
+                                Files.move(pending, staging.resolve(id + ".bundle"), StandardCopyOption.ATOMIC_MOVE);
+                                exports.add(id);
+                                return new Export(id, commit, HexFormat.of().formatHex(digest.digest()), size);
+                            } catch (Exception exception) {
+                                try {
+                                    Files.deleteIfExists(pending);
+                                } catch (IOException ignored) {
+                                    /* Disposable incomplete export. */
+                                }
+                                throw new ContentRepositoryException(
+                                        "repository execution snapshot could not be exported within its bounds",
+                                        exception);
+                            }
+                        }));
     }
 
     // The requested commit must be reachable from the authority head within the walk bound.

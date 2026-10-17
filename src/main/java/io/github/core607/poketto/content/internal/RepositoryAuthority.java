@@ -27,6 +27,14 @@ interface RepositoryAuthority {
     <T> T readObjects(WorkspaceId workspaceId, SnapshotReader<T> reader);
 
     /**
+     * Like {@link #readObjects}, but makes no fetch when the cache's recorded main already equals
+     * {@code knownMain}: the caller names a commit it holds, such as one this host just wrote.
+     */
+    default <T> T readObjects(WorkspaceId workspaceId, Optional<String> knownMain, SnapshotReader<T> reader) {
+        return readObjects(workspaceId, reader);
+    }
+
+    /**
      * Reads the cache as it stands without contacting the remote. The snapshot commit is the last
      * locally recorded main, which may lag or differ from remote main.
      */
@@ -49,6 +57,15 @@ interface RepositoryAuthority {
 
     /** Writes Git objects and advances the exact remote ref without checking out repository files. */
     <T> T writeObjects(WorkspaceId workspaceId, CandidateWriter<T> writer);
+
+    /**
+     * Like {@link #writeObjects(WorkspaceId, CandidateWriter)}, but makes no fetch when the cache's
+     * recorded main equals the write's declared base. The push still advances remote main only
+     * from that base, so a remote that moved meanwhile refuses it and the write conflicts.
+     */
+    default <T> T writeObjects(WorkspaceId workspaceId, Optional<String> declaredBase, CandidateWriter<T> writer) {
+        return writeObjects(workspaceId, writer);
+    }
 
     @FunctionalInterface
     interface SnapshotReader<T> {
