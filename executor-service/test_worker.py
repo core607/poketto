@@ -171,6 +171,15 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(1, len(logged.output))
         self.assertIn('maxConnections', logged.output[0])
 
+    def test_a_command_result_reports_the_worker_stages_it_waited_in(self):
+        self.opened()
+        self.service.sessions[self.identity['leaseId']].bridge = Mock()
+        result = self.send(self.execution())
+        self.assertTrue(result['ok'], result)
+        timings = result['result']['timings']
+        self.assertEqual({'roomMs', 'lockMs'}, set(timings))
+        self.assertTrue(all(isinstance(value, int) and value >= 0 for value in timings.values()))
+
     def test_idle_configuration_is_explicit_and_bounded(self):
         example = json.loads(Path(__file__).with_name('config.example.json').read_text())
         with tempfile.TemporaryDirectory() as directory:

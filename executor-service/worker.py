@@ -132,6 +132,12 @@ class Session:
     channel: object = None
     unit_files: tuple = ()
     idle_since: float = 0
+    # Milliseconds each stage of the running EXEC took inside the worker, returned with its result.
+    timings: dict = field(default_factory=dict)
+
+
+def elapsed_ms(since):
+    return int((time.monotonic() - since) * 1000)
 
 
 class Service:
@@ -355,6 +361,9 @@ class Service:
                 s.execution_id = d['executionId']
         # A command that would start a unit first makes room among the live units. When none can
         # stop, the command is refused before it runs and the lease stays usable.
+        if op == 'EXEC':
+            s.timings = {}
+            making_room = time.monotonic()
         if op == 'EXEC' and s.channel is None and not self.make_room(s):
             with self.lock:
                 self.executions.discard(execution_key)
@@ -362,8 +371,13 @@ class Service:
                     s.state = 'READY'
                     s.execution_id = ''
             raise Rejected('EXECUTION_CAPACITY')
+        if op == 'EXEC':
+            s.timings['roomMs'] = elapsed_ms(making_room)
+            waiting = time.monotonic()
         try:
             with s.operation:
+                if op == 'EXEC':
+                    s.timings['lockMs'] = elapsed_ms(waiting)
                 if s.cancelled.is_set():
                     raise Rejected('SESSION_CLOSED')
                 if op == 'OPEN':
@@ -384,6 +398,7 @@ class Service:
                         s.idle_since = self.clock()
                     answer = self.response(s)
                     if result is not None:
+                        result['timings'] = dict(s.timings)
                         answer['result'] = result
                     elif s.state == 'CLOSED':
                         raise Rejected('SESSION_CLOSED')
@@ -959,6 +974,7 @@ class SystemdBackend:
             (target / '.git-baseline.pending').unlink(missing_ok=True)
 
     def execute(self, s, data):
+        preparing = time.monotonic()
         self.pool.verify()
         with s.files_lock:
             if s.channel is not None and s.channel.process.poll() is not None:
@@ -978,6 +994,8 @@ class SystemdBackend:
                 with self.frozen(s):
                     s.bridge.reset_command(data['executionId'])
                     self.release_command_files(s)
+        s.timings['prepareMs'] = elapsed_ms(preparing)
+        running = time.monotonic()
         reason, exit_code, ended = 'normal', 0, False
         try:
             completion, output, truncated = s.channel.execute(
@@ -995,6 +1013,9 @@ class SystemdBackend:
                 s.reason = reason
                 s.cancelled.set()
         finally:
+            # A fresh sandbox's start-up is part of its first command's run.
+            s.timings['runMs'] = elapsed_ms(running)
+            releasing = time.monotonic()
             with s.files_lock:
                 if ended or s.cancelled.is_set():
                     self.stop_unit(s)
@@ -1003,6 +1024,7 @@ class SystemdBackend:
                     with self.frozen(s):
                         s.bridge.reset_command()
                         self.release_command_files(s)
+            s.timings['releaseMs'] = elapsed_ms(releasing)
         return {'commit': s.commit, 'exitCode': exit_code,
                 **retain_output(s.artifacts if not s.cancelled.is_set() else None, output, truncated),
                 'timedOut': reason == 'timeout', 'terminationReason': reason, 'freshSandbox': fresh}
@@ -1353,7 +1375,9 @@ class DiskSystemdBackend(SystemdBackend):
 
     def execute(self, s, data):
         result = super().execute(s, data)
+        flushing = time.monotonic()
         self.flush(s)
+        s.timings['flushMs'] = elapsed_ms(flushing)
         return result
 
     def close(self, s):
