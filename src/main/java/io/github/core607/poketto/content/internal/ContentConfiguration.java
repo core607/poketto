@@ -72,6 +72,12 @@ class ContentConfiguration {
             RemoteGitTransport transport,
             RepositoryProperties properties,
             @Value("${poketto.repository.read-fetch-reuse-millis:0}") long readFetchReuse) {
+        // The scheduled refresh reads the latest main too; a window it could fall inside would
+        // renew the public snapshot without ever asking the remote.
+        if (readFetchReuse < 0 || readFetchReuse >= properties.refreshSeconds() * 1000L) {
+            throw new IllegalArgumentException(
+                    "poketto.repository.read-fetch-reuse-millis must be shorter than refresh-seconds");
+        }
         return new JGitRemoteRepositoryAuthority(
                 paths,
                 bindings,
