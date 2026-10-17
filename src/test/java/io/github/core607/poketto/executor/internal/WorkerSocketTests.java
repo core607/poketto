@@ -531,6 +531,43 @@ class WorkerSocketTests {
     }
 
     @Test
+    void anIdleForkIsDiscardedWhileTheDefaultCopyRunsACommand() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.holdFirstExec.set(true);
+            var first = CompletableFuture.supplyAsync(() -> client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "one",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(10),
+                    new Cancellation()));
+            assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            var fork = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "two",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+
+            var discarded = CompletableFuture.supplyAsync(() -> executor.discard(
+                            actor, WORKSPACE, new RepositoryExecutor.DiscardRequest(fork.copyId()), new Cancellation()))
+                    .get(5, TimeUnit.SECONDS);
+
+            assertThat(discarded.status()).isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
+            assertThat(first).isNotDone();
+            peer.execHold.countDown();
+            assertThat(first.get(5, TimeUnit.SECONDS).exitCode()).isZero();
+        }
+    }
+
+    @Test
     void anArtifactInAForkIsReadWhileTheDefaultCopyRunsACommand() throws Exception {
         var actor = principal();
         try (var peer = new Peer();

@@ -79,18 +79,23 @@ final class CopyDisposal {
         return new DiscardResult(request.id(), DiscardStatus.ABSENT);
     }
 
-    /** Both scopes' default copies, and the forks the ID would name in each. */
+    /**
+     * The forks the ID would name in each scope, then both scopes' default copies. Forks come first
+     * so that a command running in a default copy does not refuse the discard of an idle fork.
+     */
     private static List<AccountCopyRecord.Owner> candidates(AuthPrincipal principal, WorkspaceId workspace, String id) {
+        var defaults = new ArrayList<AccountCopyRecord.Owner>();
         var owners = new ArrayList<AccountCopyRecord.Owner>();
         for (boolean full : List.of(true, false)) {
             var owner = new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), full);
-            owners.add(owner);
+            defaults.add(owner);
             try {
                 owners.add(owner.forked(UUID.fromString(id)));
             } catch (IllegalArgumentException invalid) {
                 // A malformed ID names no fork; the default copies still report it absent.
             }
         }
+        owners.addAll(defaults);
         return owners;
     }
 
