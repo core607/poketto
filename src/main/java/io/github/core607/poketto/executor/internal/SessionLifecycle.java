@@ -104,6 +104,11 @@ final class SessionLifecycle {
                     awaitInitialized(session, seeded, deadline);
                     return;
                 }
+                // The refused open created no lease, so the export must not be interrupted by a
+                // renewal or a close addressed to one; the export's own open sets this again.
+                synchronized (session) {
+                    session.openAttempted = false;
+                }
             } catch (RuntimeException exception) {
                 abandonOpen(session);
                 throw exception;

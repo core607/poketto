@@ -241,6 +241,14 @@ class DiskPool:
                 raise
             self._prune_seeds(parent)
 
+    def claim_seed(self, workspace_id, scope, commit):
+        """True when the seed exists; its refreshed time keeps it from pruning for the grace period."""
+        with self._seeds_lock():
+            seed = self.seed(workspace_id, scope, commit)
+            if seed is not None:
+                os.utime(seed)
+            return seed is not None
+
     def populate_from_seed(self, target, workspace_id, scope, commit):
         """Reflink the seed into a new, still unpublished-to-commands copy; False when it is absent."""
         with self._seeds_lock():
@@ -253,7 +261,7 @@ class DiskPool:
         return True
 
     def _prune_seeds(self, parent):
-        # Opening refreshes a seed's time, and a seed used within SEED_GRACE_SECONDS survives, so
+        # Validating or filling an open refreshes a seed's time, and a seed used within SEED_GRACE_SECONDS survives, so
         # a seed found when an open is validated is still there when the copy is populated.
         seeds = sorted((entry for entry in parent.iterdir() if re.fullmatch('[0-9a-f]{40}', entry.name)),
                        key=lambda entry: entry.lstat().st_mtime_ns, reverse=True)

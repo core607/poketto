@@ -1214,7 +1214,7 @@ class DiskSystemdBackend(SystemdBackend):
                               config['diskBytes'], config['diskInodes'])
 
     def has_seed(self, workspace_id, scope, commit):
-        return self.disks.seed(workspace_id, scope, commit) is not None
+        return self.disks.claim_seed(workspace_id, scope, commit)
 
     def prepare(self, s, seeded=False):
         self.pool.verify()
@@ -1224,8 +1224,8 @@ class DiskSystemdBackend(SystemdBackend):
         source = (self.disks.reopen(*identity) if s.attaching
                   else self.disks.create(*identity))
         if seeded and not self.disks.populate_from_seed(source, s.identity[2], s.scope, s.commit):
-            # Seeds used within the last minutes are never pruned, so this needs a seed
-            # that vanished between the check and the copy; the empty copy goes with it.
+            # Validation claimed the seed for the grace period, so this needs an operator to have
+            # removed it in between; the empty copy goes with it.
             self.disks.discard(*identity)
             raise Rejected('SEED_ABSENT')
         lock = os.open(source / '.lease.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)

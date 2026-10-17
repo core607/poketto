@@ -1297,6 +1297,27 @@ class WorkerSocketTests {
     }
 
     @Test
+    void aRefusedSeedLeavesNoLeaseToRenewWhileASlowExportRuns() throws Exception {
+        var exports = exports();
+        when(exports.create(any(), any(), any())).thenAnswer(call -> {
+            // Longer than the fake worker's one-second renewal interval.
+            Thread.sleep(2500);
+            return new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128);
+        });
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports, peer)) {
+            assertThat(command(executor, principal(), "new").exitCode()).isZero();
+            var lifecycle = peer.requests.stream()
+                    .map(node -> node.path("operation").asString("")
+                            + (node.path("data").has("seed") ? ":seed" : ""))
+                    .filter(operation -> !operation.equals("BRIDGE_POLL"))
+                    .toList();
+            assertThat(lifecycle.subList(lifecycle.indexOf("OPEN:seed"), lifecycle.indexOf("OPEN")))
+                    .containsExactly("OPEN:seed");
+        }
+    }
+
+    @Test
     void anAccountQuotaOfOneReleasesItsSlotAfterEveryCommand() throws Exception {
         var auth = fullAuth();
         when(auth.siteGroup(any())).thenReturn(SiteGroup.VIEWER);
