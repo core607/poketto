@@ -636,8 +636,8 @@ repository file paths, document content or image grants; container health probes
 not recorded. A `repo_exec` call also leaves one `repo_exec stages` record:
 milliseconds per stage (`authorizeMs`, `journalMs`, `permitMs`, `admitMs`,
 `prepareMs`, `commandMs`, `completeMs`), bridge time and request count, the total,
-and `stoppedIn`, the stage an early end stopped in (`none` otherwise); stages never
-entered read `-1`.
+`stoppedIn`, where an early end stopped (`none` otherwise), and `cleanupMs`, the
+containment after a failure; unentered stages read `-1`.
 
 Permission changes and authentication outcomes are recorded under the logger name
 `poketto.audit`, naming the action (such as `member.access.granted` or

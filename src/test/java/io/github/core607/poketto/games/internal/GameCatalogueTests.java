@@ -77,6 +77,27 @@ class GameCatalogueTests {
         }
     }
 
+    @Test
+    void anArticleThatBecomesDueDuringAPassIsScannedBeforeThePassVouchesForTheCommit() {
+        try (var fixture = new Fixture()) {
+            var ordinary = new ArrayList<PublicArticle>();
+            for (int i = 0; i < 40; i++) {
+                ordinary.add(fixture.article("public/ordinary-" + i + ".md"));
+            }
+            fixture.snapshots.value = fixture.snapshot(ordinary, "c");
+            fixture.library.refresh();
+            var due = new ArrayList<PublicArticle>();
+            due.add(fixture.article);
+            due.addAll(ordinary);
+            // Same commit, one more article: a scheduled article reached its time between pages.
+            fixture.snapshots.value = fixture.snapshot(due, "c");
+            fixture.library.refresh();
+            fixture.library.refresh();
+            assertThat(fixture.library.find(fixture.workspace, fixture.article.articleId()))
+                    .isPresent();
+        }
+    }
+
     private static final class Fixture implements AutoCloseable {
         private final WorkspaceId workspace = WorkspaceId.random();
         private final PublicArticle article = article("public/game.md");
