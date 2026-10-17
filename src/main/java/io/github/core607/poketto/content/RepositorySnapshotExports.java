@@ -10,6 +10,9 @@ import java.util.UUID;
 public interface RepositorySnapshotExports {
     Export create(AuthPrincipal actor, WorkspaceId workspace, Optional<String> commit);
 
+    /** The commit {@link #create} would export, under the same checks, without writing a bundle. */
+    String resolve(AuthPrincipal actor, WorkspaceId workspace, Optional<String> commit);
+
     /** Exports the target commit with the already installed baseline as a Git bundle prerequisite. */
     Export update(AuthPrincipal actor, WorkspaceId workspace, String baseline, String commit);
 

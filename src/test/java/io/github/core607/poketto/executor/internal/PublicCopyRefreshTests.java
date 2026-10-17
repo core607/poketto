@@ -642,15 +642,23 @@ class PublicCopyRefreshTests {
             return new WorkerClient(path, key.getPrivate(), () -> {}, channel -> {}, json, Clock.systemUTC());
         }
 
+        /** Seeded opens this fake refuses are left out: they never create a lease or a copy. */
         List<JsonNode> operations(String operation) {
             return requests.stream()
+                    .filter(node -> !seeded(node))
                     .filter(node -> node.path("operation").asString("").equals(operation))
                     .toList();
+        }
+
+        private static boolean seeded(JsonNode request) {
+            return request.path("operation").asString("").equals("OPEN")
+                    && request.path("data").has("seed");
         }
 
         /** Lifecycle operations in order; renewals and bridge polls depend on timing and are left out. */
         List<String> sequence() {
             return requests.stream()
+                    .filter(node -> !seeded(node))
                     .map(node -> node.path("operation").asString(""))
                     .filter(operation -> !Set.of("RENEW", "BRIDGE_POLL").contains(operation))
                     .toList();
@@ -702,7 +710,8 @@ class PublicCopyRefreshTests {
                     "diskCopyProtocol",
                     "gitBaselineProtocol",
                     "workspaceSyncProtocol",
-                    "leaseSandboxProtocol")) {
+                    "leaseSandboxProtocol",
+                    "seedProtocol")) {
                 hello.put(marker, 1);
             }
             hello.put("workerBootId", boot);
@@ -718,6 +727,12 @@ class PublicCopyRefreshTests {
             String lease = request.path("leaseId").stringValue();
             JsonNode data = request.path("data");
             Map<String, Object> response = new LinkedHashMap<>();
+            if (seeded(request)) {
+                response.put("ok", false);
+                response.put("code", "SEED_ABSENT");
+                response.put("requestId", request.path("requestId").stringValue());
+                return response;
+            }
             response.put("ok", true);
             response.put("requestId", request.path("requestId").stringValue());
             response.put("leaseId", lease);

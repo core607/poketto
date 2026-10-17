@@ -10,6 +10,7 @@ import stat
 import struct
 import subprocess
 import tempfile
+import time
 import uuid
 
 
@@ -47,8 +48,15 @@ class DiskPool:
         info = self.copies.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
             raise ValueError('Copy parent must remain supervisor-owned')
+        self.seeds = self.root / 'seeds'
+        self.seeds.mkdir(mode=0o700, exist_ok=True)
+        info = self.seeds.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
+            raise ValueError('Seed parent must remain private to the supervisor')
         with self._projects_lock():
             self._collect_unpublished()
+        with self._seeds_lock():
+            self._collect_seed_staging()
 
     @staticmethod
     def _run(*args):
@@ -182,6 +190,119 @@ class DiskPool:
                 raise RuntimeError('Descriptor-based removal is required')
             shutil.rmtree(target)
             self._sync(self.copies)
+        finally:
+            os.close(lock)
+
+    # Seeds are pristine reflinked trees of initialized copies. They are never mounted
+    # into a command, and only trees no command has touched are captured.
+    SEED_ENTRIES = ('snapshot.bundle', 'work')
+    SEEDS_PER_SCOPE = 2
+    SEED_GRACE_SECONDS = 600
+
+    def _seed_parent(self, workspace_id, scope):
+        if not isinstance(workspace_id, str) or str(uuid.UUID(workspace_id)) != workspace_id or scope not in ('full', 'public'):
+            raise ValueError('Seed workspace and scope are required')
+        return self.seeds / workspace_id / scope
+
+    def seed(self, workspace_id, scope, commit):
+        """The seed directory for this key, or None."""
+        if not re.fullmatch('[0-9a-f]{40}', commit):
+            raise ValueError('Seed commit is required')
+        path = self._seed_parent(workspace_id, scope) / commit
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            return None
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+            raise ValueError('Invalid seed ownership')
+        return path
+
+    def capture_seed(self, source, workspace_id, scope, commit):
+        """Reflink a freshly initialized copy into the seed for its key; an existing seed is kept.
+
+        The caller guarantees that no command has run in source and that its control
+        group is empty, so the tree cannot change while it is read. The copy runs into a
+        private staging name outside the seed lock, which is held only to publish and prune,
+        so a supervisor validating an open never waits for a copy to finish.
+        """
+        parent = self._seed_parent(workspace_id, scope)
+        if self.seed(workspace_id, scope, commit) is not None:
+            return
+        for directory in (parent.parent, parent):
+            directory.mkdir(mode=0o700, exist_ok=True)
+        stage = parent / ('.creating-' + str(uuid.uuid4()))
+        stage.mkdir(mode=0o700)
+        try:
+            self._reflink([source / name for name in self.SEED_ENTRIES], stage)
+            self._sync(stage)
+            with self._seeds_lock():
+                if self.seed(workspace_id, scope, commit) is None:
+                    os.rename(stage, parent / commit)
+                    self._sync(parent)
+                self._prune_seeds(parent)
+        finally:
+            self._remove(stage)
+
+    def claim_seed(self, workspace_id, scope, commit):
+        """True when the seed exists; its refreshed time keeps it from pruning for the grace period."""
+        with self._seeds_lock():
+            seed = self.seed(workspace_id, scope, commit)
+            if seed is not None:
+                os.utime(seed)
+            return seed is not None
+
+    def populate_from_seed(self, target, workspace_id, scope, commit):
+        """Reflink the seed into a new copy no command has reached; False when it is absent.
+
+        The claim refreshes the seed's time under the lock, so the copy itself can run
+        outside it: pruning never removes a seed within its grace period.
+        """
+        seed = self.seed(workspace_id, scope, commit) if self.claim_seed(workspace_id, scope, commit) else None
+        if seed is None:
+            return False
+        self._reflink([seed / name for name in self.SEED_ENTRIES], target)
+        self._sync(target)
+        return True
+
+    def _prune_seeds(self, parent):
+        # Validating or filling an open refreshes a seed's time, and a seed used within SEED_GRACE_SECONDS survives, so
+        # a seed found when an open is validated is still there when the copy is populated.
+        seeds = sorted((entry for entry in parent.iterdir() if re.fullmatch('[0-9a-f]{40}', entry.name)),
+                       key=lambda entry: entry.lstat().st_mtime_ns, reverse=True)
+        horizon = time.time_ns() - self.SEED_GRACE_SECONDS * 1_000_000_000
+        for stale in seeds[self.SEEDS_PER_SCOPE:]:
+            if stale.lstat().st_mtime_ns < horizon:
+                self._remove(stale)
+
+    def _collect_seed_staging(self):
+        for workspace in self.seeds.iterdir():
+            for scope in workspace.iterdir():
+                for entry in scope.iterdir():
+                    if entry.name.startswith('.creating-'):
+                        self._remove(entry)
+
+    def _remove(self, path):
+        if not shutil.rmtree.avoids_symlink_attacks:
+            raise RuntimeError('Descriptor-based removal is required')
+        if path.exists() or path.is_symlink():
+            shutil.rmtree(path)
+
+    def _reflink(self, sources, destination):
+        # -a keeps owners, modes and symbolic links as they are. On the XFS pool a reflink shares
+        # extents, so a later write to either tree allocates its own blocks and never reaches the
+        # other; elsewhere cp falls back to copying, which is slower but equally independent.
+        subprocess.run(['cp', '-a', '--reflink=auto', '--', *map(str, sources), str(destination)],
+                       check=True, capture_output=True, timeout=60)
+
+    @contextmanager
+    def _seeds_lock(self):
+        lock = os.open(self.root / '.seeds.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            info = os.fstat(lock)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+                raise ValueError('Invalid seed lock ownership')
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            yield
         finally:
             os.close(lock)
 

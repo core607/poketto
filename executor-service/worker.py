@@ -154,7 +154,7 @@ class Service:
     def hello(self):
         return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'moveProtocol': 1, 'exportProtocol': 1,
                 'diskCopyProtocol': 1 if self.config.get('copyRoot') else 0, 'gitBaselineProtocol': 1, 'workspaceSyncProtocol': 1,
-                'leaseSandboxProtocol': 1,
+                'leaseSandboxProtocol': 1, 'seedProtocol': 1,
                 'workerBootId': self.boot,
                 'maxFrameBytes': MAX_FRAME, 'leaseSeconds': self.config['leaseSeconds'],
                 'renewAfterSeconds': self.config['renewAfterSeconds']}
@@ -383,7 +383,18 @@ class Service:
 
     def validate_open(self, p):
         data = p['data']
-        if p['operation'] == 'OPEN':
+        if p['operation'] == 'OPEN' and 'seed' in data:
+            # A seeded open names no export: the copy is reflinked from a pristine seed
+            # at exactly this commit, or refused before any lease or copy exists.
+            if set(data) != {'copyId', 'scope', 'commit', 'seed'} or data['seed'] is not True:
+                raise Rejected('INVALID_REQUEST')
+            identifier(data['copyId'])
+            if data['scope'] not in ('full', 'public'):
+                raise Rejected('INVALID_REQUEST')
+            hex_value(data['commit'], 40)
+            if not self.backend.has_seed(p['workspaceId'], data['scope'], data['commit']):
+                raise Rejected('SEED_ABSENT')
+        elif p['operation'] == 'OPEN':
             if set(data) != {'copyId', 'scope', 'exportId', 'bundleSha256', 'bundleBytes', 'commit'}:
                 raise Rejected('INVALID_REQUEST')
             identifier(data['copyId'])
@@ -779,6 +790,9 @@ class SystemdBackend:
 
     def mount_path(self, s):
         return self.sessions / identifier(s.id)
+
+    def has_seed(self, workspace_id, scope, commit):
+        return False
 
     def prepare_bootstrap(self, target):
         os.chown(target, 0, self.user.pw_gid)
@@ -1199,13 +1213,21 @@ class DiskSystemdBackend(SystemdBackend):
         self.disks = DiskPool(config['copyRoot'], config['poolBytes'],
                               config['diskBytes'], config['diskInodes'])
 
-    def prepare(self, s):
+    def has_seed(self, workspace_id, scope, commit):
+        return self.disks.claim_seed(workspace_id, scope, commit)
+
+    def prepare(self, s, seeded=False):
         self.pool.verify()
         identity = (s.copy_id, s.identity[1], s.identity[2], s.scope, s.commit)
         if not s.copy_id:
             raise Rejected('INVALID_REQUEST')
         source = (self.disks.reopen(*identity) if s.attaching
                   else self.disks.create(*identity))
+        if seeded and not self.disks.populate_from_seed(source, s.identity[2], s.scope, s.commit):
+            # Validation claimed the seed for the grace period, so this needs an operator to have
+            # removed it in between; the empty copy goes with it.
+            self.disks.discard(*identity)
+            raise Rejected('SEED_ABSENT')
         lock = os.open(source / '.lease.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         try:
             try:
@@ -1256,7 +1278,11 @@ class DiskSystemdBackend(SystemdBackend):
             raise Rejected('COPY_UNAVAILABLE', 'IDENTITY_MISMATCH') from invalid
 
     def open(self, s, data):
-        super().open(s, data)
+        seeded = data.get('seed') is True
+        if seeded:
+            self.prepare(s, seeded=True)
+        else:
+            super().open(s, data)
         target = self.mount_path(s)
         # Initialization is acknowledged only after the original copied tree is
         # durable. The marker is supervisor-owned, outside the exposed work tree.
@@ -1268,6 +1294,13 @@ class DiskSystemdBackend(SystemdBackend):
             stream.flush()
             os.fsync(stream.fileno())
         self.disks._sync(target)
+        if not seeded:
+            # The initializing unit has ended and no command has run yet, so the tree is
+            # exactly what the export produced. A failed capture only costs a later open.
+            try:
+                self.disks.capture_seed(self.disks.copies / s.copy_id, s.identity[2], s.scope, s.commit)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                pass
 
     def flush(self, s):
         checked(['sync', '-f', str(self.mount_path(s))])

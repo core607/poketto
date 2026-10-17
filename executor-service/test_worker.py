@@ -38,8 +38,12 @@ class Backend:
 
     def open(self, session, data):
         self.opened.append(session.id)
+        self.open_data = data
         if self.wait:
             self.wait.wait(3)
+
+    def has_seed(self, workspace_id, scope, commit):
+        return (workspace_id, scope, commit) in getattr(self, 'seeds', set())
 
     def execute(self, session, data):
         self.executed.append(data)
@@ -555,6 +559,21 @@ class ProtocolTests(unittest.TestCase):
         self.opened()
         self.assertTrue(self.send(self.execution())['ok'])
         self.assertEqual('EXECUTION_CAPACITY', self.send(self.execution())['code'])
+
+    def test_a_seeded_open_needs_an_exact_seed_and_names_no_export(self):
+        seeded = {'commit': 'c' * 40, 'copyId': str(uuid.uuid4()), 'scope': 'full', 'seed': True}
+        self.assertEqual('SEED_ABSENT', self.send(self.payload('OPEN', seeded))['code'])
+        self.assertFalse(self.backend.opened)
+        self.assertFalse(self.service.sessions)
+        self.backend.seeds = {(self.identity['workspaceId'], 'full', 'c' * 40)}
+        for invalid in ({**seeded, 'seed': 1}, {**seeded, 'exportId': uid()}, {**seeded, 'scope': 'other'}):
+            self.assertEqual('INVALID_REQUEST', self.send(self.payload('OPEN', invalid))['code'])
+        self.assertTrue(self.send(self.payload('OPEN', seeded))['ok'])
+        self.assertEqual([self.identity['leaseId']], self.backend.opened)
+        self.assertIs(True, self.backend.open_data['seed'])
+
+    def test_hello_advertises_seeded_opens(self):
+        self.assertEqual(1, self.service.hello()['seedProtocol'])
 
     def test_limits_and_no_path_fields(self):
         p = self.payload('OPEN', {'exportId': '../source', 'bundleSha256': 'b' * 64,

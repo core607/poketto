@@ -1272,6 +1272,52 @@ class WorkerSocketTests {
     }
 
     @Test
+    void aSeedAtTheResolvedCommitOpensANewCopyWithoutAnExport() throws Exception {
+        for (boolean seeded : List.of(true, false)) {
+            var exports = exports();
+            try (var peer = new Peer();
+                    var executor = executor(fullAuth(), exports, peer)) {
+                peer.seeds = seeded;
+                assertThat(command(executor, principal(), "new").exitCode()).isZero();
+                verify(exports).resolve(any(), eq(WORKSPACE), eq(Optional.empty()));
+                if (seeded) {
+                    verify(exports, never()).create(any(), any(), any());
+                    assertThat(peer.operations("OPEN")
+                                    .getFirst()
+                                    .path("data")
+                                    .path("seed")
+                                    .booleanValue())
+                            .isTrue();
+                } else {
+                    verify(exports).create(any(), eq(WORKSPACE), eq(Optional.of(COMMIT)));
+                }
+                assertThat(peer.operations("OPEN")).hasSize(1);
+            }
+        }
+    }
+
+    @Test
+    void aRefusedSeedLeavesNoLeaseToRenewWhileASlowExportRuns() throws Exception {
+        var exports = exports();
+        when(exports.create(any(), any(), any())).thenAnswer(call -> {
+            // Longer than the fake worker's one-second renewal interval.
+            Thread.sleep(2500);
+            return new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128);
+        });
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports, peer)) {
+            assertThat(command(executor, principal(), "new").exitCode()).isZero();
+            var lifecycle = peer.requests.stream()
+                    .map(node -> node.path("operation").asString("")
+                            + (node.path("data").has("seed") ? ":seed" : ""))
+                    .filter(operation -> !operation.equals("BRIDGE_POLL"))
+                    .toList();
+            assertThat(lifecycle.subList(lifecycle.indexOf("OPEN:seed"), lifecycle.indexOf("OPEN")))
+                    .containsExactly("OPEN:seed");
+        }
+    }
+
+    @Test
     void anAccountQuotaOfOneReleasesItsSlotAfterEveryCommand() throws Exception {
         var auth = fullAuth();
         when(auth.siteGroup(any())).thenReturn(SiteGroup.VIEWER);
@@ -1299,6 +1345,7 @@ class WorkerSocketTests {
 
     private static RepositorySnapshotExports exports() {
         var exports = mock(RepositorySnapshotExports.class);
+        when(exports.resolve(any(), any(), any())).thenReturn(COMMIT);
         when(exports.create(any(), any(), any()))
                 .thenAnswer(
                         call -> new RepositorySnapshotExports.Export(UUID.randomUUID(), COMMIT, "b".repeat(64), 128));
@@ -1412,6 +1459,7 @@ class WorkerSocketTests {
         private volatile String terminationReason = "normal";
         private volatile boolean freshSandbox = true;
         private volatile String attachRefusal;
+        private volatile boolean seeds;
         private volatile String stdout = "fixture result";
 
         Peer() throws Exception {
@@ -1437,10 +1485,17 @@ class WorkerSocketTests {
             return new WorkerClient(path, key.getPrivate(), () -> {}, channel -> {}, json, Clock.systemUTC());
         }
 
+        /** Seeded opens this fake refuses are left out: they never create a lease or a copy. */
         List<JsonNode> operations(String operation) {
             return requests.stream()
+                    .filter(node -> seeds || !seeded(node))
                     .filter(node -> node.path("operation").asString("").equals(operation))
                     .toList();
+        }
+
+        private static boolean seeded(JsonNode request) {
+            return request.path("operation").asString("").equals("OPEN")
+                    && request.path("data").has("seed");
         }
 
         private void respond(SocketChannel connection) {
@@ -1502,6 +1557,7 @@ class WorkerSocketTests {
                     hello.put("gitBaselineProtocol", 1);
                     hello.put("workspaceSyncProtocol", 1);
                     hello.put("leaseSandboxProtocol", 1);
+                    hello.put("seedProtocol", 1);
                     response = hello;
                 } else {
                     byte[] payload = Base64.getUrlDecoder()
@@ -1561,6 +1617,15 @@ class WorkerSocketTests {
         private Object handle(JsonNode request) throws Exception {
             String operation = request.path("operation").stringValue();
             String lease = request.path("leaseId").stringValue();
+            if (seeded(request) && !seeds) {
+                return Map.of(
+                        "ok",
+                        false,
+                        "code",
+                        "SEED_ABSENT",
+                        "requestId",
+                        request.path("requestId").stringValue());
+            }
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("ok", true);
             response.put(
