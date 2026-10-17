@@ -424,33 +424,58 @@ class WorkerSocketTests {
     }
 
     @Test
-    void overlappingInitialCallsWaitForTheSameAcknowledgedCopy() throws Exception {
-        var actor = principal();
-        try (var peer = new Peer();
-                var executor = executor(fullAuth(), exports(), peer)) {
-            peer.stallExec = true;
-            var first = CompletableFuture.supplyAsync(() -> client.execute(
-                    executor,
-                    actor,
-                    WORKSPACE,
-                    "one",
-                    Optional.empty(),
-                    "pwd",
-                    Duration.ofSeconds(2),
-                    new Cancellation()));
-            assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
-            var second = client.execute(
-                    executor,
-                    actor,
-                    WORKSPACE,
-                    "two",
-                    Optional.empty(),
-                    "pwd",
-                    Duration.ofSeconds(2),
-                    new Cancellation());
-            assertThat(second.copyId()).isEqualTo(first.get(5, TimeUnit.SECONDS).copyId());
-            assertThat(peer.operations("EXEC")).hasSize(2);
-            assertThat(peer.operations("OPEN")).hasSize(1);
+    void overlappingInitialCallsOpenSeparateCopiesUntilTheAccountsCopyQuota() throws Exception {
+        for (Integer quota : java.util.Arrays.asList(null, 1)) {
+            var auth = fullAuth();
+            when(auth.siteGroup(any())).thenReturn(SiteGroup.CREATOR);
+            var actor = principal();
+            try (var peer = new Peer();
+                    var executor = new IsolatedRepositoryExecutor(
+                            peer.accounts.store(),
+                            mock(PortableContentExports.class),
+                            mock(MediaFileService.class),
+                            mock(SelectedFileSaves.class),
+                            auth,
+                            exports(),
+                            peer.client(),
+                            new ExecutionLimits(
+                                    8, 4, Map.of(), quota == null ? Map.of() : Map.of(SiteGroup.CREATOR, quota)),
+                            Duration.ofSeconds(8),
+                            Duration.ofSeconds(3))) {
+                peer.stallExec = true;
+                var first = CompletableFuture.supplyAsync(() -> client.execute(
+                        executor,
+                        actor,
+                        WORKSPACE,
+                        "one",
+                        Optional.empty(),
+                        "pwd",
+                        Duration.ofSeconds(2),
+                        new Cancellation()));
+                assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+                var second = client.execute(
+                        executor,
+                        actor,
+                        WORKSPACE,
+                        "two",
+                        Optional.empty(),
+                        "pwd",
+                        Duration.ofSeconds(2),
+                        new Cancellation());
+                String firstCopy = first.get(5, TimeUnit.SECONDS).copyId();
+                assertThat(peer.operations("EXEC")).hasSize(2);
+                if (quota == null) {
+                    // The default copy was busy, so the second agent got a copy of its own.
+                    assertThat(second.copyId()).isNotEqualTo(firstCopy);
+                    assertThat(peer.operations("OPEN")).hasSize(2);
+                    assertThat(command(executor, actor, second.copyId()).copyId())
+                            .isEqualTo(second.copyId());
+                } else {
+                    // At the quota, new waits for the default copy as before.
+                    assertThat(second.copyId()).isEqualTo(firstCopy);
+                    assertThat(peer.operations("OPEN")).hasSize(1);
+                }
+            }
         }
     }
 
@@ -1331,7 +1356,7 @@ class WorkerSocketTests {
                         auth,
                         exports(),
                         peer.client(),
-                        new ExecutionLimits(4, 4, Map.of(SiteGroup.VIEWER, 1)),
+                        new ExecutionLimits(4, 4, Map.of(SiteGroup.VIEWER, 1), Map.of()),
                         Duration.ofSeconds(3),
                         Duration.ofSeconds(1))) {
             var first = command(executor, actor, "new");

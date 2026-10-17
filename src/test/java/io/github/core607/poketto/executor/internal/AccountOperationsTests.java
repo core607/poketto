@@ -58,14 +58,16 @@ class AccountOperationsTests {
 
     @Test
     void limitsExcludeAdministratorsAndStayWithinTheSiteCeiling() {
-        assertThat(new ExecutionLimits(1024, 1024, Map.of(SiteGroup.VIEWER, 1)).maxSessions())
+        assertThat(new ExecutionLimits(1024, 1024, Map.of(SiteGroup.VIEWER, 1), Map.of()).maxSessions())
                 .isEqualTo(1024);
-        assertThatThrownBy(() -> new ExecutionLimits(4, 4, Map.of(SiteGroup.ADMINISTRATOR, 1)))
+        assertThatThrownBy(() -> new ExecutionLimits(4, 4, Map.of(SiteGroup.ADMINISTRATOR, 1), Map.of()))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ExecutionLimits(4, 4, Map.of(SiteGroup.CREATOR, 5)))
+        assertThatThrownBy(() -> new ExecutionLimits(4, 4, Map.of(SiteGroup.CREATOR, 5), Map.of()))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ExecutionLimits(1025, 4, Map.of())).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new ExecutionLimits(4, 0, Map.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new ExecutionLimits(1025, 4, Map.of(), Map.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new ExecutionLimits(4, 0, Map.of(), Map.of()))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private static AuthPrincipal account() {

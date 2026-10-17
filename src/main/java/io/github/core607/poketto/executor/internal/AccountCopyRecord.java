@@ -58,10 +58,32 @@ record AccountCopyRecord(
                 original);
     }
 
-    record Owner(UUID accountId, UUID workspaceId, boolean fullRead) {
+    /**
+     * The account, workspace and reading scope a copy belongs to. {@code fork} is null for the
+     * account's default copy of that scope, and otherwise the copy ID of a further copy opened
+     * while the default was busy, so each fork has its own journal and lease.
+     */
+    record Owner(UUID accountId, UUID workspaceId, boolean fullRead, UUID fork) {
         Owner {
             Objects.requireNonNull(accountId, "owner account must be present");
             Objects.requireNonNull(workspaceId, "owner workspace must be present");
+        }
+
+        Owner(UUID accountId, UUID workspaceId, boolean fullRead) {
+            this(accountId, workspaceId, fullRead, null);
+        }
+
+        Owner forked(UUID copyId) {
+            return new Owner(accountId, workspaceId, fullRead, Objects.requireNonNull(copyId));
+        }
+
+        Owner withoutFork() {
+            return new Owner(accountId, workspaceId, fullRead);
+        }
+
+        /** The ID a new copy of this owner receives: a fork's is fixed by its address. */
+        UUID newCopyId() {
+            return fork == null ? UUID.randomUUID() : fork;
         }
     }
 

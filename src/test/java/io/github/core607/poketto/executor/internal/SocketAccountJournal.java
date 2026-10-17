@@ -48,6 +48,11 @@ final class SocketAccountJournal {
                     .orElse(allowed);
         });
         when(store.acquire(any())).thenAnswer(call -> acquire(call.getArgument(0)));
+        when(store.copiesOf(any(), any())).thenAnswer(call -> (int) entries.entrySet().stream()
+                .filter(entry -> entry.getKey().accountId().equals(call.getArgument(0))
+                        && entry.getKey().workspaceId().equals(call.getArgument(1))
+                        && entry.getValue().record.get() != null)
+                .count());
     }
 
     AccountCopyStore store() {

@@ -44,14 +44,14 @@ It installs host distribution packages for Pillow, BeautifulSoup/lxml, pypdf, op
 | `appUid`, `appGid` | The only accepted `SO_PEERCRED` peer, and the group of the mode-0660 socket |
 | `execUser` | Unprivileged, not the application account, not a member of `appGid` |
 | `idleUnitSeconds` | Required, 1 through 86400 (example 300) |
-| `maxLiveUnits` | Optional, 1 through `maxSessions`: live command units; a new unit first stops the least recently used idle one, and when every unit is running a command the new one is refused with `EXECUTION_CAPACITY` |
+| `maxLiveUnits` | Optional, 1 through `maxSessions`: live units; a new one first stops the least recently used idle unit, or is refused with `EXECUTION_CAPACITY` when all run commands |
 | `renewAfterSeconds` | Less than `leaseSeconds` |
 | `unitPrefix` | Matches `poketto-exec-[a-z0-9]+-` |
 | `resourceSlice` | Required; the slice the worker must run in |
 
 ## Account copy storage
 
-The application keeps one disk copy per account, content workspace and reading scope; OAuth grants authorize operations and create no copies. [Account working copies](../notes/implemented/2026-09-14-account-working-copies.md) owns the storage and lifecycle decisions.
+The application keeps a default disk copy per account, content workspace and reading scope, plus forks opened while it is busy; OAuth grants create no copies. [Account working copies](../notes/implemented/2026-09-14-account-working-copies.md) owns the storage and lifecycle decisions.
 
 `copyRoot` must be a dedicated root-owned XFS mount with enforced project quotas and a total size no greater than `poolBytes`; the worker refuses any other mount and has no tmpfs fallback. A preallocated loopback filesystem provides that bound without remounting the host root. Place exports, copies, original archives and account metadata on it, and provision the mount and the application-owned export and metadata directories before starting either service.
 
@@ -59,7 +59,7 @@ Each copy receives inherited project hard limits `diskBytes` and `diskInodes` be
 
 The private account journal (ownership, pinned original commit, pending remote-write receipts and the digest of its per-file baselines, which are stored once beside it) and an immutable, checksummed original archive stay with the copy; public copies carry only their host-owned projection proof. Journal publication uses file fsync, atomic rename and directory fsync, and no command is acknowledged before it is confirmed. Each command holds the account writer lock, records its intent before EXEC and its host write state before acknowledging a write, and is flushed to disk before a successful response. Reconnection fences the previous writer and reattaches the same files and baselines; an incomplete earlier command stays visible as potentially partial work. Copies survive transport loss, lease closure, command timeout and service restarts.
 
-After a copy initializes from an export, and before any command runs in it, the worker reflinks its export bundle and repository into `copyRoot/seeds/<workspace>/<scope>/<commit>`. Seeds are private to the supervisor and never mounted into a command. A later full copy at the same commit is reflinked from the seed without an export or a clone. The worker keeps the two newest seeds per workspace and scope, plus any opened in the last ten minutes ([seed copies](../notes/implemented/2026-10-18-seed-copies.md)).
+A copy initialized from an export is reflinked, before any command runs, into the supervisor-private seed `copyRoot/seeds/<workspace>/<scope>/<commit>`, which is never mounted. A later full copy at that commit is reflinked from it without an export or clone; the two newest seeds per workspace and scope, and any opened in the last ten minutes, are kept ([seed copies](../notes/implemented/2026-10-18-seed-copies.md)).
 
 Successful authorized operations renew a seven-day idle deadline. A collector removes expired copies and incomplete initializations after containment, deferring to active writers. Disposal intent is durable, so an interrupted deletion resumes and never makes the copy executable again. Cleanup never undoes remote Git commits, and there is no off-host backup.
 
@@ -77,7 +77,7 @@ The worker captures at most 4 MiB of combined output, stopping the unit beyond i
 
 ## Working-copy identity
 
-`repo_exec` requires `expectedCopyId`. `"new"` opens the account's default copy for the grant's reading scope, creating it only if absent; afterwards pass the returned `copyId`. A matching Git commit does not prove that a copy survived, transports do not own copies, and an ID mismatch is refused before the command executes.
+`repo_exec` requires `expectedCopyId`. `"new"` opens the account's default copy for the grant's reading scope, creating it only if absent. While a command runs in it, `"new"` opens a fork within the account's quota (`poketto.executor.account-copies.*`), else waits. Afterwards pass the returned `copyId`. A matching Git commit does not prove that a copy survived, transports do not own copies, and an ID mismatch is refused before the command executes.
 
 ```json
 {"expectedCopyId":"new","command":"pwd"}
@@ -114,7 +114,7 @@ The worker rejects `data` with a missing or extra field; [java-frames.json](java
 
 | Operation | Behavior |
 |---|---|
-| `OPEN` | Creates copy `copyId` (`scope` `full` or `public`) at `commit` from export `exportId` after checking its size, at most `maxBundleBytes`, and SHA-256. Blocks until READY or failure within `initTimeoutMillis`, accepting RENEW meanwhile. With `seed: true` and no export fields, the copy is reflinked from the seed at exactly `commit`; `SEED_ABSENT` refuses it before any lease or copy exists. |
+| `OPEN` | Creates copy `copyId` (`scope` `full` or `public`) at `commit` from export `exportId` after checking its size, at most `maxBundleBytes`, and SHA-256. Blocks until READY or failure within `initTimeoutMillis`, accepting RENEW meanwhile. With `seed: true` and no export, it is reflinked from the seed at `commit`, or refused with `SEED_ABSENT` before any lease exists. |
 | `BASELINE` | Full-read copies only. Freezes the lease unit, idle or running, installs the bundle's commit as Git HEAD and index inside SRT, keeps working files and returns `gitCommit`. |
 | `ATTACH` | Claims an existing copy for a new lease after checking account, workspace, scope, pinned commit and the exclusive copy lock. Never clones or replaces files. |
 | `DISCARD` | Deletes an owner-matched copy once no lease holds its lock. Returns DISCARDED or ABSENT, or `COPY_BUSY`. |

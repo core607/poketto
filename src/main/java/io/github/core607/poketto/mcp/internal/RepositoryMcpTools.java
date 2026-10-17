@@ -175,7 +175,7 @@ final class RepositoryMcpTools {
     private McpStatelessServerFeatures.SyncToolSpecification executeTool() {
         return tool(
                 "repo_exec",
-                "Run shell, Python and Git in your account's isolated copy of this space's repository. Read the root AGENTS.md and poketto --help first. Edits stay local until poketto save. The working directory, environment, /tmp and background processes persist between calls until a result reports freshSandbox=true; files always persist. SESSION_REPLACED and EXECUTION_REFUSED mean the command did not run. EXECUTION_UNCONFIRMED means it may have run: inspect the same copy before writing again, and never replay an uncertain write. Public-only grants see the current public projection; when it changes, a clean copy is rebuilt (refreshed=true) and one with local changes is refused with PUBLICATION_CHANGED. Long output and poketto artifact create return handles for get_artifact. repo_discard removes a copy.",
+                "Run shell, Python and Git in your account's isolated copy of this space's repository. Read the root AGENTS.md and poketto --help first. Edits stay local until poketto save. The working directory, environment, /tmp and background processes persist between calls until a result reports freshSandbox=true. Files persist until the copy has been idle for seven days (retention.expiresAt) or repo_discard removes it, unsaved edits included. SESSION_REPLACED and EXECUTION_REFUSED mean the command did not run. EXECUTION_UNCONFIRMED means it may have run: inspect the same copy before writing again, and never replay an uncertain write. Public-only grants see the current public projection; when it changes, a clean copy is rebuilt (refreshed=true) and one with local changes is refused with PUBLICATION_CHANGED. Long output and poketto artifact create return handles for get_artifact. repo_discard removes a copy.",
                 object(
                         Map.of(
                                 "expectedCopyId",
@@ -187,7 +187,7 @@ final class RepositoryMcpTools {
                                                 36,
                                                 "pattern",
                                                 "^(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
-                                        "new opens your account's copy, creating it only if absent; afterwards pass the copyId every result returns. new is never a retry after an uncertain result."),
+                                        "new opens your account's default copy, creating it only if absent, or a separate copy of your own while a command runs in the default one. Afterwards pass the copyId your results return. new is never a retry after an uncertain result."),
                                 "command",
                                 described(text(16384), "Shell command, evaluated by the copy's persistent bash."),
                                 "commit",

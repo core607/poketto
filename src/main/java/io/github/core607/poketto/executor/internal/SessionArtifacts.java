@@ -9,6 +9,7 @@ import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.RepositoryExecutor.ArtifactChunk;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,10 +43,8 @@ final class SessionArtifacts {
             ExecutionCancellation cancellation) {
         var access = io.authorize(principal, workspace);
         validateArtifactRequest(artifactId, offset, limit);
-        List<Boolean> scopes =
-                access.capabilities().contains(Capability.READ_PRIVATE) ? List.of(true, false) : List.of(false);
-        for (boolean full : scopes) {
-            var owner = new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), full);
+        boolean readsPrivate = access.capabilities().contains(Capability.READ_PRIVATE);
+        for (var owner : owners(principal, workspace, readsPrivate)) {
             try (var held = new AccountCommand(accounts, owner, cancellation)) {
                 if (held.record() == null || accounts.expired(held.record())) {
                     continue;
@@ -60,6 +59,29 @@ final class SessionArtifacts {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * The copies whose leases may hold the artifact: the default copy of each readable scope, and
+     * every fork of the account with a live lease, since an artifact lives only as long as its lease.
+     */
+    private List<AccountCopyRecord.Owner> owners(AuthPrincipal principal, WorkspaceId workspace, boolean readsPrivate) {
+        var owners = new ArrayList<AccountCopyRecord.Owner>();
+        for (boolean full : readsPrivate ? List.of(true, false) : List.of(false)) {
+            owners.add(new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), full));
+        }
+        for (var session : registry.all()) {
+            var record = session.accountRecord;
+            if (record != null
+                    && record.owner().fork() != null
+                    && record.owner().accountId().equals(principal.accountId())
+                    && record.owner().workspaceId().equals(workspace.value())
+                    && (readsPrivate || !record.owner().fullRead())
+                    && !owners.contains(record.owner())) {
+                owners.add(record.owner());
+            }
+        }
+        return owners;
     }
 
     private Optional<ArtifactChunk> readAccount(

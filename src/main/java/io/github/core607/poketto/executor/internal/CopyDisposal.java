@@ -9,6 +9,7 @@ import io.github.core607.poketto.mcp.RepositoryExecutor.DiscardStatus;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -54,8 +55,7 @@ final class CopyDisposal {
             ExecutionCancellation cancellation) {
         requireAuthorization(principal, workspace, cancellation);
         // Cleanup remains available when read authority has been withdrawn; no content is returned.
-        for (boolean full : List.of(true, false)) {
-            var owner = new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), full);
+        for (var owner : candidates(principal, workspace, request.id())) {
             try (var held = new AccountCommand(accounts, owner, cancellation)) {
                 var record = held.record();
                 if (record == null || !record.copyId().toString().equals(request.id())) {
@@ -65,8 +65,7 @@ final class CopyDisposal {
                     registry.requireCopyMatch(record, new CopyRequest(request.id()));
                 }
                 held.beginDiscard();
-                var key = new ExecutionSession.Key(
-                        principal.accountId(), workspace, SessionWorker.hash(full ? "full" : "public"));
+                var key = SessionLifecycle.keyFor(owner);
                 var hello = worker.hello();
                 lifecycle.fenceAccount(principal, record, key, hello);
                 requireAuthorization(principal, workspace, cancellation);
@@ -78,6 +77,21 @@ final class CopyDisposal {
             }
         }
         return new DiscardResult(request.id(), DiscardStatus.ABSENT);
+    }
+
+    /** Both scopes' default copies, and the forks the ID would name in each. */
+    private static List<AccountCopyRecord.Owner> candidates(AuthPrincipal principal, WorkspaceId workspace, String id) {
+        var owners = new ArrayList<AccountCopyRecord.Owner>();
+        for (boolean full : List.of(true, false)) {
+            var owner = new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), full);
+            owners.add(owner);
+            try {
+                owners.add(owner.forked(UUID.fromString(id)));
+            } catch (IllegalArgumentException invalid) {
+                // A malformed ID names no fork; the default copies still report it absent.
+            }
+        }
+        return owners;
     }
 
     void discardDisk(UUID principalId, AccountCopyRecord record, ExecutionSession.Key key, WorkerClient.Hello hello) {

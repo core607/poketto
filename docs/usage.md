@@ -446,11 +446,11 @@ characters and an encoded bridge frame to 512 KiB. Refusals carry `code` and
 `reason`. See [MCP request admission removal](../notes/implemented/2026-09-15-mcp-request-admission-removal.md).
 
 `repo_exec` requires `expectedCopyId`: pass `"new"` to open the account's default
-copy, creating it only when absent, then pass the returned `copyId`. Reconnecting
-reattaches the copy, and closing the transport keeps it. Each successful operation
-renews its seven-day idle deadline (`retention.expiresAt`); expiry and discard remove
-local work. Clients of one account share the copy within a workspace and reading
-scope. `SESSION_REPLACED` and `EXECUTION_REFUSED` mean the command did not run.
+copy, creating it only when absent, or a separate copy while a command runs in it,
+then pass the returned `copyId`. Reconnecting reattaches a copy, and closing the
+transport keeps it. Each
+successful operation renews its seven-day idle deadline (`retention.expiresAt`);
+expiry and discard remove local work. `SESSION_REPLACED` and `EXECUTION_REFUSED` mean the command did not run.
 `EXECUTION_UNCONFIRMED` means it may have partly run, including remote writes: do not
 replay it; inspect the same copy with a read-only command,
 `retention.lastInterruptedCommand` and `poketto status`, and use `poketto recover` when

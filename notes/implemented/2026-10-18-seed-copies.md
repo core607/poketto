@@ -4,7 +4,7 @@ Date: 2026-10-18
 
 ## Problem
 
-A new full-read [account copy](2026-09-14-account-working-copies.md) exports the whole history as a bundle and clones it inside SRT. For a 168 MB repository on the 2 vCPU production host, on 2026-10-17, that took 12.5 s: about 7 s in the application, and 5.2 s with a 204 MB memory peak in the clone. Yet every full-read copy at one commit starts from identical bytes, and [concurrent agent copies](../proposed/2026-10-18-concurrent-agent-copies.md) need copies to be cheap.
+A new full-read [account copy](2026-09-14-account-working-copies.md) exports the whole history as a bundle and clones it inside SRT. For a 168 MB repository on the 2 vCPU production host, on 2026-10-17, that took 12.5 s: about 7 s in the application, and 5.2 s with a 204 MB memory peak in the clone. Yet every full-read copy at one commit starts from identical bytes, and [concurrent agent copies](2026-10-18-concurrent-agent-copies.md) need copies to be cheap.
 
 ## Decision
 

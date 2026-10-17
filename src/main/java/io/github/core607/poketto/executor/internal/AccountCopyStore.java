@@ -117,20 +117,57 @@ final class AccountCopyStore {
         }
     }
 
-    /** Routing only: the caller must lock the selected owner and check the copy ID again. */
+    /**
+     * Routing only: the caller must lock the selected owner and check the copy ID again. A named
+     * copy is the default copy of a scope the grant may read, or the fork with that ID; anything
+     * else routes to the permitted default, whose own check then reports the mismatch.
+     */
     AccountCopyRecord.Owner ownerFor(AccountCopyRecord.Owner permitted, String copyId) {
-        if (!permitted.fullRead() || copyId.equals("new")) {
+        if (copyId.equals("new")) {
             return permitted;
         }
+        UUID named;
+        try {
+            named = UUID.fromString(copyId);
+        } catch (IllegalArgumentException invalid) {
+            return permitted;
+        }
+        var scopes = permitted.fullRead()
+                ? List.of(permitted, new AccountCopyRecord.Owner(permitted.accountId(), permitted.workspaceId(), false))
+                : List.of(permitted);
         try (var index = index()) {
             index.requireValid();
-            var current = stored(permitted);
-            if (current != null && current.copyId().toString().equals(copyId)) {
-                return permitted;
+            for (var scope : scopes) {
+                var current = stored(scope);
+                if (current != null && current.copyId().equals(named)) {
+                    return scope;
+                }
+                var fork = scope.forked(named);
+                if (stored(fork) != null) {
+                    return fork;
+                }
             }
-            var publicOwner = new AccountCopyRecord.Owner(permitted.accountId(), permitted.workspaceId(), false);
-            var publicCopy = stored(publicOwner);
-            return publicCopy != null && publicCopy.copyId().toString().equals(copyId) ? publicOwner : permitted;
+            return permitted;
+        } catch (IOException failure) {
+            throw unavailable(failure);
+        }
+    }
+
+    /** How many copies, default and forks in both scopes, this account holds in this workspace. */
+    int copiesOf(UUID account, UUID workspace) {
+        try (var index = index()) {
+            index.requireValid();
+            int count = 0;
+            try (var entries = Files.newDirectoryStream(root, "*.account")) {
+                for (Path entry : entries) {
+                    directory.checkFile(entry);
+                    var owner = files.read(entry, StoredAccountCopy.class).owner();
+                    if (owner.accountId().equals(account) && owner.workspaceId().equals(workspace)) {
+                        count++;
+                    }
+                }
+            }
+            return count;
         } catch (IOException failure) {
             throw unavailable(failure);
         }
@@ -235,8 +272,10 @@ final class AccountCopyStore {
         return root.resolve(key(owner) + ".account");
     }
 
+    /** A default copy keeps its original address; a fork's address adds its copy ID. */
     private static String key(AccountCopyRecord.Owner owner) {
-        return SessionWorker.hash(owner.accountId() + ":" + owner.workspaceId() + ":" + owner.fullRead());
+        String base = owner.accountId() + ":" + owner.workspaceId() + ":" + owner.fullRead();
+        return SessionWorker.hash(owner.fork() == null ? base : base + ":" + owner.fork());
     }
 
     private static RetainedCopyException unavailable(IOException failure) {
