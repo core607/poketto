@@ -221,25 +221,27 @@ class DiskPool:
         """Reflink a freshly initialized copy into the seed for its key; an existing seed is kept.
 
         The caller guarantees that no command has run in source and that its control
-        group is empty, so the tree cannot change while it is read.
+        group is empty, so the tree cannot change while it is read. The copy runs into a
+        private staging name outside the seed lock, which is held only to publish and prune,
+        so a supervisor validating an open never waits for a copy to finish.
         """
         parent = self._seed_parent(workspace_id, scope)
-        with self._seeds_lock():
-            if self.seed(workspace_id, scope, commit) is not None:
-                return
-            for directory in (parent.parent, parent):
-                directory.mkdir(mode=0o700, exist_ok=True)
-            stage = parent / ('.creating-' + str(uuid.uuid4()))
-            stage.mkdir(mode=0o700)
-            try:
-                self._reflink([source / name for name in self.SEED_ENTRIES], stage)
-                self._sync(stage)
-                os.rename(stage, parent / commit)
-                self._sync(parent)
-            except BaseException:
-                self._remove(stage)
-                raise
-            self._prune_seeds(parent)
+        if self.seed(workspace_id, scope, commit) is not None:
+            return
+        for directory in (parent.parent, parent):
+            directory.mkdir(mode=0o700, exist_ok=True)
+        stage = parent / ('.creating-' + str(uuid.uuid4()))
+        stage.mkdir(mode=0o700)
+        try:
+            self._reflink([source / name for name in self.SEED_ENTRIES], stage)
+            self._sync(stage)
+            with self._seeds_lock():
+                if self.seed(workspace_id, scope, commit) is None:
+                    os.rename(stage, parent / commit)
+                    self._sync(parent)
+                self._prune_seeds(parent)
+        finally:
+            self._remove(stage)
 
     def claim_seed(self, workspace_id, scope, commit):
         """True when the seed exists; its refreshed time keeps it from pruning for the grace period."""
@@ -250,13 +252,15 @@ class DiskPool:
             return seed is not None
 
     def populate_from_seed(self, target, workspace_id, scope, commit):
-        """Reflink the seed into a new, still unpublished-to-commands copy; False when it is absent."""
-        with self._seeds_lock():
-            seed = self.seed(workspace_id, scope, commit)
-            if seed is None:
-                return False
-            self._reflink([seed / name for name in self.SEED_ENTRIES], target)
-            os.utime(seed)
+        """Reflink the seed into a new copy no command has reached; False when it is absent.
+
+        The claim refreshes the seed's time under the lock, so the copy itself can run
+        outside it: pruning never removes a seed within its grace period.
+        """
+        seed = self.seed(workspace_id, scope, commit) if self.claim_seed(workspace_id, scope, commit) else None
+        if seed is None:
+            return False
+        self._reflink([seed / name for name in self.SEED_ENTRIES], target)
         self._sync(target)
         return True
 
