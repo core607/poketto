@@ -45,6 +45,10 @@ final class RepositoryDocumentScanner {
 
     private record Key(String path, int mode, ObjectId blob, boolean publicScope) {}
 
+    void forget(WorkspaceId workspaceId) {
+        kept.remove(workspaceId);
+    }
+
     /** Callers serialize scans of one workspace, as the authority's workspace lock does for snapshots. */
     Scan scan(
             WorkspaceId workspaceId,

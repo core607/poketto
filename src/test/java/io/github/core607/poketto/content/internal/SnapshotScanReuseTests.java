@@ -67,6 +67,21 @@ class SnapshotScanReuseTests {
         }
     }
 
+    @Test
+    void anUnpublishedSpaceKeepsNoDocumentsForItsNextBuild() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        fixture.commitRemote(workspace, tree("public/a.md", "# A\n"));
+        var first = document(read(fixture, reader), "public/a.md");
+        assertThat(document(read(fixture, reader), "public/a.md").body()).isSameAs(first.body());
+
+        reader.forgetSnapshot(workspace);
+
+        var rebuilt = document(read(fixture, reader), "public/a.md");
+        assertThat(rebuilt).isEqualTo(first);
+        assertThat(rebuilt.body()).isNotSameAs(first.body());
+    }
+
     private RepositoryTree read(RemoteRepositoryFixture fixture, JGitRepositoryContentReader reader) {
         return fixture.authority()
                 .readObjects(workspace, snapshot -> reader.readSnapshot(workspace, snapshot, eligible));

@@ -20,8 +20,14 @@ import org.commonmark.parser.Parser;
 /** CommonMark AST destinations, not regular-expression matches inside code or raw HTML. */
 public final class MarkdownDestinations {
     private static final Parser PARSER = Parser.builder().build();
-    /** Characters of the bodies whose destinations are remembered; the least recently used go first. */
+    /**
+     * Characters of the bodies whose destinations are remembered, the least recently used going
+     * first. Each entry also counts a fixed cost for its map entry and sets, so many short bodies
+     * cannot hold more memory than a few long ones.
+     */
     private static final long REMEMBERED_CHARACTERS = 16L * 1024 * 1024;
+
+    private static final int ENTRY_COST = 512;
 
     private static final Map<String, Destinations> REMEMBERED = new LinkedHashMap<>(64, 0.75f, true);
     private static long remembered;
@@ -45,10 +51,10 @@ public final class MarkdownDestinations {
         Destinations parsed = parseUncached(body);
         synchronized (REMEMBERED) {
             if (REMEMBERED.putIfAbsent(body, parsed) == null) {
-                remembered += body.length();
+                remembered += body.length() + ENTRY_COST;
                 var oldest = REMEMBERED.entrySet().iterator();
                 while (remembered > REMEMBERED_CHARACTERS && oldest.hasNext()) {
-                    remembered -= oldest.next().getKey().length();
+                    remembered -= oldest.next().getKey().length() + ENTRY_COST;
                     oldest.remove();
                 }
             }

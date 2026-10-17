@@ -23,7 +23,7 @@ Date: 2026-10-16
 
 ## Consequences
 
-A save's snapshot cost follows the documents it changed. Correctness depends on the key covering every input of a document's parse; the equivalence test compares a reusing build with a fresh one after each edit. The cache and the remembered destinations add memory on the order of the public snapshots' own text.
+A save's snapshot cost follows the documents it changed. Correctness depends on the key covering every input of a document's parse; the equivalence test compares a reusing build with a fresh one after each edit. The cache and the remembered destinations add memory on the order of the public snapshots' own text: a space that stops publishing drops its kept documents, and each remembered body also counts a fixed entry cost, so many short bodies cannot outgrow the bound.
 
 ## Verification
 
