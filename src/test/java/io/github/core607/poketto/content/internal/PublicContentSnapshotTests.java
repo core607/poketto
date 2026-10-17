@@ -204,6 +204,25 @@ class PublicContentSnapshotTests {
     }
 
     @Test
+    void anInvalidPolicyKeepsNoDocumentsForTheBuildThatFollowsItsRepair() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, transport);
+        var published = Map.of(RepositoryPublishingPolicy.PATH, policy(true), "public/hello.md", text("# Hello"));
+        fixture.commitRemote(workspace, published);
+        var snapshots = snapshots(fixture);
+        String before = snapshots.refresh(workspace).articles().getFirst().body();
+        fixture.commitRemote(
+                workspace,
+                Map.of(RepositoryPublishingPolicy.PATH, text("enabled: [secret"), "public/hello.md", text("# Hello")));
+        assertThatThrownBy(() -> snapshots.refresh(workspace)).isInstanceOf(ContentRepositoryException.class);
+
+        fixture.commitRemote(workspace, published);
+
+        // Parsed again rather than carried over from the build before the policy broke.
+        String after = snapshots.refresh(workspace).articles().getFirst().body();
+        assertThat(after).isEqualTo(before).isNotSameAs(before);
+    }
+
+    @Test
     void outageNeverRenewsExpiryAndBoundaryTurnsReadinessUnavailable() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory, transport);
         fixture.commitRemote(
