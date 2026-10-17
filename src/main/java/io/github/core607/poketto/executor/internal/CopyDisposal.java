@@ -130,10 +130,8 @@ final class CopyDisposal {
                 if (record.phase() != AccountCopyRecord.Phase.DISCARDING) {
                     lease.write(record.discarding());
                 }
-                var key = new ExecutionSession.Key(
-                        owner.accountId(),
-                        new WorkspaceId(owner.workspaceId()),
-                        SessionWorker.hash(owner.fullRead() ? "full" : "public"));
+                // A fork's lease key names its copy, so the default copy's key would miss it.
+                var key = SessionLifecycle.keyFor(owner);
                 var hello = worker.hello();
                 fenceCollectedAccount(record, key, hello);
                 discardDisk(record.writer().principalId(), record, key, hello);

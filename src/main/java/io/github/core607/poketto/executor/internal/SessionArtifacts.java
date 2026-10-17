@@ -44,13 +44,29 @@ final class SessionArtifacts {
         var access = io.authorize(principal, workspace);
         validateArtifactRequest(artifactId, offset, limit);
         boolean readsPrivate = access.capabilities().contains(Capability.READ_PRIVATE);
+        // Idle copies first, without waiting: a command running in one copy of the account must
+        // not hold up a read from another. Copies busy then are waited for afterwards, as before.
+        var busy = new ArrayList<AccountCopyRecord.Owner>();
         for (var owner : owners(principal, workspace, readsPrivate)) {
-            try (var held = new AccountCommand(accounts, owner, cancellation)) {
-                if (held.record() == null || accounts.expired(held.record())) {
+            try {
+                var idle = AccountCommand.ifIdle(accounts, owner);
+                if (idle.isEmpty()) {
+                    busy.add(owner);
                     continue;
                 }
-                held.requireLive();
-                var page = readAccount(principal, workspace, artifactId, offset, limit, cancellation, held);
+                try (var held = idle.get()) {
+                    var page = readHeld(principal, workspace, artifactId, offset, limit, cancellation, held);
+                    if (page.isPresent()) {
+                        return page;
+                    }
+                }
+            } catch (RuntimeException failure) {
+                throw IsolatedRepositoryExecutor.admissionFailure(failure, null);
+            }
+        }
+        for (var owner : busy) {
+            try (var held = new AccountCommand(accounts, owner, cancellation)) {
+                var page = readHeld(principal, workspace, artifactId, offset, limit, cancellation, held);
                 if (page.isPresent()) {
                     return page;
                 }
@@ -59,6 +75,21 @@ final class SessionArtifacts {
             }
         }
         return Optional.empty();
+    }
+
+    private Optional<ArtifactChunk> readHeld(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            String artifactId,
+            long offset,
+            int limit,
+            ExecutionCancellation cancellation,
+            AccountCommand held) {
+        if (held.record() == null || accounts.expired(held.record())) {
+            return Optional.empty();
+        }
+        held.requireLive();
+        return readAccount(principal, workspace, artifactId, offset, limit, cancellation, held);
     }
 
     /**

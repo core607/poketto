@@ -480,6 +480,104 @@ class WorkerSocketTests {
     }
 
     @Test
+    void anExpiredForkIsFencedAndDiscardedUnderItsOwnLeaseIdentity() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.stallExec = true;
+            var first = CompletableFuture.supplyAsync(() -> client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "one",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation()));
+            assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            var fork = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "two",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            assertThat(fork.copyId())
+                    .isNotEqualTo(first.get(5, TimeUnit.SECONDS).copyId());
+
+            peer.accounts.expireAll();
+            assertThat(executor.collectExpiredCopies()).isEqualTo(2);
+
+            assertThat(peer.operations("DISCARD"))
+                    .extracting(request -> request.path("data").path("copyId").asString(""))
+                    .contains(fork.copyId());
+            String forkLease = peer.operations("OPEN").stream()
+                    .filter(request ->
+                            request.path("data").path("copyId").asString("").equals(fork.copyId()))
+                    .findFirst()
+                    .orElseThrow()
+                    .path("leaseId")
+                    .asString("");
+            // Every request about the fork's lease carries the identity it was opened with.
+            assertThat(peer.requests.stream()
+                            .filter(request ->
+                                    request.path("leaseId").asString("").equals(forkLease))
+                            .map(request -> request.path("serverSessionHash").asString(""))
+                            .distinct())
+                    .hasSize(1);
+        }
+    }
+
+    @Test
+    void anArtifactInAForkIsReadWhileTheDefaultCopyRunsACommand() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.holdFirstExec.set(true);
+            var first = CompletableFuture.supplyAsync(() -> client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "one",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(10),
+                    new Cancellation()));
+            assertThat(peer.execEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            var fork = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "two",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            peer.artifactLease = peer.operations("OPEN").stream()
+                    .filter(request ->
+                            request.path("data").path("copyId").asString("").equals(fork.copyId()))
+                    .findFirst()
+                    .orElseThrow()
+                    .path("leaseId")
+                    .asString("");
+            String artifact = UUID.randomUUID().toString();
+
+            // The default copy is still inside its command; the read must not wait for it.
+            var page = CompletableFuture.supplyAsync(
+                            () -> executor.readArtifact(actor, WORKSPACE, artifact, 0, 2, new Cancellation()))
+                    .get(1, TimeUnit.SECONDS);
+
+            assertThat(page)
+                    .hasValueSatisfying(chunk -> assertThat(chunk.bytes()).hasSize(2));
+            assertThat(first).isNotDone();
+            peer.execHold.countDown();
+            assertThat(first.get(5, TimeUnit.SECONDS).exitCode()).isZero();
+        }
+    }
+
+    @Test
     void incompatibleWorkerIsRejectedBeforeOpeningOrExportingContent() throws Exception {
         var exports = exports();
         try (var peer = new Peer();
@@ -1475,6 +1573,9 @@ class WorkerSocketTests {
         private volatile boolean oversizedHello;
         private volatile int codeActProtocol = 1;
         private volatile int artifactProtocol = 1;
+        private volatile String artifactLease = "";
+        private final AtomicBoolean holdFirstExec = new AtomicBoolean();
+        private final CountDownLatch execHold = new CountDownLatch(1);
         private volatile int moveProtocol = 1;
         private volatile int exportProtocol = 1;
         private volatile boolean wrongRequestId;
@@ -1726,6 +1827,9 @@ class WorkerSocketTests {
                     if (stallExec) {
                         Thread.sleep(500);
                     }
+                    if (holdFirstExec.compareAndSet(true, false)) {
+                        assertThat(execHold.await(8, TimeUnit.SECONDS)).isTrue();
+                    }
                     var result = new LinkedHashMap<String, Object>(Map.of(
                             "commit",
                             COMMIT,
@@ -1762,6 +1866,24 @@ class WorkerSocketTests {
                     }
                 }
                 case "BRIDGE_COMPLETE" -> bridgeCompleted.countDown();
+                case "ARTIFACT_READ" -> {
+                    if (!lease.equals(artifactLease)) {
+                        response.put("ok", false);
+                        response.put("code", "ARTIFACT_UNAVAILABLE");
+                    } else {
+                        response.put(
+                                "artifactId",
+                                request.path("data").path("artifactId").asString(""));
+                        response.put("name", "out.txt");
+                        response.put("mediaType", "text/plain");
+                        response.put("bytes", 2);
+                        response.put("sha256", "0".repeat(64));
+                        response.put("truncated", false);
+                        response.put("expiresInSeconds", 60);
+                        response.put("offset", 0);
+                        response.put("data", "b2s=");
+                    }
+                }
                 case "CLOSE" -> {
                     if (dropClose) {
                         return null;

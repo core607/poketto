@@ -1,6 +1,7 @@
 package io.github.core607.poketto.executor.internal;
 
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -57,6 +58,16 @@ final class SocketAccountJournal {
 
     AccountCopyStore store() {
         return store;
+    }
+
+    /** Makes every recorded copy a collection candidate, as an expiry would. */
+    void expireAll() {
+        when(store.collectible(any())).thenReturn(true);
+        when(store.collectionCandidates(anyInt()))
+                .thenAnswer(call -> entries.entrySet().stream()
+                        .filter(entry -> entry.getValue().record.get() != null)
+                        .map(Map.Entry::getKey)
+                        .toList());
     }
 
     /** How many acquisitions found the account lock held by another request. */
