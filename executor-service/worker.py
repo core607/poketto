@@ -38,6 +38,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 MAX_FRAME = 1048576
 MAX_COMMAND = 65536
 MAX_OUTPUT = MAX_OUTPUT_BYTES
+# The application waits five seconds beyond a command's timeout for everything else an EXEC does;
+# making room for its unit may spend two of them, so a late start is refused instead of run unseen.
+ROOM_SECONDS = 2
 IDENTITY = ('principalId', 'accountId', 'workspaceId', 'serverSessionHash')
 
 
@@ -766,23 +769,30 @@ class Service:
     def make_room(self, s):
         """Before s starts a unit, stop the least recently used idle units beyond maxLiveUnits.
 
-        False when every other live unit is running a command; s then starts nothing.
+        False when every other live unit is running a command; s then starts nothing. A unit
+        that idle cleanup or another opener is already stopping frees its place soon, so that
+        case waits for it. All of it fits in ROOM_SECONDS; room found later is left for a retry.
         """
         limit = self.config.get('maxLiveUnits')
+        deadline = time.monotonic() + ROOM_SECONDS
         while limit:
             with self.lock:
                 live = [x for x in self.sessions.values() if x is not s and x.channel is not None]
                 if len(live) < limit:
-                    return True
+                    return time.monotonic() < deadline
                 victim = None
                 for candidate in sorted(live, key=lambda x: x.idle_since):
                     if candidate.state == 'READY' and candidate.operation.acquire(blocking=False):
                         candidate.state = 'UPDATING'
                         victim = candidate
                         break
-                if victim is None:
-                    return False
-            self.stop_idle_unit(victim)
+                stopping = any(x.state == 'UPDATING' for x in live)
+            if victim is not None:
+                self.stop_idle_unit(victim)
+            elif not stopping or time.monotonic() >= deadline:
+                return False
+            else:
+                time.sleep(0.05)
         return True
 
     def shutdown(self):

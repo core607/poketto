@@ -120,6 +120,43 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual('READY', first.state)
         self.assertFalse(first.cancelled.is_set())
 
+    def test_a_unit_already_stopping_frees_its_place_instead_of_a_refusal(self):
+        self.service.config['maxLiveUnits'] = 1
+        self.opened()
+        first = self.service.sessions[self.identity['leaseId']]
+        first.channel, first.unit, first.bridge = object(), 'first-unit', Mock()
+        first.state = 'UPDATING'
+        self.identity = {**self.identity, 'leaseId': uid(), 'serverSessionHash': 'b' * 64}
+        self.opened()
+        self.service.sessions[self.identity['leaseId']].bridge = Mock()
+
+        def finish_stopping():
+            time.sleep(0.2)
+            first.channel = None
+            first.state = 'READY'
+
+        threading.Thread(target=finish_stopping).start()
+        self.assertTrue(self.send(self.execution())['ok'])
+
+    def test_a_stop_that_outlasts_the_room_budget_refuses_the_command_before_it_runs(self):
+        self.service.config['maxLiveUnits'] = 1
+        self.opened()
+        first = self.service.sessions[self.identity['leaseId']]
+        first.channel, first.unit, first.bridge = object(), 'first-unit', Mock()
+        first.state = 'UPDATING'
+        self.identity = {**self.identity, 'leaseId': uid(), 'serverSessionHash': 'b' * 64}
+        self.opened()
+        second = self.service.sessions[self.identity['leaseId']]
+        second.bridge = Mock()
+
+        with patch('worker.ROOM_SECONDS', 0.2):
+            refused = self.send(self.execution())
+        self.assertEqual('EXECUTION_CAPACITY', refused['code'])
+        self.assertEqual('READY', second.state)
+        self.assertIsNone(second.channel)
+        first.channel, first.state = None, 'READY'
+        self.assertTrue(self.send(self.execution())['ok'])
+
     def test_idle_configuration_is_explicit_and_bounded(self):
         example = json.loads(Path(__file__).with_name('config.example.json').read_text())
         with tempfile.TemporaryDirectory() as directory:
