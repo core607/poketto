@@ -36,6 +36,7 @@ from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 MAX_FRAME = 1048576
+LOG = logging.getLogger('poketto.worker')
 MAX_COMMAND = 65536
 MAX_OUTPUT = MAX_OUTPUT_BYTES
 # The application waits five seconds beyond a command's timeout for everything else an EXEC does;
@@ -1398,17 +1399,32 @@ class Handler(socketserver.BaseRequestHandler):
 
 class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
-    request_queue_size = 16
+    # Requests arrive in bursts while the host is busy; a backlog of 16 made the kernel refuse
+    # connections that the capacity bound would have admitted moments later.
+    request_queue_size = 256
+    refused_at = 0.0
 
     def process_request(self, request, client_address):
         if not self.capacity.acquire(blocking=False):
-            self.shutdown_request(request)
+            self.refuse(request, 'maxConnections reached')
             return
         try:
             super().process_request(request, client_address)
+        except RuntimeError:
+            # No thread could be started, as when the service's TasksMax is exhausted.
+            self.capacity.release()
+            self.refuse(request, 'no thread could be started')
         except Exception:
             self.capacity.release()
             raise
+
+    def refuse(self, request, reason):
+        """Closes a connection unread. The client cannot tell this from a lost reply, so say so."""
+        self.shutdown_request(request)
+        now = time.monotonic()
+        if now - self.refused_at >= 1:
+            self.refused_at = now
+            LOG.warning('refused a connection unread: %s', reason)
 
     def process_request_thread(self, request, client_address):
         try:
