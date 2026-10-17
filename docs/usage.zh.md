@@ -57,6 +57,7 @@ Poketto 的运行依赖、内容配置、MCP 接入与部署参考。
 
 - `POKETTO_REPOSITORY_CACHE_MAX_WORKSPACES`（默认 32）与 `POKETTO_REPOSITORY_TIMEOUT_SECONDS`（默认 30）。
 - `POKETTO_REPOSITORY_REFRESH_SECONDS`（默认 30）：所服务内容多久对照远端 `main` 重新校验一次。合法的直接推送在下一次刷新后可见；经 Poketto 的写入立即可见。
+- `POKETTO_REPOSITORY_READ_FETCH_REUSE_MILLIS`（默认 0）：读取最新 `main` 时沿用这段时间内的抓取或保存结果；写入始终核对远端 `main`。
 - `POKETTO_REPOSITORY_STALE_AFTER_SECONDS`（默认 3600；不超过 3600，也不小于刷新间隔）：所服务内容最多多久没有成功重新校验，readiness 就报告停止服务，公开读取失败关闭。进程继续运行并重试。
 
 `GET /actuator/health` 回应部署检查，`GET /api/public/documents` 列出默认工作空间的公开文档。

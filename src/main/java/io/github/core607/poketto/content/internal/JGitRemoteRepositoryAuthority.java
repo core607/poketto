@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 import org.eclipse.jgit.lib.ObjectId;
@@ -30,6 +31,8 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     private final RemoteGitTransport transport;
     private final RepositoryCaches caches;
     private final Clock clock;
+    private final Duration readFetchReuse;
+    private final Map<WorkspaceId, Long> fetched = new ConcurrentHashMap<>();
     private final Map<WorkspaceId, CacheLock> workspaceLocks = new HashMap<>();
     private final ReentrantLock cacheLifecycleLock = new ReentrantLock();
     private final ScopedValue<PreparedBinding> prepared = ScopedValue.newInstance();
@@ -40,6 +43,25 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             RemoteGitTransport transport,
             int maxCachedWorkspaces,
             Clock clock) {
+        this(paths, bindings, transport, maxCachedWorkspaces, clock, Duration.ZERO);
+    }
+
+    /**
+     * {@code readFetchReuse} lets a read of the latest main use the cache's main when a fetch or a
+     * push recorded it that recently. Every waiting reader would otherwise repeat the same fetch
+     * under the workspace lock. Writes always fetch, or check their declared base by exact push.
+     */
+    JGitRemoteRepositoryAuthority(
+            WorkspacePaths paths,
+            RepositoryBindingSource bindings,
+            RemoteGitTransport transport,
+            int maxCachedWorkspaces,
+            Clock clock,
+            Duration readFetchReuse) {
+        this.readFetchReuse = Objects.requireNonNull(readFetchReuse, "fetch reuse must not be null");
+        if (readFetchReuse.isNegative()) {
+            throw new IllegalArgumentException("fetch reuse must not be negative");
+        }
         this.paths = Objects.requireNonNull(paths, "workspace paths must not be null");
         this.bindings = Objects.requireNonNull(bindings, "binding source must not be null");
         this.transport = Objects.requireNonNull(transport, "remote transport must not be null");
@@ -80,7 +102,10 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     public <T> T readObjects(WorkspaceId workspaceId, Optional<String> knownMain, SnapshotReader<T> reader) {
         Objects.requireNonNull(reader, "snapshot reader must not be null");
         return inCache(
-                workspaceId, knownMain, (repository, binding, commit) -> reader.read(snapshot(repository, commit)));
+                workspaceId,
+                knownMain,
+                true,
+                (repository, binding, commit) -> reader.read(snapshot(repository, commit)));
     }
 
     @Override
@@ -197,11 +222,14 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         return inCache(
                 workspaceId,
                 declaredBase,
+                false,
                 (repository, binding, baseCommit) -> writer.write(snapshot(repository, baseCommit), candidateCommit -> {
                     ObjectId candidate = parseCommit(candidateCommit);
                     advance(workspaceId, repository, binding, baseCommit, candidate);
                     try {
                         RepositoryCaches.updateObjectRef(repository, candidate);
+                        // The exact push just made the candidate remote main.
+                        fetched.put(workspaceId, System.nanoTime());
                     } catch (ContentRepositoryException exception) {
                         throw new RepositoryWriteAmbiguousException(
                                 "remote acknowledged the patch but cache recording failed; read remote main before retrying");
@@ -210,10 +238,10 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     }
 
     private <T> T inCache(WorkspaceId workspaceId, CacheAction<T> action) {
-        return inCache(workspaceId, Optional.empty(), action);
+        return inCache(workspaceId, Optional.empty(), false, action);
     }
 
-    private <T> T inCache(WorkspaceId workspaceId, Optional<String> knownMain, CacheAction<T> action) {
+    private <T> T inCache(WorkspaceId workspaceId, Optional<String> knownMain, boolean read, CacheAction<T> action) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
         CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
         workspaceLock.lock.lock();
@@ -232,11 +260,15 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             ObjectId commit;
             try {
                 Optional<ObjectId> recorded = knownMain.flatMap(known -> recordedMain(opened, known));
+                if (recorded.isEmpty() && knownMain.isEmpty() && read) {
+                    recorded = recentMain(workspaceId, opened);
+                }
                 if (recorded.isPresent()) {
                     // A write's exact-ref push still checks remote main, and a named read pins it.
                     commit = recorded.get();
                 } else {
                     commit = transport.fetchMain(opened, binding);
+                    fetched.put(workspaceId, System.nanoTime());
                     // An unborn remote removes local main. Readers of already selected immutable
                     // objects may still be active, and the object store they read is kept.
                     RepositoryCaches.updateObjectRef(opened, commit);
@@ -254,6 +286,19 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         } finally {
             workspaceLock.lock.unlock();
             releaseWorkspaceLock(workspaceId, workspaceLock);
+        }
+    }
+
+    /** The cache's main when a fetch or push recorded it within the reuse window; otherwise empty. */
+    private Optional<ObjectId> recentMain(WorkspaceId workspaceId, Repository repository) {
+        Long at = fetched.get(workspaceId);
+        if (at == null || System.nanoTime() - at >= readFetchReuse.toNanos()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.ofNullable(repository.resolve(RepositoryCaches.MAIN));
+        } catch (IOException unreadable) {
+            return Optional.empty();
         }
     }
 
