@@ -657,7 +657,7 @@ class Service:
         # Polling must not hold the service lock or the command operation lock.
         try:
             if p['operation'] == 'BRIDGE_POLL':
-                request = s.bridge.poll()
+                request = s.bridge.poll(execution_id=execution_id)
             else:
                 s.bridge.complete(data['bridgeRequestId'], data['response'])
                 request = None
