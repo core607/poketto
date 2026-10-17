@@ -93,12 +93,35 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(self.send(self.execution())['ok'])
         session.bridge.reset_command.assert_called_once_with()
 
+    def test_a_fresh_unit_stops_the_least_recently_used_idle_unit_at_the_live_bound(self):
+        self.service.config['maxLiveUnits'] = 1
+        self.opened()
+        first = self.service.sessions[self.identity['leaseId']]
+        first.channel, first.unit, first.bridge = object(), 'first-unit', Mock()
+        self.identity = {**self.identity, 'leaseId': uid(), 'serverSessionHash': 'b' * 64}
+        self.opened()
+        second = self.service.sessions[self.identity['leaseId']]
+        second.bridge = Mock()
+
+        first.state = 'RUNNING'
+        refused = self.send(self.execution())
+        self.assertEqual('EXECUTION_CAPACITY', refused['code'])
+        self.assertEqual('READY', second.state)
+        self.assertFalse(second.cancelled.is_set())
+        self.assertFalse(self.backend.stopped)
+
+        first.state = 'READY'
+        self.assertTrue(self.send(self.execution())['ok'])
+        self.assertEqual([first.id], self.backend.stopped)
+        self.assertEqual('READY', first.state)
+        self.assertFalse(first.cancelled.is_set())
+
     def test_idle_configuration_is_explicit_and_bounded(self):
         example = json.loads(Path(__file__).with_name('config.example.json').read_text())
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'worker.json'
             path.write_text(json.dumps(example))
-            self.assertEqual(1800, load_config(path)['idleUnitSeconds'])
+            self.assertEqual(300, load_config(path)['idleUnitSeconds'])
             for value in (0, -1, 86401, True, None, '1800'):
                 path.write_text(json.dumps({**example, 'idleUnitSeconds': value}))
                 with self.subTest(value=value), self.assertRaises(Rejected):
