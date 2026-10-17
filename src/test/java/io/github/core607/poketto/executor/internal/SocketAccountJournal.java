@@ -27,6 +27,7 @@ final class SocketAccountJournal {
     private final AtomicInteger contended = new AtomicInteger();
     private final AtomicInteger removed = new AtomicInteger();
     private volatile Consumer<AccountCopyRecord> afterWrite = record -> {};
+    private volatile boolean full;
 
     SocketAccountJournal() throws IOException {
         when(store.nextExpiry())
@@ -58,6 +59,11 @@ final class SocketAccountJournal {
 
     AccountCopyStore store() {
         return store;
+    }
+
+    /** Fills the copy pool: acquiring an owner that has never been acquired fails with LIMIT. */
+    void fillPool() {
+        full = true;
     }
 
     /** Makes every recorded copy a collection candidate, as an expiry would. */
@@ -96,6 +102,10 @@ final class SocketAccountJournal {
     }
 
     private AccountCopyStore.Lease acquire(AccountCopyRecord.Owner owner) throws IOException {
+        if (full && !entries.containsKey(owner)) {
+            // As the store does: an owner without a lock file would be a new copy beyond the limit.
+            throw new RetainedCopyException(RetainedCopyException.Reason.LIMIT);
+        }
         Entry entry = entries.computeIfAbsent(owner, ignored -> new Entry());
         if (!entry.lock.tryLock()) {
             contended.incrementAndGet();

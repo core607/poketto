@@ -9,8 +9,6 @@ import io.github.core607.poketto.mcp.RepositoryExecutor.DiscardStatus;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -55,43 +53,30 @@ final class CopyDisposal {
             ExecutionCancellation cancellation) {
         requireAuthorization(principal, workspace, cancellation);
         // Cleanup remains available when read authority has been withdrawn; no content is returned.
-        for (var owner : candidates(principal, workspace, request.id())) {
-            try (var held = new AccountCommand(accounts, owner, cancellation)) {
-                var record = held.record();
-                if (record == null || !record.copyId().toString().equals(request.id())) {
-                    continue;
-                }
-                if (record.phase() != AccountCopyRecord.Phase.DISCARDING) {
-                    registry.requireCopyMatch(record, new CopyRequest(request.id()));
-                }
-                held.beginDiscard();
-                var key = SessionLifecycle.keyFor(owner);
-                var hello = worker.hello();
-                lifecycle.fenceAccount(principal, record, key, hello);
-                requireAuthorization(principal, workspace, cancellation);
-                discardDisk(principal.subjectId(), record, key, hello);
-                held.remove();
-                return new DiscardResult(request.id(), DiscardStatus.DISCARDED);
-            } catch (RuntimeException failure) {
-                throw IsolatedRepositoryExecutor.admissionFailure(failure, null);
+        // Routed without locking, so an owner that holds no such copy is never acquired: a fork address
+        // the ID does not name would count against the copy limit, and a default copy running a
+        // command would refuse the discard of an idle fork.
+        var full = new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), true);
+        var owner = accounts.ownerFor(full, request.id());
+        try (var held = new AccountCommand(accounts, owner, cancellation)) {
+            var record = held.record();
+            if (record == null || !record.copyId().toString().equals(request.id())) {
+                return new DiscardResult(request.id(), DiscardStatus.ABSENT);
             }
-        }
-        return new DiscardResult(request.id(), DiscardStatus.ABSENT);
-    }
-
-    /** Both scopes' default copies, and the forks the ID would name in each. */
-    private static List<AccountCopyRecord.Owner> candidates(AuthPrincipal principal, WorkspaceId workspace, String id) {
-        var owners = new ArrayList<AccountCopyRecord.Owner>();
-        for (boolean full : List.of(true, false)) {
-            var owner = new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), full);
-            owners.add(owner);
-            try {
-                owners.add(owner.forked(UUID.fromString(id)));
-            } catch (IllegalArgumentException invalid) {
-                // A malformed ID names no fork; the default copies still report it absent.
+            if (record.phase() != AccountCopyRecord.Phase.DISCARDING) {
+                registry.requireCopyMatch(record, new CopyRequest(request.id()));
             }
+            held.beginDiscard();
+            var key = SessionLifecycle.keyFor(owner);
+            var hello = worker.hello();
+            lifecycle.fenceAccount(principal, record, key, hello);
+            requireAuthorization(principal, workspace, cancellation);
+            discardDisk(principal.subjectId(), record, key, hello);
+            held.remove();
+            return new DiscardResult(request.id(), DiscardStatus.DISCARDED);
+        } catch (RuntimeException failure) {
+            throw IsolatedRepositoryExecutor.admissionFailure(failure, null);
         }
-        return owners;
     }
 
     void discardDisk(UUID principalId, AccountCopyRecord record, ExecutionSession.Key key, WorkerClient.Hello hello) {
