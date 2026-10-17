@@ -355,6 +355,11 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         }
     }
 
+    /** Drops the documents a public snapshot's read kept for this workspace. */
+    void forgetSnapshot(WorkspaceId workspaceId) {
+        scanner.forget(workspaceId);
+    }
+
     /** The public snapshot's read: unchanged documents of its previous build are reused, not parsed again. */
     RepositoryTree readSnapshot(
             WorkspaceId workspaceId, RepositoryAuthority.Snapshot snapshot, Predicate<String> eligible) {
