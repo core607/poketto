@@ -1405,7 +1405,6 @@ class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     # Requests arrive in bursts while the host is busy; a backlog of 16 made the kernel refuse
     # connections that the capacity bound would have admitted moments later.
     request_queue_size = 256
-    refused_at = 0.0
 
     def process_request(self, request, client_address):
         if not self.capacity.acquire(blocking=False):
@@ -1422,12 +1421,20 @@ class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
             raise
 
     def refuse(self, request, reason):
-        """Closes a connection unread. The client cannot tell this from a lost reply, so say so."""
+        """Closes a connection unread. The client cannot tell this from a lost reply, so say so.
+
+        Each reason logs at most once a second with the refusals since its last line, so a burst
+        shows its size and one reason cannot hide another.
+        """
         self.shutdown_request(request)
+        refusals = self.__dict__.setdefault('refusals', {})
+        logged_at, count = refusals.get(reason, (0.0, 0))
         now = time.monotonic()
-        if now - self.refused_at >= 1:
-            self.refused_at = now
-            LOG.warning('refused a connection unread: %s', reason)
+        if now - logged_at >= 1:
+            refusals[reason] = (now, 0)
+            LOG.warning('refused %d connection(s) unread: %s', count + 1, reason)
+        else:
+            refusals[reason] = (logged_at, count + 1)
 
     def process_request_thread(self, request, client_address):
         try:

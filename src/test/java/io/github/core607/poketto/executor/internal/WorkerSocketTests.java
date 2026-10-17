@@ -551,6 +551,23 @@ class WorkerSocketTests {
     }
 
     @Test
+    void aCommandTheWorkerRefusesStillClaimsItsCopy() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            command(executor, actor, "new");
+            var owner = new AccountCopyRecord.Owner(actor.accountId(), WORKSPACE.value(), true);
+            long completed = peer.accounts.record(owner).orElseThrow().expiresAt();
+            Thread.sleep(5);
+            peer.executionCapacity = true;
+
+            assertThatThrownBy(() -> command(executor, actor, "new")).isInstanceOf(ExecutionAdmissionException.class);
+
+            assertThat(peer.accounts.record(owner).orElseThrow().expiresAt()).isGreaterThan(completed);
+        }
+    }
+
+    @Test
     void anUnclaimedForkIsReusedBeforeAnotherIsOpened() throws Exception {
         var actor = principal();
         try (var peer = new Peer();

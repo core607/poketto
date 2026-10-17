@@ -66,9 +66,14 @@ final class AccountCopyStore {
         return record.expiresAt() <= clock.millis();
     }
 
-    /** Whether a command ran in the copy within the window; every command moves its expiry forward. */
+    /** Whether a command started in the copy within the window; each start moves its expiry forward. */
     boolean recentlyUsed(AccountCopyRecord record, Duration window) {
-        return record.expiresAt() - limits.idle().toMillis() > clock.millis() - window.toMillis();
+        return usedWithin(record.expiresAt(), limits.idle(), clock.millis(), window);
+    }
+
+    /** The expiry is the last command's start plus the idle retention, so that start is recoverable. */
+    static boolean usedWithin(long expiresAt, Duration idle, long now, Duration window) {
+        return expiresAt - idle.toMillis() > now - window.toMillis();
     }
 
     boolean collectible(AccountCopyRecord record) {
