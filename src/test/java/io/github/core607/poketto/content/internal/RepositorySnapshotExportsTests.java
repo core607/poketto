@@ -423,6 +423,23 @@ class RepositorySnapshotExportsTests {
     }
 
     @Test
+    void resolvingNamesTheCommitAnExportWouldCarryWithoutWritingABundle() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var first = fixture.commitRemote(workspace, Map.of("private/a.md", text("a")));
+        var head = fixture.commitRemote(workspace, Map.of("private/b.md", text("b")));
+        var exports = exporter(fixture, 1024 * 1024);
+
+        assertThat(exports.resolve(actor, workspace, Optional.empty())).isEqualTo(head.name());
+        assertThat(exports.resolve(actor, workspace, Optional.of(first.name()))).isEqualTo(first.name());
+        assertThatThrownBy(() -> exports.resolve(actor, workspace, Optional.of("f".repeat(40))))
+                .isInstanceOf(ContentRepositoryException.class);
+        assertThat(directory.resolve("exports"))
+                .satisfiesAnyOf(
+                        path -> assertThat(path).doesNotExist(),
+                        path -> assertThat(path).isEmptyDirectory());
+    }
+
+    @Test
     void anIncrementalExportBoundsOnlyTheObjectsItAdds() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var baseline = fixture.commitRemote(workspace, Map.of("large.txt", new byte[32_000]));

@@ -335,6 +335,27 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     }
 
     @Override
+    public String resolve(AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested) {
+        auth.authorize(actor, workspace, Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
+        return authority.withPreparedCredentials(
+                workspace,
+                () -> auth.withAuthorization(
+                        actor,
+                        workspace,
+                        Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY),
+                        () -> authority.readObjects(workspace, Optional.empty(), snapshot -> {
+                            String head = snapshot.commitId().orElseThrow(RepositoryEmptyException::new);
+                            try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspace)) {
+                                return reachable(repository, head, requested, System.nanoTime() + timeout.toNanos());
+                            } catch (IOException exception) {
+                                throw new ContentRepositoryException(
+                                        "repository execution commit could not be resolved within its bounds",
+                                        exception);
+                            }
+                        })));
+    }
+
+    @Override
     public Export update(AuthPrincipal actor, WorkspaceId workspace, String baseline, String commit) {
         if (baseline == null || !baseline.matches("[0-9a-f]{40}")) {
             throw new IllegalArgumentException("baseline must be an exact commit id");
@@ -365,11 +386,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                             Path pending = staging.resolve(id + ".pending");
                             try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspace)) {
                                 long deadline = System.nanoTime() + timeout.toNanos();
-                                String commit = requested.orElse(head);
-                                if (!commit.matches("[0-9a-f]{40}")) {
-                                    throw unavailable();
-                                }
-                                requireReachable(repository, head, commit, deadline);
+                                String commit = reachable(repository, head, requested, deadline);
                                 preflight(repository, commit, baseline, deadline);
                                 safeStaging();
                                 clearAbandoned();
@@ -393,9 +410,13 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                         }));
     }
 
-    // The requested commit must be reachable from the authority head within the walk bound.
-    private static void requireReachable(Repository repository, String head, String commit, long deadline)
+    /** The requested commit, or the head, once it is found from the head within the walk bound. */
+    private static String reachable(Repository repository, String head, Optional<String> requested, long deadline)
             throws IOException {
+        String commit = requested.orElse(head);
+        if (!commit.matches("[0-9a-f]{40}")) {
+            throw unavailable();
+        }
         try (RevWalk walk = new RevWalk(repository)) {
             walk.markStart(walk.parseCommit(ObjectId.fromString(head)));
             int count = 0;
@@ -405,7 +426,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                     throw unavailable();
                 }
                 if (item.name().equals(commit)) {
-                    return;
+                    return commit;
                 }
             }
             throw unavailable();

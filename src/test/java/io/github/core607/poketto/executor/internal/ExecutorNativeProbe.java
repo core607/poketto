@@ -99,6 +99,14 @@ public final class ExecutorNativeProbe {
             }
 
             @Override
+            public String resolve(AuthPrincipal actor, WorkspaceId selected, Optional<String> requested) {
+                if (requested.isPresent() && !requested.get().equals(commit)) {
+                    throw new IllegalArgumentException();
+                }
+                return commit;
+            }
+
+            @Override
             public PublicExport createPublic(AuthPrincipal actor, WorkspaceId selected) {
                 throw new UnsupportedOperationException("native fixture provides full repository exports only");
             }

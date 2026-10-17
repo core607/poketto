@@ -56,6 +56,7 @@ final class WorkerRequests {
                     Open,
                     Renew,
                     Revoke,
+                    SeededOpen,
                     Transfer,
                     TransferChunk {}
 
@@ -95,6 +96,16 @@ final class WorkerRequests {
             hex(bundleSha256, 64, "bundleSha256");
             require(bundleBytes > 0, "bundleBytes", "must be positive");
             hex(commit, 40, "commit");
+        }
+    }
+
+    /** Opens a copy from the worker's pristine seed at exactly this commit, or is refused with SEED_ABSENT. */
+    record SeededOpen(UUID copyId, String scope, String commit, boolean seed) implements Data {
+        SeededOpen {
+            require(copyId != null, "copyId", "must be present");
+            scope = retainedScope(scope);
+            hex(commit, 40, "commit");
+            require(seed, "seed", "must be true");
         }
     }
 

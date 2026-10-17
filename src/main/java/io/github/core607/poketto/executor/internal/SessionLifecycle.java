@@ -81,7 +81,11 @@ final class SessionLifecycle {
         initializeCopy(session, requested, held, AccountCopyRecord.Phase.INITIALIZING);
     }
 
-    /** Exports and opens a new copy; {@code phase} is the journal phase recorded until it is ready. */
+    /**
+     * Opens a new copy; {@code phase} is the journal phase recorded until it is ready. A full copy
+     * first asks the worker for a seed at the commit an export would carry, which makes the export
+     * and the clone unnecessary; without one, it is exported at that same commit.
+     */
     void initializeCopy(
             ExecutionSession session, Optional<String> requested, AccountCommand held, AccountCopyRecord.Phase phase) {
         if (!session.fullRead && requested.isPresent()) {
@@ -89,47 +93,75 @@ final class SessionLifecycle {
         }
         session.hello = worker.hello();
         requireLive(session);
+        if (session.fullRead) {
+            begin(session, exports.resolve(session.principal, session.key.workspace(), requested));
+            try {
+                record(session, held, phase);
+                long deadline = System.nanoTime() + openTimeout.toNanos();
+                JsonNode seeded = requestOpen(
+                        session, new WorkerRequests.SeededOpen(session.copyId, "full", session.commit, true));
+                if (!WorkerResponses.refused(seeded, "SEED_ABSENT")) {
+                    awaitInitialized(session, seeded, deadline);
+                    return;
+                }
+            } catch (RuntimeException exception) {
+                abandonOpen(session);
+                throw exception;
+            }
+        }
         RepositorySnapshotExports.Export export;
         if (session.fullRead) {
-            export = exports.create(session.principal, session.key.workspace(), requested);
+            export = exports.create(session.principal, session.key.workspace(), Optional.of(session.commit));
         } else {
             session.publicExport = exports.createPublic(session.principal, session.key.workspace());
             export = session.publicExport.export();
+            begin(session, export.commit());
         }
-        session.commit = export.commit();
-        session.saveState = new SelectedFileSaves.State(session.commit);
         try {
-            record(session, held, phase);
-            requireLive(session);
-            io.authorize(session);
-            synchronized (session) {
-                requireLive(session);
-                session.openAttempted = true;
-                session.nextRenew = System.nanoTime()
-                        + Duration.ofSeconds(session.hello.renewAfterSeconds()).toNanos();
+            if (!session.fullRead) {
+                record(session, held, phase);
             }
             long deadline = System.nanoTime() + openTimeout.toNanos();
-            JsonNode response = io.request(
+            JsonNode response = requestOpen(
                     session,
-                    "OPEN",
                     new WorkerRequests.Open(
                             session.copyId,
                             session.fullRead ? "full" : "public",
                             export.exportId(),
                             export.bundleSha256(),
                             export.bundleBytes(),
-                            export.commit()),
-                    openTimeout);
+                            export.commit()));
             awaitInitialized(session, response, deadline);
         } catch (RuntimeException exception) {
-            try {
-                stopAndAwait(session, "cancelled");
-            } catch (RuntimeException closeFailure) {
-                log.warn("Failed opening worker lease remains unconfirmed; renewal stopped", closeFailure);
-            }
+            abandonOpen(session);
             throw exception;
         } finally {
             exports.release(export.exportId());
+        }
+    }
+
+    private static void begin(ExecutionSession session, String commit) {
+        session.commit = commit;
+        session.saveState = new SelectedFileSaves.State(commit);
+    }
+
+    private JsonNode requestOpen(ExecutionSession session, WorkerRequests.Data data) {
+        requireLive(session);
+        io.authorize(session);
+        synchronized (session) {
+            requireLive(session);
+            session.openAttempted = true;
+            session.nextRenew = System.nanoTime()
+                    + Duration.ofSeconds(session.hello.renewAfterSeconds()).toNanos();
+        }
+        return io.request(session, "OPEN", data, openTimeout);
+    }
+
+    private void abandonOpen(ExecutionSession session) {
+        try {
+            stopAndAwait(session, "cancelled");
+        } catch (RuntimeException closeFailure) {
+            log.warn("Failed opening worker lease remains unconfirmed; renewal stopped", closeFailure);
         }
     }
 

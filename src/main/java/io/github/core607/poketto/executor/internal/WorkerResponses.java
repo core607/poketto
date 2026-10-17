@@ -92,6 +92,7 @@ final class WorkerResponses {
             int gitBaselineProtocol,
             int workspaceSyncProtocol,
             int leaseSandboxProtocol,
+            int seedProtocol,
             String workerBootId,
             int leaseSeconds,
             int renewAfterSeconds) {
@@ -108,6 +109,7 @@ final class WorkerResponses {
             require(gitBaselineProtocol == 1, "gitBaselineProtocol", "must be 1");
             require(workspaceSyncProtocol == 1, "workspaceSyncProtocol", "must be 1");
             require(leaseSandboxProtocol == 1, "leaseSandboxProtocol", "must be 1");
+            require(seedProtocol == 1, "seedProtocol", "must be 1");
             require(leaseSeconds >= 10 && leaseSeconds <= 3600, "leaseSeconds", "must be between 10 and 3600");
             // Renewing three times within one lease leaves room for two lost attempts.
             require(
