@@ -37,6 +37,9 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 MAX_FRAME = 1048576
 LOG = logging.getLogger('poketto.worker')
+# An empty bridge poll waits this long. Most commands raise no bridge request, and the command's
+# end wakes the poll at once, so a longer wait only removes empty round trips.
+BRIDGE_POLL_SECONDS = 1.0
 MAX_COMMAND = 65536
 MAX_OUTPUT = MAX_OUTPUT_BYTES
 # The application waits five seconds beyond a command's timeout for everything else an EXEC does;
@@ -681,7 +684,7 @@ class Service:
         # Polling must not hold the service lock or the command operation lock.
         try:
             if p['operation'] == 'BRIDGE_POLL':
-                request = s.bridge.poll(execution_id=execution_id)
+                request = s.bridge.poll(timeout=BRIDGE_POLL_SECONDS, execution_id=execution_id)
             else:
                 s.bridge.complete(data['bridgeRequestId'], data['response'])
                 request = None
