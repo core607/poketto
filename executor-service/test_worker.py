@@ -180,6 +180,17 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual({'roomMs', 'lockMs'}, set(timings))
         self.assertTrue(all(isinstance(value, int) and value >= 0 for value in timings.values()))
 
+    def test_an_empty_bridge_poll_waits_a_second_for_a_request(self):
+        from worker import BRIDGE_POLL_SECONDS
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.bridge = Mock()
+        session.bridge.poll.return_value = None
+        session.state, session.execution_id = 'RUNNING', uid()
+        self.assertTrue(self.send(self.payload('BRIDGE_POLL'))['ok'])
+        session.bridge.poll.assert_called_once_with(timeout=BRIDGE_POLL_SECONDS, execution_id=session.execution_id)
+        self.assertEqual(1.0, BRIDGE_POLL_SECONDS)
+
     def test_each_refusal_reason_is_logged_with_the_refusals_it_counted(self):
         from worker import Server
         server = Server.__new__(Server)
