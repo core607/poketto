@@ -63,8 +63,8 @@ public interface RepositoryExecutor {
 
     /**
      * The principal and workspace are validated by the caller. The account and workspace own the
-     * copy; no transport owns its lifetime. "new" opens the default copy,
-     * creating it only when absent. An explicit ID must match before this command can execute.
+     * copy; no transport owns its lifetime. "new" opens a copy no other agent is working in:
+     * the default copy when it is free, otherwise a fork. An explicit ID must match before this command can execute.
      * Reconnection restores local work and the acknowledged baseline automatically. Retention reports
      * renewed expiry and any earlier interrupted command; inspect uncertain writes before retrying.
      * Omitted commits use the current acknowledged baseline; results name the installed Git commit. Implementations own process-tree, filesystem,

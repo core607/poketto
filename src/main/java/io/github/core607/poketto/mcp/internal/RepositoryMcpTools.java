@@ -187,7 +187,7 @@ final class RepositoryMcpTools {
                                                 36,
                                                 "pattern",
                                                 "^(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
-                                        "new opens your account's default copy, creating it only if absent, or a separate copy of your own while a command runs in the default one. Afterwards pass the copyId your results return. new is never a retry after an uncertain result."),
+                                        "new opens a copy no other agent is working in: your account's default copy when it is free, otherwise a separate copy of your own. Afterwards always pass the copyId your results return; a later new may open a different copy. new is never a retry after an uncertain result."),
                                 "command",
                                 described(text(16384), "Shell command, evaluated by the copy's persistent bash."),
                                 "commit",

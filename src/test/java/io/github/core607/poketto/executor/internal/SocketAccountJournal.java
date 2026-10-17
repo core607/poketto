@@ -28,6 +28,7 @@ final class SocketAccountJournal {
     private final AtomicInteger removed = new AtomicInteger();
     private volatile Consumer<AccountCopyRecord> afterWrite = record -> {};
     private volatile boolean full;
+    private volatile boolean recent;
 
     SocketAccountJournal() throws IOException {
         when(store.nextExpiry())
@@ -50,6 +51,18 @@ final class SocketAccountJournal {
                     .orElse(allowed);
         });
         when(store.acquire(any())).thenAnswer(call -> acquire(call.getArgument(0)));
+        when(store.recentlyUsed(any(), any())).thenAnswer(call -> recent);
+        when(store.forksOf(any())).thenAnswer(call -> {
+            AccountCopyRecord.Owner base = call.getArgument(0);
+            return entries.entrySet().stream()
+                    .filter(entry -> entry.getKey().fork() != null
+                            && entry.getKey().accountId().equals(base.accountId())
+                            && entry.getKey().workspaceId().equals(base.workspaceId())
+                            && entry.getKey().fullRead() == base.fullRead()
+                            && entry.getValue().record.get() != null)
+                    .map(Map.Entry::getKey)
+                    .toList();
+        });
         when(store.copiesOf(any(), any())).thenAnswer(call -> (int) entries.entrySet().stream()
                 .filter(entry -> entry.getKey().accountId().equals(call.getArgument(0))
                         && entry.getKey().workspaceId().equals(call.getArgument(1))
@@ -59,6 +72,11 @@ final class SocketAccountJournal {
 
     AccountCopyStore store() {
         return store;
+    }
+
+    /** Makes every copy count as used within the agent claim, or none. */
+    void usedRecently(boolean value) {
+        recent = value;
     }
 
     /** Fills the copy pool: acquiring an owner that has never been acquired fails with LIMIT. */

@@ -533,6 +533,48 @@ class WorkerSocketTests {
     }
 
     @Test
+    void anotherAgentGetsItsOwnCopyWhileTheDefaultCopyIsClaimed() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = command(executor, actor, "new");
+            peer.accounts.usedRecently(true);
+
+            // Idle between the first agent's commands, but just used: the second agent forks.
+            var second = command(executor, actor, "new");
+            assertThat(second.copyId()).isNotEqualTo(first.copyId());
+
+            // Once the claim has passed, a new agent takes the default copy again.
+            peer.accounts.usedRecently(false);
+            assertThat(command(executor, actor, "new").copyId()).isEqualTo(first.copyId());
+        }
+    }
+
+    @Test
+    void anUnclaimedForkIsReusedBeforeAnotherIsOpened() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = command(executor, actor, "new");
+            peer.accounts.usedRecently(true);
+            var fork = command(executor, actor, "new");
+            peer.accounts.usedRecently(false);
+            peer.holdFirstExec.set(true);
+            int entered = peer.execsEntered.get();
+            var busy = CompletableFuture.supplyAsync(() -> command(executor, actor, first.copyId()));
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (peer.execsEntered.get() == entered && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+
+            // The default copy runs a command, and the idle fork nobody just used is taken.
+            assertThat(command(executor, actor, "new").copyId()).isEqualTo(fork.copyId());
+            peer.execHold.countDown();
+            assertThat(busy.get(5, TimeUnit.SECONDS).exitCode()).isZero();
+        }
+    }
+
+    @Test
     void theDefaultCopyIsDiscardedWhenTheCopyPoolIsFull() throws Exception {
         var actor = principal();
         try (var peer = new Peer();
