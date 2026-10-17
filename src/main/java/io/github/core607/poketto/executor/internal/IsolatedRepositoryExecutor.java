@@ -134,6 +134,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     slot.close();
                 }
             } catch (RuntimeException failure) {
+                timings.failed();
                 throw admissionFailure(failure, null);
             }
         } finally {
@@ -317,7 +318,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             return result;
         } catch (RuntimeException failure) {
-            containFailedCommand(session, failure);
+            containFailedCommand(session, failure, timings);
             if (attempted) {
                 log.warn("Account command completion was not confirmed", failure);
                 throw new ExecutionUnconfirmedException(
@@ -336,7 +337,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private void containFailedCommand(ExecutionSession session, RuntimeException failure) {
+    private void containFailedCommand(ExecutionSession session, RuntimeException failure, ExecutionTimings timings) {
+        timings.failed();
         try {
             lifecycle.stopAndAwait(session, "cancelled");
         } catch (RuntimeException closing) {

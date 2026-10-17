@@ -49,6 +49,7 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
     private WorkspaceId cursor;
     private WorkspaceId scanning;
     private String scannedCommit = "";
+    private int scannedArticles = -1;
     private int offset;
     private Set<UUID> priority = Set.of();
     /** Spaces whose current commit a full pass already validated; skipped until it changes. */
@@ -141,6 +142,7 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
             scanning = page.getFirst().workspaceId();
             offset = 0;
             scannedCommit = "";
+            scannedArticles = -1;
             deferred = false;
             if (unchanged(scanning)) {
                 cursor = scanning;
@@ -162,10 +164,7 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
             offset = batch.nextOffset();
             if (offset < 0) {
                 if (!deferred) {
-                    scanned.put(
-                            scanning,
-                            new Scanned(
-                                    scannedCommit, batch.snapshot().articles().size(), System.nanoTime()));
+                    scanned.put(scanning, new Scanned(scannedCommit, scannedArticles, System.nanoTime()));
                 }
                 cursor = scanning;
                 scanning = null;
@@ -267,9 +266,12 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
 
     private Batch candidates(PublicContentSnapshot snapshot) {
         String commit = snapshot.commit().orElse("");
-        if (!commit.equals(scannedCommit)) {
+        // A scheduled article becoming due changes the view within one commit. The pass restarts
+        // then, so the count it records is the one every page of it saw.
+        if (!commit.equals(scannedCommit) || snapshot.articles().size() != scannedArticles) {
             offset = 0;
             scannedCommit = commit;
+            scannedArticles = snapshot.articles().size();
             priority = entries.keySet().stream()
                     .filter(key -> key.workspace().equals(scanning))
                     .map(Key::articleId)

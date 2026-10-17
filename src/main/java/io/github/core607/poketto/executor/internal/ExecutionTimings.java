@@ -12,13 +12,15 @@ import org.slf4j.LoggerFactory;
  * diagnostics filter attaches joins it to the call's outcome record. Stages run in a fixed order,
  * so a call that ends early stopped in the stage after the last one it finished: that stage
  * reports the time spent in it and is named by {@code stoppedIn}, and only stages the call never
- * entered read {@code -1}.
+ * entered read {@code -1}. A failure closes that stage when it is caught, so stopping the sandbox
+ * and releasing the journal afterwards are reported apart, as {@code cleanupMs}.
  */
 final class ExecutionTimings {
     private static final Logger log = LoggerFactory.getLogger(ExecutionTimings.class);
     private final long started = System.nanoTime();
     private final long[] stages = new long[Stage.values().length];
     private long mark = started;
+    private long failedAt;
     private int finished = -1;
     private long bridgeNanos;
     private int bridgeRequests;
@@ -35,6 +37,13 @@ final class ExecutionTimings {
         finished = stage.ordinal();
     }
 
+    /** Marks the instant a failure was caught; only the first mark counts. */
+    void failed() {
+        if (failedAt == 0) {
+            failedAt = System.nanoTime();
+        }
+    }
+
     void bridged(long nanos) {
         bridgeNanos += nanos;
         bridgeRequests++;
@@ -42,10 +51,11 @@ final class ExecutionTimings {
 
     void record() {
         long now = System.nanoTime();
+        long stopped = failedAt == 0 ? now : failedAt;
         Stage[] all = Stage.values();
         String stoppedIn = "none";
         if (finished < all.length - 1) {
-            stages[finished + 1] = now - mark;
+            stages[finished + 1] = Math.max(0, stopped - mark);
             stoppedIn = all[finished + 1].key;
         }
         var entry = log.atInfo().addKeyValue("stoppedIn", stoppedIn);
@@ -56,13 +66,16 @@ final class ExecutionTimings {
             message.append(' ').append(stage.key).append('=').append(milliseconds);
         }
         long total = milliseconds(now - started);
+        long cleanup = failedAt == 0 ? 0 : milliseconds(now - failedAt);
         entry.addKeyValue("bridgeMs", milliseconds(bridgeNanos))
                 .addKeyValue("bridgeRequests", bridgeRequests)
+                .addKeyValue("cleanupMs", cleanup)
                 .addKeyValue("totalMs", total)
-                .setMessage(message.append(" bridgeMs={} bridgeRequests={} totalMs={}")
+                .setMessage(message.append(" bridgeMs={} bridgeRequests={} cleanupMs={} totalMs={}")
                         .toString())
                 .addArgument(milliseconds(bridgeNanos))
                 .addArgument(bridgeRequests)
+                .addArgument(cleanup)
                 .addArgument(total)
                 .log();
     }

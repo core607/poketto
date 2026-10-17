@@ -66,6 +66,29 @@ class ExecutionTimingsTests {
         assertThat(Long.parseLong(value(line, "commandMs"))).isGreaterThanOrEqualTo(10);
     }
 
+    @Test
+    void containmentAfterAFailureIsReportedApartFromTheStageThatFailed(CapturedOutput output) throws Exception {
+        var timings = new ExecutionTimings();
+        for (ExecutionTimings.Stage stage : ExecutionTimings.Stage.values()) {
+            if (stage == ExecutionTimings.Stage.COMMAND) {
+                break;
+            }
+            timings.end(stage);
+        }
+        Thread.sleep(10);
+        timings.failed();
+        // Stopping the sandbox and releasing the copy happen after the failure is caught.
+        Thread.sleep(60);
+        timings.failed();
+
+        timings.record();
+
+        String line = recordLine(output);
+        assertThat(line).contains("stoppedIn=commandMs");
+        assertThat(Long.parseLong(value(line, "commandMs"))).isBetween(10L, 59L);
+        assertThat(Long.parseLong(value(line, "cleanupMs"))).isGreaterThanOrEqualTo(60);
+    }
+
     private static String recordLine(CapturedOutput output) {
         return output.getOut()
                 .lines()
