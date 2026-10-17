@@ -171,6 +171,17 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(1, len(logged.output))
         self.assertIn('maxConnections', logged.output[0])
 
+    def test_an_empty_bridge_poll_waits_a_second_for_a_request(self):
+        from worker import BRIDGE_POLL_SECONDS
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.bridge = Mock()
+        session.bridge.poll.return_value = None
+        session.state, session.execution_id = 'RUNNING', uid()
+        self.assertTrue(self.send(self.payload('BRIDGE_POLL'))['ok'])
+        session.bridge.poll.assert_called_once_with(timeout=BRIDGE_POLL_SECONDS, execution_id=session.execution_id)
+        self.assertEqual(1.0, BRIDGE_POLL_SECONDS)
+
     def test_idle_configuration_is_explicit_and_bounded(self):
         example = json.loads(Path(__file__).with_name('config.example.json').read_text())
         with tempfile.TemporaryDirectory() as directory:

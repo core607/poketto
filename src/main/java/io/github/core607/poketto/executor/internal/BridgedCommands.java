@@ -7,10 +7,10 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import tools.jackson.databind.JsonNode;
@@ -19,13 +19,13 @@ import tools.jackson.databind.JsonNode;
  * Runs one EXEC while answering the bridge requests its command raises.
  *
  * <p>A bridge poll waits up to the worker's poll interval for a frame, and that wait cannot be cut
- * short from here. Polls therefore run on their own threads while the caller watches both the poll
- * and the command, so a command that finishes during a poll is returned at once instead of after
- * the poll times out. An abandoned poll ends on its own within that interval; the command's reply
- * is final, exactly as when the loop ended after a poll before.
+ * short from here. Polls therefore run on their own threads while the caller blocks until either
+ * the poll or the command completes, so a command that finishes during a poll is returned at once
+ * instead of after the poll times out, and nothing spins meanwhile. An abandoned poll ends on its
+ * own within that interval; the command's reply is final, exactly as when the loop ended after a
+ * poll before.
  */
 final class BridgedCommands implements AutoCloseable {
-    private static final long WATCH_NANOS = TimeUnit.MILLISECONDS.toNanos(5);
     private final SessionWorker io;
     private final ExecutorBridge bridge;
     private final ExecutorService commandIo;
@@ -44,15 +44,22 @@ final class BridgedCommands implements AutoCloseable {
             ExecutionSession session, String executionId, String command, Duration timeout, ExecutionTimings timings) {
         // Taken before the worker starts its own clock, so host work that honours it ends earlier.
         session.commandDeadline = System.nanoTime() + timeout.toNanos();
-        var running = commandIo.submit(() -> io.request(
-                session,
-                "EXEC",
-                new WorkerRequests.Exec(executionId, session.commit, command, timeout.toMillis()),
-                timeout.plusSeconds(5)));
+        var finished = new CompletableFuture<Void>();
+        var running = commandIo.submit(() -> {
+            try {
+                return io.request(
+                        session,
+                        "EXEC",
+                        new WorkerRequests.Exec(executionId, session.commit, command, timeout.toMillis()),
+                        timeout.plusSeconds(5));
+            } finally {
+                finished.complete(null);
+            }
+        });
         long deadline = System.nanoTime() + timeout.plusSeconds(5).toNanos();
         try {
             while (!running.isDone() && !session.stopping.get()) {
-                Optional<JsonNode> polled = awaitPoll(polls.submit(() -> pollBridge(session, deadline)), running);
+                Optional<JsonNode> polled = awaitPoll(session, deadline, finished);
                 if (polled.isEmpty() || running.isDone() || session.stopping.get() || closedByWorker(polled.get())) {
                     break;
                 }
@@ -83,17 +90,18 @@ final class BridgedCommands implements AutoCloseable {
     }
 
     /** The poll's result, or empty once the command finished while the poll was still waiting. */
-    private static Optional<JsonNode> awaitPoll(Future<Optional<JsonNode>> poll, Future<JsonNode> running)
+    private Optional<JsonNode> awaitPoll(ExecutionSession session, long deadline, CompletableFuture<Void> finished)
             throws InterruptedException, ExecutionException {
-        while (true) {
+        var poll = new CompletableFuture<Optional<JsonNode>>();
+        polls.execute(() -> {
             try {
-                return poll.get(WATCH_NANOS, TimeUnit.NANOSECONDS);
-            } catch (TimeoutException waiting) {
-                if (running.isDone()) {
-                    return Optional.empty();
-                }
+                poll.complete(pollBridge(session, deadline));
+            } catch (Throwable failure) {
+                poll.completeExceptionally(failure);
             }
-        }
+        });
+        CompletableFuture.anyOf(poll, finished).get();
+        return poll.isDone() ? poll.get() : Optional.empty();
     }
 
     // One poll of the worker's bridge mailbox. A poll that fails while the session is stopping
