@@ -175,23 +175,29 @@ final class RepositoryMcpTools {
     private McpServerFeatures.SyncToolSpecification executeTool() {
         return tool(
                 "repo_exec",
-                "Use shell, Python, Git, file listings and search in an isolated repository copy. Set expectedCopyId=new to open your account's default copy, creating it only if absent; otherwise retain copyId across calls. Authorized clients of one account share the copy within the same workspace and reading scope. Transport closure does not discard it; use repo_discard for explicit removal. Reconnection is automatic; no generation or resume flag is required. Retention reports expiry. Use a read-only inspection command after an interrupted call: retention.lastInterruptedCommand identifies earlier work that may have partially completed. SESSION_REPLACED or EXECUTION_REFUSED means this command did not execute. EXECUTION_UNCONFIRMED means a command was attempted; retain its copyId and inspect the same copy before deciding whether to write again. Do not replay uncertain writes. Commands in one live lease share their working directory, environment, shell functions, aliases, /tmp and background processes. freshSandbox=true means this command started a new sandbox at the repository root. Timeout, output limit, shell exit, idle cleanup or lease replacement ends shell state and background processes; copy files remain. Default idle cleanup is 30 minutes. Read root AGENTS.md and poketto --help. Full readers retain original history; public readers get the current public projection. When publication changes, a clean public copy is rebuilt under the same copyId before the command (refreshed=true); one with local changes is refused with PUBLICATION_CHANGED. Omit commit to use the current acknowledged baseline. Successful saves advance local HEAD and index; repo_exec.commit reports the installed Git baseline. Edits stay local until poketto save. CLI operations can store media and commit authorized selections. Use poketto artifact create FILE --type MIME with get_artifact; long-output handles expire and may be truncated.",
+                "Run shell, Python and Git in your account's isolated copy of this space's repository. Read the root AGENTS.md and poketto --help first. Edits stay local until poketto save. The working directory, environment, /tmp and background processes persist between calls until a result reports freshSandbox=true; files always persist. SESSION_REPLACED and EXECUTION_REFUSED mean the command did not run. EXECUTION_UNCONFIRMED means it may have run: inspect the same copy before writing again, and never replay an uncertain write. Public-only grants see the current public projection; when it changes, a clean copy is rebuilt (refreshed=true) and one with local changes is refused with PUBLICATION_CHANGED. Long output and poketto artifact create return handles for get_artifact. repo_discard removes a copy.",
                 object(
                         Map.of(
                                 "expectedCopyId",
-                                Map.of(
-                                        "type",
-                                        "string",
-                                        "maxLength",
-                                        36,
-                                        "pattern",
-                                        "^(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
+                                described(
+                                        Map.of(
+                                                "type",
+                                                "string",
+                                                "maxLength",
+                                                36,
+                                                "pattern",
+                                                "^(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
+                                        "new opens your account's copy, creating it only if absent; afterwards pass the copyId every result returns. new is never a retry after an uncertain result."),
                                 "command",
-                                text(16384),
+                                described(text(16384), "Shell command, evaluated by the copy's persistent bash."),
                                 "commit",
-                                nullableCommit(),
+                                described(
+                                        nullableCommit(),
+                                        "Usually omitted. A new copy opens at this exact commit; an existing copy refuses any commit but its baseline, so use poketto sync to move it."),
                                 "timeoutSeconds",
-                                Map.of("type", "integer", "minimum", 1, "maximum", 60)),
+                                described(
+                                        Map.of("type", "integer", "minimum", 1, "maximum", 60),
+                                        "Default 30. A timeout ends shell state but keeps the copy's files.")),
                         List.of("expectedCopyId", "command")),
                 false,
                 true,
@@ -517,6 +523,12 @@ final class RepositoryMcpTools {
 
     private static Map<String, Object> text(int maximum) {
         return Map.of("type", "string", "maxLength", maximum);
+    }
+
+    private static Map<String, Object> described(Map<String, Object> schema, String description) {
+        var result = new LinkedHashMap<>(schema);
+        result.put("description", description);
+        return result;
     }
 
     private static Map<String, Object> nullableCommit() {
