@@ -531,6 +531,29 @@ class WorkerSocketTests {
     }
 
     @Test
+    void theDefaultCopyIsDiscardedWhenTheCopyPoolIsFull() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var copy = client.execute(
+                    executor,
+                    actor,
+                    WORKSPACE,
+                    "one",
+                    Optional.empty(),
+                    "pwd",
+                    Duration.ofSeconds(2),
+                    new Cancellation());
+            peer.accounts.fillPool();
+
+            var discarded = executor.discard(
+                    actor, WORKSPACE, new RepositoryExecutor.DiscardRequest(copy.copyId()), new Cancellation());
+
+            assertThat(discarded.status()).isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
+        }
+    }
+
+    @Test
     void anIdleForkIsDiscardedWhileTheDefaultCopyRunsACommand() throws Exception {
         var actor = principal();
         try (var peer = new Peer();
