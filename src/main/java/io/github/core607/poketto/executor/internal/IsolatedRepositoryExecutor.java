@@ -29,9 +29,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,13 +54,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final PublicCopyRefresh refresh;
     private final SessionArtifacts artifacts;
     private final Duration closeTimeout;
-    private final ThreadPoolExecutor commandIo = new ThreadPoolExecutor(
-            4,
-            4,
-            0,
-            TimeUnit.SECONDS,
-            new ArrayBlockingQueue<>(4),
-            Thread.ofPlatform().daemon().name("poketto-command-io-", 0).factory());
+    // One virtual thread per EXEC in flight; the operation permits already bound how many there are,
+    // so a second, smaller bound here would refuse commands the registry admitted.
+    private final ExecutorService commandIo = Executors.newThreadPerTaskExecutor(
+            Thread.ofVirtual().name("poketto-command-io-", 0).factory());
 
     IsolatedRepositoryExecutor(
             AccountCopyStore accounts,

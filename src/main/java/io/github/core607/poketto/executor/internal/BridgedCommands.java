@@ -11,7 +11,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import tools.jackson.databind.JsonNode;
@@ -29,11 +28,11 @@ final class BridgedCommands implements AutoCloseable {
     private static final long WATCH_NANOS = TimeUnit.MILLISECONDS.toNanos(5);
     private final SessionWorker io;
     private final ExecutorBridge bridge;
-    private final ThreadPoolExecutor commandIo;
+    private final ExecutorService commandIo;
     private final ExecutorService polls = Executors.newThreadPerTaskExecutor(
             Thread.ofVirtual().name("poketto-bridge-poll-", 0).factory());
 
-    BridgedCommands(SessionWorker io, ExecutorBridge bridge, ThreadPoolExecutor commandIo) {
+    BridgedCommands(SessionWorker io, ExecutorBridge bridge, ExecutorService commandIo) {
         this.io = io;
         this.bridge = bridge;
         this.commandIo = commandIo;
