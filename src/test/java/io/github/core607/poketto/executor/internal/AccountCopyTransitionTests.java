@@ -1,10 +1,12 @@
 package io.github.core607.poketto.executor.internal;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -66,5 +68,19 @@ class AccountCopyTransitionTests {
                 new SelectedFileSaves.State(commit).snapshot(),
                 projection,
                 null);
+    }
+
+    @Test
+    void aCopyCountsAsUsedForTheWindowAfterItsLastCommandStarted() {
+        var idle = Duration.ofDays(7);
+        var window = Duration.ofMinutes(2);
+        long started = 1_800_000_000_000L;
+        long expiresAt = started + idle.toMillis();
+        assertThat(AccountCopyStore.usedWithin(expiresAt, idle, started + 1, window))
+                .isTrue();
+        assertThat(AccountCopyStore.usedWithin(expiresAt, idle, started + window.toMillis() - 1, window))
+                .isTrue();
+        assertThat(AccountCopyStore.usedWithin(expiresAt, idle, started + window.toMillis(), window))
+                .isFalse();
     }
 }

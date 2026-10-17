@@ -182,6 +182,8 @@ final class AccountCommand implements AutoCloseable {
         write(current.state(), writer, AccountCopyRecord.Phase.READY, null, null, current.expiresAt());
     }
 
+    // The expiry moves forward when the command starts, so a command the worker refuses or leaves
+    // unconfirmed still claims the copy for its agent, which must then inspect it.
     void begin(UUID executionId) {
         var current = record();
         write(
@@ -190,7 +192,7 @@ final class AccountCommand implements AutoCloseable {
                 AccountCopyRecord.Phase.RUNNING,
                 executionId,
                 current.lastInterruptedCommand(),
-                current.expiresAt());
+                Math.max(current.expiresAt(), store.nextExpiry()));
     }
 
     void retain(RetainedSaveState state) {
