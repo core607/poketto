@@ -89,7 +89,8 @@ are a disposable cache. Optional settings:
   re-validated against remote `main`. A valid direct push becomes visible after the
   next refresh; writes through Poketto are visible immediately.
 - `POKETTO_REPOSITORY_READ_FETCH_REUSE_MILLIS` (default 0): reads of the latest
-  `main` reuse a fetch or save this recent; writes always check remote `main`.
+  `main` reuse a fetch or save this recent, below the refresh interval; writes always
+  check remote `main`.
 - `POKETTO_REPOSITORY_STALE_AFTER_SECONDS` (default 3600; at most 3600 and not below
   the refresh interval): how long served content may go unvalidated before readiness
   reports out of service and public reads fail closed. The process keeps running and
