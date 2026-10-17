@@ -46,6 +46,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     private final WorkerClient worker;
     private final AccountCopyStore accounts;
     private final SessionRegistry registry;
+    private final AccountOperations accountOperations;
     private final SessionLifecycle lifecycle;
     private final CopyDisposal disposal;
     private final PublicCopyRefresh refresh;
@@ -67,7 +68,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             AuthService auth,
             RepositorySnapshotExports exports,
             WorkerClient worker,
-            int maxSessions,
+            ExecutionLimits limits,
             Duration openTimeout,
             Duration closeTimeout) {
         this.accounts = Objects.requireNonNull(accounts, "account disk journals are required");
@@ -78,7 +79,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         var mediaCommands = new SessionMediaCommands(io, files, auth, media, saves);
         this.commands = new BridgedCommands(
                 io, new ExecutorBridge(io, files, repository, mediaCommands, saves, packages), commandIo);
-        this.registry = new SessionRegistry(maxSessions);
+        this.registry = new SessionRegistry(limits.maxSessions(), limits.maxOperations());
+        this.accountOperations = new AccountOperations(limits.accountOperations(), auth::siteGroup);
         this.lifecycle = new SessionLifecycle(
                 registry, io, worker, exports, packages, saves, accounts, openTimeout, closeTimeout);
         this.closeTimeout = closeTimeout;
@@ -108,7 +110,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     access.capabilities().contains(Capability.READ_PRIVATE));
             try (var held = new AccountCommand(accounts, accounts.ownerFor(owner, expected.id()), cancellation)) {
                 timings.end(ExecutionTimings.Stage.JOURNAL);
-                acquireExecution(cancellation);
+                var slot = acquireExecution(principal, cancellation);
                 timings.end(ExecutionTimings.Stage.PERMIT);
                 try {
                     var admitted = refresh.current(
@@ -130,6 +132,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     }
                 } finally {
                     registry.releaseOperation();
+                    slot.close();
                 }
             } catch (RuntimeException failure) {
                 throw admissionFailure(failure, null);
@@ -156,14 +159,28 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    private void acquireExecution(ExecutionCancellation cancellation) {
+    /** The account's slot, then a site-wide permit; each waits at most five seconds. */
+    private AccountOperations.Slot acquireExecution(AuthPrincipal principal, ExecutionCancellation cancellation) {
         if (cancellation.isCancelled()) {
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.BUSY, false);
         }
         try {
-            if (!registry.tryAcquireOperation(Duration.ofSeconds(5))) {
+            var slot = accountOperations.acquire(principal, Duration.ofSeconds(5));
+            if (slot == null) {
+                throw registry.rejected("account_limit");
+            }
+            boolean permitted = false;
+            try {
+                permitted = registry.tryAcquireOperation(Duration.ofSeconds(5));
+            } finally {
+                if (!permitted) {
+                    slot.close();
+                }
+            }
+            if (!permitted) {
                 throw registry.rejected("operation_limit");
             }
+            return slot;
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.BUSY, false, interrupted);

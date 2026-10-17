@@ -525,6 +525,18 @@ public final class AuthService {
         accountPasswords.validate(actor);
     }
 
+    /** The site group of the principal's account, whether it signs in directly or through a key. */
+    public SiteGroup siteGroup(AuthPrincipal principal) {
+        var groups = jdbc.query(
+                "select site_group from auth_accounts where account_id=?",
+                (row, number) -> SiteGroup.valueOf(row.getString(1)),
+                principal.accountId());
+        if (groups.isEmpty()) {
+            throw failure(DENIED);
+        }
+        return groups.getFirst();
+    }
+
     static void validatePage(int offset, int limit) {
         if (offset < 0 || limit < 1 || limit > 100) {
             throw failure(INVALID_INPUT);
