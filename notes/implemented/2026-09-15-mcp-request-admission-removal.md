@@ -33,11 +33,9 @@ bound. A maximum command uses 16,384 Java UTF-16 code units; six-byte JSON escap
 take 96 KiB, leaving space for the ordinary envelope. Extra metadata counts toward
 the same 128 KiB. The filter has no semaphore or image reservation.
 
-`McpStreamCompletion` retains only servlet error/timeout completion. Spring WebMVC's
-SSE builder ignores `complete` and `error` after a failed send; a disconnected
-response otherwise remains unfinished. This listener completes that servlet request
-without closing the MCP session or releasing image memory. Actual producers retain
-their independent memory lifetime.
+Responses are plain JSON written on the request thread
+([stateless MCP transport](2026-10-18-stateless-mcp-transport.md)), so no servlet
+async listener has to complete a disconnected stream.
 
 Image work uses the existing `ImageMemoryAdmission` pool at its actual owner:
 
@@ -46,22 +44,21 @@ Image work uses the existing `ImageMemoryAdmission` pool at its actual owner:
   operation exit, including failures. URL and platform-file inputs share this path.
 - Raw PUT retains its collection and validation reservations. Preparing a grant
   holds no image bytes and takes no image reservation.
-- `CancellableMcpSession` reserves the MCP share for image-reading tool calls and
-  carries the scope through the tool and `ImageBudgetTransport`. Stream termination
-  marks the response complete; actual read/encode/write producers retain the scope
-  until they exit. Cancellation cannot release a still-running blocking producer.
+- `StatelessMcpTransport` reserves the MCP share for image-reading tool calls and
+  carries the scope through the tool and the blocking write of the response bytes,
+  after which the response is complete; actual read/encode/write producers retain
+  the scope until they exit. Cancellation cannot release a still-running blocking
+  producer.
 
 The browser image budget is unchanged. Image admission failure returns a tool error
-with `reason: IMAGE_MEMORY_BUSY`; it does not close the MCP session or block text
-calls through a global request slot.
+with `reason: IMAGE_MEMORY_BUSY`; it does not block text calls through a global
+request slot.
 
 Existing bounds retain distinct meanings. `poketto.executor.max-sessions` defaults
 to four active execution leases. Command admission separately permits four concurrent
-commands site-wide, bounds each account's commands by its site group, and serializes access
-to one copy. `poketto.mcp.max-sessions` defaults to
-128 protocol sessions, each of which can use several HTTP requests or streams.
-`CancellableMcpSession` permits four active tool calls per session. Their cleanup,
-command deadlines and permission boundaries remain unchanged.
+commands site-wide, bounds each account's commands by its site group, and serializes
+access to one copy. The MCP transport keeps no protocol sessions and no per-session
+call limit. Command deadlines and permission boundaries remain unchanged.
 
 Refusal results expose `code` and `reason`, and `McpToolOutcomes` records both without
 commands, paths, image URLs or credentials. Existing execution refusal reasons and
@@ -78,12 +75,12 @@ and sandbox restrictions do not change.
 
 Plain JSON responses are allowed by the
 [Streamable HTTP specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports),
-but changing transport would also change cancellation and observed client connection
-behavior. That is a separate decision, not a prerequisite for removing these slots.
+and the [stateless MCP transport](2026-10-18-stateless-mcp-transport.md) later
+adopted them together with request-ID cancellation.
 
-The body limit bounds one request, not total retained heap. Async requests, queued
-work and responses can outlive servlet threads. Session and operation cleanup must
-be verified through the real transport; thread count is not a memory proof. A future
+The body limit bounds one request, not total retained heap. Queued work and
+responses can outlive the bytes read; operation cleanup must be verified through
+the real transport, and thread count is not a memory proof. A future
 tool needing large input must use a separate transfer route rather than raise this
 body limit. The existing image shares remain conservative working-set estimates,
 not a guarantee of total JVM memory use.

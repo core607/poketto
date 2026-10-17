@@ -36,13 +36,12 @@ final class SessionArtifacts {
     Optional<ArtifactChunk> read(
             AuthPrincipal principal,
             WorkspaceId workspace,
-            String serverSessionId,
             String artifactId,
             long offset,
             int limit,
             ExecutionCancellation cancellation) {
         var access = io.authorize(principal, workspace);
-        validateArtifactRequest(serverSessionId, artifactId, offset, limit);
+        validateArtifactRequest(artifactId, offset, limit);
         List<Boolean> scopes =
                 access.capabilities().contains(Capability.READ_PRIVATE) ? List.of(true, false) : List.of(false);
         for (boolean full : scopes) {
@@ -52,8 +51,7 @@ final class SessionArtifacts {
                     continue;
                 }
                 held.requireLive();
-                var page = readAccount(
-                        principal, workspace, serverSessionId, artifactId, offset, limit, cancellation, held);
+                var page = readAccount(principal, workspace, artifactId, offset, limit, cancellation, held);
                 if (page.isPresent()) {
                     return page;
                 }
@@ -67,14 +65,13 @@ final class SessionArtifacts {
     private Optional<ArtifactChunk> readAccount(
             AuthPrincipal principal,
             WorkspaceId workspace,
-            String serverSessionId,
             String artifactId,
             long offset,
             int limit,
             ExecutionCancellation cancellation,
             AccountCommand held) {
         io.authorize(principal, workspace);
-        validateArtifactRequest(serverSessionId, artifactId, offset, limit);
+        validateArtifactRequest(artifactId, offset, limit);
         ExecutionSession session = registry.session(SessionLifecycle.keyFor(held.owner()));
         if (session == null) {
             return Optional.empty();
@@ -124,11 +121,8 @@ final class SessionArtifacts {
         }
     }
 
-    private static void validateArtifactRequest(String serverSessionId, String artifactId, long offset, int limit) {
-        if (serverSessionId == null
-                || serverSessionId.isBlank()
-                || serverSessionId.length() > 128
-                || artifactId == null
+    private static void validateArtifactRequest(String artifactId, long offset, int limit) {
+        if (artifactId == null
                 || !UUID.fromString(artifactId).toString().equals(artifactId)
                 || offset < 0
                 || offset > 128L * 1024 * 1024

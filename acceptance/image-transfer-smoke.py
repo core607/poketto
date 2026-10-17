@@ -84,7 +84,7 @@ def rpc(method, params):
 
 _, initialized = rpc('initialize', {'protocolVersion': '2025-11-25', 'capabilities': {},
                                    'clientInfo': {'name': 'image-transfer-smoke', 'version': '1'}})
-headers['Mcp-Session-Id'] = initialized['Mcp-Session-Id']
+assert 'Mcp-Session-Id' not in initialized, 'stateless MCP issued a session ID'
 headers['MCP-Protocol-Version'] = '2025-11-25'
 request('POST', '/mcp', {'jsonrpc': '2.0', 'method': 'notifications/initialized'}, headers, expected=202)
 

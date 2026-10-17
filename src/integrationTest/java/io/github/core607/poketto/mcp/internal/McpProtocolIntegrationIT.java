@@ -12,7 +12,6 @@ import io.github.core607.poketto.auth.MachineAccounts;
 import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.content.internal.RemoteRepositoryIntegrationConfiguration;
-import io.github.core607.poketto.mcp.McpSessionClosed;
 import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspaceRegistry;
@@ -52,8 +51,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
-import org.springframework.test.context.event.ApplicationEvents;
-import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
@@ -65,7 +62,6 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 @Testcontainers
-@RecordApplicationEvents
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Import(RemoteRepositoryIntegrationConfiguration.class)
 class McpProtocolIntegrationIT {
@@ -144,9 +140,6 @@ class McpProtocolIntegrationIT {
     @Autowired
     ObjectMapper json;
 
-    @Autowired
-    ApplicationEvents events;
-
     @MockitoSpyBean
     AssetService assets;
 
@@ -161,7 +154,7 @@ class McpProtocolIntegrationIT {
     private int sequence;
 
     @Test
-    void realStreamableRequestsBindKeysServeMediaRejectFileCrudAndRevokeSessions() throws Exception {
+    void realStatelessRequestsAuthorizeEachKeyServeMediaRejectFileCrudAndRevokeKeys() throws Exception {
         var owner = auth.initializeOwner("mcp-owner", UUID.randomUUID().toString());
         var workspace = workspaces.defaultWorkspace().id();
         var key = auth.createApiKey(owner, workspace, owner.accountId(), null);
@@ -182,11 +175,6 @@ class McpProtocolIntegrationIT {
                 separateOwner, separateSpace, separateOwner.accountId(), Set.of(Capability.READ_PRIVATE));
         // This account has no default-space membership. Its credential still initializes on /mcp.
         String separateSession = initialize(separateKey.token());
-        assertThat(post(separateKey.token(), first, rpc("tools/list", Map.of())).statusCode())
-                .isEqualTo(404);
-        assertThat(post(key.token(), separateSession, rpc("tools/list", Map.of()))
-                        .statusCode())
-                .isEqualTo(404);
         assertThat(post(separateKey.token(), separateSession, rpc("tools/list", Map.of()))
                         .statusCode())
                 .isEqualTo(200);
@@ -196,12 +184,13 @@ class McpProtocolIntegrationIT {
                 .isEqualTo(401);
         assertActualImageResponseCompletion(key.token(), first);
         assertEnvelopeLimits(key.token(), first);
-        assertThat(second).isNotEqualTo(first);
-        assertThat(post(other.token(), first, rpc("tools/list", Map.of())).statusCode())
-                .isEqualTo(404);
+        // No session exists: a caller-supplied session header is ignored, and each key is its own authority.
+        assertThat(post(other.token(), "caller-invented-session", rpc("tools/list", Map.of()))
+                        .statusCode())
+                .isEqualTo(200);
         assertThat(post(key.token(), "caller-invented-session", rpc("tools/list", Map.of()))
                         .statusCode())
-                .isEqualTo(404);
+                .isEqualTo(200);
         JsonNode tools = response(post(key.token(), first, rpc("tools/list", Map.of())))
                 .path("result")
                 .path("tools");
@@ -244,20 +233,15 @@ class McpProtocolIntegrationIT {
         assertThat(malformed.path("content").get(0).path("text").stringValue()).contains("operationKey");
         var delete = HttpRequest.newBuilder(endpoint())
                 .header("Authorization", "Bearer " + key.token())
-                .header("Mcp-Session-Id", second)
                 .DELETE()
                 .build();
         assertThat(http.send(delete, HttpResponse.BodyHandlers.ofString()).statusCode())
-                .isEqualTo(200);
+                .isEqualTo(405);
         assertThat(post(key.token(), second, rpc("tools/list", Map.of())).statusCode())
-                .isEqualTo(404);
+                .isEqualTo(200);
         auth.revokeApiKey(owner, workspace, key.id());
         assertThat(post(key.token(), first, rpc("tools/list", Map.of())).statusCode())
                 .isEqualTo(401);
-        assertThat(events.stream(McpSessionClosed.class)
-                        .map(McpSessionClosed::reason)
-                        .toList())
-                .contains(McpSessionClosed.Reason.AUTH_REVOKED);
     }
 
     private void assertImageTransferEntrance(
@@ -406,11 +390,6 @@ class McpProtocolIntegrationIT {
         assertThat(post(publicKey.token(), publicSession, rpc("tools/list", Map.of()))
                         .statusCode())
                 .isEqualTo(200);
-        assertThat(events.stream(McpSessionClosed.class)
-                        .filter(event -> event.keyId().equals(privateKey.id()))
-                        .map(McpSessionClosed::reason)
-                        .toList())
-                .contains(McpSessionClosed.Reason.AUTH_REVOKED);
         auth.changeMembership(
                 owner, workspace, member.accountId(), MembershipRole.MEMBER, true, Set.of(Capability.READ_PRIVATE));
         assertThat(error(call(publicKey.token(), publicSession, "get_asset", source)))
@@ -608,23 +587,12 @@ class McpProtocolIntegrationIT {
             held.responseComplete();
         }
         for (int i = 0; i < 24; i++) {
-            String current = i % 2 == 0 ? initialize(token) : session;
             JsonNode image = call(
                     token,
-                    current,
+                    session,
                     "get_asset",
                     Map.of("source", Map.of("kind", "repository", "path", "private/pixel.png")));
             assertThat(image.path("isError").booleanValue()).isFalse();
-            if (i % 2 == 0) {
-                var delete = HttpRequest.newBuilder(endpoint())
-                        .header("Authorization", "Bearer " + token)
-                        .header("Mcp-Session-Id", current)
-                        .DELETE()
-                        .build();
-                assertThat(http.send(delete, HttpResponse.BodyHandlers.discarding())
-                                .statusCode())
-                        .isEqualTo(200);
-            }
         }
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (imageMemory.reservedBytes() != 0 && System.nanoTime() < deadline) {
@@ -642,7 +610,6 @@ class McpProtocolIntegrationIT {
                 .version(HttpClient.Version.HTTP_1_1)
                 .timeout(Duration.ofSeconds(45))
                 .header("Authorization", "Bearer " + token)
-                .header("Mcp-Session-Id", session)
                 .header("MCP-Protocol-Version", "2025-11-25")
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json, text/event-stream")
@@ -686,11 +653,11 @@ class McpProtocolIntegrationIT {
                         .path("name")
                         .stringValue())
                 .isEqualTo("poketto");
-        String session = response.headers().firstValue("Mcp-Session-Id").orElseThrow();
-        assertThat(post(token, session, Map.of("jsonrpc", "2.0", "method", "notifications/initialized"))
+        assertThat(response.headers().firstValue("Mcp-Session-Id")).isEmpty();
+        assertThat(post(token, null, Map.of("jsonrpc", "2.0", "method", "notifications/initialized"))
                         .statusCode())
                 .isEqualTo(202);
-        return session;
+        return null;
     }
 
     private Map<String, Object> rpc(String method, Object params) {
@@ -706,8 +673,9 @@ class McpProtocolIntegrationIT {
         if (token != null) {
             request.header("Authorization", "Bearer " + token);
         }
+        request.header("MCP-Protocol-Version", "2025-11-25");
         if (session != null) {
-            request.header("Mcp-Session-Id", session).header("MCP-Protocol-Version", "2025-11-25");
+            request.header("Mcp-Session-Id", session);
         }
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }

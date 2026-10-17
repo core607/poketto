@@ -17,17 +17,12 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.modelcontextprotocol.common.McpTransportContext;
-import io.modelcontextprotocol.server.McpRequestHandler;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.spec.McpSchema;
-import io.modelcontextprotocol.spec.McpStreamableServerSession;
-import io.modelcontextprotocol.spec.McpStreamableServerTransport;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -38,8 +33,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.util.ReflectionTestUtils;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 import tools.jackson.databind.ObjectMapper;
 
 class McpImageMemoryTests {
@@ -119,9 +112,9 @@ class McpImageMemoryTests {
         when(assets.getObject()).thenReturn(service);
         when(assets.getIfAvailable()).thenReturn(service);
         var executors = (ObjectProvider<RepositoryExecutor>) mock(ObjectProvider.class);
-        var sessions = mock(McpSessions.class);
-        when(sessions.resolve(any()))
-                .thenReturn(new McpSessions.Identity(mock(AuthPrincipal.class), WorkspaceId.random()));
+        var identities = mock(McpIdentities.class);
+        when(identities.resolve(any()))
+                .thenReturn(new McpIdentities.Identity(mock(AuthPrincipal.class), WorkspaceId.random()));
         when(service.readExact(any(), any(), any())).thenAnswer(call -> {
             entered.countDown();
             awaitIgnoringInterrupt(release);
@@ -131,21 +124,18 @@ class McpImageMemoryTests {
                     "image/png",
                     new byte[] {1});
         });
-        var tool = new RepositoryMcpTools(sessions, null, assets, executors, new ObjectMapper(), null)
+        var tool = new RepositoryMcpTools(identities, null, assets, executors, new ObjectMapper(), null)
                 .specifications().stream()
                         .filter(candidate -> candidate.tool().name().equals("get_asset"))
                         .findFirst()
                         .orElseThrow();
-        var exchange = mock(McpSyncServerExchange.class);
-        when(exchange.transportContext())
-                .thenReturn(McpTransportContext.create(Map.of(ImageRequestScope.ATTRIBUTE, scope)));
+        var context = McpTransportContext.create(Map.of(ImageRequestScope.ATTRIBUTE, scope));
         var request = new McpSchema.CallToolRequest(
                 "get_asset", Map.of("source", Map.of("kind", "repository", "path", "private/image.png")));
         var failure = new AtomicReference<Throwable>();
         Thread worker = Thread.ofPlatform().start(() -> {
             try {
-                assertThat(tool.callHandler().apply(exchange, request).isError())
-                        .isFalse();
+                assertThat(tool.callHandler().apply(context, request).isError()).isFalse();
             } catch (Throwable error) {
                 failure.set(error);
             } finally {
@@ -157,7 +147,7 @@ class McpImageMemoryTests {
             worker.interrupt();
             scope.responseComplete();
             assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
-            var late = tool.callHandler().apply(exchange, request);
+            var late = tool.callHandler().apply(context, request);
             assertThat(late.isError()).isTrue();
             verify(service, times(1)).readExact(any(), any(), any());
         } finally {
@@ -171,83 +161,36 @@ class McpImageMemoryTests {
     }
 
     @Test
-    void cancelledBlockingSseWriteRetainsBudgetUntilTheActualWriteExits() throws Exception {
+    void anImageResponseHoldsItsBudgetUntilItsBytesAreWritten() throws Exception {
         var memory = memory();
-        var scope = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
-        var entered = new CountDownLatch(1);
-        var release = new CountDownLatch(1);
-        var exited = new CountDownLatch(1);
-        var output = mock(McpStreamableServerTransport.class);
-        when(output.sendMessage(any())).thenReturn(Mono.fromRunnable(() -> {
-            entered.countDown();
-            awaitIgnoringInterrupt(release);
-            exited.countDown();
+        var seen = new AtomicReference<McpCancellation>();
+        var harness = new McpTransportHarness(memory, McpTransportHarness.handler((context, request) -> {
+            var scope = (ImageRequestScope) context.get(ImageRequestScope.ATTRIBUTE);
+            try (var producer = scope.producer()) {
+                var cancellation = (McpCancellation) context.get(McpCancellation.CONTEXT_KEY);
+                seen.set(cancellation);
+                cancellation.onCancel(() -> {});
+                return McpSchema.JSONRPCResponse.result(request.id(), Map.of("image", "AAAA"));
+            }
         }));
-        var stream = new ImageBudgetTransport(output, scope)
-                .sendMessage(McpSchema.JSONRPCResponse.result(1, Map.of("image", "payload")))
-                .subscribeOn(Schedulers.boundedElastic())
-                .subscribe();
-        try {
-            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
-            stream.dispose();
-            scope.responseComplete();
-            assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
-            assertThat(memory.tryAcquire(ImageMemoryAdmission.BROWSER_BYTES)).isEmpty();
-        } finally {
-            release.countDown();
-        }
-        assertThat(exited.await(5, TimeUnit.SECONDS)).isTrue();
-        awaitReleased(memory);
+        var routed = harness.route(McpTransportHarness.toolCall(1, "get_asset"));
+        assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES);
+        assertThat(McpTransportHarness.write(routed).getContentAsString()).contains("AAAA");
+        assertThat(memory.reservedBytes()).isZero();
+        assertThat((Map<?, ?>) ReflectionTestUtils.getField(seen.get(), "callbacks"))
+                .isEmpty();
     }
 
     @Test
-    void actualSdkResponseDetachesIncomingStreamAndCancellationCallbacks() throws Exception {
-        var memory = memory();
-        var seen = new AtomicReference<McpCancellation>();
-        McpRequestHandler<Object> handler = (exchange, parameters) -> Mono.fromCallable(() -> {
-            var current = (ImageRequestScope) exchange.transportContext().get(ImageRequestScope.ATTRIBUTE);
-            try (var producer = current.producer()) {
-                var cancellation = (McpCancellation) exchange.transportContext().get(McpCancellation.CONTEXT_KEY);
-                seen.set(cancellation);
-                cancellation.onCancel(() -> {});
-                return McpSchema.CallToolResult.builder()
-                        .addContent(McpSchema.ImageContent.builder("AAAA", "image/png")
-                                .build())
-                        .build();
-            }
-        });
-        var initialize = new McpSchema.InitializeRequest(
-                "2025-11-25",
-                McpSchema.ClientCapabilities.builder().build(),
-                new McpSchema.Implementation("test", "1"));
-        var sdk = new McpStreamableServerSession(
-                UUID.randomUUID().toString(),
-                initialize.capabilities(),
-                initialize.clientInfo(),
-                Duration.ofSeconds(5),
-                Map.of("tools/call", handler),
-                Map.of());
-        var session = new CancellableMcpSession(sdk, initialize, memory, new ObjectMapper());
-        var output = mock(McpStreamableServerTransport.class);
-        when(output.sendMessage(any()))
-                .thenAnswer(call -> Mono.fromRunnable(
-                        () -> assertThat(memory.reservedBytes()).isEqualTo(ImageMemoryAdmission.MCP_BYTES)));
-        when(output.closeGracefully()).thenReturn(Mono.empty());
-        try {
-            session.responseStream(new McpSchema.JSONRPCRequest("tools/call", 1, Map.of("name", "get_asset")), output)
-                    .block(Duration.ofSeconds(5));
-            assertThat((Map<?, ?>) ReflectionTestUtils.getField(sdk, "requestIdToStream"))
-                    .isEmpty();
-            assertThat((Map<?, ?>) ReflectionTestUtils.getField(session, "active"))
-                    .isEmpty();
-            assertThat((Map<?, ?>) ReflectionTestUtils.getField(seen.get(), "callbacks"))
-                    .isEmpty();
-            assertThat(session.replay("any").collectList().block()).isEmpty();
-            verify(output).closeGracefully();
-            awaitReleased(memory);
-        } finally {
-            session.close();
-        }
+    void aBusyImageBudgetRefusesTheReadWithoutCallingTheTool() throws Exception {
+        var memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 1, Duration.ZERO);
+        var held = memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
+        var harness = new McpTransportHarness(memory, McpTransportHarness.handler((context, request) -> {
+            throw new AssertionError("the tool ran without image memory");
+        }));
+        assertThat(harness.post(McpTransportHarness.toolCall(1, "get_artifact")).getContentAsString())
+                .contains("IMAGE_MEMORY_BUSY");
+        held.responseComplete();
         assertThat(memory.reservedBytes()).isZero();
     }
 
@@ -290,8 +233,6 @@ class McpImageMemoryTests {
 
     private static MockHttpServletRequest post(String body) {
         var request = new MockHttpServletRequest("POST", "/mcp");
-        request.setAsyncSupported(true);
-        request.addHeader("Mcp-Session-Id", "server-session");
         request.setContent(body.getBytes(StandardCharsets.UTF_8));
         return request;
     }

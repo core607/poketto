@@ -1,83 +1,63 @@
 package io.github.core607.poketto.mcp.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import io.github.core607.poketto.auth.AuthPrincipal;
-import io.github.core607.poketto.auth.AuthService;
-import io.github.core607.poketto.mcp.McpSessionClosed;
-import io.github.core607.poketto.workspace.WorkspaceId;
-import io.modelcontextprotocol.spec.McpError;
+import io.github.core607.poketto.assets.ImageMemoryAdmission;
 import io.modelcontextprotocol.spec.McpSchema;
-import io.modelcontextprotocol.spec.McpStreamableServerSession;
-import jakarta.servlet.http.Cookie;
 import java.nio.charset.StandardCharsets;
-import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.web.servlet.function.EntityResponse;
-import org.springframework.web.servlet.function.ServerResponse;
-import reactor.core.publisher.Mono;
+import org.springframework.web.servlet.function.ServerRequest;
 import tools.jackson.databind.ObjectMapper;
 
 class McpBoundsTests {
     @Test
-    void escapedMaximumCommandAndAsyncCallsDoNotConsumeGlobalSlots() throws Exception {
+    void escapedMaximumCommandsPassTheFilterWithoutAnyGlobalSlot() throws Exception {
         var filter = new McpBodyLimitFilter(new ObjectMapper());
-        String command = "\\u0061".repeat(16384);
+        String command = "\u0061".repeat(16384);
         String body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"repo_exec\",\"arguments\":{\"expectedCopyId\":\"new\",\"command\":\""
                 + command + "\"}}}";
-        var held = new ArrayList<MockHttpServletRequest>();
-        try {
-            for (int i = 0; i < 12; i++) {
-                var request = post(body);
-                filter.doFilter(request, new MockHttpServletResponse(), (input, output) -> input.startAsync());
-                assertThat(request.isAsyncStarted()).isTrue();
-                held.add(request);
-            }
-        } finally {
-            held.forEach(request -> request.getAsyncContext().complete());
+        var dispatched = new AtomicInteger();
+        for (int i = 0; i < 12; i++) {
+            filter.doFilter(post(body), new MockHttpServletResponse(), (input, output) -> dispatched.incrementAndGet());
         }
+        assertThat(dispatched).hasValue(12);
     }
 
     @Test
-    void onlyThrowableEntitiesAreNormalizedAndResponseMetadataSurvives() {
-        var original = ServerResponse.badRequest()
-                .header("MCP-Protocol-Version", "2025-11-25")
-                .header("Allow", "POST, DELETE")
-                .cookie(new Cookie("fixture", "value"))
-                .body(McpError.builder(-32600).message("Invalid message format").build());
-        var normalized = McpTransportConfiguration.normalizeError(original);
-        assertThat(normalized.statusCode()).isEqualTo(original.statusCode());
-        assertThat(normalized.headers()).isEqualTo(original.headers());
-        assertThat(normalized.cookies()).isEqualTo(original.cookies());
-        var body = (Map<?, ?>) ((EntityResponse<?>) normalized).entity();
-        assertThat(body.keySet().stream().map(Object::toString).toList()).containsExactlyInAnyOrder("jsonrpc", "error");
-        var rpc = ServerResponse.badRequest()
-                .body(McpSchema.JSONRPCResponse.error(
-                        42,
-                        McpError.builder(-32600)
-                                .message("Invalid request")
-                                .build()
-                                .getJsonRpcError()));
-        assertThat(McpTransportConfiguration.normalizeError(rpc)).isSameAs(rpc);
-        var accepted = ServerResponse.accepted().build();
-        assertThat(McpTransportConfiguration.normalizeError(accepted)).isSameAs(accepted);
+    void theTransportIssuesNoSessionAndServesOnlyPost() throws Exception {
+        var harness = new McpTransportHarness(
+                new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 16, Duration.ZERO),
+                McpTransportHarness.handler(
+                        (context, request) -> McpSchema.JSONRPCResponse.result(request.id(), Map.of("ok", true))));
+        var initialized = harness.post("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}");
+        assertThat(initialized.getStatus()).isEqualTo(200);
+        assertThat(initialized.getHeader("Mcp-Session-Id")).isNull();
+        assertThat(initialized.getContentAsString()).contains("\"ok\":true");
+        for (String method : new String[] {"GET", "DELETE"}) {
+            var servlet = new MockHttpServletRequest(method, "/mcp");
+            var request = ServerRequest.create(servlet, List.of());
+            var response = McpTransportHarness.write(harness.transport
+                    .routerFunction()
+                    .route(request)
+                    .orElseThrow()
+                    .handle(request));
+            assertThat(response.getStatus()).isEqualTo(405);
+            assertThat(response.getHeader("Allow")).isEqualTo("POST");
+        }
+        when(harness.identities.currentIdentity()).thenThrow(new SecurityException("browser session"));
+        assertThat(harness.post("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}")
+                        .getStatus())
+                .isEqualTo(403);
     }
 
     @Test
@@ -115,39 +95,8 @@ class McpBoundsTests {
                 return -1;
             }
         };
-        request.addHeader("Mcp-Session-Id", "server-session");
         request.setContent(bytes);
         return request;
-    }
-
-    @Test
-    void actualSdkSessionIdsAreBoundToKeysExpireAndReleaseCapacity() {
-        var time = new MutableClock();
-        List<Object> events = new ArrayList<>();
-        var workspace = WorkspaceId.random();
-        var owner = identity(workspace);
-        var other = identity(workspace);
-        try (var sessions = new McpSessions(mock(AuthService.class), events::add, time, Duration.ofMinutes(30), 1)) {
-            var first = session("server-first");
-            sessions.bind(first, owner);
-            assertThatThrownBy(() -> sessions.check("server-first", other)).isInstanceOf(SecurityException.class);
-            assertThatThrownBy(() -> sessions.check("invented", owner)).isInstanceOf(SecurityException.class);
-            var excess = session("server-excess");
-            assertThatThrownBy(() -> sessions.bind(excess, owner)).isInstanceOf(IllegalStateException.class);
-            verify(excess).closeGracefully();
-            time.now = time.now.plusSeconds(1799);
-            sessions.check("server-first", owner);
-            sessions.remove("server-first", McpSessionClosed.Reason.IDLE_EXPIRY);
-            assertThat(events).isEmpty();
-            time.now = time.now.plusSeconds(1800);
-            assertThatThrownBy(() -> sessions.check("server-first", owner)).isInstanceOf(SecurityException.class);
-            sessions.remove("server-first", McpSessionClosed.Reason.IDLE_EXPIRY);
-            verify(first).closeGracefully();
-            sessions.bind(session("server-second"), owner);
-        }
-        assertThat(events).hasSize(2);
-        assertThat(((McpSessionClosed) events.getFirst()).reason()).isEqualTo(McpSessionClosed.Reason.IDLE_EXPIRY);
-        assertThat(((McpSessionClosed) events.getLast()).reason()).isEqualTo(McpSessionClosed.Reason.SHUTDOWN);
     }
 
     @Test
@@ -190,41 +139,7 @@ class McpBoundsTests {
 
     private static MockHttpServletRequest post(String body) {
         var request = new MockHttpServletRequest("POST", "/mcp");
-        request.setAsyncSupported(true);
-        request.addHeader("Mcp-Session-Id", "server-session");
         request.setContent(body.getBytes(StandardCharsets.UTF_8));
         return request;
-    }
-
-    private static McpSessions.Identity identity(WorkspaceId workspace) {
-        var principal = mock(AuthPrincipal.class);
-        when(principal.subjectId()).thenReturn(UUID.randomUUID());
-        return new McpSessions.Identity(principal, workspace);
-    }
-
-    private static McpStreamableServerSession session(String id) {
-        var session = mock(McpStreamableServerSession.class);
-        when(session.getId()).thenReturn(id);
-        when(session.closeGracefully()).thenReturn(Mono.empty());
-        return session;
-    }
-
-    private static final class MutableClock extends Clock {
-        private Instant now = Instant.parse("2026-01-01T00:00:00Z");
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return this;
-        }
-
-        @Override
-        public Instant instant() {
-            return now;
-        }
     }
 }

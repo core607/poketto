@@ -18,8 +18,7 @@ import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.modelcontextprotocol.common.McpTransportContext;
-import io.modelcontextprotocol.server.McpServerFeatures;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.time.Duration;
 import java.util.HashMap;
@@ -37,18 +36,16 @@ class McpCopyIdentityTests {
     private final AuthPrincipal principal = mock(AuthPrincipal.class);
     private final WorkspaceId workspace = WorkspaceId.random();
     private final ObjectMapper json = new ObjectMapper();
-    private final McpSyncServerExchange exchange = mock(McpSyncServerExchange.class);
-    private final McpServerFeatures.SyncToolSpecification tool;
+    private final McpTransportContext context =
+            McpTransportContext.create(Map.of(McpCancellation.CONTEXT_KEY, new McpCancellation()));
+    private final McpStatelessServerFeatures.SyncToolSpecification tool;
 
     McpCopyIdentityTests() {
-        var sessions = mock(McpSessions.class);
-        when(sessions.resolve(exchange)).thenReturn(new McpSessions.Identity(principal, workspace));
-        when(exchange.sessionId()).thenReturn("transport");
-        when(exchange.transportContext())
-                .thenReturn(McpTransportContext.create(Map.of(McpCancellation.CONTEXT_KEY, new McpCancellation())));
+        var identities = mock(McpIdentities.class);
+        when(identities.resolve(context)).thenReturn(new McpIdentities.Identity(principal, workspace));
         var beans = new StaticListableBeanFactory(Map.of("executor", executor));
         tool = new RepositoryMcpTools(
-                        sessions,
+                        identities,
                         mock(AuthService.class),
                         beans.getBeanProvider(AssetService.class),
                         beans.getBeanProvider(RepositoryExecutor.class),
@@ -80,7 +77,6 @@ class McpCopyIdentityTests {
         when(executor.execute(
                         eq(principal),
                         eq(workspace),
-                        eq("transport"),
                         eq(new RepositoryExecutor.CopyRequest("new")),
                         eq(Optional.empty()),
                         eq("pwd"),
@@ -110,7 +106,6 @@ class McpCopyIdentityTests {
         when(executor.execute(
                         eq(principal),
                         eq(workspace),
-                        eq("transport"),
                         eq(new RepositoryExecutor.CopyRequest(id)),
                         eq(Optional.empty()),
                         eq("false"),
@@ -139,7 +134,6 @@ class McpCopyIdentityTests {
                 .execute(
                         eq(principal),
                         eq(workspace),
-                        eq("transport"),
                         eq(new RepositoryExecutor.CopyRequest(id)),
                         eq(Optional.empty()),
                         eq("false"),
@@ -151,14 +145,7 @@ class McpCopyIdentityTests {
     void mismatchIsExplicitButAnUnknownWorkerOutcomeNeverClaimsThatTheCommandDidNotRun() {
         String old = UUID.randomUUID().toString(), current = UUID.randomUUID().toString();
         when(executor.execute(
-                        any(),
-                        any(),
-                        anyString(),
-                        eq(new RepositoryExecutor.CopyRequest(old)),
-                        any(),
-                        anyString(),
-                        any(),
-                        any()))
+                        any(), any(), eq(new RepositoryExecutor.CopyRequest(old)), any(), anyString(), any(), any()))
                 .thenThrow(new SessionReplacedException(
                         SessionReplacedException.Reason.DIFFERENT_COPY, Optional.of(current), false))
                 .thenThrow(new SessionReplacedException(
@@ -185,14 +172,7 @@ class McpCopyIdentityTests {
     void copyOnlyReadbackRefusalDoesNotClaimEarlierCommandsWereRolledBack() {
         String copy = UUID.randomUUID().toString();
         when(executor.execute(
-                        any(),
-                        any(),
-                        anyString(),
-                        eq(new RepositoryExecutor.CopyRequest(copy)),
-                        any(),
-                        anyString(),
-                        any(),
-                        any()))
+                        any(), any(), eq(new RepositoryExecutor.CopyRequest(copy)), any(), anyString(), any(), any()))
                 .thenThrow(new ExecutionAdmissionException(ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, true));
         JsonNode refused = body(call(Map.of("expectedCopyId", copy, "command", "poketto status")));
         assertThat(refused.path("code").stringValue()).isEqualTo("EXECUTION_REFUSED");
@@ -208,14 +188,7 @@ class McpCopyIdentityTests {
     void aChangedPublicationOverLocalWorkNamesTheKeptCopyAndHowToDiscardIt() {
         String copy = UUID.randomUUID().toString();
         when(executor.execute(
-                        any(),
-                        any(),
-                        anyString(),
-                        eq(new RepositoryExecutor.CopyRequest("new")),
-                        any(),
-                        anyString(),
-                        any(),
-                        any()))
+                        any(), any(), eq(new RepositoryExecutor.CopyRequest("new")), any(), anyString(), any(), any()))
                 .thenThrow(ExecutionAdmissionException.publicationChanged(copy));
         JsonNode refused = body(call(Map.of("expectedCopyId", "new", "command", "ls")));
         assertThat(refused.path("code").stringValue()).isEqualTo("EXECUTION_REFUSED");
@@ -249,7 +222,7 @@ class McpCopyIdentityTests {
         String copy = UUID.randomUUID().toString();
         UUID interrupted = UUID.randomUUID();
         var expected = new RepositoryExecutor.CopyRequest(copy);
-        when(executor.execute(any(), any(), anyString(), eq(expected), any(), anyString(), any(), any()))
+        when(executor.execute(any(), any(), eq(expected), any(), anyString(), any(), any()))
                 .thenReturn(new RepositoryExecutor.ExecutionResult(
                         copy,
                         "a".repeat(40),
@@ -278,7 +251,7 @@ class McpCopyIdentityTests {
     }
 
     private McpSchema.CallToolResult call(Map<String, Object> arguments) {
-        return tool.callHandler().apply(exchange, new McpSchema.CallToolRequest("repo_exec", arguments));
+        return tool.callHandler().apply(context, new McpSchema.CallToolRequest("repo_exec", arguments));
     }
 
     private JsonNode body(McpSchema.CallToolResult result) {
@@ -289,7 +262,7 @@ class McpCopyIdentityTests {
     void anAttemptedRetainedCommandReturnsRecoveryIdentityWithoutClaimingNonExecution() {
         String copyId = UUID.randomUUID().toString();
         var retention = new RepositoryExecutor.CopyRetention(900000, true, null);
-        when(executor.execute(any(), any(), anyString(), any(), any(), anyString(), any(), any()))
+        when(executor.execute(any(), any(), any(), any(), anyString(), any(), any()))
                 .thenThrow(new ExecutionUnconfirmedException(
                         copyId, retention, true, new IllegalStateException("private worker failure details")));
         var result = call(Map.of("expectedCopyId", "new", "command", "poketto save note.md"));

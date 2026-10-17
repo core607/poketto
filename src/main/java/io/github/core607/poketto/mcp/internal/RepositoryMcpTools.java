@@ -20,8 +20,8 @@ import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
-import io.modelcontextprotocol.server.McpServerFeatures;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -55,7 +55,7 @@ final class RepositoryMcpTools {
     private static final String REPOSITORY_EMPTY = "The repository has no commit yet. A space owner initializes it"
             + " from the space's repository connection view; retry after that.";
 
-    private final McpSessions sessions;
+    private final McpIdentities identities;
     private final AuthService auth;
     private final ObjectProvider<AssetService> assets;
     private final ObjectProvider<RepositoryExecutor> executors;
@@ -64,13 +64,13 @@ final class RepositoryMcpTools {
     private final McpArtifactResults artifacts;
 
     RepositoryMcpTools(
-            McpSessions sessions,
+            McpIdentities identities,
             AuthService auth,
             ObjectProvider<AssetService> assets,
             ObjectProvider<RepositoryExecutor> executors,
             ObjectMapper json,
             ObjectProvider<ImageTransfers> transfers) {
-        this.sessions = sessions;
+        this.identities = identities;
         this.auth = auth;
         this.assets = assets;
         this.executors = executors;
@@ -79,8 +79,8 @@ final class RepositoryMcpTools {
         this.artifacts = new McpArtifactResults(json);
     }
 
-    List<McpServerFeatures.SyncToolSpecification> specifications() {
-        List<McpServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
+    List<McpStatelessServerFeatures.SyncToolSpecification> specifications() {
+        List<McpStatelessServerFeatures.SyncToolSpecification> tools = new ArrayList<>();
         if (assets.getIfAvailable() != null) {
             tools.add(getAssetTool());
             tools.add(putAssetTool());
@@ -93,7 +93,7 @@ final class RepositoryMcpTools {
         return List.copyOf(tools);
     }
 
-    private McpServerFeatures.SyncToolSpecification getAssetTool() {
+    private McpStatelessServerFeatures.SyncToolSpecification getAssetTool() {
         Map<String, Object> source = Map.of(
                 "oneOf",
                 List.of(
@@ -119,7 +119,7 @@ final class RepositoryMcpTools {
                 this::getAsset);
     }
 
-    private McpServerFeatures.SyncToolSpecification putAssetTool() {
+    private McpStatelessServerFeatures.SyncToolSpecification putAssetTool() {
         return tool(
                 "put_asset",
                 "Import an image from url or from a file attached to this conversation (file, a platform file reference), at most 16 MiB. A path in your own environment cannot be read here; attach the file instead. Only if your environment can send HTTPS requests itself: use mode=upload with operationKey only, then PUT the raw bytes to uploadUrl with Content-Type application/octet-stream. GET the same URL to check a lost upload response. Grants expire after 15 minutes. Reuse operationKey for identical retries, including after obtaining a replacement grant. Returns assetId/revision; link using poketto media link, then save selected text and index. Uploading does not write Git or publish.",
@@ -130,7 +130,7 @@ final class RepositoryMcpTools {
                 this::putAsset);
     }
 
-    private McpServerFeatures.SyncToolSpecification discardTool() {
+    private McpStatelessServerFeatures.SyncToolSpecification discardTool() {
         return tool(
                 "repo_discard",
                 "Discard the exact working copy and its unsaved work. Supply its copyId as expectedCopyId. Busy copies are refused. DISCARDED or ABSENT confirms the target is gone. Use new after the account's copy has been discarded. No command executes and remote Git commits are not undone. After an unconfirmed response, retry only the same ID. Requires current execution permission and ownership of that copy.",
@@ -151,7 +151,7 @@ final class RepositoryMcpTools {
                 this::discard);
     }
 
-    private McpServerFeatures.SyncToolSpecification getArtifactTool() {
+    private McpStatelessServerFeatures.SyncToolSpecification getArtifactTool() {
         return tool(
                 "get_artifact",
                 "Read an unexpired artifact from the account's current execution lease. A grant change or process restart can invalidate the handle; recreate it from the retained copy. Auto format renders validated images in full (up to 16 MiB), or pages text. Other files and format=bytes return exact binary pages. Byte offset and limit apply to pages; continue with nextOffset. Handles do not publish, save, or grant access to another session.",
@@ -172,7 +172,7 @@ final class RepositoryMcpTools {
                 this::getArtifact);
     }
 
-    private McpServerFeatures.SyncToolSpecification executeTool() {
+    private McpStatelessServerFeatures.SyncToolSpecification executeTool() {
         return tool(
                 "repo_exec",
                 "Run shell, Python and Git in your account's isolated copy of this space's repository. Read the root AGENTS.md and poketto --help first. Edits stay local until poketto save. The working directory, environment, /tmp and background processes persist between calls until a result reports freshSandbox=true; files always persist. SESSION_REPLACED and EXECUTION_REFUSED mean the command did not run. EXECUTION_UNCONFIRMED means it may have run: inspect the same copy before writing again, and never replay an uncertain write. Public-only grants see the current public projection; when it changes, a clean copy is rebuilt (refreshed=true) and one with local changes is refused with PUBLICATION_CHANGED. Long output and poketto artifact create return handles for get_artifact. repo_discard removes a copy.",
@@ -205,14 +205,14 @@ final class RepositoryMcpTools {
                 this::execute);
     }
 
-    private McpServerFeatures.SyncToolSpecification tool(
+    private McpStatelessServerFeatures.SyncToolSpecification tool(
             String name,
             String description,
             Map<String, Object> schema,
             boolean readOnly,
             boolean destructive,
             boolean idempotent,
-            BiFunction<McpSyncServerExchange, Map<String, Object>, McpSchema.CallToolResult> operation) {
+            BiFunction<McpTransportContext, Map<String, Object>, McpSchema.CallToolResult> operation) {
         var builder = McpSchema.Tool.builder(name, schema)
                 .description(description)
                 .annotations(McpSchema.ToolAnnotations.builder()
@@ -222,16 +222,16 @@ final class RepositoryMcpTools {
                         .openWorldHint(name.equals("put_asset"))
                         .build())
                 .meta(name.equals("put_asset") ? Map.of("openai/fileParams", List.of("file")) : Map.of());
-        return new McpServerFeatures.SyncToolSpecification(
+        return new McpStatelessServerFeatures.SyncToolSpecification(
                 builder.build(),
-                (exchange, request) -> McpToolOutcomes.recorded(json, name, () -> {
+                (context, request) -> McpToolOutcomes.recorded(json, name, () -> {
                     try {
-                        sessions.resolve(exchange);
+                        identities.resolve(context);
                         var arguments = request.arguments();
                         if (arguments == null) {
                             throw new IllegalArgumentException();
                         }
-                        return invoke(exchange, name, arguments, operation);
+                        return invoke(context, name, arguments, operation);
                     } catch (AuthException | SecurityException exception) {
                         return error("DENIED", "Current workspace capability is required.");
                     } catch (SessionReplacedException exception) {
@@ -274,20 +274,20 @@ final class RepositoryMcpTools {
     }
 
     private McpSchema.CallToolResult invoke(
-            McpSyncServerExchange exchange,
+            McpTransportContext context,
             String name,
             Map<String, Object> arguments,
-            BiFunction<McpSyncServerExchange, Map<String, Object>, McpSchema.CallToolResult> operation) {
-        if (exchange.transportContext().get(ImageRequestScope.ATTRIBUTE) instanceof ImageRequestScope scope) {
+            BiFunction<McpTransportContext, Map<String, Object>, McpSchema.CallToolResult> operation) {
+        if (context.get(ImageRequestScope.ATTRIBUTE) instanceof ImageRequestScope scope) {
             try (var producer = scope.producer()) {
-                return operation.apply(exchange, arguments);
+                return operation.apply(context, arguments);
             }
         }
         if (name.equals("get_asset") || name.equals("get_artifact")) {
             return McpToolOutcomes.failure(
                     json, "UNAVAILABLE", "IMAGE_MEMORY_UNAVAILABLE", "Image response memory admission is unavailable.");
         }
-        return operation.apply(exchange, arguments);
+        return operation.apply(context, arguments);
     }
 
     private static int boundedInteger(Map<String, Object> input, String field, int fallback, int minimum, int maximum) {
@@ -303,7 +303,7 @@ final class RepositoryMcpTools {
         return number.intValue();
     }
 
-    private McpSchema.CallToolResult getAsset(McpSyncServerExchange exchange, Map<String, Object> input) {
+    private McpSchema.CallToolResult getAsset(McpTransportContext context, Map<String, Object> input) {
         fields(input, Set.of("source"));
         Map<String, Object> source = mapping(input.get("source"));
         AssetSource selected;
@@ -319,7 +319,7 @@ final class RepositoryMcpTools {
             selected = new AssetSource.Managed(new ManagedAssetReference(
                     UUID.fromString(requiredText(source, "assetId", 36)), requiredText(source, "revision", 64)));
         }
-        var identity = sessions.resolve(exchange);
+        var identity = identities.resolve(context);
         AssetBytes result = assets.getObject().readExact(identity.principal(), identity.workspace(), selected);
         Map<String, Object> resolved = new LinkedHashMap<>();
         if (result.source() instanceof AssetSource.Repository git) {
@@ -353,7 +353,7 @@ final class RepositoryMcpTools {
                 .build();
     }
 
-    private McpSchema.CallToolResult putAsset(McpSyncServerExchange exchange, Map<String, Object> input) {
+    private McpSchema.CallToolResult putAsset(McpTransportContext context, Map<String, Object> input) {
         fields(input, PUT_ASSET_FIELDS);
         PutAssetInput request;
         try {
@@ -361,7 +361,7 @@ final class RepositoryMcpTools {
         } catch (DatabindException invalid) {
             return error("INVALID_INPUT", inputProblem(input, invalid));
         }
-        var identity = sessions.resolve(exchange);
+        var identity = identities.resolve(context);
         auth.authorize(identity.principal(), identity.workspace(), Capability.WRITE_PRIVATE);
         if (request.mode().equals("upload")) {
             return textResult(
@@ -424,7 +424,7 @@ final class RepositoryMcpTools {
                 List.of("operationKey"));
     }
 
-    private McpSchema.CallToolResult getArtifact(McpSyncServerExchange exchange, Map<String, Object> input) {
+    private McpSchema.CallToolResult getArtifact(McpTransportContext context, Map<String, Object> input) {
         fields(input, Set.of("artifactId", "offset", "limit", "format"));
         String id = requiredText(input, "artifactId", 36);
         int offset = boundedInteger(input, "offset", 0, 0, 134217728);
@@ -433,11 +433,11 @@ final class RepositoryMcpTools {
         if (!Set.of("auto", "bytes").contains(format)) {
             throw new IllegalArgumentException();
         }
-        var identity = sessions.resolve(exchange);
-        var cancellation = cancellation(exchange);
+        var identity = identities.resolve(context);
+        var cancellation = cancellation(context);
         var executor = executors.getObject();
-        McpArtifactResults.Pages pages = (at, size) -> executor.readArtifact(
-                identity.principal(), identity.workspace(), exchange.sessionId(), id, at, size, cancellation);
+        McpArtifactResults.Pages pages = (at, size) ->
+                executor.readArtifact(identity.principal(), identity.workspace(), id, at, size, cancellation);
         var found = pages.read(offset, limit);
         if (found.isEmpty()) {
             return error("ARTIFACT_UNAVAILABLE", "Artifact is unavailable in this execution session or has expired.");
@@ -455,21 +455,21 @@ final class RepositoryMcpTools {
         return artifacts.binary(first, id, offset);
     }
 
-    private McpSchema.CallToolResult discard(McpSyncServerExchange exchange, Map<String, Object> input) {
+    private McpSchema.CallToolResult discard(McpTransportContext context, Map<String, Object> input) {
         fields(input, Set.of("expectedCopyId"));
         RepositoryExecutor.CopyRequest copy = McpCopyAdmission.copyRequest(input);
         var request = new RepositoryExecutor.DiscardRequest(copy.id());
-        var identity = sessions.resolve(exchange);
+        var identity = identities.resolve(context);
         auth.authorize(identity.principal(), identity.workspace(), Capability.EXECUTE_REPOSITORY);
         return textResult(executors
                 .getObject()
-                .discard(identity.principal(), identity.workspace(), request, cancellation(exchange)));
+                .discard(identity.principal(), identity.workspace(), request, cancellation(context)));
     }
 
-    private McpSchema.CallToolResult execute(McpSyncServerExchange exchange, Map<String, Object> input) {
+    private McpSchema.CallToolResult execute(McpTransportContext context, Map<String, Object> input) {
         fields(input, Set.of("expectedCopyId", "command", "commit", "timeoutSeconds"));
         RepositoryExecutor.CopyRequest copy = McpCopyAdmission.copyRequest(input);
-        var identity = sessions.resolve(exchange);
+        var identity = identities.resolve(context);
         auth.authorize(identity.principal(), identity.workspace(), Capability.EXECUTE_REPOSITORY);
         int timeout = 30;
         if (input.containsKey("timeoutSeconds")) {
@@ -486,17 +486,16 @@ final class RepositoryMcpTools {
                 .execute(
                         identity.principal(),
                         identity.workspace(),
-                        exchange.sessionId(),
                         copy,
                         optionalText(input, "commit", 40),
                         requiredText(input, "command", 16384),
                         Duration.ofSeconds(timeout),
-                        cancellation(exchange));
+                        cancellation(context));
         return textResult(result);
     }
 
-    private static McpCancellation cancellation(McpSyncServerExchange exchange) {
-        if (!(exchange.transportContext().get(McpCancellation.CONTEXT_KEY) instanceof McpCancellation cancellation)) {
+    private static McpCancellation cancellation(McpTransportContext context) {
+        if (!(context.get(McpCancellation.CONTEXT_KEY) instanceof McpCancellation cancellation)) {
             throw new SecurityException("Server execution cancellation context required");
         }
         return cancellation;

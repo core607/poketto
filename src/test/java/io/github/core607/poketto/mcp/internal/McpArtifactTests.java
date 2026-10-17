@@ -19,8 +19,7 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.modelcontextprotocol.common.McpTransportContext;
-import io.modelcontextprotocol.server.McpServerFeatures;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
@@ -70,9 +69,7 @@ class McpArtifactTests {
             var image = (McpSchema.ImageContent) result.content().get(1);
             assertThat(image.mimeType()).isEqualTo("image/png");
             assertThat(Base64.getDecoder().decode(image.data())).isEqualTo(png);
-            verify(fixture.executor)
-                    .readArtifact(
-                            any(), any(), eq("artifact-session"), eq(fixture.id), eq((long) png.length), eq(1), any());
+            verify(fixture.executor).readArtifact(any(), any(), eq(fixture.id), eq((long) png.length), eq(1), any());
             assertThat(fixture.info(result).path("nextOffset").isNull()).isTrue();
         }
         try (var fixture = new Fixture(png, "image/png")) {
@@ -162,11 +159,12 @@ class McpArtifactTests {
         final String id = UUID.randomUUID().toString();
         final ObjectMapper json = new ObjectMapper();
         final RepositoryExecutor executor = mock(RepositoryExecutor.class);
-        final McpSyncServerExchange exchange = mock(McpSyncServerExchange.class);
         final ImageMemoryAdmission memory = new ImageMemoryAdmission(ImageMemoryAdmission.MCP_BYTES, 1, Duration.ZERO);
         final ImageRequestScope scope =
                 memory.acquire(ImageMemoryAdmission.MCP_BYTES).orElseThrow();
-        final McpServerFeatures.SyncToolSpecification tool;
+        final McpTransportContext context = McpTransportContext.create(
+                Map.of(ImageRequestScope.ATTRIBUTE, scope, McpCancellation.CONTEXT_KEY, new McpCancellation()));
+        final McpStatelessServerFeatures.SyncToolSpecification tool;
         String digest;
         boolean expireAtEnd;
 
@@ -178,18 +176,14 @@ class McpArtifactTests {
             when(provider.getIfAvailable()).thenReturn(executor);
             when(provider.getObject()).thenReturn(executor);
             var assets = (ObjectProvider<AssetService>) mock(ObjectProvider.class);
-            var sessions = mock(McpSessions.class);
-            when(sessions.resolve(any()))
-                    .thenReturn(new McpSessions.Identity(mock(AuthPrincipal.class), WorkspaceId.random()));
-            when(exchange.sessionId()).thenReturn("artifact-session");
-            when(exchange.transportContext())
-                    .thenReturn(McpTransportContext.create(Map.of(
-                            ImageRequestScope.ATTRIBUTE, scope, McpCancellation.CONTEXT_KEY, new McpCancellation())));
-            when(executor.readArtifact(any(), any(), anyString(), anyString(), anyLong(), anyInt(), any()))
+            var identities = mock(McpIdentities.class);
+            when(identities.resolve(any()))
+                    .thenReturn(new McpIdentities.Identity(mock(AuthPrincipal.class), WorkspaceId.random()));
+            when(executor.readArtifact(any(), any(), anyString(), anyLong(), anyInt(), any()))
                     .thenAnswer(call -> {
-                        long offset = call.getArgument(4);
-                        int limit = call.getArgument(5);
-                        if (!id.equals(call.getArgument(3)) || expireAtEnd && offset == content.length) {
+                        long offset = call.getArgument(3);
+                        int limit = call.getArgument(4);
+                        if (!id.equals(call.getArgument(2)) || expireAtEnd && offset == content.length) {
                             return Optional.empty();
                         }
                         byte[] part = Arrays.copyOfRange(
@@ -197,7 +191,7 @@ class McpArtifactTests {
                         return Optional.of(new RepositoryExecutor.ArtifactChunk(
                                 id, "artifact.bin", type, content.length, digest, false, 299, offset, part));
                     });
-            tool = new RepositoryMcpTools(sessions, null, assets, provider, json, null)
+            tool = new RepositoryMcpTools(identities, null, assets, provider, json, null)
                     .specifications().stream()
                             .filter(value -> value.tool().name().equals("get_artifact"))
                             .findFirst()
@@ -205,7 +199,7 @@ class McpArtifactTests {
         }
 
         McpSchema.CallToolResult call(Map<String, Object> arguments) {
-            return tool.callHandler().apply(exchange, new McpSchema.CallToolRequest("get_artifact", arguments));
+            return tool.callHandler().apply(context, new McpSchema.CallToolRequest("get_artifact", arguments));
         }
 
         JsonNode info(McpSchema.CallToolResult result) {

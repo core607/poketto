@@ -11,9 +11,9 @@ and transport limits.
 
 The worker captures regular files into immutable protected storage under the
 admitted lease. `poketto artifact create` returns a handle. `get_artifact` serves
-it to any MCP session of the same account, workspace and reading scope while the
+it to any MCP request of the same account, workspace and reading scope while the
 capturing lease stays open, after checking current authority; the handle is not
-bound to the originating MCP session. A request under a different credential of
+bound to the originating request. A request under a different credential of
 the account first moves the copy to a new lease, which closes the old lease and
 its artifacts. A public-only grant never reads a full copy's artifacts, and public
 projection withdrawal also blocks retained results. Sandbox commands cannot read
