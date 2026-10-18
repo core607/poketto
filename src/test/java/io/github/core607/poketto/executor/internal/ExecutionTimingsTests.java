@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import tools.jackson.databind.json.JsonMapper;
 
 @ExtendWith(OutputCaptureExtension.class)
 class ExecutionTimingsTests {
@@ -31,6 +32,24 @@ class ExecutionTimingsTests {
         assertThat(Long.parseLong(value(line, "commandMs"))).isGreaterThanOrEqualTo(10);
         assertThat(Long.parseLong(value(line, "totalMs")))
                 .isGreaterThanOrEqualTo(Long.parseLong(value(line, "commandMs")));
+    }
+
+    @Test
+    void theWorkersOwnStagesAreRecordedWithTheCall(CapturedOutput output) {
+        var timings = new ExecutionTimings();
+        for (ExecutionTimings.Stage stage : ExecutionTimings.Stage.values()) {
+            timings.end(stage);
+        }
+        timings.worker(JsonMapper.builder().build().readTree("""
+                {"freshSandbox": true, "timings": {"roomMs": 3, "runMs": 812, "flushMs": 40, "lockMs": -1, "x": 9}}
+                """));
+
+        timings.record();
+
+        String line = recordLine(output);
+        assertThat(line).contains("freshSandbox=true", "workerRoomMs=3", "workerRunMs=812", "workerFlushMs=40");
+        // A negative or unknown value is not the worker's to report.
+        assertThat(line).doesNotContain("workerLockMs", "x=9");
     }
 
     @Test

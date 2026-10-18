@@ -1,9 +1,13 @@
 package io.github.core607.poketto.executor.internal;
 
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Wall time of each stage of one {@code repo_exec} call, recorded once when the call ends.
@@ -14,6 +18,9 @@ import org.slf4j.LoggerFactory;
  * reports the time spent in it and is named by {@code stoppedIn}, and only stages the call never
  * entered read {@code -1}. A failure closes that stage when it is caught, so stopping the sandbox
  * and releasing the journal afterwards are reported apart, as {@code cleanupMs}.
+ *
+ * <p>A command's result also names the stages it spent inside the worker, which the record adds
+ * with a {@code worker} prefix, and whether it started a fresh sandbox.
  */
 final class ExecutionTimings {
     private static final Logger log = LoggerFactory.getLogger(ExecutionTimings.class);
@@ -24,6 +31,9 @@ final class ExecutionTimings {
     private int finished = -1;
     private long bridgeNanos;
     private int bridgeRequests;
+    private final Map<String, Object> worker = new LinkedHashMap<>();
+    private static final List<String> WORKER_STAGES =
+            List.of("roomMs", "lockMs", "prepareMs", "runMs", "releaseMs", "flushMs");
 
     ExecutionTimings() {
         Arrays.fill(stages, -1);
@@ -41,6 +51,17 @@ final class ExecutionTimings {
     void failed() {
         if (failedAt == 0) {
             failedAt = System.nanoTime();
+        }
+    }
+
+    /** Takes the worker's own stage timings from a command result, ignoring any it did not report. */
+    void worker(JsonNode result) {
+        worker.put("freshSandbox", result.path("freshSandbox").asBoolean(false));
+        for (String stage : WORKER_STAGES) {
+            JsonNode value = result.path("timings").path(stage);
+            if (value.isIntegralNumber() && value.asLong() >= 0 && value.asLong() <= TimeUnit.HOURS.toMillis(1)) {
+                worker.put("worker" + Character.toUpperCase(stage.charAt(0)) + stage.substring(1), value.asLong());
+            }
         }
     }
 
@@ -67,11 +88,17 @@ final class ExecutionTimings {
         }
         long total = milliseconds(now - started);
         long cleanup = failedAt == 0 ? 0 : milliseconds(now - failedAt);
+        var reported = new StringBuilder();
+        for (var stage : worker.entrySet()) {
+            entry = entry.addKeyValue(stage.getKey(), stage.getValue());
+            reported.append(' ').append(stage.getKey()).append('=').append(stage.getValue());
+        }
         entry.addKeyValue("bridgeMs", milliseconds(bridgeNanos))
                 .addKeyValue("bridgeRequests", bridgeRequests)
                 .addKeyValue("cleanupMs", cleanup)
                 .addKeyValue("totalMs", total)
                 .setMessage(message.append(" bridgeMs={} bridgeRequests={} cleanupMs={} totalMs={}")
+                        .append(reported)
                         .toString())
                 .addArgument(milliseconds(bridgeNanos))
                 .addArgument(bridgeRequests)

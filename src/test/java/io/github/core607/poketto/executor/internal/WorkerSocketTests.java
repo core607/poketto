@@ -1247,6 +1247,7 @@ class WorkerSocketTests {
             for (var command : running) {
                 assertThat(command.get(5, TimeUnit.SECONDS).exitCode()).isZero();
             }
+            peer.clientMayReset = true;
         }
     }
 
@@ -1741,6 +1742,8 @@ class WorkerSocketTests {
         private volatile String artifactLease = "";
         private final AtomicBoolean holdFirstExec = new AtomicBoolean();
         private volatile boolean holdEveryExec;
+        // Bridge polls still in flight when the executor closes are cut off mid-reply.
+        private volatile boolean clientMayReset;
         private final AtomicInteger execsEntered = new AtomicInteger();
         private final CountDownLatch execHold = new CountDownLatch(1);
         private volatile int moveProtocol = 1;
@@ -1898,7 +1901,7 @@ class WorkerSocketTests {
         }
 
         private void recordFailure(Throwable exception) {
-            if (exception instanceof IOException && (closed.get() || stallExec)) {
+            if (exception instanceof IOException && (closed.get() || stallExec || clientMayReset)) {
                 return;
             }
             if (exception instanceof InterruptedException && closed.get()) {

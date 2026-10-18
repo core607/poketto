@@ -73,7 +73,9 @@ final class BridgedCommands implements AutoCloseable {
             }
             // The EXEC reply owns its terminal result; closing the mailbox during cancellation
             // must not turn a confirmed cancelled command into an unknown transport outcome.
-            return running.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            JsonNode response = running.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            timings.worker(response.path("result"));
+            return response;
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new WorkerUnavailableException(interrupted);
