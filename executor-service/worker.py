@@ -292,6 +292,8 @@ class Service:
             state = self.backend.discard(p)
             return {'ok': True, 'leaseId': p['leaseId'], 'copyId': d['copyId'],
                     'commit': d['commit'], 'state': state}
+        if op == 'EXEC':
+            self.await_unit_stop(p)
         with self.lock:
             if op == 'REVOKE':
                 if set(d) != {'keyIds', 'accountIds'} or any(not isinstance(d[k], list) or len(d[k]) > 1000 for k in d):
@@ -784,6 +786,21 @@ class Service:
             if s.cancelled.is_set():
                 with self.lock:
                     self.cancel(s, s.reason)
+
+    def await_unit_stop(self, p):
+        """Waits, up to ROOM_SECONDS, while the lease's idle unit is being stopped.
+
+        Another lease making room, or idle cleanup, stops a unit between two commands of its
+        agent. The next command would otherwise be refused SESSION_BUSY, which the application
+        cannot tell from a command that ran; the stop is short, so the command waits for it.
+        """
+        deadline = time.monotonic() + ROOM_SECONDS
+        while time.monotonic() < deadline:
+            with self.lock:
+                s = self.sessions.get(p['leaseId'])
+                if s is None or s.identity != self.identity(p) or s.state != 'UPDATING' or s.execution_id:
+                    return
+            time.sleep(0.02)
 
     def make_room(self, s):
         """Before s starts a unit, stop the least recently used idle units beyond maxLiveUnits.

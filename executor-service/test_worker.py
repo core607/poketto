@@ -120,6 +120,22 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual('READY', first.state)
         self.assertFalse(first.cancelled.is_set())
 
+    def test_a_command_waits_for_its_own_unit_being_stopped_instead_of_a_refusal(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.channel, session.unit, session.bridge = object(), 'own-unit', Mock()
+        # Another lease's make_room, or idle cleanup, is stopping this idle unit.
+        session.state = 'UPDATING'
+
+        def finish_stopping():
+            time.sleep(0.2)
+            with self.service.lock:
+                session.channel, session.state = None, 'READY'
+
+        threading.Thread(target=finish_stopping).start()
+        result = self.send(self.execution())
+        self.assertTrue(result['ok'], result)
+
     def test_a_unit_already_stopping_frees_its_place_instead_of_a_refusal(self):
         self.service.config['maxLiveUnits'] = 1
         self.opened()
