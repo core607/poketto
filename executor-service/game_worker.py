@@ -13,7 +13,7 @@ import time
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from resource_pool import ResourcePool
-from worker import (Service, Session, SystemdBackend, Handler, Server, Rejected,
+from worker import (DENY_READ, Service, Session, SystemdBackend, Handler, Server, Rejected,
                     checked, integer, json_read)
 
 MAX_INPUT = 512 * 1024
@@ -187,7 +187,7 @@ class GameBackend(SystemdBackend):
     def sandbox_policy(self, session, payload):
         target = self.mount_path(session)
         return {'network': {'allowedDomains': [], 'deniedDomains': [], 'allowAllUnixSockets': False},
-                'filesystem': {'denyRead': ['/'], 'allowRead': [
+                'filesystem': {'denyRead': list(DENY_READ), 'allowRead': [
                     '/usr', '/bin', '/lib', '/lib64', '/dev', '/proc', '/etc/ld.so.cache',
                     self.c['toolsRoot'], str(target / 'bootstrap'), str(target / 'input.json')],
                     'allowWrite': ['/tmp'], 'denyWrite': []}, 'enableWeakerNestedSandbox': False}
