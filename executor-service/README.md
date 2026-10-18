@@ -47,7 +47,7 @@ The first installs host distribution packages for Pillow, BeautifulSoup/lxml, py
 | `appUid`, `appGid` | The only accepted `SO_PEERCRED` peer, and the group of the mode-0660 socket |
 | `execUser` | Unprivileged, not the application account, not a member of `appGid` |
 | `idleUnitSeconds` | Required, 1 through 86400 (example 300) |
-| `maxLiveUnits` | Optional, 1 through `maxSessions`: live units; a new one first stops the least recently used idle unit, or is refused with `EXECUTION_CAPACITY` when all run commands |
+| `maxLiveUnits` | Optional, 1 through `maxSessions`: live units, starting ones included; a new one first stops the least recently used idle unit, or is refused with `EXECUTION_CAPACITY` when all run commands |
 | `renewAfterSeconds` | Less than `leaseSeconds` |
 | `unitPrefix` | Matches `poketto-exec-[a-z0-9]+-` |
 | `resourceSlice` | Required; the slice the worker must run in |
