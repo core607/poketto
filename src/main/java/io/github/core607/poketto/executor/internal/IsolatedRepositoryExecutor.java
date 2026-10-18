@@ -354,11 +354,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             timings.end(ExecutionTimings.Stage.PREPARE);
             JsonNode response = commands.execute(session, execution.toString(), command, timeout, timings);
             timings.end(ExecutionTimings.Stage.COMMAND);
-            if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
+            if (refusedBeforeRunning(response) instanceof ExecutionAdmissionException.Reason refusal) {
                 attempted = false;
                 held.refused();
                 session.accountRecord = held.record();
-                throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.CAPACITY, true);
+                throw new ExecutionAdmissionException(refusal, true);
             }
             requireOk(response, session);
             io.authorize(session);
@@ -390,6 +390,17 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             var known = session.accountRecord;
             return new CopyRetention(known.expiresAt(), false, known.lastInterruptedCommand());
         }
+    }
+
+    /** A refusal the worker makes before the command runs; nothing executed, so a retry is safe. */
+    private static ExecutionAdmissionException.Reason refusedBeforeRunning(JsonNode response) {
+        if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
+            return ExecutionAdmissionException.Reason.CAPACITY;
+        }
+        if (WorkerResponses.refused(response, "SESSION_BUSY")) {
+            return ExecutionAdmissionException.Reason.BUSY;
+        }
+        return null;
     }
 
     private void containFailedCommand(ExecutionSession session, RuntimeException failure, ExecutionTimings timings) {

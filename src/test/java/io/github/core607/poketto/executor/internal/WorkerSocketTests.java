@@ -551,6 +551,22 @@ class WorkerSocketTests {
     }
 
     @Test
+    void aSessionTheWorkerReportsBusyRefusesTheCommandAsNotRun() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            command(executor, actor, "new");
+            peer.sessionBusy = true;
+
+            // Refused before it ran: a retry is safe, unlike an unconfirmed command.
+            assertThatThrownBy(() -> command(executor, actor, "new"))
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            refused -> assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.BUSY));
+        }
+    }
+
+    @Test
     void aCommandTheWorkerRefusesStillClaimsItsCopy() throws Exception {
         var actor = principal();
         try (var peer = new Peer();
@@ -1751,6 +1767,7 @@ class WorkerSocketTests {
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
         private volatile boolean executionCapacity;
+        private volatile boolean sessionBusy;
         private volatile boolean baselineUnavailable;
         private volatile String terminationReason = "normal";
         private volatile boolean freshSandbox = true;
@@ -1978,9 +1995,9 @@ class WorkerSocketTests {
                     }
                 }
                 case "EXEC" -> {
-                    if (executionCapacity) {
+                    if (executionCapacity || sessionBusy) {
                         response.put("ok", false);
-                        response.put("code", "EXECUTION_CAPACITY");
+                        response.put("code", executionCapacity ? "EXECUTION_CAPACITY" : "SESSION_BUSY");
                         break;
                     }
                     executionId = request.path("data").path("executionId").asString("");
