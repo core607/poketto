@@ -122,7 +122,7 @@ The worker rejects `data` with a missing or extra field; [java-frames.json](java
 | `ATTACH` | Claims an existing copy for a new lease after checking account, workspace, scope, pinned commit and the exclusive copy lock. Never clones or replaces files. |
 | `DISCARD` | Deletes an owner-matched copy once no lease holds its lock. Returns DISCARDED or ABSENT, or `COPY_BUSY`. |
 | `EXEC` | Runs `command` (1 byte to 64 KiB of UTF-8, no NUL) within `timeoutMillis`, at most `maxTimeoutMillis`. Requires READY and the pinned `commit`; blocks until completion or containment. |
-| `RENEW` | Extends an unexpired INITIALIZING, READY or RUNNING lease to `expiresAt`. Nothing else renews. |
+| `RENEW` | Extends an unexpired lease in any live state, UPDATING included, to `expiresAt`. Nothing else renews. |
 | `BRIDGE_POLL` | Claims one pending CLI request of the command it was dispatched for, or returns null when idle, after a bounded wait, or as soon as that command's cleanup begins. Never takes the command lock or cancels on contention. |
 | `BRIDGE_COMPLETE` | Publishes one bounded reply to that pending request of that running execution. |
 | `CAPTURE_BEGIN` | Captures up to 64 selected UTF-8 files and 4 MiB plus explicit deletions; returns a capture ID and an ordered path/length/SHA-256 manifest. |

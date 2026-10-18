@@ -639,6 +639,27 @@ class WorkerSocketTests {
     }
 
     @Test
+    void aRenewalWhileTheWorkerStopsTheIdleUnitKeepsTheLease() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = command(executor, actor, "new");
+            int renewals = peer.operations("RENEW").size();
+            // The worker reports UPDATING while it stops a lease's idle unit to make room.
+            peer.states.replaceAll((lease, state) -> "UPDATING");
+
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            while (peer.operations("RENEW").size() < renewals + 2 && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(peer.operations("RENEW").size()).isGreaterThanOrEqualTo(renewals + 2);
+            assertThat(peer.operations("CLOSE")).isEmpty();
+            assertThat(command(executor, actor, first.copyId()).copyId()).isEqualTo(first.copyId());
+            assertThat(peer.operations("ATTACH")).isEmpty();
+        }
+    }
+
+    @Test
     void everyDueRenewalReachesTheWorkerAtOnce() throws Exception {
         int leases = 6;
         try (var peer = new Peer();

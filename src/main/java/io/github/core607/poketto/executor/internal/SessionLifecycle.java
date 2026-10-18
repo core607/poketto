@@ -348,7 +348,10 @@ final class SessionLifecycle {
                                 io.request(session, "RENEW", new WorkerRequests.Renew(), Duration.ofSeconds(3));
                         requireOk(response, session);
                         String state = response.path("state").asString("");
-                        if (!List.of("INITIALIZING", "READY", "RUNNING").contains(state)) {
+                        // UPDATING is a live lease whose idle unit is being stopped or whose
+                        // baseline is being installed; the worker extended it like any other.
+                        if (!List.of("INITIALIZING", "READY", "RUNNING", "UPDATING")
+                                .contains(state)) {
                             throw new WorkerUnavailableException();
                         }
                         session.nextRenew = System.nanoTime()
