@@ -53,7 +53,7 @@ class GameSavesController {
     ProblemDetail failure(GameException failure) {
         HttpStatus status =
                 switch (failure.code()) {
-                    case "OWNER_CONSENT_REQUIRED" -> HttpStatus.FORBIDDEN;
+                    case "PERSONAL_KEY_REQUIRED" -> HttpStatus.FORBIDDEN;
                     case "GAME_UNAVAILABLE", "SAVE_UNAVAILABLE", "SAVE_REMOVED" -> HttpStatus.NOT_FOUND;
                     case "GAME_UPDATED", "SAVE_CONFLICT", "GAME_BUSY", "SAVE_CAPACITY" -> HttpStatus.CONFLICT;
                     case "GAME_FAILED" -> HttpStatus.UNPROCESSABLE_CONTENT;

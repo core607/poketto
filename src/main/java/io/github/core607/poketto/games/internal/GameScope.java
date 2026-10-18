@@ -3,7 +3,6 @@ package io.github.core607.poketto.games.internal;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.CommunityAccounts;
 import io.github.core607.poketto.auth.MachineAccounts;
-import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.games.GameException;
 import io.github.core607.poketto.games.GameLibrary;
 import io.github.core607.poketto.workspace.PublicationGuard;
@@ -78,8 +77,9 @@ final class GameScope {
             return people.lock(actor).accountId();
         }
         MachineAccounts.Identity identity = machines.lock(actor, connection);
-        if (!identity.permissions().contains(MachinePermission.GAME_SAVE)) {
-            throw new GameException("OWNER_CONSENT_REQUIRED", "The account holder must authorize access to game saves");
+        if (!identity.personal()) {
+            throw new GameException(
+                    "PERSONAL_KEY_REQUIRED", "Only a key its holder issued reaches the account's game saves");
         }
         return identity.accountId();
     }

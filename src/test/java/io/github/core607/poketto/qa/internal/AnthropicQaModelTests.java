@@ -133,10 +133,10 @@ class AnthropicQaModelTests {
     @Test
     void authorizationFailurePreventsHttpAndPreservesItsCode() {
         assertThatThrownBy(() -> model.complete(messages(), Duration.ofSeconds(5), () -> {
-                    throw new QaException("OWNER_CONSENT_REQUIRED", "Consent was revoked");
+                    throw new QaException("PERSONAL_KEY_REQUIRED", "The key no longer acts for the account");
                 }))
                 .isInstanceOf(QaException.class)
-                .satisfies(failure -> assertThat(((QaException) failure).code()).isEqualTo("OWNER_CONSENT_REQUIRED"));
+                .satisfies(failure -> assertThat(((QaException) failure).code()).isEqualTo("PERSONAL_KEY_REQUIRED"));
         assertThat(requests).hasValue(0);
     }
 

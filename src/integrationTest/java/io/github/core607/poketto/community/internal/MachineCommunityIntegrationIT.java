@@ -11,7 +11,6 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.CommunityAccounts;
 import io.github.core607.poketto.auth.MachineAccounts;
-import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.auth.SiteGroup;
 import io.github.core607.poketto.auth.SitePolicyService;
 import io.github.core607.poketto.community.Community;
@@ -91,11 +90,10 @@ class MachineCommunityIntegrationIT {
         auth.acceptInvitation(
                 writer, auth.createInvitation(owner, workspace, Set.of()).token());
         var human = new Accounts(jdbc, transactions);
-        accounts = new MachineAccounts(jdbc, human, auth, transactions);
+        accounts = new MachineAccounts(jdbc, auth, transactions);
         policy = new SitePolicyService(jdbc, human, auth, transactions);
         policy.change(owner, writer.accountId(), SiteGroup.CREATOR, "Synthetic approval");
-        key = auth.authenticateApiKey(auth.createApiKey(owner, workspace, writer.accountId(), Set.of())
-                .token());
+        key = AccountFixtures.ownKey(auth, writer, workspace, Set.of());
         WorkspacePublications publications = CommunityPublicationFixture.publications(jdbc);
         var guard = new PublicationGuard(jdbc, publications);
         var identities = new CommunityAccounts(jdbc, human);
@@ -116,14 +114,16 @@ class MachineCommunityIntegrationIT {
     }
 
     @Test
-    void onlyTheHolderCanConsentAndTheServerKeepsAttributionOnIdempotentRetries() {
+    void onlyAKeyItsHolderIssuedCommentsAndTheServerKeepsAttributionOnIdempotentRetries() {
         var input = input("<img src=x onerror=alert(1)> plain text");
-        assertThatThrownBy(() -> machines.comment(key, workspace, "street/paper", input, "client"))
+        AuthPrincipal issuedByOwner =
+                auth.authenticateApiKey(auth.createApiKey(owner, workspace, writer.accountId(), Set.of())
+                        .token());
+        assertThatThrownBy(() -> machines.comment(issuedByOwner, workspace, "street/paper", input, "client"))
                 .isInstanceOf(CommunityException.class)
-                .hasMessageContaining("OWNER_CONSENT_REQUIRED");
-        assertThatThrownBy(() -> accounts.set(owner, key.subjectId(), Set.of(MachinePermission.COMMENT)))
-                .isInstanceOf(AuthException.class);
-        consent();
+                .hasMessageContaining("PERSONAL_KEY_REQUIRED");
+        assertThatThrownBy(() -> machines.sign(issuedByOwner, workspace, "Not the holder's key"))
+                .hasMessageContaining("PERSONAL_KEY_REQUIRED");
         machines.sign(key, workspace, "小猫落款");
         UUID id = machines.comment(key, workspace, "street/paper", input, "Client A");
         machines.sign(key, workspace, "Later signature");
@@ -143,14 +143,10 @@ class MachineCommunityIntegrationIT {
                 .isEqualTo(1);
         assertThatThrownBy(() -> community.comment(key, "street", article, input("bypass")))
                 .isInstanceOf(AuthException.class);
-        accounts.set(writer, key.subjectId(), Set.of());
-        assertThatThrownBy(() -> machines.comment(key, workspace, "street/paper", input, "client"))
-                .hasMessageContaining("OWNER_CONSENT_REQUIRED");
     }
 
     @Test
     void concurrentRetriesShareOneCommentAndOneAllowance() throws Exception {
-        consent();
         var input = input("One paper");
         try (var pool = Executors.newFixedThreadPool(2)) {
             var first = pool.submit(() -> machines.comment(key, workspace, "street/paper", input, "A"));
@@ -166,7 +162,6 @@ class MachineCommunityIntegrationIT {
 
     @Test
     void wallAndWritesFollowModerationBlockingWithdrawalAndArticleIdentity() {
-        consent();
         UUID id = machines.comment(key, workspace, "street/paper", input("Visible on the wall"), "client");
         assertThat(accounts.withCreator(key, workspace, machines::wall)).hasSize(1);
         community.moderateComment(owner, id);
@@ -190,7 +185,6 @@ class MachineCommunityIntegrationIT {
 
     @Test
     void machineRateAndAccountEligibilityAreBothRechecked() {
-        consent();
         for (int index = 0; index < 5; index++) {
             machines.comment(key, workspace, "street/paper", input("Paper " + index), "client");
         }
@@ -203,13 +197,8 @@ class MachineCommunityIntegrationIT {
                 .isInstanceOf(AuthException.class);
     }
 
-    private void consent() {
-        accounts.set(writer, key.subjectId(), Set.of(MachinePermission.COMMENT));
-    }
-
     @Test
     void aMissingAuthorDoesNotHideTheRestOfTheStreet() {
-        consent();
         UUID orphan = machines.comment(key, workspace, "street/paper", input("Orphan"), "client");
         machines.comment(key, workspace, "street/paper", input("Available"), "client");
         jdbc.update("update community_comments set author_id=? where comment_id=?", UUID.randomUUID(), orphan);
@@ -220,7 +209,6 @@ class MachineCommunityIntegrationIT {
 
     @Test
     void signatureChangesHaveTheirOwnAccountAllowanceAndDoNotConsumeCommentAllowance() {
-        consent();
         for (int index = 0; index < 10; index++) {
             machines.sign(key, workspace, "Signature " + index);
         }

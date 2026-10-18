@@ -30,9 +30,9 @@ to `run.py`. Both choices use the same admission ledger and bounded thinking loo
 the product's real authentication, PostgreSQL and QA budget entrance. `run.py`
 asks five web questions, rereads every cited public article independently, and
 checks completed duplicates without repeating paid work. The response records
-include the selected model, public thinking and tool activity. `wish.py` checks holder
-consent, one-candy spending, clarification across fresh MCP sessions, passive
-status reads and revocation. Its synthetic machine key is revoked on completion.
+include the selected model, public thinking and tool activity. `wish.py` checks
+one-candy spending, clarification across fresh MCP sessions and passive status reads
+through a key its holder issued. Its synthetic machine key is revoked on completion.
 Neither script is browser acceptance.
 
 Reports record a request ID before dispatch. An existing report is refused, so a
