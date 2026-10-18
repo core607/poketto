@@ -1,30 +1,22 @@
 package io.github.core607.poketto.auth;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
-import java.sql.PreparedStatement;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Account-first lock ordering fences group changes, credential recovery and personal grants. */
+/** Account-first lock ordering fences group changes and credential recovery for machine account actions. */
 public final class MachineAccounts {
     private final JdbcTemplate jdbc;
-    private final Accounts accounts;
     private final AuthService auth;
     private final TransactionTemplate transactions;
 
-    public MachineAccounts(JdbcTemplate jdbc, Accounts accounts, AuthService auth, PlatformTransactionManager manager) {
+    public MachineAccounts(JdbcTemplate jdbc, AuthService auth, PlatformTransactionManager manager) {
         this.jdbc = jdbc;
-        this.accounts = accounts;
         this.auth = auth;
         this.transactions = new TransactionTemplate(manager);
     }
@@ -45,87 +37,8 @@ public final class MachineAccounts {
         AccountIdentity account = lockCreator(actor.accountId());
         lockWorkspace(workspace);
         auth.authorize(actor, workspace);
-        return new Identity(account.accountId(), account.displayName(), grants(actor.subjectId(), account.accountId()));
-    }
-
-    public ConnectionPage connections(AuthPrincipal actor, int offset) {
-        if (offset < 0 || offset > 10000) {
-            throw new IllegalArgumentException("Connection offset is out of bounds");
-        }
-        return human(actor, () -> {
-            List<Connection> items = jdbc.query(
-                    "select k.key_id,w.display_name,coalesce(cl.client_name,'API key') as client_name "
-                            + "from auth_api_keys k join workspaces w using(workspace_id) "
-                            + "left join oauth_connections c using(key_id) left join oauth_clients cl using(client_id) "
-                            + "where k.account_id=? and k.revoked_at is null "
-                            + "and (c.key_id is null or c.expires_at>current_timestamp) order by k.key_id limit 101 offset ?",
-                    (row, number) -> new Connection(
-                            row.getObject(1, UUID.class),
-                            row.getString(2),
-                            row.getString(3),
-                            grants(row.getObject(1, UUID.class), actor.accountId())),
-                    actor.accountId(),
-                    offset);
-            return new ConnectionPage(items.stream().limit(100).toList(), items.size() > 100 ? offset + 100 : null);
-        });
-    }
-
-    public Set<MachinePermission> set(AuthPrincipal actor, UUID key, Set<MachinePermission> permissions) {
-        Set<MachinePermission> selected = Set.copyOf(permissions);
-        return human(actor, () -> {
-            List<WorkspaceId> targets = jdbc.query(
-                    "select workspace_id from auth_api_keys where key_id=? and account_id=? and revoked_at is null",
-                    (row, number) -> new WorkspaceId(row.getObject(1, UUID.class)),
-                    key,
-                    actor.accountId());
-            if (targets.isEmpty()) {
-                throw new AuthException(AuthException.Code.DENIED);
-            }
-            lockWorkspace(targets.getFirst());
-            if (!Boolean.TRUE.equals(jdbc.queryForObject(
-                    "select exists(select 1 from auth_api_keys where key_id=? and account_id=? and revoked_at is null)",
-                    Boolean.class,
-                    key,
-                    actor.accountId()))) {
-                throw new AuthException(AuthException.Code.DENIED);
-            }
-            jdbc.update(connection -> {
-                PreparedStatement statement = connection.prepareStatement(
-                        "insert into machine_account_grants(key_id,account_id,permissions) values (?,?,?) "
-                                + "on conflict(key_id) do update set permissions=excluded.permissions");
-                statement.setObject(1, key);
-                statement.setObject(2, actor.accountId());
-                statement.setArray(
-                        3,
-                        connection.createArrayOf(
-                                "text", selected.stream().map(Enum::name).toArray(String[]::new)));
-                return statement;
-            });
-            return selected;
-        });
-    }
-
-    /** Changes only the selected permission so an old browser tab cannot restore another revoked grant. */
-    public Set<MachinePermission> change(AuthPrincipal actor, UUID key, MachinePermission permission, boolean enabled) {
-        return human(actor, () -> {
-            var selected = new HashSet<>(grants(key, actor.accountId()));
-            if (enabled) {
-                selected.add(permission);
-            } else {
-                selected.remove(permission);
-            }
-            return set(actor, key, selected);
-        });
-    }
-
-    private <T> T human(AuthPrincipal actor, Supplier<T> action) {
-        return transactions.execute(status -> {
-            lockPolicy();
-            return accounts.withAccount(actor, () -> {
-                accounts.requireCreator(actor);
-                return action.get();
-            });
-        });
+        return new Identity(
+                account.accountId(), account.displayName(), personal(actor.subjectId(), account.accountId()));
     }
 
     private void lockPolicy() {
@@ -157,24 +70,15 @@ public final class MachineAccounts {
         }
     }
 
-    private Set<MachinePermission> grants(UUID key, UUID account) {
-        List<Set<MachinePermission>> values = jdbc.query(
-                "select permissions from machine_account_grants where key_id=? and account_id=?",
-                (row, number) -> Arrays.stream((String[]) row.getArray(1).getArray())
-                        .map(MachinePermission::valueOf)
-                        .collect(Collectors.toUnmodifiableSet()),
+    /** A key acts for its holder's account only when the holder issued it, directly, by one of their keys or by OAuth. */
+    private boolean personal(UUID key, UUID account) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(
+                "select exists(select 1 from auth_api_keys where key_id=? and account_id=? and created_by=account_id)",
+                Boolean.class,
                 key,
-                account);
-        return values.isEmpty() ? Set.of() : values.getFirst();
+                account));
     }
 
-    public record Identity(UUID accountId, String displayName, Set<MachinePermission> permissions) {
-        public Identity {
-            permissions = Set.copyOf(permissions);
-        }
-    }
-
-    public record Connection(UUID keyId, String workspaceName, String clientName, Set<MachinePermission> permissions) {}
-
-    public record ConnectionPage(List<Connection> items, Integer nextOffset) {}
+    /** {@code personal}: the key's holder issued it, so it may act for the holder's account. */
+    public record Identity(UUID accountId, String displayName, boolean personal) {}
 }

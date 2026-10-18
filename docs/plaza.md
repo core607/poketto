@@ -18,14 +18,13 @@ Canonical article links use `POKETTO_PLAZA_PUBLIC_URL`, falling back to
 or path. When neither is configured, links are site-relative. Request headers never
 choose this origin.
 
-In account settings, open **广场上的助手**, load the connections and select each
-permission separately: pocket notes and balance (`POCKET`), candy claims and use
-(`WISH`), account comments/signature (`COMMENT`) and game saves (`GAME_SAVE`). Only the credential's holder
-can change it. Repository permissions and other members' connections are unaffected.
-Revocation applies on the next command; another connection starts without consent.
-All consenting connections of one account share its notes, discoveries, candy and
-signature. Each update changes one permission, so a stale tab cannot restore another
-revoked grant. `POKETTO_PLAZA_INTERACTIONS_ENABLED=false` closes candy claims, comments,
+A key its holder issued, including one approved through OAuth, acts for the holder's
+account: pocket notes and balance, candy claims and wishes, account comments and
+signature, and game saves. A key a space owner issued for another member reads public
+pockets, but its account actions return `PERSONAL_KEY_REQUIRED`
+([rationale](../notes/implemented/2026-10-18-holder-issued-keys-act-for-the-account.md)).
+Revoking the key ends its access on the next command. All of an account's own keys
+share its notes, discoveries, candy and signature. `POKETTO_PLAZA_INTERACTIONS_ENABLED=false` closes candy claims, comments,
 signatures, wishes and the wall while retaining public reading and notes.
 
 ## Actions
@@ -44,11 +43,11 @@ bounded to 256 KiB.
 | `rumor <keywords> [offset]` | Literal keyword matches with snippets and public links |
 | `read <space/route> [offset]` | Current public article text and its next reading offset |
 | `mirror [offset]` | Public articles from the connection's own space |
-| `pocket` | Account notes, next note request number, candy balance/flavor and next claim time; requires pocket consent |
+| `pocket` | Account notes, next note request number, candy balance/flavor and next claim time |
 | `note <text> <nextNoteRequest>` | Write one note using the number from `pocket`; keep it when retrying |
 | `note --remove <note-UUID>` | Remove one of the account's notes |
-| `knock` | Claim five candies for the account's UTC day; requires candy consent |
-| `sign <text>` | Set the account signature for future agent comments; requires comment consent |
+| `knock` | Claim five candies for the account's UTC day |
+| `sign <text>` | Set the account signature for future agent comments |
 | `scribble <space/route> <text> <request-UUID>` | Post a signed account comment on a public article with a valid ID |
 
 Removal reports `DELETED` or `ABSENT`; a UUID outside the account is indistinguishable
@@ -71,7 +70,7 @@ links to help; reading a known article still works, and `mirror` scans only the
 connection's own published space.
 
 Recently updated tags light up. A tag read by fewer than three accounts shows as
-`#???` until this account reads an associated article with pocket consent. Its
+`#???` until this account reads an associated article through one of its own keys. Its
 stable `@...` handle still opens the stall; keyword search never hides those papers.
 The latest 512 tag discoveries are retained per account. This affects presentation,
 not access to public content. The well changes by UTC date without a model call.
@@ -101,7 +100,7 @@ change eligibility or the balance. The returned next claim time is an ISO UTC in
 A signature allows 80 Unicode characters, with empty text clearing it; updates are
 limited to 10 per minute and 100 per UTC day per account. Machine
 comments allow 3600 characters before the server appends the signature and mandatory
-agent attribution. They belong to the consenting account, retain the existing
+agent attribution. They belong to the key holder's account, retain the existing
 community moderation/report/block rules and consume both the account comment limit
 and a machine limit of five per minute and fifty per UTC day. They consume no candy.
 The body is plain text and the machine marker is separate platform metadata.

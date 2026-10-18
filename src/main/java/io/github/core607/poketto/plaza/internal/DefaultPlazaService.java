@@ -3,7 +3,6 @@ package io.github.core607.poketto.plaza.internal;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.MachineAccounts;
-import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.community.Community;
 import io.github.core607.poketto.community.CommunityException;
 import io.github.core607.poketto.community.MachineCommunity;
@@ -81,11 +80,11 @@ final class DefaultPlazaService implements PlazaService {
             return PlazaResult.refused(
                     refused.code(),
                     refused.getMessage(),
-                    refused.code().equals("OWNER_CONSENT_REQUIRED") ? "--help" : "peek");
+                    refused.code().equals("PERSONAL_KEY_REQUIRED") ? "--help" : "peek");
         } catch (CommunityException refused) {
             return PlazaResult.refused(
                     refused.code().name(),
-                    "The wall cannot accept this action; check consent, visibility and limits.",
+                    "The wall cannot accept this action; check the key, visibility and limits.",
                     "--help");
         } catch (PlazaException refused) {
             return PlazaResult.refused(refused.code(), refused.getMessage(), refused.next());
@@ -105,7 +104,7 @@ final class DefaultPlazaService implements PlazaService {
                 workspace,
                 identity -> new ReadContext(
                         identity,
-                        command.name().equals("look") && identity.permissions().contains(MachinePermission.POCKET)
+                        command.name().equals("look") && identity.personal()
                                 ? pocket.discovered(identity.accountId())
                                 : Set.of()));
         PlazaResult result =
@@ -118,11 +117,7 @@ final class DefaultPlazaService implements PlazaService {
                     default -> throw new IllegalArgumentException("Unknown public action");
                 };
         return accounts.withCreator(actor, workspace, current -> {
-            if (!context.discovered().isEmpty() && !current.permissions().contains(MachinePermission.POCKET)) {
-                throw new PlazaException("OWNER_CONSENT_REQUIRED", "Pocket consent changed during the read.", "--help");
-            }
-            if (result.data() instanceof PublicPlazaReads.Reading reading
-                    && current.permissions().contains(MachinePermission.POCKET)) {
+            if (result.data() instanceof PublicPlazaReads.Reading reading && current.personal()) {
                 pocket.discover(current.accountId(), reading.article().tags());
             }
             return result;
@@ -204,12 +199,10 @@ final class DefaultPlazaService implements PlazaService {
     }
 
     private HelpLocks helpLocks(MachineAccounts.Identity identity, String client) {
-        String pocketLock = identity.permissions().contains(MachinePermission.POCKET) ? "" : "OWNER_CONSENT_REQUIRED";
-        String comment = interactionLock(identity, MachinePermission.COMMENT);
-        String game = games == null
-                ? "UNAVAILABLE"
-                : identity.permissions().contains(MachinePermission.GAME_SAVE) ? "" : "OWNER_CONSENT_REQUIRED";
-        String claim = interactionLock(identity, MachinePermission.WISH);
+        String pocketLock = personalLock(identity);
+        String comment = interactionLock(identity);
+        String game = games == null ? "UNAVAILABLE" : personalLock(identity);
+        String claim = interactionLock(identity);
         String continuation = qa == null || !qa.available() ? "UNAVAILABLE" : claim;
         String wish = continuation;
         PlazaWallet.Wallet balance = wallet.read(identity.accountId(), client);
@@ -219,7 +212,7 @@ final class DefaultPlazaService implements PlazaService {
         if (claim.isEmpty() && balance.claimedToday()) {
             claim = "ALREADY_CLAIMED";
         }
-        String status = qa == null ? "UNAVAILABLE" : interactionLock(identity, MachinePermission.WISH);
+        String status = qa == null ? "UNAVAILABLE" : interactionLock(identity);
         return new HelpLocks(pocketLock, comment, game, claim, wish, continuation, status);
     }
 
@@ -300,9 +293,9 @@ final class DefaultPlazaService implements PlazaService {
 
     private PlazaResult knock(MachineAccounts.Identity identity, PlazaCommand command, String client) {
         command.count(0, 0);
-        String lock = interactionLock(identity, MachinePermission.WISH);
+        String lock = interactionLock(identity);
         if (!lock.isEmpty()) {
-            return PlazaResult.refused(lock, "The door needs your account holder's candy consent.", "--help");
+            return PlazaResult.refused(lock, "The door opens only to a key its holder issued.", "--help");
         }
         return PlazaResult.ok(
                 "Five sweets fall into the shared account pocket.",
@@ -325,11 +318,12 @@ final class DefaultPlazaService implements PlazaService {
         return PlazaResult.ok("Your account left a signed paper on the wall.", new Posted(id), "look");
     }
 
-    private String interactionLock(MachineAccounts.Identity identity, MachinePermission permission) {
-        if (!interactionsEnabled) {
-            return "UNAVAILABLE";
-        }
-        return identity.permissions().contains(permission) ? "" : "OWNER_CONSENT_REQUIRED";
+    private String interactionLock(MachineAccounts.Identity identity) {
+        return interactionsEnabled ? personalLock(identity) : "UNAVAILABLE";
+    }
+
+    private static String personalLock(MachineAccounts.Identity identity) {
+        return identity.personal() ? "" : "PERSONAL_KEY_REQUIRED";
     }
 
     private PlazaResult note(MachineAccounts.Identity identity, PlazaCommand command, String client) {
@@ -349,11 +343,9 @@ final class DefaultPlazaService implements PlazaService {
     }
 
     private static void requirePocket(MachineAccounts.Identity identity) {
-        if (!identity.permissions().contains(MachinePermission.POCKET)) {
+        if (!identity.personal()) {
             throw new PlazaException(
-                    "OWNER_CONSENT_REQUIRED",
-                    "Only your account holder can open this connection's pocket access in account settings.",
-                    "--help");
+                    "PERSONAL_KEY_REQUIRED", "Only a key its holder issued opens the account's pocket.", "--help");
         }
     }
 

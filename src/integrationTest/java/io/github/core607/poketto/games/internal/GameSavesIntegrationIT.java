@@ -12,11 +12,11 @@ import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.Accounts;
+import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.CommunityAccounts;
 import io.github.core607.poketto.auth.MachineAccounts;
-import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
@@ -97,10 +97,9 @@ class GameSavesIntegrationIT {
         auth = new AuthService(jdbc, transactions, passwords, event -> {}, clock);
         owner = auth.initializeOwner("game-owner", "Game-fixture-password-2026!");
         var people = new Accounts(jdbc, transactions);
-        accounts = new MachineAccounts(jdbc, people, auth, transactions);
+        accounts = new MachineAccounts(jdbc, auth, transactions);
         key = auth.authenticateApiKey(
                 auth.createApiKey(owner, workspace, owner.accountId(), Set.of()).token());
-        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.GAME_SAVE));
         WorkspacePublications publications = CommunityPublicationFixture.publications(jdbc);
         scope = new GameScope(
                 new CommunityAccounts(jdbc, people),
@@ -219,7 +218,7 @@ class GameSavesIntegrationIT {
     }
 
     @Test
-    void revokedConsentDuringAJobDoesNotBlockRevocationOrPersistItsResult() throws Exception {
+    void aKeyRevokedDuringAJobDoesNotBlockRevocationOrPersistItsResult() throws Exception {
         GameSaves.View created = games.play(key, workspace, "street/game", "1");
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
@@ -233,10 +232,10 @@ class GameSavesIntegrationIT {
         try (var pool = Executors.newFixedThreadPool(2)) {
             var move = pool.submit(() -> games.press(key, workspace, created.saveId(), "next", "1"));
             assertThat(entered.await(3, TimeUnit.SECONDS)).isTrue();
-            var revoke = pool.submit(() -> accounts.change(owner, key.subjectId(), MachinePermission.GAME_SAVE, false));
-            assertThat(revoke.get(3, TimeUnit.SECONDS)).isEmpty();
+            var revoke = pool.submit(() -> auth.revokeApiKey(owner, workspace, key.subjectId()));
+            revoke.get(3, TimeUnit.SECONDS);
             release.countDown();
-            assertThatThrownBy(() -> move.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(GameException.class);
+            assertThatThrownBy(() -> move.get(5, TimeUnit.SECONDS)).hasCauseInstanceOf(AuthException.class);
         }
         assertThat(games.load(owner, created.saveId()).revision()).isEqualTo("1");
         assertThat(jdbc.queryForObject(

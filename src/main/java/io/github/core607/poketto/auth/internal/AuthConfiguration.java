@@ -21,9 +21,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 @ConditionalOnProperty(name = "poketto.workspace.catalog.enabled", havingValue = "true", matchIfMissing = true)
 class AuthConfiguration {
     @Bean
-    MachineAccounts machineAccounts(
-            JdbcTemplate jdbc, Accounts accounts, AuthService auth, PlatformTransactionManager manager) {
-        return new MachineAccounts(jdbc, accounts, auth, manager);
+    MachineAccounts machineAccounts(JdbcTemplate jdbc, AuthService auth, PlatformTransactionManager manager) {
+        return new MachineAccounts(jdbc, auth, manager);
     }
 
     @Bean

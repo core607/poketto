@@ -14,7 +14,7 @@ answers that can outlive the publication state they describe.
 The Java QA module owns a finite read-only model loop. The plaza supplies public
 search/read and candy ports, preserving one reading boundary without a dependency
 cycle. Current creators and administrators can use the browser entrance; machine
-wishes also require the holder's personal consent. Personality changes expression,
+wishes also require a key its holder issued. Personality changes expression,
 not available tools or checks. The [QA reference](../../docs/qa.md) owns configuration,
 wire behavior, limits and user-visible failure handling.
 

@@ -17,7 +17,6 @@ import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.CommunityAccounts;
 import io.github.core607.poketto.auth.MachineAccounts;
-import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.qa.QaCandy;
 import io.github.core607.poketto.qa.QaException;
 import io.github.core607.poketto.qa.QaService;
@@ -106,10 +105,9 @@ class QaIntegrationIT {
         auth = new AuthService(jdbc, transactions, passwords, event -> {}, clock);
         owner = auth.initializeOwner("qa-owner", "QA-fixture-password-2026!");
         var accounts = new Accounts(jdbc, transactions);
-        machines = new MachineAccounts(jdbc, accounts, auth, transactions);
+        machines = new MachineAccounts(jdbc, auth, transactions);
         key = auth.authenticateApiKey(
                 auth.createApiKey(owner, workspace, owner.accountId(), Set.of()).token());
-        machines.set(owner, key.subjectId(), Set.of(MachinePermission.WISH));
         jdbc.update(
                 "insert into plaza_wallets(account_id,balance,claimed_day) values (?,5,'2026-10-09')",
                 owner.accountId());
@@ -165,13 +163,18 @@ class QaIntegrationIT {
     }
 
     @Test
-    void ordinaryAccountsAndKeysWithoutPersonalConsentCannotStartQuestions() {
+    void ordinaryAccountsAndKeysIssuedForAnotherHolderCannotStartQuestions() {
         AuthPrincipal ordinary = AccountFixtures.create(auth, "qa-reader", "QA-fixture-password-2026!");
         assertThatThrownBy(() -> qa.ask(ordinary, null, question())).isInstanceOf(AuthException.class);
-        machines.set(owner, key.subjectId(), Set.of());
-        assertThatThrownBy(() -> qa.ask(key, workspace, question()))
+        auth.acceptInvitation(
+                ordinary, auth.createInvitation(owner, workspace, Set.of()).token());
+        jdbc.update("update auth_accounts set site_group='CREATOR' where account_id=?", ordinary.accountId());
+        AuthPrincipal issuedByOwner =
+                auth.authenticateApiKey(auth.createApiKey(owner, workspace, ordinary.accountId(), Set.of())
+                        .token());
+        assertThatThrownBy(() -> qa.ask(issuedByOwner, workspace, question()))
                 .isInstanceOf(QaException.class)
-                .hasMessageContaining("authorize wishes");
+                .hasMessageContaining("holder issued");
         assertThatThrownBy(() -> qa.ask(key, null, question())).isInstanceOf(AuthException.class);
         verifyNoInteractions(model);
         assertThat(number("select count(*) from qa_runs")).isZero();
@@ -246,18 +249,15 @@ class QaIntegrationIT {
     }
 
     @Test
-    void revokingConsentDuringAnUpstreamCallPreventsDeliveryButStillSettlesUsageAndRefunds() {
+    void revokingTheKeyDuringAnUpstreamCallPreventsDeliveryButStillSettlesUsageAndRefunds() {
         doAnswer(call -> {
                     call.getArgument(2, Runnable.class).run();
-                    machines.set(owner, key.subjectId(), Set.of());
+                    auth.revokeApiKey(owner, workspace, key.subjectId());
                     return noAnswer();
                 })
                 .when(model)
                 .complete(any(), any(), any());
-        QaService.Reply refused = qa.ask(key, workspace, question());
-        assertThat(refused.code()).isEqualTo("OWNER_CONSENT_REQUIRED");
-        assertThat(refused.paragraphs()).isEmpty();
-        assertThat(refused.activity()).isEmpty();
+        assertThatThrownBy(() -> qa.ask(key, workspace, question())).isInstanceOf(AuthException.class);
         assertThat(balance()).isEqualTo(5);
         assertThat(number("select sum(cost_micros) from qa_runs")).isEqualTo(prices.cost(100, 20));
     }

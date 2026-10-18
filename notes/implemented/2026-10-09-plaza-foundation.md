@@ -18,10 +18,10 @@ the complete catalogue or refuse. They do not materialize remote repositories.
 Public presentation fields and canonical article links form the output contract;
 raw source paths and Git history do not.
 
-Private pocket notes and discovery state belong to the account. The credential
-holder grants access through a browser session, independently of workspace key
-issuance. Each operation rechecks the credential, membership, creator eligibility
-and current personal grant. Short account transactions bracket public scans, so a
+Private pocket notes and discovery state belong to the account. Only a key its
+holder issued acts for that account; [holder-issued keys](2026-10-18-holder-issued-keys-act-for-the-account.md)
+replaced the per-key grants this record introduced. Each operation rechecks the
+credential, membership and creator eligibility. Short account transactions bracket public scans, so a
 slow search cannot hold policy changes behind its work; delivery rechecks current
 eligibility. Private operations retain the account guard. Notes use account-issued
 monotonic request numbers. A permanent counter rejects consumed numbers after the
@@ -47,8 +47,7 @@ independent execution jobs. [Creator QA](2026-10-09-creator-qa.md) adds bounded 
 Candy belongs to the account rather than a client-supplied agent name. The account
 transaction serializes one five-candy UTC claim across every authorized connection;
 a new key or transport cannot reset it. Balances and signatures are durable server
-state. Candy grant changes update one permission under the same account guard,
-avoiding stale browser tabs reviving an unrelated revoked grant. The
+state. The
 [community record](2026-09-23-community-interactions.md) owns delegated comments.
 
 ## Alternatives
@@ -57,7 +56,7 @@ A shell for discovery consumes creation capacity and exposes state that public
 reading does not need. One tool per action loses the common discoverable entrance.
 Full corpus materialization adds storage and withdrawal coordination without a
 measured need. Automatically extending workspace keys delegates personal account
-data to a different authority, so consent is separate.
+data to whoever issued the key, so only the holder's own keys act for the account.
 
 ## Consequences
 
@@ -73,7 +72,5 @@ known article reads and the single-space mirror remain independent entrances.
 
 `PlazaCommandTests`, `PublicPlazaReadsTests`, `PlazaMcpToolTests`,
 `PlazaIntegrationIT` and `McpProtocolIntegrationIT` pin the parser, public delivery,
-wire status, personal grants and durable state. `MachineCommunityIntegrationIT` pins consent, attribution and
+wire status, holder-issued keys and durable state. `MachineCommunityIntegrationIT` pins holder-issued keys, attribution and
 shared moderation; the plaza integration test also pins concurrent daily claims.
-The account grant component test
-and isolated browser entrance cover the human consent surface.

@@ -5,7 +5,6 @@ import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.CommunityAccounts;
 import io.github.core607.poketto.auth.MachineAccounts;
-import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.qa.QaException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.UUID;
@@ -41,8 +40,8 @@ final class QaAuthority {
                 account = identity.accountId();
             } else {
                 MachineAccounts.Identity identity = machines.lock(actor, connection);
-                if (!identity.permissions().contains(MachinePermission.WISH)) {
-                    throw new QaException("OWNER_CONSENT_REQUIRED", "The account holder must authorize wishes");
+                if (!identity.personal()) {
+                    throw new QaException("PERSONAL_KEY_REQUIRED", "Only a key its holder issued makes wishes");
                 }
                 account = identity.accountId();
             }
