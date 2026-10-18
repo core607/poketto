@@ -12,6 +12,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 usage='Usage: install-compile-cache.sh EXISTING_TOOLS_DIRECTORY EXECUTION_ACCOUNT'
 tools=$(realpath -e -- "${1:?$usage}")
+cd /
 uid=$(id -u -- "${2:?$usage}")
 gid=$(id -g -- "$2")
 if (( uid == 0 )); then
@@ -37,4 +38,11 @@ generated=("$staging"/*-"$uid")
 install -d -m 755 -- "$tools/compile-cache"
 rm -rf -- "$tools/compile-cache/"*-"$uid"
 cp -R -- "${generated[0]}" "$tools/compile-cache/"
+# Node skips a cache it cannot read without a word, so read it as the account that will use it.
+installed=$tools/compile-cache/${generated[0]##*/}
+unreadable=$(setpriv --reuid="$uid" --regid="$gid" --clear-groups -- find "$installed" ! -readable -print -quit)
+if [[ -n $unreadable ]]; then
+    printf 'The execution account cannot read %s.\n' "$unreadable" >&2
+    exit 1
+fi
 printf 'Installed the compile cache for uid %s in %s.\n' "$uid" "$tools/compile-cache"

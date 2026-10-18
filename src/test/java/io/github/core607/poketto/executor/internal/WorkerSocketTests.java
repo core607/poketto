@@ -596,6 +596,7 @@ class WorkerSocketTests {
                     .isInstanceOfSatisfying(ExecutionAdmissionException.class, refused -> {
                         assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE);
                         assertThat(refused.recoveryAvailable()).isTrue();
+                        assertThat(refused.getCause()).hasMessageContaining("LEASE_EXPIRED");
                     });
             peer.execLeaseExpired = false;
             assertThat(command(executor, actor, first.copyId()).retention().lastInterruptedCommand())
@@ -626,10 +627,10 @@ class WorkerSocketTests {
                             "pwd",
                             Duration.ofSeconds(2),
                             cancellation))
-                    .isInstanceOfSatisfying(
-                            ExecutionAdmissionException.class,
-                            refused -> assertThat(refused.reason())
-                                    .isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE));
+                    .isInstanceOfSatisfying(ExecutionAdmissionException.class, refused -> {
+                        assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE);
+                        assertThat(refused.getCause()).hasMessageContaining("stopped before the command was sent");
+                    });
             assertThat(peer.operations("EXEC")).hasSize(sent);
             peer.accounts.afterWrite(record -> {});
             assertThat(command(executor, actor, first.copyId()).retention().lastInterruptedCommand())

@@ -337,21 +337,18 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             session.accountRecord = held.record();
             attempted = true;
             timings.end(ExecutionTimings.Stage.PREPARE);
-            JsonNode response = null;
-            ExecutionAdmissionException.Reason refusal;
+            JsonNode response;
             try {
                 response = commands.execute(session, execution.toString(), command, timeout, timings);
-                refusal = refusedBeforeRunning(response);
-            } catch (BridgedCommands.CommandNotSentException notSent) {
-                refusal = ExecutionAdmissionException.Reason.UNAVAILABLE;
-            }
-            timings.end(ExecutionTimings.Stage.COMMAND);
-            if (refusal != null) {
+            } catch (BridgedCommands.CommandNotRunException notRun) {
+                timings.end(ExecutionTimings.Stage.COMMAND);
                 attempted = false;
                 held.refused();
                 session.accountRecord = held.record();
-                throw new ExecutionAdmissionException(refusal, true);
+                log.info("Account command did not run: {}", notRun.getMessage());
+                throw new ExecutionAdmissionException(notRun.reason(), true, notRun);
             }
+            timings.end(ExecutionTimings.Stage.COMMAND);
             requireOk(response, session);
             io.authorize(session);
             // Decode before acknowledging the journal, so malformed completion stays unconfirmed.
@@ -402,20 +399,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             var known = session.accountRecord;
             return new CopyRetention(known.expiresAt(), false, known.lastInterruptedCommand());
         }
-    }
-
-    /** A refusal the worker makes before the command runs, expiry included; a retry is safe. */
-    private static ExecutionAdmissionException.Reason refusedBeforeRunning(JsonNode response) {
-        if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
-            return ExecutionAdmissionException.Reason.CAPACITY;
-        }
-        if (WorkerResponses.refused(response, "SESSION_BUSY")) {
-            return ExecutionAdmissionException.Reason.BUSY;
-        }
-        if (WorkerResponses.refused(response, "LEASE_EXPIRED")) {
-            return ExecutionAdmissionException.Reason.UNAVAILABLE;
-        }
-        return null;
     }
 
     private void containFailedCommand(ExecutionSession session, RuntimeException failure, ExecutionTimings timings) {
