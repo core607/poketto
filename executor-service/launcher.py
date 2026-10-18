@@ -46,9 +46,10 @@ def main():
     bootstrap_fd = os.open('bootstrap', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd)
     os.fchdir(bootstrap_fd)
     os.close(root_fd)
+    # The compile cache is read-only here: install-compile-cache.sh, run as root, is its only writer.
     env = {'HOME': str(root / 'home'), 'TMPDIR': '/tmp',
            'PATH': f'{root}/bootstrap:{tools}:{tools}/extracted/usr/bin:/usr/bin:/bin',
-           'POKETTO_BRIDGE': str(root / 'bridge'),
+           'POKETTO_BRIDGE': str(root / 'bridge'), 'NODE_COMPILE_CACHE': str(tools / 'compile-cache'),
            'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null'}
     if record['mode'] == 'initialize':
         # Parameters originate in verified server leases, and are passed as positional arguments.

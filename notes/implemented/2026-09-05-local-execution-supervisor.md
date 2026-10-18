@@ -188,6 +188,8 @@ than Python packages installed independently with pip.
 
 The supervisor is security-sensitive privileged code. Its executable, toolchain,
 configuration, verification key, and generated records must be root-owned.
+That includes SRT's compile cache: a V8 code cache is executable code every
+later sandbox would load, so it is generated at installation, never by a lease.
 Signed requests do not excuse unsafe filesystem cleanup or arbitrary systemd
 properties. Resource examples require real corpus sizing before production.
 

@@ -29,9 +29,12 @@ Provision the [content toolkit](../notes/implemented/2026-09-05-local-execution-
 
 ```sh
 sudo bash executor-service/install-sandbox-tools.sh /opt/poketto-executor/tools
+sudo bash executor-service/install-compile-cache.sh /opt/poketto-executor/tools poketto-exec
 ```
 
-It installs host distribution packages for Pillow, BeautifulSoup/lxml, pypdf, openpyxl, python-docx, `awk`, `zip`, Poppler (`pdftotext`, `pdfinfo`, `pdftoppm`) and Noto CJK fonts, and links `python` and `awk` inside the tools directory without changing host-wide commands. It runs no system upgrade and restarts no service; on an existing host, inspect `apt-get --simulate install` with its package list first. Afterwards validate through `repo_exec`, including native image and PDF operations.
+The second command fills `compile-cache` in the tools directory, which the launcher gives SRT's Node.js read-only and only this step writes ([why](../notes/implemented/2026-09-05-local-execution-supervisor.md#alternatives-and-consequences)). Node.js keys it by user ID: name the `execUser` account, and rerun it after changing Node.js, SRT or that account.
+
+The first installs host distribution packages for Pillow, BeautifulSoup/lxml, pypdf, openpyxl, python-docx, `awk`, `zip`, Poppler (`pdftotext`, `pdfinfo`, `pdftoppm`) and Noto CJK fonts, and links `python` and `awk` inside the tools directory without changing host-wide commands. It runs no system upgrade and restarts no service; on an existing host, inspect `apt-get --simulate install` with its package list first. Afterwards validate through `repo_exec`, including native image and PDF operations.
 
 [config.example.json](config.example.json) lists every setting; its UID/GID and numeric limits are examples, not production values. Startup enforces these rules:
 
