@@ -415,12 +415,12 @@ space, select fewer files, or use browser export.
 ## MCP and isolated execution
 
 The [public plaza](plaza.md) adds `wander` for creator accounts to discover and read
-published spaces without a worker. Account settings separately grant access to
-private pocket notes, candy and signed account comments. Set `POKETTO_PLAZA_ENABLED=false` to disable the entrance.
+published spaces without a worker. A key its holder issued also reaches the
+account's private pocket notes, candy and signed comments. Set `POKETTO_PLAZA_ENABLED=false` to disable the entrance.
 
 [Pocket games](games.md) share one rule package between anonymous browser play and
-independently isolated agent jobs. Account saves support explicit handoff under
-the separate `GAME_SAVE` grant.
+independently isolated agent jobs. Account saves support explicit handoff to the
+holder's own keys.
 
 [Creator QA](qa.md) is available at `/ask` and through `wander wish` when a model
 key is configured. Only creators and administrators may ask; questions use bounded

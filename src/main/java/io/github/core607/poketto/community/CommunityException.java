@@ -15,7 +15,7 @@ public final class CommunityException extends RuntimeException {
     public enum Code {
         UNAVAILABLE,
         PARTICIPATION_REQUIRED,
-        OWNER_CONSENT_REQUIRED,
+        PERSONAL_KEY_REQUIRED,
         LIMIT_REACHED,
         REQUEST_CONFLICT,
         REPLY_UNAVAILABLE,

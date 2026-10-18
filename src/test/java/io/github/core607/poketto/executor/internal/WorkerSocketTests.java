@@ -65,6 +65,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -580,6 +581,165 @@ class WorkerSocketTests {
             assertThatThrownBy(() -> command(executor, actor, "new")).isInstanceOf(ExecutionAdmissionException.class);
 
             assertThat(peer.accounts.record(owner).orElseThrow().expiresAt()).isGreaterThan(completed);
+        }
+    }
+
+    @Test
+    void aLeaseTheWorkerReportsExpiredRefusesTheCommandAsNotRun() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = command(executor, actor, "new");
+            peer.execLeaseExpired = true;
+
+            // The worker checks expiry before it accepts an EXEC, so nothing ran and a retry is safe.
+            assertThatThrownBy(() -> command(executor, actor, first.copyId()))
+                    .isInstanceOfSatisfying(ExecutionAdmissionException.class, refused -> {
+                        assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE);
+                        assertThat(refused.recoveryAvailable()).isTrue();
+                        assertThat(refused.getCause()).hasMessageContaining("LEASE_EXPIRED");
+                    });
+            peer.execLeaseExpired = false;
+            assertThat(command(executor, actor, first.copyId()).retention().lastInterruptedCommand())
+                    .isNull();
+        }
+    }
+
+    @Test
+    void aLeaseStoppedBeforeTheCommandIsSentRefusesItAsNotRun() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = command(executor, actor, "new");
+            var cancellation = new Cancellation();
+            // The lease stops once the command is journaled as running, before its EXEC is signed.
+            peer.accounts.afterWrite(record -> {
+                if (record.phase() == AccountCopyRecord.Phase.RUNNING) {
+                    cancellation.cancel();
+                }
+            });
+            int sent = peer.operations("EXEC").size();
+
+            assertThatThrownBy(() -> executor.execute(
+                            actor,
+                            WORKSPACE,
+                            new RepositoryExecutor.CopyRequest(first.copyId()),
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(2),
+                            cancellation))
+                    .isInstanceOfSatisfying(ExecutionAdmissionException.class, refused -> {
+                        assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE);
+                        assertThat(refused.getCause()).hasMessageContaining("stopped before the command was sent");
+                    });
+            assertThat(peer.operations("EXEC")).hasSize(sent);
+            peer.accounts.afterWrite(record -> {});
+            assertThat(command(executor, actor, first.copyId()).retention().lastInterruptedCommand())
+                    .isNull();
+        }
+    }
+
+    @Test
+    void aRenewalWhileTheWorkerStopsTheIdleUnitKeepsTheLease() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = command(executor, actor, "new");
+            int renewals = peer.operations("RENEW").size();
+            // The worker reports UPDATING while it stops a lease's idle unit to make room.
+            peer.states.replaceAll((lease, state) -> "UPDATING");
+
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            while (peer.operations("RENEW").size() < renewals + 2 && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            assertThat(peer.operations("RENEW").size()).isGreaterThanOrEqualTo(renewals + 2);
+            assertThat(peer.operations("CLOSE")).isEmpty();
+            assertThat(command(executor, actor, first.copyId()).copyId()).isEqualTo(first.copyId());
+            assertThat(peer.operations("ATTACH")).isEmpty();
+        }
+    }
+
+    @Test
+    void manyAgentsGetResultsOrNotRunRefusalsWhileTheWorkerRefusesAndStopsUnits() throws Exception {
+        int agents = 16;
+        int commands = 10;
+        try (var peer = new Peer();
+                var callers = Executors.newVirtualThreadPerTaskExecutor();
+                var executor = new IsolatedRepositoryExecutor(
+                        peer.accounts.store(),
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        new ExecutionLimits(agents, agents, Map.of(), Map.of()),
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            // Every fifth EXEC is refused before it runs, and every renewal finds its unit stopping.
+            peer.refuseEveryNthExec = 5;
+            peer.renewState = "UPDATING";
+            var outcomes = new ConcurrentHashMap<String, AtomicInteger>();
+            var running = new ArrayList<Future<?>>();
+            for (int i = 0; i < agents; i++) {
+                var actor = principal();
+                running.add(callers.submit(() -> {
+                    String copy = "new";
+                    for (int c = 0; c < commands; c++) {
+                        String outcome;
+                        try {
+                            copy = command(executor, actor, copy).copyId();
+                            outcome = "OK";
+                        } catch (ExecutionAdmissionException refused) {
+                            outcome = refused.reason().name();
+                        } catch (RuntimeException failed) {
+                            outcome = failed.getClass().getSimpleName();
+                        }
+                        outcomes.computeIfAbsent(outcome, key -> new AtomicInteger())
+                                .incrementAndGet();
+                        Thread.sleep(ThreadLocalRandom.current().nextInt(150, 300));
+                    }
+                    return null;
+                }));
+            }
+            for (var agent : running) {
+                agent.get(30, TimeUnit.SECONDS);
+            }
+
+            int refused = outcomes.entrySet().stream()
+                    .filter(entry -> !entry.getKey().equals("OK"))
+                    .mapToInt(entry -> entry.getValue().get())
+                    .sum();
+            assertThat(outcomes.keySet()).contains("OK").isSubsetOf("OK", "BUSY", "CAPACITY", "UNAVAILABLE");
+            assertThat(refused).isPositive();
+            assertThat(peer.operations("RENEW")).isNotEmpty();
+            // Only the refused commands closed their leases; no renewal did.
+            assertThat(peer.operations("CLOSE")).hasSize(refused);
+            peer.clientMayReset = true;
+        }
+    }
+
+    @Test
+    void everyDueRenewalReachesTheWorkerAtOnce() throws Exception {
+        int leases = 6;
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            for (int i = 0; i < leases; i++) {
+                command(executor, principal(), "new");
+            }
+            int closes = peer.operations("CLOSE").size();
+            peer.holdRenewals = true;
+
+            // Each lease renews within a second; a renewal waiting behind others would let it expire.
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (peer.renewalsHeld.get() < leases && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            int held = peer.renewalsHeld.get();
+            peer.renewalRelease.countDown();
+            assertThat(held).isEqualTo(leases);
+            assertThat(peer.operations("CLOSE")).hasSize(closes);
         }
     }
 
@@ -1768,6 +1928,13 @@ class WorkerSocketTests {
         private volatile boolean stallExec;
         private volatile boolean executionCapacity;
         private volatile boolean sessionBusy;
+        private volatile boolean execLeaseExpired;
+        private volatile int refuseEveryNthExec;
+        private final AtomicInteger execRequests = new AtomicInteger();
+        private volatile String renewState;
+        private volatile boolean holdRenewals;
+        private final AtomicInteger renewalsHeld = new AtomicInteger();
+        private final CountDownLatch renewalRelease = new CountDownLatch(1);
         private volatile boolean baselineUnavailable;
         private volatile String terminationReason = "normal";
         private volatile boolean freshSandbox = true;
@@ -1979,7 +2146,11 @@ class WorkerSocketTests {
                 }
                 case "RENEW" -> {
                     renewEntered.countDown();
-                    response.put("state", states.getOrDefault(lease, "INITIALIZING"));
+                    if (holdRenewals) {
+                        renewalsHeld.incrementAndGet();
+                        assertThat(renewalRelease.await(8, TimeUnit.SECONDS)).isTrue();
+                    }
+                    response.put("state", renewState != null ? renewState : states.getOrDefault(lease, "INITIALIZING"));
                 }
                 case "BRIDGE_POLL" -> {
                     bridgeEntered.countDown();
@@ -1998,6 +2169,18 @@ class WorkerSocketTests {
                     if (executionCapacity || sessionBusy) {
                         response.put("ok", false);
                         response.put("code", executionCapacity ? "EXECUTION_CAPACITY" : "SESSION_BUSY");
+                        break;
+                    }
+                    if (execLeaseExpired) {
+                        response.put("ok", false);
+                        response.put("code", "LEASE_EXPIRED");
+                        break;
+                    }
+                    int sequence = execRequests.incrementAndGet();
+                    if (refuseEveryNthExec > 0 && sequence % refuseEveryNthExec == 0) {
+                        List<String> codes = List.of("SESSION_BUSY", "EXECUTION_CAPACITY", "LEASE_EXPIRED");
+                        response.put("ok", false);
+                        response.put("code", codes.get(sequence / refuseEveryNthExec % codes.size()));
                         break;
                     }
                     executionId = request.path("data").path("executionId").asString("");
@@ -2103,6 +2286,7 @@ class WorkerSocketTests {
         public void close() throws Exception {
             closed.set(true);
             openRelease.countDown();
+            renewalRelease.countDown();
             server.close();
             threads.shutdownNow();
             assertThat(threads.awaitTermination(10, TimeUnit.SECONDS)).isTrue();

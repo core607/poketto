@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 
-/** Browser saves are untrusted account data; machine entrances additionally require current holder consent. */
+/** Browser saves are untrusted account data; machine entrances additionally require a key its holder issued. */
 public interface GameSaves {
     Index index(AuthPrincipal actor, WorkspaceId connection);
 

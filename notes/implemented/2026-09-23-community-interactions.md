@@ -9,8 +9,8 @@ assigns community participation to the community group and above. Reading remain
 requires a current browser account in COMMUNITY, CREATOR, or ADMINISTRATOR. Space
 membership alone never grants community participation. The ordinary browser API
 rejects machine credentials. The [plaza entrance](2026-10-09-plaza-foundation.md)
-partially supersedes the exclusion of machine comments: a current creator may
-explicitly delegate comment/signature authority to their own connection. The
+partially supersedes the exclusion of machine comments: a current creator's
+[own keys](2026-10-18-holder-issued-keys-act-for-the-account.md) carry comment and signature authority. The
 account remains the author and a server-owned agent marker cannot be omitted.
 
 The community module provides likes, private bookmarks, space following, article comments with one level of

@@ -331,35 +331,24 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 throw new IllegalArgumentException(
                         "The requested commit differs from the working-copy baseline; synchronize explicitly");
             }
-            io.authorize(session);
-            boolean opening = !session.ready;
-            if (opening) {
-                if (session.attaching) {
-                    held.bind(lifecycle.writer(session));
-                    session.accountRecord = held.record();
-                    lifecycle.attach(session);
-                } else {
-                    lifecycle.initializeCopy(session, requested, held);
-                }
-            }
-            held.bind(lifecycle.writer(session));
-            session.saveState = held.state();
-            if (opening) {
-                repository.refreshGitOnOpen(session);
-            }
+            openLease(session, requested, held);
             UUID execution = UUID.randomUUID();
             held.begin(execution);
             session.accountRecord = held.record();
             attempted = true;
             timings.end(ExecutionTimings.Stage.PREPARE);
-            JsonNode response = commands.execute(session, execution.toString(), command, timeout, timings);
-            timings.end(ExecutionTimings.Stage.COMMAND);
-            if (refusedBeforeRunning(response) instanceof ExecutionAdmissionException.Reason refusal) {
+            JsonNode response;
+            try {
+                response = commands.execute(session, execution.toString(), command, timeout, timings);
+            } catch (BridgedCommands.CommandNotRunException notRun) {
+                timings.end(ExecutionTimings.Stage.COMMAND);
                 attempted = false;
                 held.refused();
                 session.accountRecord = held.record();
-                throw new ExecutionAdmissionException(refusal, true);
+                log.info("Account command did not run: {}", notRun.getMessage());
+                throw new ExecutionAdmissionException(notRun.reason(), true, notRun);
             }
+            timings.end(ExecutionTimings.Stage.COMMAND);
             requireOk(response, session);
             io.authorize(session);
             // Decode before acknowledging the journal, so malformed completion stays unconfirmed.
@@ -383,6 +372,26 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    /** Opens or reattaches a lease that is not ready yet, then binds the journal to its writer. */
+    private void openLease(ExecutionSession session, Optional<String> requested, AccountCommand held) {
+        io.authorize(session);
+        boolean opening = !session.ready;
+        if (opening) {
+            if (session.attaching) {
+                held.bind(lifecycle.writer(session));
+                session.accountRecord = held.record();
+                lifecycle.attach(session);
+            } else {
+                lifecycle.initializeCopy(session, requested, held);
+            }
+        }
+        held.bind(lifecycle.writer(session));
+        session.saveState = held.state();
+        if (opening) {
+            repository.refreshGitOnOpen(session);
+        }
+    }
+
     private static CopyRetention unconfirmedView(ExecutionSession session, AccountCommand held) {
         try {
             return held.view();
@@ -390,17 +399,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             var known = session.accountRecord;
             return new CopyRetention(known.expiresAt(), false, known.lastInterruptedCommand());
         }
-    }
-
-    /** A refusal the worker makes before the command runs; nothing executed, so a retry is safe. */
-    private static ExecutionAdmissionException.Reason refusedBeforeRunning(JsonNode response) {
-        if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
-            return ExecutionAdmissionException.Reason.CAPACITY;
-        }
-        if (WorkerResponses.refused(response, "SESSION_BUSY")) {
-            return ExecutionAdmissionException.Reason.BUSY;
-        }
-        return null;
     }
 
     private void containFailedCommand(ExecutionSession session, RuntimeException failure, ExecutionTimings timings) {

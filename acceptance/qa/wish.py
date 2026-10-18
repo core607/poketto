@@ -44,10 +44,6 @@ def main():
     try:
         client = Mcp(args.base, key['token'])
         command = 'wish ' + quoted('帮我整理一下这些内容。先给我范围选项，不要直接作答。') + ' ' + report['requestId']
-        wander(client, command, 'OWNER_CONSENT_REQUIRED')
-        grant = '/api/auth/account/machine-grants/' + key['id']
-        for permission in ('WISH', 'POCKET'):
-            browser.api('PUT', grant, {'permission': permission, 'enabled': True})
         assert wander(client, 'knock')['balance'] == 5
         waiting = wander(client, command)
         report.update(state=waiting['status'], clarification=waiting.get('clarification'), usage=waiting['usage'])
@@ -65,8 +61,6 @@ def main():
         assert any(value.endswith('/qa/garden/rain') for value in report['sources'])
         assert wander(client, command)['usage'] == result['usage']
         assert wander(client, 'pocket')['candy']['balance'] == 4
-        browser.api('PUT', grant, {'permission': 'WISH', 'enabled': False})
-        wander(client, 'wish --status ' + report['requestId'], 'OWNER_CONSENT_REQUIRED')
         report.update(result='PASS', candySpent=1, continuationAcrossFreshTransports=True, statusAndDuplicateCallsSpendNothing=True)
         save()
         print(json.dumps({key: report[key] for key in ('result', 'usage', 'candySpent', 'sources')}, ensure_ascii=False), flush=True)

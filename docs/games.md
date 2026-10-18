@@ -51,8 +51,8 @@ code cannot be recalled from an offline or modified client. Anonymous play start
 no server execution job; it makes only public package/status reads. Collapsing a
 game keeps its temporary state on that page; navigating away discards unsaved state.
 
-The [plaza](plaza.md) supplies account game commands. Current creator eligibility
-and the credential holder's `GAME_SAVE` consent are required on every command:
+The [plaza](plaza.md) supplies account game commands. Every command requires current
+creator eligibility and a key its holder issued:
 
 | Command | Result |
 | --- | --- |
@@ -73,7 +73,7 @@ invokes no model by itself.
 
 Registered accounts can select **管理账号存档** and explicitly save, load or delete
 progress. Browser saves and loads run no game code on the server. Each account can
-retain 20 saves shared with its consenting assistants; other accounts cannot read
+retain 20 saves shared with the assistants on its own keys; other accounts cannot read
 them. To hand off, save on the website and let the assistant use `peek` and `press`.
 Use **载入并替换当前进度** to resume the assistant's latest version in the browser.
 Saving is manual; loading explicitly replaces current local progress.
@@ -95,7 +95,7 @@ limit or per-deletion tombstone is required. Failed initialization retains a fai
 save that can be removed before starting another game.
 
 Execution occurs outside database transactions. Admission reserves a finite attempt
-token, and completion rechecks consent, publication, package and revision before
+token, and completion rechecks the key, publication, package and revision before
 writing. A late completion cannot replace another attempt after expiry. Revocation
 terminates affected jobs and prevents their result from becoming a saved move.
 

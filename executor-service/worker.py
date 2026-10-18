@@ -46,6 +46,10 @@ MAX_OUTPUT = MAX_OUTPUT_BYTES
 # making room for its unit may spend two of them, so a late start is refused instead of run unseen.
 ROOM_SECONDS = 2
 IDENTITY = ('principalId', 'accountId', 'workspaceId', 'serverSessionHash')
+# SRT 0.0.75 leaves /proc, /dev and /sys out when it expands a denied '/'. /proc and /dev are
+# mounted fresh, but /sys would stay the host's: other leases' units, the slice's memory and the
+# host's interfaces. Naming it covers it with an empty tmpfs private to the sandbox.
+DENY_READ = ('/', '/sys')
 
 
 class Rejected(Exception):
@@ -133,6 +137,8 @@ class Session:
     disk_lock: int = -1
     maintenance: 'Session | None' = None
     channel: object = None
+    # Room granted under maxLiveUnits to a unit still starting; it counts as live before its channel.
+    starting: bool = False
     unit_files: tuple = ()
     idle_since: float = 0
     # Milliseconds each stage of the running EXEC took inside the worker, returned with its result.
@@ -413,6 +419,10 @@ class Service:
             with self.lock:
                 self.cancel(s, 'sandbox_failed')
             raise
+        finally:
+            if op == 'EXEC':
+                with self.lock:
+                    s.starting = False
 
 
     def validate_open(self, p):
@@ -838,9 +848,12 @@ class Service:
             deadline = time.monotonic() + ROOM_SECONDS
         while limit:
             with self.lock:
-                live = [x for x in self.sessions.values() if x is not s and x.channel is not None]
+                live = [x for x in self.sessions.values()
+                        if x is not s and (x.channel is not None or x.starting)]
                 if len(live) < limit:
-                    return time.monotonic() < deadline
+                    # Taken under the same lock, so concurrent first commands cannot all see room.
+                    s.starting = time.monotonic() < deadline
+                    return s.starting
                 if time.monotonic() >= deadline:
                     return False
                 victim = None
@@ -1172,7 +1185,7 @@ class SystemdBackend:
         if payload['mode'] == 'baseline':
             read_paths.append(str(target / 'baseline.bundle'))
         return {'network': {'allowedDomains': [], 'deniedDomains': [], 'allowAllUnixSockets': False},
-            'filesystem': {'denyRead': ['/'], 'allowRead': read_paths,
+            'filesystem': {'denyRead': list(DENY_READ), 'allowRead': read_paths,
             'allowWrite': write_paths, 'denyWrite': []},
             'enableWeakerNestedSandbox': False}
 

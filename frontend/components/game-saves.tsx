@@ -115,7 +115,7 @@ export function GameSaves({
       setNotice(
         created && saved.revision !== "1"
           ? "原存档已保存，云端随后又有了新进度。请载入最新存档，或将页面中的进度另存为新局。"
-          : `已保存到账号，进度版本 ${saved.revision}。获授权的助手可以接手。`,
+          : `已保存到账号，进度版本 ${saved.revision}。你自己的助手可以接手。`,
       );
     } catch (error) {
       const rejected =
@@ -162,7 +162,7 @@ export function GameSaves({
 
   return (
     <section aria-label="账号存档">
-      <p>登录后可保存到账号，与获授权的助手接手同一局。不会自动保存。</p>
+      <p>登录后可保存到账号，让你自己的助手接手同一局。不会自动保存。</p>
       {login ? (
         <LoginDialog
           label="登录以管理存档"

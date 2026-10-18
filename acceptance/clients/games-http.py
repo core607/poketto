@@ -44,7 +44,7 @@ def count(root):
     return int((root / 'game-run-count').read_text())
 
 
-def verify(browser, client, root, key):
+def verify(browser, client, root):
     publication = '/api/auth/workspaces/' + browser.workspace + '/publication'
     browser.api('PUT', publication, {'enabled': True})
     browser.file('public/games/lantern/index.md')
@@ -56,9 +56,6 @@ def verify(browser, client, root, key):
     public(browser.endpoint, SAVES, 401)
     assert count(root) == before, 'Anonymous delivery executed a rule job'
     passed('games-http-anonymous-delivery-never-executes-a-server-job')
-    wander(client, 'peek', 'OWNER_CONSENT_REQUIRED')
-    grant = '/api/auth/account/machine-grants/' + key['id']
-    browser.api('PUT', grant, {'permission': 'GAME_SAVE', 'enabled': True})
     start = wander(client, 'peek')['nextCreationRequest']
     started = wander(client, 'play home/games/lantern ' + start)
     assert started['observation']['actions']
@@ -87,12 +84,8 @@ def verify(browser, client, root, key):
     stale = {**upload, 'saveId': saved['saveId'], 'creationRequest': None, 'expectedRevision': saved['revision']}
     assert browser.api('POST', SAVES, stale, expected=409)['code'] == 'SAVE_CONFLICT'
     passed('games-http-web-agent-web-handoff-and-exact-retry-do-not-overwrite-newer-progress')
-    browser.api('PUT', grant, {'permission': 'GAME_SAVE', 'enabled': False})
-    wander(client, 'peek ' + saved['saveId'], 'OWNER_CONSENT_REQUIRED')
-    assert count(root) == replay_count
-    browser.api('PUT', grant, {'permission': 'GAME_SAVE', 'enabled': True})
     update_and_withdraw(browser, client, saved, package, publication, root)
-    passed('games-http-current-consent-package-and-publication-guard-saves-and-execution')
+    passed('games-http-current-package-and-publication-guard-saves-and-execution')
 
 
 def update_and_withdraw(browser, client, saved, package, publication, root):
@@ -135,7 +128,7 @@ def main():
     browser = Browser(settings['endpoint'], settings['password'])
     key = browser.key([])
     try:
-        verify(browser, Mcp(browser.endpoint, key['token']), root, key)
+        verify(browser, Mcp(browser.endpoint, key['token']), root)
         print(json.dumps({'gamesHttp': 'PASS', 'browserExecution': 'NOT_TESTED'}), flush=True)
     finally:
         browser.api('DELETE', browser.admin + '/keys/' + key['id'], expected=204)

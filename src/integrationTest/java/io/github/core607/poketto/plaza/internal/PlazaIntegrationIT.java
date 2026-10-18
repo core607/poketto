@@ -1,18 +1,15 @@
 package io.github.core607.poketto.plaza.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AccountFixtures;
 import io.github.core607.poketto.auth.Accounts;
-import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.MachineAccounts;
-import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.auth.SiteGroup;
 import io.github.core607.poketto.auth.SitePolicyService;
 import io.github.core607.poketto.community.MachineCommunity;
@@ -76,7 +73,7 @@ class PlazaIntegrationIT {
         Flyway.configure().dataSource(data).load().migrate();
         jdbc = new JdbcTemplate(data);
         jdbc.execute(
-                "truncate table workspaces,auth_accounts,oauth_clients,machine_account_grants,plaza_notes,plaza_discoveries,plaza_wallets,plaza_pockets cascade");
+                "truncate table workspaces,auth_accounts,oauth_clients,plaza_notes,plaza_discoveries,plaza_wallets,plaza_pockets cascade");
         jdbc.execute("update auth_initialization set initialized_at=null");
         workspace = WorkspaceId.random();
         jdbc.update(
@@ -89,7 +86,7 @@ class PlazaIntegrationIT {
         auth = new AuthService(jdbc, manager, passwords, event -> {}, Clock.systemUTC());
         owner = auth.initializeOwner("plaza-owner", "Plaza-fixture-password-2026!");
         var humanAccounts = new Accounts(jdbc, manager);
-        accounts = new MachineAccounts(jdbc, humanAccounts, auth, manager);
+        accounts = new MachineAccounts(jdbc, auth, manager);
         policy = new SitePolicyService(jdbc, humanAccounts, auth, manager);
         key = key(owner);
         publications = CommunityPublicationFixture.publications(jdbc);
@@ -129,7 +126,6 @@ class PlazaIntegrationIT {
     void wishHelpSeparatesClaimingSpendingContinuationAndPassiveStatusLocks() {
         qa = mock(QaService.class);
         plaza = service();
-        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.WISH));
         assertThat(helpLock("wish <quoted-question>")).isEqualTo("UNAVAILABLE");
         assertThat(helpLock("wish --status")).isEmpty();
         assertThat(helpLock("wish --answer")).isEqualTo("UNAVAILABLE");
@@ -153,14 +149,9 @@ class PlazaIntegrationIT {
     }
 
     @Test
-    void pocketRequiresHolderConsentAndSurvivesAReplacementConnectionAndService() {
-        String request = "1";
-        assertThat(run(key, "note \"hello future\" " + request).status().code()).isEqualTo("OWNER_CONSENT_REQUIRED");
-        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
-        assertThat(run(key, "note \"hello future\" " + request).status().code()).isEqualTo("OK");
+    void pocketBelongsToTheAccountAndSurvivesAReplacementConnectionAndService() {
+        assertThat(run(key, "note \"hello future\" 1").status().code()).isEqualTo("OK");
         AuthPrincipal replacement = key(owner);
-        assertThat(run(replacement, "pocket").status().code()).isEqualTo("OWNER_CONSENT_REQUIRED");
-        accounts.set(owner, replacement.subjectId(), Set.of(MachinePermission.POCKET));
         plaza = service();
         var notes = ((DefaultPlazaService.Pocket) run(replacement, "pocket").data()).notes();
         assertThat(notes).hasSize(1);
@@ -169,13 +160,15 @@ class PlazaIntegrationIT {
     }
 
     @Test
-    void keyManagerCannotGrantAnotherHoldersAccountAuthorityOrReadTheirNotes() {
+    void aKeyIssuedForAnotherHolderReadsPublicPocketsButNeverActsForTheirAccount() {
         AuthPrincipal member = member();
-        AuthPrincipal memberKey = key(member);
-        assertThatThrownBy(() -> accounts.set(owner, memberKey.subjectId(), Set.of(MachinePermission.POCKET)))
-                .isInstanceOf(AuthException.class);
-        accounts.set(member, memberKey.subjectId(), Set.of(MachinePermission.POCKET));
-        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
+        AuthPrincipal issuedForMember = key(member);
+        assertThat(run(issuedForMember, "read street/paper").status().code()).isEqualTo("OK");
+        assertThat(run(issuedForMember, "note \"member secret\" 1").status().code())
+                .isEqualTo("PERSONAL_KEY_REQUIRED");
+        assertThat(run(issuedForMember, "knock").status().code()).isEqualTo("PERSONAL_KEY_REQUIRED");
+        AuthPrincipal memberKey =
+                AccountFixtures.ownKey(auth, member, workspace, Set.of(Capability.EXECUTE_REPOSITORY));
         assertThat(run(memberKey, "note \"member secret\" 1").status().code()).isEqualTo("OK");
         assertThat(((DefaultPlazaService.Pocket) run(key, "pocket").data()).notes())
                 .isEmpty();
@@ -190,13 +183,10 @@ class PlazaIntegrationIT {
                 .isEqualTo("ABSENT");
         assertThat(((DefaultPlazaService.Pocket) run(memberKey, "pocket").data()).notes())
                 .hasSize(1);
-        assertThatThrownBy(() -> accounts.set(memberKey, memberKey.subjectId(), Set.of(MachinePermission.POCKET)))
-                .isInstanceOf(AuthException.class);
     }
 
     @Test
     void concurrentRetriesWriteOnceAndDeletionDoesNotAllowResurrection() throws Exception {
-        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
         String command = "note \"one paper\" 1";
         try (var pool = Executors.newFixedThreadPool(2)) {
             var first = pool.submit(() -> run(key, command));
@@ -235,7 +225,6 @@ class PlazaIntegrationIT {
 
     @Test
     void aReadUnfoldsAStallAcrossSessionsWithoutMakingItASecretSearchFilter() {
-        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
         var before = (PlazaStreet.Street) run(key, "look").data();
         assertThat(before.stalls().getFirst().label()).isEqualTo("#???");
         assertThat(run(key, "stall " + before.stalls().getFirst().id()).status().code())
@@ -261,10 +250,7 @@ class PlazaIntegrationIT {
     void candiesBelongToTheAccountAndAccumulateOncePerUtcDayWithDecorativeClientFlavors() throws Exception {
         plazaClock = Clock.fixed(Instant.parse("2026-10-09T23:59:30Z"), ZoneOffset.UTC);
         plaza = service();
-        assertThat(run(key, "knock").status().code()).isEqualTo("OWNER_CONSENT_REQUIRED");
-        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.WISH, MachinePermission.POCKET));
         AuthPrincipal secondKey = key(owner);
-        accounts.set(owner, secondKey.subjectId(), Set.of(MachinePermission.WISH, MachinePermission.POCKET));
         try (var pool = Executors.newFixedThreadPool(2)) {
             var first = pool.submit(() -> plaza.execute(key, workspace, "knock", "Claude"));
             var second = pool.submit(() -> plaza.execute(secondKey, workspace, "knock", "Codex"));
@@ -286,13 +272,10 @@ class PlazaIntegrationIT {
         plaza = service();
         assertThat(((PlazaWallet.Wallet) run(secondKey, "knock").data()).balance())
                 .isEqualTo(10);
-        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
-        assertThat(run(key, "knock").status().code()).isEqualTo("OWNER_CONSENT_REQUIRED");
     }
 
     @Test
     void removingMoreThanAThousandNotesKeepsThePocketUsableWithoutOldRequestResurrection() {
-        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
         var notes = new PlazaPocket(jdbc, Clock.systemUTC());
         accounts.withCreator(key, workspace, identity -> {
             for (long request = 1; request <= 1005; request++) {
@@ -347,22 +330,6 @@ class PlazaIntegrationIT {
         return auth.authenticateApiKey(
                 auth.createApiKey(owner, workspace, holder.accountId(), Set.of(Capability.EXECUTE_REPOSITORY))
                         .token());
-    }
-
-    @Test
-    void independentGrantChangesDoNotRestoreARevokedPocketOrLoseAnotherSelection() throws Exception {
-        accounts.set(owner, key.subjectId(), Set.of(MachinePermission.POCKET));
-        accounts.change(owner, key.subjectId(), MachinePermission.POCKET, false);
-        try (var pool = Executors.newFixedThreadPool(2)) {
-            var candy = pool.submit(() -> accounts.change(owner, key.subjectId(), MachinePermission.WISH, true));
-            var comment = pool.submit(() -> accounts.change(owner, key.subjectId(), MachinePermission.COMMENT, true));
-            candy.get(10, TimeUnit.SECONDS);
-            comment.get(10, TimeUnit.SECONDS);
-        }
-        Set<MachinePermission> permissions =
-                accounts.withCreator(key, workspace, MachineAccounts.Identity::permissions);
-        assertThat(permissions).containsExactlyInAnyOrder(MachinePermission.WISH, MachinePermission.COMMENT);
-        assertThat(run(key, "pocket").status().code()).isEqualTo("OWNER_CONSENT_REQUIRED");
     }
 
     private PlazaResult run(AuthPrincipal actor, String command) {

@@ -3,7 +3,6 @@ package io.github.core607.poketto.community.internal;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.CommunityAccounts;
 import io.github.core607.poketto.auth.MachineAccounts;
-import io.github.core607.poketto.auth.MachinePermission;
 import io.github.core607.poketto.community.Community;
 import io.github.core607.poketto.community.CommunityException;
 import io.github.core607.poketto.community.MachineCommunity;
@@ -21,7 +20,7 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-/** Shares the community ledger and moderation rules, with a distinct holder-consent entrance. */
+/** Shares the community ledger and moderation rules; only a key its holder issued comments for the account. */
 final class JdbcMachineCommunity implements MachineCommunity {
     private final JdbcTemplate jdbc;
     private final MachineAccounts accounts;
@@ -65,7 +64,7 @@ final class JdbcMachineCommunity implements MachineCommunity {
         TransactionStatus status = begin();
         try {
             MachineAccounts.Identity identity = accounts.lock(actor, connectionWorkspace);
-            requireConsent(identity);
+            requirePersonal(identity);
             WorkspaceId workspace = targets.workspace(target.space());
             publications.lock(workspace);
             return targets.read(workspace, snapshot -> {
@@ -88,7 +87,7 @@ final class JdbcMachineCommunity implements MachineCommunity {
     public void sign(AuthPrincipal actor, WorkspaceId connectionWorkspace, String signature) {
         var input = new Signature(signature);
         accounts.withCreator(actor, connectionWorkspace, identity -> {
-            requireConsent(identity);
+            requirePersonal(identity);
             activity.consume(identity.accountId(), "AGENT_SIGNATURE", 10, 100);
             jdbc.update(
                     "insert into community_agent_signatures(account_id,signature) values (?,?) "
@@ -157,9 +156,9 @@ final class JdbcMachineCommunity implements MachineCommunity {
         return body.substring(0, end);
     }
 
-    private static void requireConsent(MachineAccounts.Identity identity) {
-        if (!identity.permissions().contains(MachinePermission.COMMENT)) {
-            throw new CommunityException(CommunityException.Code.OWNER_CONSENT_REQUIRED);
+    private static void requirePersonal(MachineAccounts.Identity identity) {
+        if (!identity.personal()) {
+            throw new CommunityException(CommunityException.Code.PERSONAL_KEY_REQUIRED);
         }
     }
 

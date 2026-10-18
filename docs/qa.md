@@ -52,7 +52,7 @@ availability; pending billing settlement resumes when the database is reachable.
 The default web allowance is five questions per account per UTC day. Wishes use
 candy instead, with the same global model concurrency and daily fee budget. All
 entrances recheck current creator eligibility. Machine wishes additionally require
-the holder's `WISH` grant and current credential/workspace authorization.
+a key its holder issued and current credential/workspace authorization.
 
 | `wander` action | Result |
 | --- | --- |

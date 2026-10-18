@@ -164,7 +164,7 @@ final class DefaultQaService implements QaService, AutoCloseable {
             }
         } catch (QaException failure) {
             session.conversation.activity().fail(failure.code());
-            if (failure.code().equals("OWNER_CONSENT_REQUIRED")) {
+            if (failure.code().equals("PERSONAL_KEY_REQUIRED")) {
                 sessions.remove(new QaLedger.Key(initial.account(), initial.request()), session);
             }
             return failed(initial, failure.code());
