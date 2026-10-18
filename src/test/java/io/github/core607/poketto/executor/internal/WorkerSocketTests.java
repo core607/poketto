@@ -584,6 +584,83 @@ class WorkerSocketTests {
     }
 
     @Test
+    void aLeaseTheWorkerReportsExpiredRefusesTheCommandAsNotRun() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = command(executor, actor, "new");
+            peer.execLeaseExpired = true;
+
+            // The worker checks expiry before it accepts an EXEC, so nothing ran and a retry is safe.
+            assertThatThrownBy(() -> command(executor, actor, first.copyId()))
+                    .isInstanceOfSatisfying(ExecutionAdmissionException.class, refused -> {
+                        assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE);
+                        assertThat(refused.recoveryAvailable()).isTrue();
+                    });
+            peer.execLeaseExpired = false;
+            assertThat(command(executor, actor, first.copyId()).retention().lastInterruptedCommand())
+                    .isNull();
+        }
+    }
+
+    @Test
+    void aLeaseStoppedBeforeTheCommandIsSentRefusesItAsNotRun() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            var first = command(executor, actor, "new");
+            var cancellation = new Cancellation();
+            // The lease stops once the command is journaled as running, before its EXEC is signed.
+            peer.accounts.afterWrite(record -> {
+                if (record.phase() == AccountCopyRecord.Phase.RUNNING) {
+                    cancellation.cancel();
+                }
+            });
+            int sent = peer.operations("EXEC").size();
+
+            assertThatThrownBy(() -> executor.execute(
+                            actor,
+                            WORKSPACE,
+                            new RepositoryExecutor.CopyRequest(first.copyId()),
+                            Optional.empty(),
+                            "pwd",
+                            Duration.ofSeconds(2),
+                            cancellation))
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            refused -> assertThat(refused.reason())
+                                    .isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE));
+            assertThat(peer.operations("EXEC")).hasSize(sent);
+            peer.accounts.afterWrite(record -> {});
+            assertThat(command(executor, actor, first.copyId()).retention().lastInterruptedCommand())
+                    .isNull();
+        }
+    }
+
+    @Test
+    void everyDueRenewalReachesTheWorkerAtOnce() throws Exception {
+        int leases = 6;
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            for (int i = 0; i < leases; i++) {
+                command(executor, principal(), "new");
+            }
+            int closes = peer.operations("CLOSE").size();
+            peer.holdRenewals = true;
+
+            // Each lease renews within a second; a renewal waiting behind others would let it expire.
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+            while (peer.renewalsHeld.get() < leases && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            int held = peer.renewalsHeld.get();
+            peer.renewalRelease.countDown();
+            assertThat(held).isEqualTo(leases);
+            assertThat(peer.operations("CLOSE")).hasSize(closes);
+        }
+    }
+
+    @Test
     void anUnclaimedForkIsReusedBeforeAnotherIsOpened() throws Exception {
         var actor = principal();
         try (var peer = new Peer();
@@ -1768,6 +1845,10 @@ class WorkerSocketTests {
         private volatile boolean stallExec;
         private volatile boolean executionCapacity;
         private volatile boolean sessionBusy;
+        private volatile boolean execLeaseExpired;
+        private volatile boolean holdRenewals;
+        private final AtomicInteger renewalsHeld = new AtomicInteger();
+        private final CountDownLatch renewalRelease = new CountDownLatch(1);
         private volatile boolean baselineUnavailable;
         private volatile String terminationReason = "normal";
         private volatile boolean freshSandbox = true;
@@ -1979,6 +2060,10 @@ class WorkerSocketTests {
                 }
                 case "RENEW" -> {
                     renewEntered.countDown();
+                    if (holdRenewals) {
+                        renewalsHeld.incrementAndGet();
+                        assertThat(renewalRelease.await(8, TimeUnit.SECONDS)).isTrue();
+                    }
                     response.put("state", states.getOrDefault(lease, "INITIALIZING"));
                 }
                 case "BRIDGE_POLL" -> {
@@ -1998,6 +2083,11 @@ class WorkerSocketTests {
                     if (executionCapacity || sessionBusy) {
                         response.put("ok", false);
                         response.put("code", executionCapacity ? "EXECUTION_CAPACITY" : "SESSION_BUSY");
+                        break;
+                    }
+                    if (execLeaseExpired) {
+                        response.put("ok", false);
+                        response.put("code", "LEASE_EXPIRED");
                         break;
                     }
                     executionId = request.path("data").path("executionId").asString("");
@@ -2103,6 +2193,7 @@ class WorkerSocketTests {
         public void close() throws Exception {
             closed.set(true);
             openRelease.countDown();
+            renewalRelease.countDown();
             server.close();
             threads.shutdownNow();
             assertThat(threads.awaitTermination(10, TimeUnit.SECONDS)).isTrue();

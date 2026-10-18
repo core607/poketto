@@ -45,11 +45,18 @@ final class SessionWorker {
     }
 
     JsonNode request(ExecutionSession session, String operation, WorkerRequests.Data data, Duration timeout) {
-        WorkerClient.PreparedRequest request;
+        return send(prepare(session, operation, data), timeout);
+    }
+
+    /** Signs a request for a live lease; when the lease has stopped this fails and nothing is sent. */
+    WorkerClient.PreparedRequest prepare(ExecutionSession session, String operation, WorkerRequests.Data data) {
         synchronized (session) {
             requireLive(session);
-            request = worker.prepare(session.hello, session.identity(), operation, data);
+            return worker.prepare(session.hello, session.identity(), operation, data);
         }
+    }
+
+    JsonNode send(WorkerClient.PreparedRequest request, Duration timeout) {
         return worker.send(request, timeout);
     }
 
