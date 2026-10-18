@@ -54,9 +54,10 @@ class WebConfiguration {
             ObjectProvider<GameLibrary> games) {
         return new PublicDiscovery(
                 publications,
-                new GameContentSnapshots(new WebsiteContentSnapshots(snapshots, publications), games.getIfAvailable()),
+                new WebsiteContentSnapshots(snapshots, publications),
                 assets,
-                Clock.systemUTC());
+                Clock.systemUTC(),
+                games.getIfAvailable());
     }
 
     // Ordered ahead of every other filter so a request rejected by admission, origin, or

@@ -10,7 +10,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.function.Predicate;
 
-/** Four slots per space: authored choice, recent, tag diversity, and random exploration. */
+/** Initial slots per space: authored choice, recent, tag diversity, and random exploration. */
 final class DiscoverySelection {
     static final int LIMIT = 4;
 
@@ -42,6 +42,16 @@ final class DiscoverySelection {
             selected.add(next.orElseThrow());
         }
         return List.copyOf(selected);
+    }
+
+    static Optional<PublicArticle> next(
+            List<PublicArticle> articles, String tag, List<PublicArticle> selected, Random random) {
+        return choose(
+                articles,
+                article -> !selected.contains(article)
+                        && (tag.isEmpty() || article.tags().contains(tag)),
+                (left, right) -> 0,
+                random);
     }
 
     private static Optional<PublicArticle> choose(
