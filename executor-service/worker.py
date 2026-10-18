@@ -293,7 +293,8 @@ class Service:
             return {'ok': True, 'leaseId': p['leaseId'], 'copyId': d['copyId'],
                     'commit': d['commit'], 'state': state}
         if op == 'EXEC':
-            self.await_unit_stop(p)
+            # Waiting for this lease's own unit and making room for it share one budget.
+            room_deadline = self.await_unit_stop(p)
         with self.lock:
             if op == 'REVOKE':
                 if set(d) != {'keyIds', 'accountIds'} or any(not isinstance(d[k], list) or len(d[k]) > 1000 for k in d):
@@ -369,7 +370,7 @@ class Service:
         if op == 'EXEC':
             s.timings = {}
             making_room = time.monotonic()
-        if op == 'EXEC' and s.channel is None and not self.make_room(s):
+        if op == 'EXEC' and s.channel is None and not self.make_room(s, room_deadline):
             with self.lock:
                 self.executions.discard(execution_key)
                 if s.state == 'RUNNING':
@@ -808,21 +809,23 @@ class Service:
         return deadline
 
     def await_unit_stop(self, p):
-        """Waits, up to ROOM_SECONDS, while the lease's idle unit is being stopped.
+        """Waits, within ROOM_SECONDS, while the lease's idle unit is being stopped; returns the end.
 
         Another lease making room, or idle cleanup, stops a unit between two commands of its
         agent. The next command would otherwise be refused SESSION_BUSY, which the application
         cannot tell from a command that ran; the stop is short, so the command waits for it.
+        Making room afterwards spends what is left of the same budget.
         """
         deadline = time.monotonic() + ROOM_SECONDS
         while time.monotonic() < deadline:
             with self.lock:
                 s = self.sessions.get(p['leaseId'])
                 if s is None or s.identity != self.identity(p) or s.state != 'UPDATING' or s.execution_id:
-                    return
+                    break
             time.sleep(0.02)
+        return deadline
 
-    def make_room(self, s):
+    def make_room(self, s, deadline=None):
         """Before s starts a unit, stop the least recently used idle units beyond maxLiveUnits.
 
         False when every other live unit is running a command; s then starts nothing. A unit
@@ -830,7 +833,8 @@ class Service:
         case waits for it. All of it fits in ROOM_SECONDS; room found later is left for a retry.
         """
         limit = self.config.get('maxLiveUnits')
-        deadline = time.monotonic() + ROOM_SECONDS
+        if deadline is None:
+            deadline = time.monotonic() + ROOM_SECONDS
         while limit:
             with self.lock:
                 live = [x for x in self.sessions.values() if x is not s and x.channel is not None]
