@@ -3,8 +3,10 @@
 
 Each simulated agent starts with expectedCopyId=new, keeps the copyId its results return, and
 runs a mix of read commands. A bounded number of saves write one hidden file per agent under
-private/.loadtest/, and --cleanup removes those files afterwards. The bearer token is read from
---token-file, or from the environment variable named by --token-env, and is never printed.
+private/.loadtest/, and --cleanup removes those files afterwards; --discard then discards every copy
+the agents used. Calls that start within --warmup seconds count in "all" but not in "afterWarmup".
+The bearer token is read from --token-file, or from the environment variable named by --token-env,
+and is never printed.
 
 Example:
   POKETTO_LOAD_TOKEN=... python3 agent-load.py --endpoint https://example.org/mcp \\
@@ -23,7 +25,7 @@ import urllib.request
 READS = {
     'true': 'true',
     'list': 'ls public | head -20',
-    'read': 'head -c 2000 AGENTS.md',
+    'read': 'f=AGENTS.md; test -f $f || f=$(git ls-files | head -1); head -c 2000 "$f"',
     'python': "python3 -c 'print(sum(range(1000)))'",
     'git': 'git log -1 --format=%H',
     'status': 'poketto status | head -c 300',
@@ -51,6 +53,17 @@ class Endpoint:
         })
         with urllib.request.urlopen(request, timeout=self.timeout) as response:
             return json.loads(response.read())
+
+    def repo_discard(self, copy):
+        envelope = self.post('tools/call', {'name': 'repo_discard', 'arguments': {'expectedCopyId': copy}})
+        if 'error' in envelope:
+            return 'RPC_ERROR'
+        text = next((item['text'] for item in envelope['result'].get('content', []) if item.get('type') == 'text'), '{}')
+        try:
+            body = json.loads(text)
+        except ValueError:
+            return 'UNPARSEABLE'
+        return body.get('status') or body.get('code', 'ERROR')
 
     def repo_exec(self, copy, command):
         envelope = self.post('tools/call', {'name': 'repo_exec', 'arguments': {
@@ -126,6 +139,21 @@ class Run:
             removed += outcome == 'OK'
         return removed
 
+    def discard(self):
+        """Discards every copy the agents used, retrying a busy one briefly; returns counts by outcome."""
+        outcomes = {}
+        for copy in sorted(set(self.copies.values())):
+            for _ in range(5):
+                try:
+                    outcome = self.endpoint.repo_discard(copy)
+                except Exception as error:
+                    outcome = type(error).__name__
+                if outcome not in ('DISCARD_UNCONFIRMED', 'EXECUTION_REFUSED'):
+                    break
+                time.sleep(2)
+            outcomes[outcome] = outcomes.get(outcome, 0) + 1
+        return outcomes
+
 
 def percentile(values, fraction):
     if not values:
@@ -134,9 +162,21 @@ def percentile(values, fraction):
     return round(ordered[min(len(ordered) - 1, int(fraction * len(ordered)))], 3)
 
 
+def overall(samples, seconds):
+    latencies = [sample[4] for sample in samples]
+    outcomes = {}
+    for sample in samples:
+        outcomes[sample[3]] = outcomes.get(sample[3], 0) + 1
+    ok = outcomes.get('OK', 0)
+    return {'calls': len(samples), 'p50': percentile(latencies, 0.5), 'p95': percentile(latencies, 0.95),
+            'p99': percentile(latencies, 0.99), 'okRate': round(ok / len(samples), 4) if samples else None,
+            'callsPerSecond': round(len(samples) / seconds, 2) if seconds > 0 else None, 'outcomes': outcomes}
+
+
 def summarize(run):
     summary = {'agents': run.args.agents, 'seconds': run.args.seconds, 'think': run.args.think,
-               'calls': len(run.samples), 'copies': len(set(run.copies.values())), 'operations': {}}
+               'warmup': run.args.warmup, 'calls': len(run.samples), 'copies': len(set(run.copies.values())),
+               'operations': {}}
     for operation in sorted({sample[2] for sample in run.samples}):
         latencies = [sample[4] for sample in run.samples if sample[2] == operation]
         outcomes = {}
@@ -146,11 +186,10 @@ def summarize(run):
         summary['operations'][operation] = {
             'calls': len(latencies), 'p50': percentile(latencies, 0.5), 'p95': percentile(latencies, 0.95),
             'p99': percentile(latencies, 0.99), 'mean': round(statistics.fmean(latencies), 3), 'outcomes': outcomes}
-    every = [sample[4] for sample in run.samples]
-    ok = sum(1 for sample in run.samples if sample[3] == 'OK')
-    summary['all'] = {'p50': percentile(every, 0.5), 'p95': percentile(every, 0.95), 'p99': percentile(every, 0.99),
-                      'okRate': round(ok / len(every), 4) if every else None,
-                      'callsPerSecond': round(len(every) / run.args.seconds, 2)}
+    summary['all'] = overall(run.samples, run.args.seconds)
+    # A sample records when its call ended; it started its latency earlier.
+    later = [sample for sample in run.samples if sample[0] - sample[4] >= run.args.warmup]
+    summary['afterWarmup'] = overall(later, run.args.seconds - run.args.warmup)
     buckets = {}
     for sample in run.samples:
         bucket = int(sample[0] // 30) * 30
@@ -161,6 +200,24 @@ def summarize(run):
     summary['timeline'] = [{'from': bucket, 'calls': entry['calls'], 'ok': entry['ok'],
                             'p95': percentile(entry['latencies'], 0.95)} for bucket, entry in sorted(buckets.items())]
     return summary
+
+
+def connect(url, token, timeout):
+    endpoint = Endpoint(url, token, timeout)
+    endpoint.post('initialize', {'protocolVersion': '2025-11-25', 'capabilities': {},
+                                 'clientInfo': {'name': 'agent-load', 'version': '1'}})
+    return endpoint
+
+
+def execute(args, endpoint):
+    """Runs args.agents agents for args.seconds and returns the run with its summary."""
+    run = Run(args, endpoint)
+    threads = [threading.Thread(target=run.agent, args=(number,), daemon=True) for number in range(args.agents)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(args.seconds + args.timeout + args.ramp + 30)
+    return run, summarize(run)
 
 
 def main():
@@ -174,7 +231,9 @@ def main():
     parser.add_argument('--ramp', type=float, default=0.0, help='spread agent starts over this many seconds')
     parser.add_argument('--saves', type=int, default=0, help='total saves across the run')
     parser.add_argument('--timeout', type=float, default=75.0)
+    parser.add_argument('--warmup', type=float, default=60.0, help='seconds whose calls "afterWarmup" leaves out')
     parser.add_argument('--cleanup', action='store_true')
+    parser.add_argument('--discard', action='store_true', help='discard every copy the agents used afterwards')
     parser.add_argument('--report', required=True)
     args = parser.parse_args()
     if args.token_file:
@@ -184,21 +243,16 @@ def main():
         token = os.environ.get(args.token_env, '')
     if not token:
         raise SystemExit('no bearer token: pass --token-file or set ' + args.token_env)
-    endpoint = Endpoint(args.endpoint, token, args.timeout)
-    endpoint.post('initialize', {'protocolVersion': '2025-11-25', 'capabilities': {},
-                                 'clientInfo': {'name': 'agent-load', 'version': '1'}})
-    run = Run(args, endpoint)
-    threads = [threading.Thread(target=run.agent, args=(number,), daemon=True) for number in range(args.agents)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(args.seconds + args.timeout + args.ramp + 30)
-    summary = summarize(run)
+    endpoint = connect(args.endpoint, token, args.timeout)
+    run, summary = execute(args, endpoint)
     if args.cleanup and args.saves:
         summary['cleanedUp'] = run.cleanup()
+    if args.discard:
+        summary['discarded'] = run.discard()
     with open(args.report, 'w', encoding='utf-8') as output:
         json.dump(summary, output, indent=2)
-    print(json.dumps(summary['all']), json.dumps({k: v['p95'] for k, v in summary['operations'].items()}))
+    print(json.dumps({key: value for key, value in summary['all'].items() if key != 'outcomes'}),
+          json.dumps({key: value['p95'] for key, value in summary['operations'].items()}))
 
 
 if __name__ == '__main__':
