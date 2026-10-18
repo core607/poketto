@@ -46,6 +46,10 @@ MAX_OUTPUT = MAX_OUTPUT_BYTES
 # making room for its unit may spend two of them, so a late start is refused instead of run unseen.
 ROOM_SECONDS = 2
 IDENTITY = ('principalId', 'accountId', 'workspaceId', 'serverSessionHash')
+# SRT 0.0.75 leaves /proc, /dev and /sys out when it expands a denied '/'. /proc and /dev are
+# mounted fresh, but /sys would stay the host's: other leases' units, the slice's memory and the
+# host's interfaces. Naming it covers it with an empty tmpfs private to the sandbox.
+DENY_READ = ('/', '/sys')
 
 
 class Rejected(Exception):
@@ -1172,7 +1176,7 @@ class SystemdBackend:
         if payload['mode'] == 'baseline':
             read_paths.append(str(target / 'baseline.bundle'))
         return {'network': {'allowedDomains': [], 'deniedDomains': [], 'allowAllUnixSockets': False},
-            'filesystem': {'denyRead': ['/'], 'allowRead': read_paths,
+            'filesystem': {'denyRead': list(DENY_READ), 'allowRead': read_paths,
             'allowWrite': write_paths, 'denyWrite': []},
             'enableWeakerNestedSandbox': False}
 

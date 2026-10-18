@@ -16,7 +16,7 @@ from binary_capture import BinaryCapture
 from artifacts import ArtifactStore
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from worker import Rejected, Service, load_config
+from worker import Rejected, Service, Session, SystemdBackend, load_config
 
 
 def uid():
@@ -785,6 +785,22 @@ class ProtocolTests(unittest.TestCase):
         p['data']['hostPath'] = '/etc'
         self.assertEqual('INVALID_REQUEST', self.send(p)['code'])
         self.assertFalse(self.backend.executed)
+
+
+class SandboxPolicyTests(unittest.TestCase):
+    def test_every_mode_hides_the_host_sysfs_that_a_denied_root_leaves_readable(self):
+        backend = SystemdBackend.__new__(SystemdBackend)
+        backend.c = {'toolsRoot': '/opt/poketto/tools'}
+        backend.sessions = Path('/run/poketto/sessions')
+        session = Session(uid(), (), '', 115)
+        for mode in ('initialize', 'shell', 'baseline'):
+            with self.subTest(mode=mode):
+                files = backend.sandbox_policy(session, {'mode': mode})['filesystem']
+                self.assertEqual(['/', '/sys'], files['denyRead'])
+                self.assertIn('/proc', files['allowRead'])
+                self.assertIn('/dev', files['allowRead'])
+                for path in files['allowRead'] + files['allowWrite']:
+                    self.assertFalse(path == '/sys' or path.startswith('/sys/'), path)
 
 
 if __name__ == '__main__':

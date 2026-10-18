@@ -124,6 +124,7 @@ class GameProtocolTests(unittest.TestCase):
         session = Session(str(uuid.uuid4()), (), '', 115)
         policy = backend.sandbox_policy(session, {'mode': 'game'})
         self.assertEqual(['/tmp'], policy['filesystem']['allowWrite'])
+        self.assertEqual(['/', '/sys'], policy['filesystem']['denyRead'])
         self.assertNotIn('bridge', json.dumps(policy))
         self.assertNotIn('repository', json.dumps(policy))
         self.assertEqual([], policy['network']['allowedDomains'])
