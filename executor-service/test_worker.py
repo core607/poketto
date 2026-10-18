@@ -204,8 +204,39 @@ class ProtocolTests(unittest.TestCase):
         session.bridge.poll.return_value = None
         session.state, session.execution_id = 'RUNNING', uid()
         self.assertTrue(self.send(self.payload('BRIDGE_POLL'))['ok'])
-        session.bridge.poll.assert_called_once_with(timeout=BRIDGE_POLL_SECONDS, execution_id=session.execution_id)
+        session.bridge.poll.assert_called_once()
+        self.assertEqual(session.execution_id, session.bridge.poll.call_args.kwargs['execution_id'])
+        self.assertGreater(session.bridge.poll.call_args.kwargs['timeout'], 0.9)
         self.assertEqual(1.0, BRIDGE_POLL_SECONDS)
+
+    def test_a_poll_sent_while_its_command_waits_for_the_unit_to_stop_is_empty(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.bridge = Mock()
+        session.state = 'UPDATING'
+        started = time.monotonic()
+        answer = self.send(self.payload('BRIDGE_POLL'))
+        # Not SESSION_NOT_READY, which the application cannot tell from a lost command.
+        self.assertTrue(answer['ok'], answer)
+        self.assertIsNone(answer['bridgeRequest'])
+        self.assertLess(time.monotonic() - started, 2)
+        session.bridge.poll.assert_not_called()
+
+    def test_a_poll_that_arrives_before_its_command_starts_waits_for_it(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.bridge = Mock()
+        session.bridge.poll.return_value = None
+        execution = uid()
+
+        def start():
+            time.sleep(0.2)
+            with self.service.lock:
+                session.state, session.execution_id = 'RUNNING', execution
+
+        threading.Thread(target=start).start()
+        self.assertTrue(self.send(self.payload('BRIDGE_POLL'))['ok'])
+        self.assertEqual(execution, session.bridge.poll.call_args.kwargs['execution_id'])
 
     def test_each_refusal_reason_is_logged_with_the_refusals_it_counted(self):
         from worker import Server

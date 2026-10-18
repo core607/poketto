@@ -681,9 +681,13 @@ class Service:
             return {**self.response(s), **result}
 
     def bridge_dispatch(self, p):
+        deadline = self.await_command_start(p) if p['operation'] == 'BRIDGE_POLL' else 0
         with self.lock:
             s = self.live_session(p)
-            if s.bridge is None or s.state not in ('READY', 'RUNNING'):
+            # The application polls as soon as it sends EXEC, and the command may still be
+            # waiting for its own unit to stop: that poll is empty, not a failure.
+            stopping = p['operation'] == 'BRIDGE_POLL' and s.state == 'UPDATING' and not s.execution_id
+            if s.bridge is None or (s.state not in ('READY', 'RUNNING') and not stopping):
                 raise Rejected('SESSION_NOT_READY')
             data = p['data']
             if p['operation'] == 'BRIDGE_POLL':
@@ -701,7 +705,7 @@ class Service:
         # Polling must not hold the service lock or the command operation lock.
         try:
             if p['operation'] == 'BRIDGE_POLL':
-                request = s.bridge.poll(timeout=BRIDGE_POLL_SECONDS, execution_id=execution_id)
+                request = s.bridge.poll(timeout=max(0, deadline - time.monotonic()), execution_id=execution_id)
             else:
                 s.bridge.complete(data['bridgeRequestId'], data['response'])
                 request = None
@@ -786,6 +790,22 @@ class Service:
             if s.cancelled.is_set():
                 with self.lock:
                     self.cancel(s, s.reason)
+
+    def await_command_start(self, p):
+        """Waits, within one poll interval, until the lease runs a command; returns the interval's end.
+
+        A poll sent together with its EXEC can arrive before the command starts, or while the
+        command waits for its unit to stop. Answering it empty at once would make the application
+        poll again in a loop; it waits instead, and the bridge poll that follows has what is left.
+        """
+        deadline = time.monotonic() + BRIDGE_POLL_SECONDS
+        while time.monotonic() < deadline:
+            with self.lock:
+                s = self.sessions.get(p['leaseId'])
+                if s is None or s.identity != self.identity(p) or s.state not in ('READY', 'UPDATING'):
+                    break
+            time.sleep(0.02)
+        return deadline
 
     def await_unit_stop(self, p):
         """Waits, up to ROOM_SECONDS, while the lease's idle unit is being stopped.
