@@ -137,6 +137,8 @@ class Session:
     disk_lock: int = -1
     maintenance: 'Session | None' = None
     channel: object = None
+    # Room granted under maxLiveUnits to a unit still starting; it counts as live before its channel.
+    starting: bool = False
     unit_files: tuple = ()
     idle_since: float = 0
     # Milliseconds each stage of the running EXEC took inside the worker, returned with its result.
@@ -417,6 +419,10 @@ class Service:
             with self.lock:
                 self.cancel(s, 'sandbox_failed')
             raise
+        finally:
+            if op == 'EXEC':
+                with self.lock:
+                    s.starting = False
 
 
     def validate_open(self, p):
@@ -842,9 +848,12 @@ class Service:
             deadline = time.monotonic() + ROOM_SECONDS
         while limit:
             with self.lock:
-                live = [x for x in self.sessions.values() if x is not s and x.channel is not None]
+                live = [x for x in self.sessions.values()
+                        if x is not s and (x.channel is not None or x.starting)]
                 if len(live) < limit:
-                    return time.monotonic() < deadline
+                    # Taken under the same lock, so concurrent first commands cannot all see room.
+                    s.starting = time.monotonic() < deadline
+                    return s.starting
                 if time.monotonic() >= deadline:
                     return False
                 victim = None

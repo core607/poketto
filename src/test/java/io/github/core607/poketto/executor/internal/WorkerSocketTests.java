@@ -65,6 +65,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -656,6 +657,66 @@ class WorkerSocketTests {
             assertThat(peer.operations("CLOSE")).isEmpty();
             assertThat(command(executor, actor, first.copyId()).copyId()).isEqualTo(first.copyId());
             assertThat(peer.operations("ATTACH")).isEmpty();
+        }
+    }
+
+    @Test
+    void manyAgentsGetResultsOrNotRunRefusalsWhileTheWorkerRefusesAndStopsUnits() throws Exception {
+        int agents = 16;
+        int commands = 10;
+        try (var peer = new Peer();
+                var callers = Executors.newVirtualThreadPerTaskExecutor();
+                var executor = new IsolatedRepositoryExecutor(
+                        peer.accounts.store(),
+                        mock(PortableContentExports.class),
+                        mock(MediaFileService.class),
+                        mock(SelectedFileSaves.class),
+                        fullAuth(),
+                        exports(),
+                        peer.client(),
+                        new ExecutionLimits(agents, agents, Map.of(), Map.of()),
+                        Duration.ofSeconds(8),
+                        Duration.ofSeconds(3))) {
+            // Every fifth EXEC is refused before it runs, and every renewal finds its unit stopping.
+            peer.refuseEveryNthExec = 5;
+            peer.renewState = "UPDATING";
+            var outcomes = new ConcurrentHashMap<String, AtomicInteger>();
+            var running = new ArrayList<Future<?>>();
+            for (int i = 0; i < agents; i++) {
+                var actor = principal();
+                running.add(callers.submit(() -> {
+                    String copy = "new";
+                    for (int c = 0; c < commands; c++) {
+                        String outcome;
+                        try {
+                            copy = command(executor, actor, copy).copyId();
+                            outcome = "OK";
+                        } catch (ExecutionAdmissionException refused) {
+                            outcome = refused.reason().name();
+                        } catch (RuntimeException failed) {
+                            outcome = failed.getClass().getSimpleName();
+                        }
+                        outcomes.computeIfAbsent(outcome, key -> new AtomicInteger())
+                                .incrementAndGet();
+                        Thread.sleep(ThreadLocalRandom.current().nextInt(150, 300));
+                    }
+                    return null;
+                }));
+            }
+            for (var agent : running) {
+                agent.get(30, TimeUnit.SECONDS);
+            }
+
+            int refused = outcomes.entrySet().stream()
+                    .filter(entry -> !entry.getKey().equals("OK"))
+                    .mapToInt(entry -> entry.getValue().get())
+                    .sum();
+            assertThat(outcomes.keySet()).contains("OK").isSubsetOf("OK", "BUSY", "CAPACITY", "UNAVAILABLE");
+            assertThat(refused).isPositive();
+            assertThat(peer.operations("RENEW")).isNotEmpty();
+            // Only the refused commands closed their leases; no renewal did.
+            assertThat(peer.operations("CLOSE")).hasSize(refused);
+            peer.clientMayReset = true;
         }
     }
 
@@ -1868,6 +1929,9 @@ class WorkerSocketTests {
         private volatile boolean executionCapacity;
         private volatile boolean sessionBusy;
         private volatile boolean execLeaseExpired;
+        private volatile int refuseEveryNthExec;
+        private final AtomicInteger execRequests = new AtomicInteger();
+        private volatile String renewState;
         private volatile boolean holdRenewals;
         private final AtomicInteger renewalsHeld = new AtomicInteger();
         private final CountDownLatch renewalRelease = new CountDownLatch(1);
@@ -2086,7 +2150,7 @@ class WorkerSocketTests {
                         renewalsHeld.incrementAndGet();
                         assertThat(renewalRelease.await(8, TimeUnit.SECONDS)).isTrue();
                     }
-                    response.put("state", states.getOrDefault(lease, "INITIALIZING"));
+                    response.put("state", renewState != null ? renewState : states.getOrDefault(lease, "INITIALIZING"));
                 }
                 case "BRIDGE_POLL" -> {
                     bridgeEntered.countDown();
@@ -2110,6 +2174,13 @@ class WorkerSocketTests {
                     if (execLeaseExpired) {
                         response.put("ok", false);
                         response.put("code", "LEASE_EXPIRED");
+                        break;
+                    }
+                    int sequence = execRequests.incrementAndGet();
+                    if (refuseEveryNthExec > 0 && sequence % refuseEveryNthExec == 0) {
+                        List<String> codes = List.of("SESSION_BUSY", "EXECUTION_CAPACITY", "LEASE_EXPIRED");
+                        response.put("ok", false);
+                        response.put("code", codes.get(sequence / refuseEveryNthExec % codes.size()));
                         break;
                     }
                     executionId = request.path("data").path("executionId").asString("");
