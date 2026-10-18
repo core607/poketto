@@ -161,6 +161,21 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual('EXECUTION_CAPACITY', refused['code'])
         self.assertLess(time.monotonic() - started, 0.6)
 
+    def test_a_spent_room_budget_stops_no_other_unit(self):
+        self.service.config['maxLiveUnits'] = 1
+        self.opened()
+        other = self.service.sessions[self.identity['leaseId']]
+        other.channel, other.unit, other.bridge = object(), 'other-unit', Mock()
+        self.identity = {**self.identity, 'leaseId': uid(), 'serverSessionHash': 'b' * 64}
+        self.opened()
+        own = self.service.sessions[self.identity['leaseId']]
+
+        # Waiting for its own unit spent the budget: refused, and the other warm unit is kept.
+        self.assertFalse(self.service.make_room(own, time.monotonic() - 0.01))
+        self.assertFalse(self.backend.stopped)
+        self.assertEqual('READY', other.state)
+        self.assertIsNotNone(other.channel)
+
     def test_a_unit_already_stopping_frees_its_place_instead_of_a_refusal(self):
         self.service.config['maxLiveUnits'] = 1
         self.opened()

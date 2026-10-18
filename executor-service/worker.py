@@ -830,7 +830,8 @@ class Service:
 
         False when every other live unit is running a command; s then starts nothing. A unit
         that idle cleanup or another opener is already stopping frees its place soon, so that
-        case waits for it. All of it fits in ROOM_SECONDS; room found later is left for a retry.
+        case waits for it. All of it fits in ROOM_SECONDS; room found later is left for a retry,
+        and no unit is stopped once the budget is spent, since this command would not use its place.
         """
         limit = self.config.get('maxLiveUnits')
         if deadline is None:
@@ -840,6 +841,8 @@ class Service:
                 live = [x for x in self.sessions.values() if x is not s and x.channel is not None]
                 if len(live) < limit:
                     return time.monotonic() < deadline
+                if time.monotonic() >= deadline:
+                    return False
                 victim = None
                 for candidate in sorted(live, key=lambda x: x.idle_since):
                     if candidate.state == 'READY' and candidate.operation.acquire(blocking=False):
@@ -849,7 +852,7 @@ class Service:
                 stopping = any(x.state == 'UPDATING' for x in live)
             if victim is not None:
                 self.stop_idle_unit(victim)
-            elif not stopping or time.monotonic() >= deadline:
+            elif not stopping:
                 return False
             else:
                 time.sleep(0.05)
