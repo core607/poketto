@@ -337,6 +337,7 @@ jobs:
           # SRT's bubblewrap and seccomp helper need capability-bearing user namespaces.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           command -v mkfs.xfs || { sudo apt-get update && sudo apt-get install --yes --no-install-recommends xfsprogs; }
+          sudo install -d -m 755 /opt/poketto-load
           sudo bash executor-service/prepare-tools.sh /opt/poketto-load/tools
           python3 -m venv "$RUNNER_TEMP/pip"
           "$RUNNER_TEMP/pip/bin/pip" install --disable-pip-version-check --no-deps --only-binary=:all: --target "$RUNNER_TEMP/python" -r executor-service/requirements.txt
