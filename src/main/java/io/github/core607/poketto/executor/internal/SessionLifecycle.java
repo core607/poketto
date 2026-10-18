@@ -13,11 +13,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,13 +44,10 @@ final class SessionLifecycle {
     private final AccountCopyStore accounts;
     private final Duration openTimeout;
     private final Duration closeTimeout;
-    private final ThreadPoolExecutor controls = new ThreadPoolExecutor(
-            4,
-            4,
-            0,
-            TimeUnit.SECONDS,
-            new ArrayBlockingQueue<>(128),
-            Thread.ofPlatform().daemon().name("poketto-worker-control-", 0).factory());
+    // Renewals and closes wait on the worker, so each gets its own virtual thread: a bounded pool
+    // fell behind while many leases warmed up, and a lease whose renewal waited in line expired.
+    private final ExecutorService controls = Executors.newThreadPerTaskExecutor(
+            Thread.ofVirtual().name("poketto-worker-control-", 0).factory());
     private final ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor(
             Thread.ofPlatform().daemon().name("poketto-worker-heartbeat").factory());
 

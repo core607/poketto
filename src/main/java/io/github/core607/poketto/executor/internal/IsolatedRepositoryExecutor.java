@@ -331,30 +331,22 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 throw new IllegalArgumentException(
                         "The requested commit differs from the working-copy baseline; synchronize explicitly");
             }
-            io.authorize(session);
-            boolean opening = !session.ready;
-            if (opening) {
-                if (session.attaching) {
-                    held.bind(lifecycle.writer(session));
-                    session.accountRecord = held.record();
-                    lifecycle.attach(session);
-                } else {
-                    lifecycle.initializeCopy(session, requested, held);
-                }
-            }
-            held.bind(lifecycle.writer(session));
-            session.saveState = held.state();
-            if (opening) {
-                repository.refreshGitOnOpen(session);
-            }
+            openLease(session, requested, held);
             UUID execution = UUID.randomUUID();
             held.begin(execution);
             session.accountRecord = held.record();
             attempted = true;
             timings.end(ExecutionTimings.Stage.PREPARE);
-            JsonNode response = commands.execute(session, execution.toString(), command, timeout, timings);
+            JsonNode response = null;
+            ExecutionAdmissionException.Reason refusal;
+            try {
+                response = commands.execute(session, execution.toString(), command, timeout, timings);
+                refusal = refusedBeforeRunning(response);
+            } catch (BridgedCommands.CommandNotSentException notSent) {
+                refusal = ExecutionAdmissionException.Reason.UNAVAILABLE;
+            }
             timings.end(ExecutionTimings.Stage.COMMAND);
-            if (refusedBeforeRunning(response) instanceof ExecutionAdmissionException.Reason refusal) {
+            if (refusal != null) {
                 attempted = false;
                 held.refused();
                 session.accountRecord = held.record();
@@ -383,6 +375,26 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
+    /** Opens or reattaches a lease that is not ready yet, then binds the journal to its writer. */
+    private void openLease(ExecutionSession session, Optional<String> requested, AccountCommand held) {
+        io.authorize(session);
+        boolean opening = !session.ready;
+        if (opening) {
+            if (session.attaching) {
+                held.bind(lifecycle.writer(session));
+                session.accountRecord = held.record();
+                lifecycle.attach(session);
+            } else {
+                lifecycle.initializeCopy(session, requested, held);
+            }
+        }
+        held.bind(lifecycle.writer(session));
+        session.saveState = held.state();
+        if (opening) {
+            repository.refreshGitOnOpen(session);
+        }
+    }
+
     private static CopyRetention unconfirmedView(ExecutionSession session, AccountCommand held) {
         try {
             return held.view();
@@ -392,13 +404,16 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    /** A refusal the worker makes before the command runs; nothing executed, so a retry is safe. */
+    /** A refusal the worker makes before the command runs, expiry included; a retry is safe. */
     private static ExecutionAdmissionException.Reason refusedBeforeRunning(JsonNode response) {
         if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
             return ExecutionAdmissionException.Reason.CAPACITY;
         }
         if (WorkerResponses.refused(response, "SESSION_BUSY")) {
             return ExecutionAdmissionException.Reason.BUSY;
+        }
+        if (WorkerResponses.refused(response, "LEASE_EXPIRED")) {
+            return ExecutionAdmissionException.Reason.UNAVAILABLE;
         }
         return null;
     }

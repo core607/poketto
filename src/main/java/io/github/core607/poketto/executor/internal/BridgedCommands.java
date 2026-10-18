@@ -44,14 +44,17 @@ final class BridgedCommands implements AutoCloseable {
             ExecutionSession session, String executionId, String command, Duration timeout, ExecutionTimings timings) {
         // Taken before the worker starts its own clock, so host work that honours it ends earlier.
         session.commandDeadline = System.nanoTime() + timeout.toNanos();
+        WorkerClient.PreparedRequest exec;
+        try {
+            exec = io.prepare(
+                    session, "EXEC", new WorkerRequests.Exec(executionId, session.commit, command, timeout.toMillis()));
+        } catch (WorkerUnavailableException stopped) {
+            throw new CommandNotSentException(stopped);
+        }
         var finished = new CompletableFuture<Void>();
         var running = commandIo.submit(() -> {
             try {
-                return io.request(
-                        session,
-                        "EXEC",
-                        new WorkerRequests.Exec(executionId, session.commit, command, timeout.toMillis()),
-                        timeout.plusSeconds(5));
+                return io.send(exec, timeout.plusSeconds(5));
             } finally {
                 finished.complete(null);
             }
@@ -157,5 +160,12 @@ final class BridgedCommands implements AutoCloseable {
     @Override
     public void close() {
         polls.shutdownNow();
+    }
+
+    /** The lease stopped before the EXEC was signed, so the worker never received the command. */
+    static final class CommandNotSentException extends IllegalStateException {
+        CommandNotSentException(WorkerUnavailableException cause) {
+            super("The lease stopped before the command was sent; it did not run", cause);
+        }
     }
 }

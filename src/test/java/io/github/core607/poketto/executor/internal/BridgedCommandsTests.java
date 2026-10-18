@@ -27,6 +27,7 @@ class BridgedCommandsTests {
     private final ThreadPoolExecutor commandIo =
             new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(1));
     private final BridgedCommands commands = new BridgedCommands(io, bridge, commandIo);
+    private final WorkerClient.PreparedRequest exec = new WorkerClient.PreparedRequest(UUID.randomUUID(), null);
     private final ExecutionSession session = new ExecutionSession(
             new ExecutionSession.Key(UUID.randomUUID(), WorkspaceId.random(), "full"),
             mock(AuthPrincipal.class),
@@ -47,7 +48,8 @@ class BridgedCommandsTests {
     @Test
     void aCommandThatFinishesDuringAPollReturnsWithoutWaitingForThePoll() {
         JsonNode finished = json("{\"ok\":true,\"state\":\"READY\",\"result\":{}}");
-        when(io.request(eq(session), eq("EXEC"), any(), any())).thenAnswer(call -> {
+        when(io.prepare(eq(session), eq("EXEC"), any())).thenReturn(exec);
+        when(io.send(eq(exec), any())).thenAnswer(call -> {
             Thread.sleep(30);
             return finished;
         });
@@ -70,7 +72,8 @@ class BridgedCommandsTests {
         String requestId = UUID.randomUUID().toString();
         var answered = new CountDownLatch(1);
         JsonNode finished = json("{\"ok\":true,\"state\":\"READY\",\"result\":{}}");
-        when(io.request(eq(session), eq("EXEC"), any(), any())).thenAnswer(call -> {
+        when(io.prepare(eq(session), eq("EXEC"), any())).thenReturn(exec);
+        when(io.send(eq(exec), any())).thenAnswer(call -> {
             assertThat(answered.await(5, TimeUnit.SECONDS)).isTrue();
             return finished;
         });
