@@ -310,6 +310,55 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # A judged small agent load through real login, PostgreSQL, HTTP MCP, the root worker and SRT
+  # sandboxes on this runner. It gates on calls after the warm-up, as the production stages do.
+  load:
+    name: load
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "26"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          gradle-home-cache-cleanup: true
+      - name: Stage the acceptance runtime
+        run: ./gradlew stageAcceptanceRuntime --no-daemon
+      - name: Prepare the sandbox host
+        run: |
+          # SRT's bubblewrap and seccomp helper need capability-bearing user namespaces.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          command -v mkfs.xfs || { sudo apt-get update && sudo apt-get install --yes --no-install-recommends xfsprogs; }
+          sudo bash executor-service/prepare-tools.sh /opt/poketto-load/tools
+          python3 -m venv "$RUNNER_TEMP/pip"
+          "$RUNNER_TEMP/pip/bin/pip" install --disable-pip-version-check --no-deps --only-binary=:all: --target "$RUNNER_TEMP/python" -r executor-service/requirements.txt
+          sudo cp -R "$RUNNER_TEMP/python" /opt/poketto-load/tools/python
+          sudo cp -R build/acceptance/runtime /opt/poketto-load/runtime
+          # native-host.py checks every runtime file against this manifest before it starts anything.
+          (cd /opt/poketto-load/runtime && find . -type f -printf '%P\0' | xargs -0 sha256sum > "$RUNNER_TEMP/manifest.sha256")
+          sudo cp "$RUNNER_TEMP/manifest.sha256" /opt/poketto-load/runtime/manifest.sha256
+          sudo chmod -R a+rX,go-w /opt/poketto-load
+      - name: Small agent load on native sandboxes
+        run: |
+          mkdir -p build/load
+          sudo env PYTHONPATH=/opt/poketto-load/tools/python python3 acceptance/clients/native-load.py --runtime /opt/poketto-load/runtime --worker-source executor-service --tools /opt/poketto-load/tools --java "$JAVA_HOME/bin/java" --evidence build/load/native-load.json
+      - name: Upload the load receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: load-${{ github.run_id }}
+          path: build/load/
+          if-no-files-found: ignore
+          retention-days: 7
+
   # Branch protection requires the "verify" context and keeps expecting it from the newest run, so
   # this job always reports and never renames. Reporting success without verifying would be worse
   # than a slow run: a title edit would then hand a green required check to a commit whose
@@ -318,7 +367,7 @@ jobs:
   # lanes each classification requires rather than tolerating any skipped lane.
   verify:
     name: verify
-    needs: [changes, docs, java, database, web, image, stack, retrieval-lab]
+    needs: [changes, docs, java, database, web, image, stack, load, retrieval-lab]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -333,6 +382,7 @@ jobs:
           WEB: ${{ needs.web.result }}
           IMAGE: ${{ needs.image.result }}
           STACK: ${{ needs.stack.result }}
+          LOAD: ${{ needs.load.result }}
           RETRIEVAL_LAB: ${{ needs.retrieval-lab.result }}
         run: |
           if [ "$CLASSIFICATION" != success ]; then
@@ -342,7 +392,7 @@ jobs:
           if [ "$DOCS_ONLY" = true ]; then
             required="docs=$DOCS"
           else
-            required="java=$JAVA database=$DATABASE web=$WEB image=$IMAGE stack=$STACK retrieval-lab=$RETRIEVAL_LAB"
+            required="java=$JAVA database=$DATABASE web=$WEB image=$IMAGE stack=$STACK load=$LOAD retrieval-lab=$RETRIEVAL_LAB"
           fi
           failed=0
           for lane in $required; do

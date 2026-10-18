@@ -42,9 +42,11 @@ def main():
     parser.add_argument('--port', type=int, default=38189)
     parser.add_argument('--lifetime-seconds', type=int, default=1800)
     parser.add_argument('--games', action='store_true')
+    parser.add_argument('--agents', type=int, default=4, help='concurrent agents the services admit')
     parser.add_argument('--origin', help='Browser gateway origin; defaults to the API loopback origin')
     args = parser.parse_args()
     assert os.geteuid() == 0 and 1024 <= args.port <= 65535 and 60 <= args.lifetime_seconds <= 3600
+    assert 1 <= args.agents <= 64
     runtime, source, tools, java = [p.resolve(strict=True) for p in
                                   (args.runtime, args.worker_source, args.tools, args.java)]
     expected = set()
@@ -62,7 +64,8 @@ def main():
     sys.path.insert(0, str(source))
     from native_pool import NativePool
     token = uuid.uuid4().hex[:8]
-    pool = NativePool(token)
+    # An idle sandbox charges about 45 MB and 22 tasks, and the copy pool's page cache shares the slice.
+    pool = NativePool(token, f'{max(512, 128 * args.agents)}M', max(256, 48 * args.agents))
     root = Path(tempfile.mkdtemp(prefix='poketto-client-', dir='/var/lib'))
     root.chmod(0o751)
     app_user, exec_user = 'pkt-capp-' + token, 'pkt-cexec-' + token
@@ -103,8 +106,8 @@ def main():
             'appUid': app_account.pw_uid, 'appGid': app_account.pw_gid,
             'unitPrefix': 'poketto-exec-c' + token + '-', 'supervisorUnit': worker_unit + '.service',
             'resourceSlice': pool.name, 'leaseSeconds': 30, 'renewAfterSeconds': 10,
-            'maxRequests': 8192, 'maxConnections': 32, 'maxExecutionsPerSession': 128,
-            'maxSessions': 4, 'maxBundleBytes': 16777216, 'diskBytes': 67108864,
+            'maxRequests': 8192, 'maxConnections': max(32, 4 * args.agents), 'maxExecutionsPerSession': 128,
+            'maxSessions': max(4, args.agents), 'maxBundleBytes': 16777216, 'diskBytes': 67108864,
             'diskInodes': 8192, 'temporaryBytes': 8388608, 'temporaryInodes': 1024,
             'memoryBytes': 201326592, 'tasksMax': 48, 'cpuQuotaPercent': 50,
             'idleUnitSeconds': 1800, 'maxTimeoutMillis': 60000, 'initTimeoutMillis': 15000}
@@ -151,7 +154,9 @@ def main():
             '--poketto.executor.copies.metadata-root=' + str(disk_pool / 'metadata'),
             '--poketto.executor.copies.pool-bytes=536870912',
             '--poketto.executor.copies.original-bytes=67108864',
-            '--poketto.executor.copies.original-expanded-bytes=268435456']
+            '--poketto.executor.copies.original-expanded-bytes=268435456',
+            '--poketto.executor.max-sessions=' + str(max(4, args.agents)),
+            '--poketto.executor.max-operations=' + str(max(4, args.agents))]
         if args.games:
             copy_args.extend(['--poketto.games.enabled=true', '--poketto.games.max-jobs=1',
                 '--poketto.games.socket=' + game_settings['gameSocket'],
