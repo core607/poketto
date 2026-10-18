@@ -3,6 +3,7 @@ package io.github.core607.poketto.executor.internal;
 import static io.github.core607.poketto.executor.internal.SessionWorker.requireLive;
 import static io.github.core607.poketto.executor.internal.SessionWorker.requireOk;
 
+import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.Set;
@@ -49,7 +50,10 @@ final class BridgedCommands implements AutoCloseable {
             exec = io.prepare(
                     session, "EXEC", new WorkerRequests.Exec(executionId, session.commit, command, timeout.toMillis()));
         } catch (WorkerUnavailableException stopped) {
-            throw new CommandNotSentException(stopped);
+            throw new CommandNotRunException(
+                    ExecutionAdmissionException.Reason.UNAVAILABLE,
+                    "The lease stopped before the command was sent",
+                    stopped);
         }
         var finished = new CompletableFuture<Void>();
         var running = commandIo.submit(() -> {
@@ -78,6 +82,13 @@ final class BridgedCommands implements AutoCloseable {
             // must not turn a confirmed cancelled command into an unknown transport outcome.
             JsonNode response = running.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
             timings.worker(response.path("result"));
+            if (refusedBeforeRunning(response) instanceof ExecutionAdmissionException.Reason refusal) {
+                throw new CommandNotRunException(
+                        refusal,
+                        "The worker refused the command: "
+                                + response.path("code").asString(""),
+                        null);
+            }
             return response;
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
@@ -127,6 +138,23 @@ final class BridgedCommands implements AutoCloseable {
         }
     }
 
+    /**
+     * A refusal the worker makes before the command runs; nothing executed, so a retry is safe. The
+     * worker checks a lease's expiry before it accepts an EXEC, so an expired lease ran nothing.
+     */
+    private static ExecutionAdmissionException.Reason refusedBeforeRunning(JsonNode response) {
+        if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
+            return ExecutionAdmissionException.Reason.CAPACITY;
+        }
+        if (WorkerResponses.refused(response, "SESSION_BUSY")) {
+            return ExecutionAdmissionException.Reason.BUSY;
+        }
+        if (WorkerResponses.refused(response, "LEASE_EXPIRED")) {
+            return ExecutionAdmissionException.Reason.UNAVAILABLE;
+        }
+        return null;
+    }
+
     private static boolean closedByWorker(JsonNode polled) {
         return !polled.path("ok").asBoolean(false)
                 && Set.of("LEASE_EXPIRED", "BRIDGE_UNAVAILABLE", "AUTH_REVOKED")
@@ -162,10 +190,20 @@ final class BridgedCommands implements AutoCloseable {
         polls.shutdownNow();
     }
 
-    /** The lease stopped before the EXEC was signed, so the worker never received the command. */
-    static final class CommandNotSentException extends IllegalStateException {
-        CommandNotSentException(WorkerUnavailableException cause) {
-            super("The lease stopped before the command was sent; it did not run", cause);
+    /**
+     * The command never ran: the worker refused it before running, or the lease stopped before its
+     * EXEC was signed, so nothing reached the worker. The message names which, for the log.
+     */
+    static final class CommandNotRunException extends IllegalStateException {
+        private final ExecutionAdmissionException.Reason reason;
+
+        CommandNotRunException(ExecutionAdmissionException.Reason reason, String message, Throwable cause) {
+            super(message, cause);
+            this.reason = reason;
+        }
+
+        ExecutionAdmissionException.Reason reason() {
+            return reason;
         }
     }
 }
