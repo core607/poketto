@@ -179,7 +179,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         if (unclaimed.isPresent()) {
             return unclaimed.get();
         }
-        for (var fork : accounts.forksOf(owner)) {
+        for (var fork : accounts.unclaimedForksOf(owner, AGENT_CLAIM)) {
             unclaimed = unclaimed(fork);
             if (unclaimed.isPresent()) {
                 return unclaimed.get();

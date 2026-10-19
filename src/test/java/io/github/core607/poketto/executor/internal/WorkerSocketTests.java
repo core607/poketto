@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -548,6 +549,42 @@ class WorkerSocketTests {
             // Once the claim has passed, a new agent takes the default copy again.
             peer.accounts.usedRecently(false);
             assertThat(command(executor, actor, "new").copyId()).isEqualTo(first.copyId());
+        }
+    }
+
+    @Test
+    void claimedForksAreSkippedWithoutAcquiringTheirJournals() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            command(executor, actor, "new");
+            peer.accounts.usedRecently(true);
+            var fork = command(executor, actor, "new");
+            var owner = new AccountCopyRecord.Owner(actor.accountId(), WORKSPACE.value(), true)
+                    .forked(UUID.fromString(fork.copyId()));
+            clearInvocations(peer.accounts.store());
+
+            assertThat(command(executor, actor, "new").copyId()).isNotEqualTo(fork.copyId());
+            verify(peer.accounts.store(), never()).acquire(owner);
+            assertThat(command(executor, actor, fork.copyId()).copyId()).isEqualTo(fork.copyId());
+        }
+    }
+
+    @Test
+    void aForkClaimedAfterInventoryIsNotGivenToAnotherAgent() throws Exception {
+        var actor = principal();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            command(executor, actor, "new");
+            peer.accounts.usedRecently(true);
+            var fork = command(executor, actor, "new");
+            var owner = new AccountCopyRecord.Owner(actor.accountId(), WORKSPACE.value(), true)
+                    .forked(UUID.fromString(fork.copyId()));
+            // The inventory saw an older expiry; the held journal now reports a recent command.
+            doReturn(List.of(owner)).when(peer.accounts.store()).unclaimedForksOf(any(), any());
+
+            assertThat(command(executor, actor, "new").copyId()).isNotEqualTo(fork.copyId());
+            assertThat(command(executor, actor, fork.copyId()).copyId()).isEqualTo(fork.copyId());
         }
     }
 
