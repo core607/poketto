@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--worker-source', type=Path, required=True)
     parser.add_argument('--tools', type=Path, required=True)
     parser.add_argument('--java', type=Path, required=True)
+    parser.add_argument('--source-layout', choices=('flat', 'managed'), default='flat')
     parser.add_argument('--fixture-parent', choices=('/var/lib',), default='/var/lib')
     cli_scenarios = ('cli-save', 'cli-save-recovery', 'cli-media-import', 'cli-media-link',
                      'cli-move', 'cli-move-installation', 'cli-move-recovery')
@@ -72,6 +73,19 @@ def main():
     for name in ('worker.py', 'command_channel.py', 'shell_loop.py', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
         shutil.copy2(worker_source / name, root / name)
         os.chmod(root / name, 0o644)
+    if args.source_layout == 'managed':
+        # Exercise the deployment selector through real systemd/SRT mounts and CLI subprocesses.
+        sources = sorted(root.glob('*.py'))
+        release = hashlib.sha256(json.dumps({p.name: digest(p) for p in sources}, sort_keys=True).encode()).hexdigest()
+        generations = root / 'releases'
+        selected = generations / release
+        selected.mkdir(mode=0o755, parents=True)
+        generations.chmod(0o755)
+        selected.chmod(0o755)
+        for source in sources:
+            source.rename(selected / source.name)
+            source.symlink_to('releases/current/' + source.name)
+        (generations / 'current').symlink_to(release, target_is_directory=True)
     (root / 'worker_entry.py').write_text('''import json,os
 from pathlib import Path
 import worker
@@ -353,7 +367,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         else:
             passed('selected-scenario-closes-worker-leases')
         control({'operation': 'assert-source-unchanged'})
-        print(json.dumps({'nativeCombined': 'PASS', 'runtimeManifestSha256': digest(runtime / 'manifest.sha256'),
+        print(json.dumps({'nativeCombined': 'PASS', 'sourceLayout': args.source_layout, 'runtimeManifestSha256': digest(runtime / 'manifest.sha256'),
             'resourcePoolSha256': digest(root / 'resource_pool.py'),
             'nativePoolSha256': digest(worker_source / 'native_pool.py'),
             'workerSha256': digest(root / 'worker.py'), 'launcherSha256': digest(root / 'launcher.py'),

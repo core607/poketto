@@ -93,6 +93,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         this.artifacts = new SessionArtifacts(registry, io, lifecycle, accounts);
     }
 
+    void checkWorker() {
+        worker.hello();
+    }
+
     @Override
     public ExecutionResult execute(
             AuthPrincipal principal,

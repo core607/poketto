@@ -34,6 +34,15 @@ COPY --from=build /app/dependencies/ ./
 COPY --from=build /app/spring-boot-loader/ ./
 COPY --from=build /app/snapshot-dependencies/ ./
 COPY --from=build /app/application/ ./
+# The host updater extracts these public sources from this exact image; operator configuration stays on the host.
+COPY executor-service/worker.py executor-service/launcher.py executor-service/command_channel.py \
+     executor-service/shell_loop.py executor-service/disk_pool.py executor-service/resource_pool.py \
+     executor-service/bridge.py executor-service/cli.py executor-service/session_files.py \
+     executor-service/binary_capture.py executor-service/materialize.py executor-service/artifacts.py \
+     executor-service/requirements.txt /opt/poketto-worker/
+RUN cd /opt/poketto-worker && sed -i 's/\r$//' *.py requirements.txt \
+    && printf '%s\n' "$POKETTO_REVISION" > revision \
+    && sha256sum *.py requirements.txt > SHA256SUMS
 USER poketto
 ENV POKETTO_DATA_DIR=/var/lib/poketto
 EXPOSE 8080

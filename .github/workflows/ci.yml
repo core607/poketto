@@ -510,7 +510,8 @@ jobs:
   # their secrets/variables before enabling this job: empty values clear the provider/contact,
   # and an unset daily limit becomes 100. Host-only identity settings apply to manual deployment.
   # Existing installations must install the current privileged updater before enabling
-  # this delivery version; transfer never replaces an operator's privileged executable.
+  # this delivery version (including worker_release.py for execution-enabled installations);
+  # transfer never replaces an operator's privileged executable.
   deploy:
     needs: publish
     if: ${{ !cancelled() && needs.publish.result == 'success' && needs.publish.outputs.experiment_only != 'true' && vars.POKETTO_DEPLOY_ENABLED == 'true' }}
