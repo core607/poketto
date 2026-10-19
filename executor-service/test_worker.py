@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from bridge import LeaseBridge
-from cli import call
+from cli import call, _send
 from session_files import capture_text
 from binary_capture import BinaryCapture
 from artifacts import ArtifactStore
@@ -241,7 +241,7 @@ class ProtocolTests(unittest.TestCase):
         self.opened()
         session = self.service.sessions[self.identity['leaseId']]
         session.bridge = Mock()
-        session.bridge.poll.return_value = None
+        session.bridge.poll.side_effect = lambda timeout, execution_id: time.sleep(timeout)
         session.state, session.execution_id = 'RUNNING', uid()
         self.assertTrue(self.send(self.payload('BRIDGE_POLL'))['ok'])
         session.bridge.poll.assert_called_once()
@@ -261,6 +261,95 @@ class ProtocolTests(unittest.TestCase):
         self.assertIsNone(answer['bridgeRequest'])
         self.assertLess(time.monotonic() - started, 2)
         session.bridge.poll.assert_not_called()
+
+    def test_empty_polls_wait_when_running_crosses_mailbox_startup_and_cleanup(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id = 'RUNNING', uid()
+        with tempfile.TemporaryDirectory() as temporary:
+            session.bridge = LeaseBridge(Path(temporary) / 'bridge', os.getgid())
+            try:
+                for phase in ('before_mailbox_start', 'after_mailbox_cleanup'):
+                    with self.subTest(phase=phase):
+                        if phase == 'after_mailbox_cleanup':
+                            session.bridge.reset_command(session.execution_id)
+                            session.bridge.reset_command()
+                        # RUNNING covers backend preparation and flush; the mailbox can be empty in both.
+                        with patch('worker.BRIDGE_POLL_SECONDS', 0.1):
+                            started = time.monotonic()
+                            answer = self.send(self.payload('BRIDGE_POLL'))
+                            elapsed = time.monotonic() - started
+                        self.assertTrue(answer['ok'], answer)
+                        self.assertIsNone(answer['bridgeRequest'])
+                        self.assertEqual(session.execution_id, answer['executionId'])
+                        self.assertGreaterEqual(elapsed, 0.09, 'an empty mailbox must not create a busy poll loop')
+                        self.assertFalse(session.cancelled.is_set())
+            finally:
+                session.bridge.close()
+
+    def test_a_poll_during_mailbox_startup_serves_a_request_without_waiting_the_full_interval(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id = 'RUNNING', uid()
+        with tempfile.TemporaryDirectory() as temporary, ThreadPoolExecutor() as pool:
+            session.bridge = LeaseBridge(Path(temporary) / 'bridge', os.getgid())
+            empty = threading.Event()
+            original_poll = session.bridge.poll
+
+            def observed_poll(**kwargs):
+                result = original_poll(**kwargs)
+                if result is None:
+                    empty.set()
+                return result
+
+            try:
+                with patch.object(session.bridge, 'poll', side_effect=observed_poll):
+                    pending = pool.submit(self.send, self.payload('BRIDGE_POLL'))
+                    self.assertTrue(empty.wait(2))
+                    self.assertTrue(self.send(self.payload('RENEW'))['ok'])
+                    session.bridge.reset_command(session.execution_id)
+                    request = {'requestId': uid(), 'executionId': session.execution_id,
+                               'operation': 'status', 'arguments': {}}
+                    _send(session.bridge.path, request, time.monotonic() + 1)
+                    answer = pending.result(timeout=0.5)
+                    self.assertTrue(answer['ok'], answer)
+                    self.assertEqual(request, answer['bridgeRequest'])
+            finally:
+                session.bridge.close()
+
+    def test_a_retried_empty_poll_does_not_take_the_next_executions_request(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        session.state, session.execution_id = 'RUNNING', uid()
+        with tempfile.TemporaryDirectory() as temporary, ThreadPoolExecutor() as pool:
+            session.bridge = LeaseBridge(Path(temporary) / 'bridge', os.getgid())
+            empty = threading.Event()
+            original_poll = session.bridge.poll
+
+            def observed_poll(**kwargs):
+                result = original_poll(**kwargs)
+                if result is None:
+                    empty.set()
+                return result
+
+            try:
+                with patch('worker.BRIDGE_POLL_SECONDS', 0.1), patch.object(
+                        session.bridge, 'poll', side_effect=observed_poll):
+                    pending = pool.submit(self.send, self.payload('BRIDGE_POLL'))
+                    self.assertTrue(empty.wait(2))
+                    with self.service.lock:
+                        session.execution_id = uid()
+                    session.bridge.reset_command(session.execution_id)
+                    request = {'requestId': uid(), 'executionId': session.execution_id,
+                               'operation': 'status', 'arguments': {}}
+                    _send(session.bridge.path, request, time.monotonic() + 1)
+                    self.assertIsNone(pending.result(timeout=2)['bridgeRequest'])
+                    self.assertFalse(session.bridge.pending)
+                    answer = self.send(self.payload('BRIDGE_POLL'))
+                    self.assertTrue(answer['ok'], answer)
+                    self.assertEqual(request, answer['bridgeRequest'])
+            finally:
+                session.bridge.close()
 
     def test_a_poll_that_arrives_before_its_command_starts_waits_for_it(self):
         self.opened()
