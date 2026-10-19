@@ -45,8 +45,7 @@ public final class AuthorizedRepositoryReader {
     /** Resolves remote main for a full reader without reading document bodies; rechecks access after fetch. */
     public Optional<String> currentCommit(AuthPrincipal actor, WorkspaceId workspace) {
         auth.authorize(actor, workspace, Capability.READ_PRIVATE);
-        RepositoryDirectoryPage page = reader.listDirectory(workspace, Optional.empty(), "", 0, 1);
-        return recheck(actor, workspace, true, page.commit());
+        return recheck(actor, workspace, true, reader.currentCommit(workspace));
     }
 
     public RepositoryFile getFile(AuthPrincipal actor, WorkspaceId workspace, Optional<String> commit, String path) {

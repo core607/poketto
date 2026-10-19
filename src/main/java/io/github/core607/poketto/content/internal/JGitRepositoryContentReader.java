@@ -37,6 +37,7 @@ import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
@@ -47,6 +48,11 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
 
     JGitRepositoryContentReader(RepositoryAuthority authority) {
         this.authority = Objects.requireNonNull(authority);
+    }
+
+    @Override
+    public Optional<String> currentCommit(WorkspaceId workspace) {
+        return authority.readObjects(workspace, RepositoryAuthority.Snapshot::commitId);
     }
 
     @Override
@@ -236,14 +242,20 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
     }
 
     static RepositoryMediaIndex readMediaIndex(Repository repository, ObjectId tree) throws IOException {
-        try (TreeWalk entry = TreeWalk.forPath(repository, RepositoryMediaIndex.PATH, tree)) {
+        try (var objects = repository.newObjectReader()) {
+            return readMediaIndex(objects, tree);
+        }
+    }
+
+    static RepositoryMediaIndex readMediaIndex(ObjectReader objects, ObjectId tree) throws IOException {
+        try (TreeWalk entry = TreeWalk.forPath(objects, RepositoryMediaIndex.PATH, tree)) {
             if (entry == null) {
                 return RepositoryMediaIndex.empty();
             }
             if (!RepositoryBlobs.isPlainFile(entry.getFileMode(0))) {
                 throw new ContentRepositoryException("repository media index is not a regular file");
             }
-            ObjectLoader blob = repository.open(entry.getObjectId(0), Constants.OBJ_BLOB);
+            ObjectLoader blob = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
             if (blob.getSize() > RepositoryMediaIndex.MAX_BYTES) {
                 throw new ContentRepositoryException("repository media index exceeds its byte limit");
             }
@@ -465,9 +477,10 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         Objects.requireNonNull(limits, "baseline limits must be present");
         Objects.requireNonNull(sink, "baseline sink must be present");
         long deadline = System.nanoTime() + limits.timeout().toNanos();
-        resolve(workspace, Optional.of(commit), (repository, selected) -> {
-            new JGitRepositoryBaselineReader(repository, workspace, selected.orElseThrow(), limits, deadline, sink)
-                    .visit();
+        String selected = resolve(workspace, Optional.of(commit), (repository, pinned) -> pinned.orElseThrow());
+        // The sink can compress and persist a whole baseline. Keep the cache pinned without holding its ref lock.
+        authority.readImmutableObjects(workspace, objects -> {
+            new JGitRepositoryBaselineReader(objects, workspace, selected, limits, deadline, sink).visit();
             return null;
         });
     }
