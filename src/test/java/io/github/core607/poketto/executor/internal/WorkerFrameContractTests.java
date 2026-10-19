@@ -48,7 +48,7 @@ class WorkerFrameContractTests {
         frames.put("RENEW", new WorkerRequests.Renew());
         frames.put("CLOSE", new WorkerRequests.Close("session_closed"));
         frames.put("REVOKE", new WorkerRequests.Revoke(Set.of(EXPORT), Set.of(EXPORT)));
-        frames.put("BRIDGE_POLL", new WorkerRequests.BridgePoll());
+        frames.put("BRIDGE_POLL", new WorkerRequests.BridgePoll(EXECUTION));
         frames.put("BRIDGE_COMPLETE", new WorkerRequests.BridgeComplete(EXECUTION, BRIDGE_REQUEST, Map.of("ok", true)));
         frames.put("CAPTURE_BEGIN", new WorkerRequests.CaptureBegin(EXECUTION, List.of("notes/a.md"), List.of()));
         frames.put("CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(EXECUTION, "notes/a.md"));

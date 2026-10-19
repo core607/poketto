@@ -3,6 +3,7 @@ package io.github.core607.poketto.executor.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,6 +16,9 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -64,6 +68,59 @@ class BridgedCommandsTests {
 
         assertThat(reply).isSameAs(finished);
         assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofMillis(250));
+    }
+
+    @Test
+    void anAbandonedPollKeepsItsCommandIdentityAfterTheNextCommandStarts() {
+        String previous = UUID.randomUUID().toString();
+        String next = UUID.randomUUID().toString();
+        var oldPollEntered = new CountDownLatch(1);
+        var nextCommandStarted = new CountDownLatch(1);
+        var oldPollSent = new CountDownLatch(1);
+        var firstAuthorization = new AtomicBoolean(true);
+        var executions = new AtomicInteger();
+        var dispatchedIdentity = new AtomicReference<String>();
+        ThreadLocal<Boolean> delayed = ThreadLocal.withInitial(() -> false);
+        JsonNode finished = json("{\"ok\":true,\"state\":\"READY\",\"result\":{}}");
+        when(io.prepare(eq(session), eq("EXEC"), any())).thenReturn(exec);
+        doAnswer(call -> {
+                    if (firstAuthorization.compareAndSet(true, false)) {
+                        delayed.set(true);
+                        oldPollEntered.countDown();
+                        assertThat(nextCommandStarted.await(5, TimeUnit.SECONDS))
+                                .isTrue();
+                    }
+                    return null;
+                })
+                .when(io)
+                .authorize(session);
+        when(io.send(eq(exec), any())).thenAnswer(call -> {
+            if (executions.incrementAndGet() == 1) {
+                assertThat(oldPollEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            } else {
+                nextCommandStarted.countDown();
+                assertThat(oldPollSent.await(5, TimeUnit.SECONDS)).isTrue();
+            }
+            return finished;
+        });
+        when(io.request(eq(session), eq("BRIDGE_POLL"), any(), any())).thenAnswer(call -> {
+            if (delayed.get()) {
+                WorkerRequests.Data data = call.getArgument(2);
+                dispatchedIdentity.set(JsonMapper.shared()
+                        .valueToTree(data)
+                        .path("executionId")
+                        .asString(""));
+                oldPollSent.countDown();
+            }
+            return leased("{\"ok\":true,\"bridgeRequest\":null}");
+        });
+
+        assertThat(commands.execute(session, previous, "true", Duration.ofSeconds(10), new ExecutionTimings()))
+                .isSameAs(finished);
+        assertThat(commands.execute(session, next, "true", Duration.ofSeconds(10), new ExecutionTimings()))
+                .isSameAs(finished);
+
+        assertThat(dispatchedIdentity.get()).isEqualTo(previous);
     }
 
     @Test

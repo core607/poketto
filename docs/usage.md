@@ -449,8 +449,8 @@ characters and an encoded bridge frame to 512 KiB. Refusals carry `code` and
 `reason`. See [MCP request admission removal](../notes/implemented/2026-09-15-mcp-request-admission-removal.md).
 
 `repo_exec` requires `expectedCopyId`: pass `"new"` to open the account's default
-copy, creating it only when absent, or a separate copy while a command runs in it,
-then pass the returned `copyId`. Reconnecting reattaches a copy, and closing the
+copy, creating it only when absent, or a separate copy while it is busy or recently
+used. Then pass the returned `copyId`. Reconnecting reattaches a copy, and closing the
 transport keeps it. Each
 successful operation renews its seven-day idle deadline (`retention.expiresAt`);
 expiry and discard remove local work. `SESSION_REPLACED` and `EXECUTION_REFUSED` mean the command did not run.

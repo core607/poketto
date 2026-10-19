@@ -15,7 +15,7 @@ Install [requirements.txt](requirements.txt) into a root-owned virtual environme
 
 Package worker sources from the selected commit with `git archive` or raw Git blobs so they keep LF line endings; a launcher shebang with CRLF cannot execute on Linux. Record the source revision and hashes, verify the installed files, and run `poketto --help` through the deployed connector after restart.
 
-Before exporting content or opening a lease, the application's HELLO check requires `codeActProtocol`, `artifactProtocol`, `moveProtocol`, `exportProtocol`, `diskCopyProtocol`, `gitBaselineProtocol`, `workspaceSyncProtocol`, `leaseSandboxProtocol` and `seedProtocol`, each equal to 1; any other value rejects execution. Install and restart the matching worker before deploying the application. A restart ends existing leases and their artifacts; account copies remain on disk.
+Before exporting content or opening a lease, HELLO requires `codeActProtocol: 2` for execution-bound polls; `artifactProtocol`, `moveProtocol`, `exportProtocol`, `diskCopyProtocol`, `gitBaselineProtocol`, `workspaceSyncProtocol`, `leaseSandboxProtocol` and `seedProtocol` must equal 1. Other values reject execution. Install and restart the matching worker before deploying the application. A restart ends existing leases and their artifacts; account copies remain on disk.
 
 Install [resource_pool.py](resource_pool.py) at `/opt/poketto-executor/resource_pool.py`, and [poketto-executor.slice](poketto-executor.slice) and the service file in `/etc/systemd/system/`, keeping files and parent directories root-owned and unwritable by the application, execution and deployment accounts. The slice is the single source of aggregate limits for the supervisor, every lease sandbox and every helper, including bundle copying, filesystem cache and temporary pages; per-unit limits add to it, and repository storage has its own disk bound. Before starting the service, set finite `MemoryMax`, `MemorySwapMax`, `TasksMax` and `CPUQuota` in a private systemd drop-in, since the checked-in values are examples, and run `systemctl daemon-reload`. Startup and every new OPEN, ATTACH and EXEC reject a missing, unlimited or incorrectly placed pool; startup cleanup, CLOSE, revocation and `--cleanup` still run when that validation fails.
 
@@ -80,7 +80,7 @@ The worker captures at most 4 MiB of combined output, stopping the unit beyond i
 
 ## Working-copy identity
 
-`repo_exec` requires `expectedCopyId`. `"new"` opens the account's default copy for the grant's reading scope, creating it only if absent. While a command runs in it, `"new"` opens a fork within the account's quota (`poketto.executor.account-copies.*`), else waits. Afterwards pass the returned `copyId`. A matching Git commit does not prove that a copy survived, transports do not own copies, and an ID mismatch is refused before the command executes.
+`repo_exec` requires `expectedCopyId`. `"new"` opens the account's default copy for the grant's reading scope, creating it only if absent. While that copy is busy or recently used, `"new"` opens a fork within the account's quota (`poketto.executor.account-copies.*`), else waits. Afterwards pass the returned `copyId`. A matching Git commit does not prove copy survival; transports do not own copies; ID mismatches are refused before execution.
 
 ```json
 {"expectedCopyId":"new","command":"pwd"}
@@ -123,7 +123,7 @@ The worker rejects `data` with a missing or extra field; [java-frames.json](java
 | `DISCARD` | Deletes an owner-matched copy once no lease holds its lock. Returns DISCARDED or ABSENT, or `COPY_BUSY`. |
 | `EXEC` | Runs `command` (1 byte to 64 KiB of UTF-8, no NUL) within `timeoutMillis`, at most `maxTimeoutMillis`. Requires READY and the pinned `commit`; blocks until completion or containment. |
 | `RENEW` | Extends an unexpired lease in any live state, UPDATING included, to `expiresAt`. Nothing else renews. |
-| `BRIDGE_POLL` | Claims one pending CLI request of the command it was dispatched for, or returns null when idle, after a bounded wait, or as soon as that command's cleanup begins. Never takes the command lock or cancels on contention. |
+| `BRIDGE_POLL` | Requires `executionId`; claims one CLI request only from that command. Returns null within the poll interval when idle or unmatched. Never takes the command lock or cancels on contention. |
 | `BRIDGE_COMPLETE` | Publishes one bounded reply to that pending request of that running execution. |
 | `CAPTURE_BEGIN` | Captures up to 64 selected UTF-8 files and 4 MiB plus explicit deletions; returns a capture ID and an ordered path/length/SHA-256 manifest. |
 | `CAPTURE_OPTIONAL` | Captures one text file, or its absence, for synchronization. |

@@ -929,7 +929,7 @@ class WorkerSocketTests {
         var exports = exports();
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports, peer)) {
-            peer.codeActProtocol = 0;
+            peer.codeActProtocol = 1;
             assertThatThrownBy(() -> client.execute(
                             executor,
                             principal(),
@@ -941,11 +941,12 @@ class WorkerSocketTests {
                             new Cancellation()))
                     .isInstanceOf(ExecutionAdmissionException.class);
             assertThat(peer.operations("OPEN")).isEmpty();
+            assertThat(peer.operations("EXEC")).isEmpty();
             verify(exports, never()).create(any(), any(), any());
             verify(exports, never()).createPublic(any(), any());
-            peer.codeActProtocol = 2;
+            peer.codeActProtocol = 3;
             assertThatThrownBy(() -> peer.client().hello()).isInstanceOf(WorkerUnavailableException.class);
-            peer.codeActProtocol = 1;
+            peer.codeActProtocol = 2;
             peer.artifactProtocol = 0;
             assertThatThrownBy(() -> peer.client().hello()).isInstanceOf(WorkerUnavailableException.class);
             peer.artifactProtocol = 1;
@@ -1963,7 +1964,7 @@ class WorkerSocketTests {
         private volatile boolean assertOnHelloShutdown;
         private volatile boolean dropExec;
         private volatile boolean oversizedHello;
-        private volatile int codeActProtocol = 1;
+        private volatile int codeActProtocol = 2;
         private volatile int artifactProtocol = 1;
         private volatile String artifactLease = "";
         private final AtomicBoolean holdFirstExec = new AtomicBoolean();
@@ -2206,7 +2207,11 @@ class WorkerSocketTests {
                     bridgeEntered.countDown();
                     Thread.sleep(50);
                     response.put("bridgeRequest", null);
-                    if (bridgeCommand != null && executionId != null && bridgeDelivered.compareAndSet(false, true)) {
+                    if (bridgeCommand != null
+                            && executionId != null
+                            && executionId.equals(
+                                    request.path("data").path("executionId").asString(""))
+                            && bridgeDelivered.compareAndSet(false, true)) {
                         response.put("executionId", executionId);
                         response.put("bridgeRequest", bridgeCommand);
                     }

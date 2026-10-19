@@ -243,7 +243,7 @@ class ProtocolTests(unittest.TestCase):
         session.bridge = Mock()
         session.bridge.poll.side_effect = lambda timeout, execution_id: time.sleep(timeout)
         session.state, session.execution_id = 'RUNNING', uid()
-        self.assertTrue(self.send(self.payload('BRIDGE_POLL'))['ok'])
+        self.assertTrue(self.send(self.payload('BRIDGE_POLL', {'executionId': session.execution_id}))['ok'])
         session.bridge.poll.assert_called_once()
         self.assertEqual(session.execution_id, session.bridge.poll.call_args.kwargs['execution_id'])
         self.assertGreater(session.bridge.poll.call_args.kwargs['timeout'], 0.9)
@@ -255,7 +255,7 @@ class ProtocolTests(unittest.TestCase):
         session.bridge = Mock()
         session.state = 'UPDATING'
         started = time.monotonic()
-        answer = self.send(self.payload('BRIDGE_POLL'))
+        answer = self.send(self.payload('BRIDGE_POLL', {'executionId': uid()}))
         # Not SESSION_NOT_READY, which the application cannot tell from a lost command.
         self.assertTrue(answer['ok'], answer)
         self.assertIsNone(answer['bridgeRequest'])
@@ -277,7 +277,7 @@ class ProtocolTests(unittest.TestCase):
                         # RUNNING covers backend preparation and flush; the mailbox can be empty in both.
                         with patch('worker.BRIDGE_POLL_SECONDS', 0.1):
                             started = time.monotonic()
-                            answer = self.send(self.payload('BRIDGE_POLL'))
+                            answer = self.send(self.payload('BRIDGE_POLL', {'executionId': session.execution_id}))
                             elapsed = time.monotonic() - started
                         self.assertTrue(answer['ok'], answer)
                         self.assertIsNone(answer['bridgeRequest'])
@@ -304,7 +304,7 @@ class ProtocolTests(unittest.TestCase):
 
             try:
                 with patch.object(session.bridge, 'poll', side_effect=observed_poll):
-                    pending = pool.submit(self.send, self.payload('BRIDGE_POLL'))
+                    pending = pool.submit(self.send, self.payload('BRIDGE_POLL', {'executionId': session.execution_id}))
                     self.assertTrue(empty.wait(2))
                     self.assertTrue(self.send(self.payload('RENEW'))['ok'])
                     session.bridge.reset_command(session.execution_id)
@@ -335,7 +335,7 @@ class ProtocolTests(unittest.TestCase):
             try:
                 with patch('worker.BRIDGE_POLL_SECONDS', 0.1), patch.object(
                         session.bridge, 'poll', side_effect=observed_poll):
-                    pending = pool.submit(self.send, self.payload('BRIDGE_POLL'))
+                    pending = pool.submit(self.send, self.payload('BRIDGE_POLL', {'executionId': session.execution_id}))
                     self.assertTrue(empty.wait(2))
                     with self.service.lock:
                         session.execution_id = uid()
@@ -345,7 +345,7 @@ class ProtocolTests(unittest.TestCase):
                     _send(session.bridge.path, request, time.monotonic() + 1)
                     self.assertIsNone(pending.result(timeout=2)['bridgeRequest'])
                     self.assertFalse(session.bridge.pending)
-                    answer = self.send(self.payload('BRIDGE_POLL'))
+                    answer = self.send(self.payload('BRIDGE_POLL', {'executionId': session.execution_id}))
                     self.assertTrue(answer['ok'], answer)
                     self.assertEqual(request, answer['bridgeRequest'])
             finally:
@@ -364,8 +364,32 @@ class ProtocolTests(unittest.TestCase):
                 session.state, session.execution_id = 'RUNNING', execution
 
         threading.Thread(target=start).start()
-        self.assertTrue(self.send(self.payload('BRIDGE_POLL'))['ok'])
+        self.assertTrue(self.send(self.payload('BRIDGE_POLL', {'executionId': execution}))['ok'])
         self.assertEqual(execution, session.bridge.poll.call_args.kwargs['execution_id'])
+
+    def test_a_late_poll_from_a_finished_command_cannot_take_the_next_request(self):
+        self.opened()
+        session = self.service.sessions[self.identity['leaseId']]
+        previous = uid()
+        late = self.payload('BRIDGE_POLL', {'executionId': previous})
+        session.state, session.execution_id = 'RUNNING', uid()
+        with tempfile.TemporaryDirectory() as temporary:
+            session.bridge = LeaseBridge(Path(temporary) / 'bridge', os.getgid())
+            try:
+                session.bridge.reset_command(session.execution_id)
+                request = {'requestId': uid(), 'executionId': session.execution_id,
+                           'operation': 'status', 'arguments': {}}
+                _send(session.bridge.path, request, time.monotonic() + 1)
+                stale = self.send(late)
+                self.assertTrue(stale['ok'], stale)
+                self.assertEqual(previous, stale['executionId'])
+                self.assertIsNone(stale['bridgeRequest'])
+                self.assertFalse(session.bridge.pending)
+                current = self.send(self.payload('BRIDGE_POLL', {'executionId': session.execution_id}))
+                self.assertEqual(request, current['bridgeRequest'])
+                self.assertFalse(session.cancelled.is_set())
+            finally:
+                session.bridge.close()
 
     def test_each_refusal_reason_is_logged_with_the_refusals_it_counted(self):
         from worker import Server
@@ -509,7 +533,7 @@ class ProtocolTests(unittest.TestCase):
     def test_hello_advertises_the_codeact_bridge_contract(self):
         response = self.service.hello()
         self.assertEqual(1, response['version'])
-        self.assertEqual(1, response['codeActProtocol'])
+        self.assertEqual(2, response['codeActProtocol'])
         self.assertEqual(1, response['artifactProtocol'])
         self.assertEqual(1, response['moveProtocol'])
         self.assertEqual(1, response['exportProtocol'])
@@ -656,7 +680,7 @@ class ProtocolTests(unittest.TestCase):
                 environment.start()
                 self.addCleanup(environment.stop)
                 client = pool.submit(call, session.bridge.path, 'status', {}, 3)
-                polled = self.send(self.payload('BRIDGE_POLL'))
+                polled = self.send(self.payload('BRIDGE_POLL', {'executionId': session.execution_id}))
                 self.assertTrue(polled['ok'])
                 self.assertEqual('RUNNING', polled['state'])
                 self.assertEqual(execution['data']['executionId'], polled['executionId'])
@@ -682,7 +706,7 @@ class ProtocolTests(unittest.TestCase):
                 # reset_command owns reader while draining completed command input.
                 with ThreadPoolExecutor(max_workers=1) as pool:
                     with session.bridge.reader:
-                        pending = pool.submit(self.send, self.payload('BRIDGE_POLL', {}))
+                        pending = pool.submit(self.send, self.payload('BRIDGE_POLL', {'executionId': session.execution_id}))
                         deadline = time.monotonic() + 1
                         while not pending.done() and not session.cancelled.is_set() and time.monotonic() < deadline:
                             threading.Event().wait(.01)
@@ -691,7 +715,7 @@ class ProtocolTests(unittest.TestCase):
                 self.assertIsNone(result['bridgeRequest'])
                 self.assertFalse(session.cancelled.is_set())
                 self.assertEqual('RUNNING', session.state)
-                self.assertTrue(self.send(self.payload('BRIDGE_POLL', {}))['ok'])
+                self.assertTrue(self.send(self.payload('BRIDGE_POLL', {'executionId': session.execution_id}))['ok'])
                 self.assertFalse(session.bridge.closed)
             finally:
                 session.bridge.close()

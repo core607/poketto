@@ -143,8 +143,12 @@ final class WorkerRequests {
     /** Extends the lease. The worker rejects any field, so this record carries none. */
     record Renew() implements Data {}
 
-    /** Claims one pending bridge request. Like {@link Renew}, it carries no field. */
-    record BridgePoll() implements Data {}
+    /** Claims a pending request only from this command, even when a previous poll arrives late. */
+    record BridgePoll(String executionId) implements Data {
+        BridgePoll {
+            executionId = execution(executionId);
+        }
+    }
 
     record BridgeComplete(String executionId, String bridgeRequestId, Object response) implements Data {
         BridgeComplete {

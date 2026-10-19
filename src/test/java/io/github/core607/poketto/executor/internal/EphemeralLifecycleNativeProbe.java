@@ -124,7 +124,20 @@ record EphemeralLifecycleNativeProbe(
     }
 
     private void discardAndReopen(RepositoryExecutor.ExecutionResult first) {
-        assertThat(execute("new", "pwd", 30).copyId()).isEqualTo(first.copyId());
+        // "new" admits another agent; the explicit ID reconnects to recently used local work.
+        var separate = execute("new", "test ! -e draft.txt && test ! -e scratch.bin", 30);
+        assertThat(separate.exitCode()).isZero();
+        assertThat(separate.copyId()).isNotEqualTo(first.copyId());
+        var original = execute(first.copyId(), "test \"$(cat draft.txt)\" = beforepartial", 30);
+        assertThat(original.exitCode()).isZero();
+        assertThat(original.copyId()).isEqualTo(first.copyId());
+        assertThat(executor.discard(
+                                actor,
+                                workspace,
+                                new RepositoryExecutor.DiscardRequest(separate.copyId()),
+                                CANCELLATION)
+                        .status())
+                .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
         assertThatThrownBy(() -> execute(UUID.randomUUID().toString(), "touch should-not-run", 30))
                 .isInstanceOfSatisfying(
                         SessionReplacedException.class,

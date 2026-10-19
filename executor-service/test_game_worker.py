@@ -117,6 +117,42 @@ class GameProtocolTests(unittest.TestCase):
             self.assertEqual('GAME_EXPIRED', active.result(3)['code'])
         self.backend.close.assert_called_once()
 
+    def test_revocation_does_not_reclose_a_job_that_finishes_during_another_cleanup(self):
+        self.config['maxSessions'] = 2
+        request = self.envelope()
+        identity = json.loads(base64.urlsafe_b64decode(request['payload'] + '=' * (-len(request['payload']) % 4)))
+        self.backend.close.side_effect = RuntimeError('Containment not confirmed')
+        self.assertEqual('EXECUTOR_FAILED', self.service.handle(request)['code'])
+        started, closing, release = threading.Event(), threading.Event(), threading.Event()
+        closed = []
+
+        def close(session):
+            if session.id == identity['leaseId']:
+                closing.set()
+                self.assertTrue(release.wait(5))
+            closed.append(session.id)
+
+        def game(session, _):
+            started.set()
+            self.assertTrue(session.cancelled.wait(3))
+            return self.backend.game.return_value
+
+        self.backend.close.side_effect = close
+        self.backend.game.side_effect = game
+        with ThreadPoolExecutor(2) as pool:
+            active = pool.submit(self.service.handle, self.envelope(identity=identity))
+            try:
+                self.assertTrue(started.wait(2))
+                revoked = pool.submit(self.service.handle, self.envelope(
+                    'REVOKE', {'keyIds': [identity['principalId']], 'accountIds': []}, identity))
+                self.assertTrue(closing.wait(2))
+                self.assertEqual('GAME_EXPIRED', active.result(2)['code'])
+            finally:
+                release.set()
+            self.assertEqual('CLOSED', revoked.result(2)['state'])
+        self.assertEqual(2, len(closed))
+        self.assertEqual(2, len(set(closed)))
+
     def test_game_policy_has_no_bridge_or_repository_and_keeps_full_bounded_output(self):
         backend = object.__new__(GameBackend)
         backend.c = {'toolsRoot': '/opt/poketto/tools'}

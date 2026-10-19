@@ -169,9 +169,10 @@ class Service:
         self.revoked_accounts = {}
         self.closed_leases = {}
         self.lock = threading.RLock()
+        self.shutdown_started = False
 
     def hello(self):
-        return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'moveProtocol': 1, 'exportProtocol': 1,
+        return {'ok': True, 'version': 1, 'codeActProtocol': 2, 'artifactProtocol': 1, 'moveProtocol': 1, 'exportProtocol': 1,
                 'diskCopyProtocol': 1 if self.config.get('copyRoot') else 0, 'gitBaselineProtocol': 1, 'workspaceSyncProtocol': 1,
                 'leaseSandboxProtocol': 1, 'seedProtocol': 1,
                 'workerBootId': self.boot,
@@ -272,6 +273,10 @@ class Service:
 
     def dispatch(self, p):
         op, d = p['operation'], p['data']
+        if op == 'CLOSE':
+            return self.close_dispatch(p)
+        if op == 'REVOKE':
+            return self.revoke_dispatch(p)
         if op == 'BASELINE':
             return self.baseline_dispatch(p)
         if op in ('MOVE_BEGIN', 'MOVE_CHUNK', 'MOVE_CHECK', 'MOVE_COMMIT', 'MOVE_ABORT'):
@@ -301,27 +306,12 @@ class Service:
         if op == 'EXEC':
             # Waiting for this lease's own unit and making room for it share one budget.
             room_deadline = self.await_unit_stop(p)
+        expired = False
         with self.lock:
-            if op == 'REVOKE':
-                if set(d) != {'keyIds', 'accountIds'} or any(not isinstance(d[k], list) or len(d[k]) > 1000 for k in d):
-                    raise Rejected('INVALID_REQUEST')
-                keys = {identifier(k) for k in d['keyIds']}
-                accounts = {identifier(k) for k in d['accountIds']}
-                until = self.clock() + self.config['leaseSeconds'] + 2
-                self.revoked_keys.update({(p['workspaceId'], k): until for k in keys})
-                self.revoked_accounts.update({(p['workspaceId'], k): until for k in accounts})
-                closing = [s for s in self.sessions.values() if s.identity[2] == p['workspaceId'] and
-                           (s.identity[0] in keys or s.identity[1] in accounts)]
-                for s in closing:
-                    self.cancel(s, 'revoked')
-                return {'ok': True, 'state': 'CLOSING' if any(s.state != 'CLOSED' for s in closing) else 'CLOSED', 'closedCount': len(closing)}
-            # A signed identity-matched release never grants execution authority. Revocation
-            # must not prevent the application from confirming that cleanup reached CLOSED.
-            if op != 'CLOSE':
-                self.authorized(p)
+            self.authorized(p)
             s = self.sessions.get(p['leaseId'])
             if op in ('OPEN', 'ATTACH'):
-                if p['leaseId'] in self.closed_leases:
+                if self.shutdown_started or p['leaseId'] in self.closed_leases:
                     raise Rejected('SESSION_CLOSED')
                 self.validate_open(p)
                 if s or any(x.identity == self.identity(p) and x.state != 'CLOSED' for x in self.sessions.values()):
@@ -332,45 +322,21 @@ class Service:
                 s.copy_id, s.scope = d['copyId'], d['scope']
                 self.sessions[s.id] = s
             else:
-                if op == 'CLOSE' and not s:
-                    if set(d) - {'reason'} or d.get('reason', 'session_closed') not in ('cancelled', 'session_closed', 'client_shutdown'):
-                        raise Rejected('INVALID_REQUEST')
-                    self.closed_leases[p['leaseId']] = self.clock() + self.config['leaseSeconds'] + 2
-                    return {'ok': True, 'leaseId': p['leaseId'], 'state': 'CLOSED', 'commit': None}
                 if not s or s.identity != self.identity(p):
                     raise Rejected('SESSION_NOT_FOUND')
-                if op == 'CLOSE':
-                    if set(d) - {'reason'} or d.get('reason', 'session_closed') not in ('cancelled', 'session_closed', 'client_shutdown'):
-                        raise Rejected('INVALID_REQUEST')
-                    self.cancel(s, d.get('reason', 'session_closed'))
-                    self.closed_leases[s.id] = self.clock() + self.config['leaseSeconds'] + 2
-                    return self.response(s)
                 if s.cancelled.is_set() or s.deadline <= self.clock():
-                    self.cancel(s, 'lease_expired')
-                    raise Rejected('LEASE_EXPIRED')
-                if op == 'RENEW':
+                    self.mark_cancelled(s, 'lease_expired')
+                    expired = True
+                elif op == 'RENEW':
                     if d:
                         raise Rejected('INVALID_REQUEST')
                     s.deadline = max(s.deadline, p['expiresAt'])
                     return self.response(s)
-                if set(d) != {'executionId', 'commit', 'command', 'timeoutMillis'}:
-                    raise Rejected('INVALID_REQUEST')
-                identifier(d['executionId'])
-                execution_key = (s.id, d['executionId'])
-                if execution_key in self.executions:
-                    raise Rejected('EXECUTION_ALREADY_STARTED')
-                if d['commit'] != s.commit:
-                    raise Rejected('SESSION_COMMIT_MISMATCH')
-                if not isinstance(d['command'], str) or '\0' in d['command'] or not 0 < len(d['command'].encode('utf-8')) <= MAX_COMMAND:
-                    raise Rejected('INVALID_REQUEST')
-                integer(d['timeoutMillis'], 1, self.config['maxTimeoutMillis'])
-                if s.state != 'READY':
-                    raise Rejected('SESSION_BUSY')
-                if sum(key[0] == s.id for key in self.executions) >= self.config['maxExecutionsPerSession']:
-                    raise Rejected('EXECUTION_CAPACITY')
-                self.executions.add(execution_key)
-                s.state = 'RUNNING'
-                s.execution_id = d['executionId']
+                else:
+                    execution_key = self.begin_execution(s, d)
+        if expired:
+            self.cancel(s, 'lease_expired')
+            raise Rejected('LEASE_EXPIRED')
         # A command that would start a unit first makes room among the live units. When none can
         # stop, the command is refused before it runs and the lease stays usable.
         if op == 'EXEC':
@@ -386,6 +352,7 @@ class Service:
         if op == 'EXEC':
             s.timings['roomMs'] = elapsed_ms(making_room)
             waiting = time.monotonic()
+        failed = False
         try:
             with s.operation:
                 if op == 'EXEC':
@@ -401,28 +368,96 @@ class Service:
                 else:
                     result = self.backend.execute(s, d)
                 with self.lock:
-                    if s.cancelled.is_set():
-                        self.backend.close(s)
-                        s.state = 'CLOSED'
-                    else:
+                    if not s.cancelled.is_set():
                         s.state = 'READY'
                         s.execution_id = ''
                         s.idle_since = self.clock()
-                    answer = self.response(s)
-                    if result is not None:
-                        result['timings'] = dict(s.timings)
-                        answer['result'] = result
-                    elif s.state == 'CLOSED':
-                        raise Rejected('SESSION_CLOSED')
-                    return answer
+                        return self.operation_response(s, result)
+                # This command owns s.operation; containment may wait on systemd and files.
+                self.backend.close(s)
+                with self.lock:
+                    s.state = 'CLOSED'
+                    return self.operation_response(s, result)
         except Exception:
-            with self.lock:
-                self.cancel(s, 'sandbox_failed')
+            failed = True
+            self.cancel(s, 'sandbox_failed')
             raise
         finally:
             if op == 'EXEC':
                 with self.lock:
                     s.starting = False
+            # Cancellation can arrive after READY was published but before operation released.
+            if not failed and s.cancelled.is_set():
+                self.cancel(s, s.reason)
+
+    def operation_response(self, s, result):
+        answer = self.response(s)
+        if result is not None:
+            result['timings'] = dict(s.timings)
+            answer['result'] = result
+        elif s.state == 'CLOSED':
+            raise Rejected('SESSION_CLOSED')
+        return answer
+
+    def begin_execution(self, s, data):
+        if set(data) != {'executionId', 'commit', 'command', 'timeoutMillis'}:
+            raise Rejected('INVALID_REQUEST')
+        identifier(data['executionId'])
+        key = (s.id, data['executionId'])
+        if key in self.executions:
+            raise Rejected('EXECUTION_ALREADY_STARTED')
+        if data['commit'] != s.commit:
+            raise Rejected('SESSION_COMMIT_MISMATCH')
+        if not isinstance(data['command'], str) or '\0' in data['command'] or not 0 < len(data['command'].encode('utf-8')) <= MAX_COMMAND:
+            raise Rejected('INVALID_REQUEST')
+        integer(data['timeoutMillis'], 1, self.config['maxTimeoutMillis'])
+        if s.state != 'READY':
+            raise Rejected('SESSION_BUSY')
+        if sum(existing[0] == s.id for existing in self.executions) >= self.config['maxExecutionsPerSession']:
+            raise Rejected('EXECUTION_CAPACITY')
+        self.executions.add(key)
+        s.state = 'RUNNING'
+        s.execution_id = data['executionId']
+        return key
+
+    def close_dispatch(self, p):
+        data = p['data']
+        reason = data.get('reason', 'session_closed')
+        if set(data) - {'reason'} or reason not in ('cancelled', 'session_closed', 'client_shutdown'):
+            raise Rejected('INVALID_REQUEST')
+        # A signed identity-matched release grants no execution authority. Revocation must not
+        # prevent containment confirmation, and the tombstone precedes any blocking cleanup.
+        with self.lock:
+            s = self.sessions.get(p['leaseId'])
+            if s is not None and s.identity != self.identity(p):
+                raise Rejected('SESSION_NOT_FOUND')
+            self.closed_leases[p['leaseId']] = self.clock() + self.config['leaseSeconds'] + 2
+            if s is None:
+                return {'ok': True, 'leaseId': p['leaseId'], 'state': 'CLOSED', 'commit': None}
+            self.mark_cancelled(s, reason)
+        self.cancel(s, reason)
+        with self.lock:
+            return self.response(s)
+
+    def revoke_dispatch(self, p):
+        data = p['data']
+        if set(data) != {'keyIds', 'accountIds'} or any(not isinstance(data[k], list) or len(data[k]) > 1000 for k in data):
+            raise Rejected('INVALID_REQUEST')
+        keys = {identifier(k) for k in data['keyIds']}
+        accounts = {identifier(k) for k in data['accountIds']}
+        with self.lock:
+            until = self.clock() + self.config['leaseSeconds'] + 2
+            self.revoked_keys.update({(p['workspaceId'], k): until for k in keys})
+            self.revoked_accounts.update({(p['workspaceId'], k): until for k in accounts})
+            closing = [s for s in self.sessions.values() if s.identity[2] == p['workspaceId'] and
+                       (s.identity[0] in keys or s.identity[1] in accounts)]
+            for s in closing:
+                self.mark_cancelled(s, 'revoked')
+        for s in closing:
+            self.cancel(s, 'revoked')
+        with self.lock:
+            pending = any(s.state != 'CLOSED' and self.sessions.get(s.id) is s for s in closing)
+            return {'ok': True, 'state': 'CLOSING' if pending else 'CLOSED', 'closedCount': len(closing)}
 
 
     def validate_open(self, p):
@@ -692,6 +727,11 @@ class Service:
             return {**self.response(s), **result}
 
     def bridge_dispatch(self, p):
+        data = p['data']
+        if p['operation'] == 'BRIDGE_POLL':
+            if set(data) != {'executionId'}:
+                raise Rejected('INVALID_REQUEST')
+            identifier(data['executionId'])
         deadline = self.await_command_start(p) if p['operation'] == 'BRIDGE_POLL' else 0
         with self.lock:
             s = self.live_session(p)
@@ -700,12 +740,10 @@ class Service:
             stopping = p['operation'] == 'BRIDGE_POLL' and s.state == 'UPDATING' and not s.execution_id
             if s.bridge is None or (s.state not in ('READY', 'RUNNING') and not stopping):
                 raise Rejected('SESSION_NOT_READY')
-            data = p['data']
             if p['operation'] == 'BRIDGE_POLL':
-                if data:
-                    raise Rejected('INVALID_REQUEST')
-                if s.state != 'RUNNING':
-                    return {**self.response(s), 'executionId': '', 'bridgeRequest': None}
+                # An abandoned poll may arrive after the next EXEC. It must never claim its frame.
+                if s.state != 'RUNNING' or s.execution_id != data['executionId']:
+                    return {**self.response(s), 'executionId': data['executionId'], 'bridgeRequest': None}
             elif set(data) != {'bridgeRequestId', 'executionId', 'response'} or not isinstance(data['response'], dict):
                 raise Rejected('INVALID_REQUEST')
             else:
@@ -721,8 +759,7 @@ class Service:
                 s.bridge.complete(data['bridgeRequestId'], data['response'])
                 request = None
         except BridgeRejected:
-            with self.lock:
-                self.cancel(s, 'sandbox_failed')
+            self.cancel(s, 'sandbox_failed')
             raise Rejected('BRIDGE_UNAVAILABLE') from None
         with self.lock:
             self.recheck(p, s)
@@ -744,30 +781,44 @@ class Service:
                 return None
             time.sleep(min(0.02, remaining))
 
-    def cancel(self, s, reason):
-        if s.state == 'CLOSED':
-            return
+    def mark_cancelled(self, s, reason):
+        # Metadata only, with self.lock held. Bulk callers mark every lease before cleanup waits.
+        if s.state == 'CLOSED' or self.sessions.get(s.id) is not s:
+            return False
         if not s.cancelled.is_set():
             s.reason = reason
         s.state = 'CLOSING'
         s.cancelled.set()
-        if s.bridge is not None:
-            s.bridge.close()
+        return True
+
+    def cancel(self, s, reason):
+        # Call without self.lock: mailbox closure, containment and unmounting can block.
+        with self.lock:
+            if not self.mark_cancelled(s, reason):
+                return
+            bridge = s.bridge
+        if bridge is not None:
+            bridge.close()
         # The executor loop observes cancellation. No unmount can race initialization.
         if s.operation.acquire(blocking=False):
             try:
+                with self.lock:
+                    if s.state == 'CLOSED' or self.sessions.get(s.id) is not s:
+                        return
                 self.backend.close(s)
-                s.state = 'CLOSED'
+                with self.lock:
+                    s.state = 'CLOSED'
             finally:
                 s.operation.release()
 
     def sweep(self):
-        idle = []
+        idle, closing = [], []
         with self.lock:
             now = self.clock()
             for s in self.sessions.values():
-                if s.deadline <= now:
-                    self.cancel(s, 'lease_expired')
+                if s.cancelled.is_set() or s.deadline <= now:
+                    self.mark_cancelled(s, 'lease_expired')
+                    closing.append(s)
             # Expired signatures cannot execute again, so their replay entries can leave memory.
             self.requests = {k: v for k, v in self.requests.items() if v[1] is None or v[2] + 2 > now}
             self.sessions = {k: s for k, s in self.sessions.items() if s.state != 'CLOSED' or s.deadline + 2 > now}
@@ -782,6 +833,8 @@ class Service:
                         and s.operation.acquire(blocking=False)):
                     s.state = 'UPDATING'
                     idle.append(s)
+        for s in closing:
+            self.cancel(s, s.reason)
         for s in idle:
             self.stop_idle_unit(s)
         for s in retained:
@@ -795,8 +848,7 @@ class Service:
                 finally:
                     s.files_lock.release()
             if failed:
-                with self.lock:
-                    self.cancel(s, 'sandbox_failed')
+                self.cancel(s, 'sandbox_failed')
 
     def stop_idle_unit(self, s):
         """Stops the unit of a session claimed as UPDATING with its operation lock held; the lease stays."""
@@ -808,13 +860,11 @@ class Service:
                 if not s.cancelled.is_set():
                     s.state = 'READY'
         except Exception:
-            with self.lock:
-                self.cancel(s, 'sandbox_failed')
+            self.cancel(s, 'sandbox_failed')
         finally:
             s.operation.release()
             if s.cancelled.is_set():
-                with self.lock:
-                    self.cancel(s, s.reason)
+                self.cancel(s, s.reason)
 
     def await_command_start(self, p):
         """Waits, within one poll interval, until the lease runs a command; returns the interval's end.
@@ -887,8 +937,12 @@ class Service:
 
     def shutdown(self):
         with self.lock:
-            for s in self.sessions.values():
-                self.cancel(s, 'client_shutdown')
+            self.shutdown_started = True
+            closing = list(self.sessions.values())
+            for s in closing:
+                self.mark_cancelled(s, 'client_shutdown')
+        for s in closing:
+            self.cancel(s, 'client_shutdown')
 
 
 def checked(args, **kwargs):

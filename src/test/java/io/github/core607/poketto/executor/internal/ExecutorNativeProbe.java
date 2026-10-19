@@ -28,6 +28,7 @@ import io.github.core607.poketto.content.RepositoryTextChange;
 import io.github.core607.poketto.content.internal.PublicExecutionNativeFixture;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
+import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
@@ -67,6 +68,7 @@ public final class ExecutorNativeProbe {
     private final WorkspaceId workspace = WorkspaceId.random();
     private final AuthService auth = mock(AuthService.class);
     private final AuthPrincipal principal = principal();
+    private final AtomicInteger createdExports = new AtomicInteger();
     private final AtomicInteger released = new AtomicInteger();
     private final AtomicBoolean privateRead = new AtomicBoolean(true);
     private final RepositorySnapshotExports exports;
@@ -92,7 +94,9 @@ public final class ExecutorNativeProbe {
                     UUID id = UUID.randomUUID();
                     Path target = path("exports").resolve(id + ".bundle");
                     Files.copy(master, target);
-                    return new Export(id, commit, hash(Files.readAllBytes(target)), Files.size(target));
+                    var exported = new Export(id, commit, hash(Files.readAllBytes(target)), Files.size(target));
+                    createdExports.incrementAndGet();
+                    return exported;
                 } catch (Exception exception) {
                     throw new IllegalStateException(exception);
                 }
@@ -205,7 +209,7 @@ public final class ExecutorNativeProbe {
     }
 
     private IsolatedRepositoryExecutor adapter(Path socket) {
-        return adapter(socket, 8);
+        return adapter(socket, 4);
     }
 
     private IsolatedRepositoryExecutor adapter(Path socket, int maxSessions) {
@@ -359,9 +363,12 @@ public final class ExecutorNativeProbe {
             assertThat(Files.readAllBytes(path("bundle"))).isEqualTo(originalBundle);
             control("assert-source-unchanged");
             passed("command-mutations-preserve-authority-bundle-and-source");
-
+        }
+        control("assert-no-processes");
+        try (var executor = adapter(path("socket"))) {
             var cancel = new Cancellation();
-            var cancelled = CompletableFuture.supplyAsync(() -> execute(executor, "cancel", descendant(), cancel));
+            var cancelled = CompletableFuture.supplyAsync(
+                    () -> execute(executor, "cancel", "printf retained > cancelled-local; " + descendant(), cancel));
             control("await-descendant");
             cancel.cancel();
             assertThat(cancelled.get(20, TimeUnit.SECONDS).terminationReason())
@@ -369,6 +376,24 @@ public final class ExecutorNativeProbe {
             control("assert-no-processes");
             passed("callback-cancellation-kills-detached-descendants");
             var ended = cancelled.get();
+            var inspected = executor.execute(
+                    principal,
+                    workspace,
+                    new RepositoryExecutor.CopyRequest(ended.copyId()),
+                    Optional.empty(),
+                    "test \"$(cat cancelled-local)\" = retained",
+                    Duration.ofSeconds(3),
+                    new Cancellation());
+            assertThat(inspected.exitCode()).isZero();
+            assertThat(inspected.copyId()).isEqualTo(ended.copyId());
+            assertThat(inspected.retention().resumed()).isTrue();
+            assertThat(executor.discard(
+                                    principal,
+                                    workspace,
+                                    new RepositoryExecutor.DiscardRequest(ended.copyId()),
+                                    new Cancellation())
+                            .status())
+                    .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
             assertThatThrownBy(() -> executor.execute(
                             principal,
                             workspace,
@@ -377,9 +402,7 @@ public final class ExecutorNativeProbe {
                             "printf unexpected > rejected-command",
                             Duration.ofSeconds(3),
                             new Cancellation()))
-                    .isInstanceOfSatisfying(
-                            SessionReplacedException.class,
-                            failure -> assertThat(failure.newCopyAllowed()).isTrue());
+                    .isInstanceOf(SessionReplacedException.class);
             var restarted = executor.execute(
                     principal,
                     workspace,
@@ -391,7 +414,7 @@ public final class ExecutorNativeProbe {
             assertThat(restarted.exitCode()).isZero();
             assertThat(restarted.copyId()).isNotEqualTo(ended.copyId());
             assertThat(restarted.commit()).isEqualTo(ended.commit());
-            passed("explicit-new-after-confirmed-close-reuses-transport-with-different-copy");
+            passed("cancellation-retains-local-work-and-explicit-discard-requires-new-admission");
 
             var revoked =
                     CompletableFuture.supplyAsync(() -> execute(executor, "revoke", descendant(), new Cancellation()));
@@ -407,17 +430,16 @@ public final class ExecutorNativeProbe {
         // A different synthetic key avoids reusing the deliberately revoked key's worker tombstone.
         var secondPrincipal = principal();
         try (var executor = adapter(path("socket"), 1)) {
-            assertThat(client.execute(
-                                    executor,
-                                    secondPrincipal,
-                                    workspace,
-                                    "restart",
-                                    Optional.empty(),
-                                    "pwd",
-                                    Duration.ofSeconds(3),
-                                    new Cancellation())
-                            .exitCode())
-                    .isZero();
+            var beforeRestart = client.execute(
+                    executor,
+                    secondPrincipal,
+                    workspace,
+                    "restart",
+                    Optional.empty(),
+                    "printf retained > restart-local; pwd",
+                    Duration.ofSeconds(3),
+                    new Cancellation());
+            assertThat(beforeRestart.exitCode()).isZero();
             var active = CompletableFuture.supplyAsync(() -> client.execute(
                     executor,
                     secondPrincipal,
@@ -430,45 +452,51 @@ public final class ExecutorNativeProbe {
             control("await-descendant");
             control("restart-worker");
             assertThatThrownBy(() -> active.get(25, TimeUnit.SECONDS))
-                    .hasCauseInstanceOf(WorkerUnavailableException.class);
-            assertThatThrownBy(() -> client.execute(
-                            executor,
-                            secondPrincipal,
-                            workspace,
-                            "restart",
-                            Optional.empty(),
-                            "pwd",
-                            Duration.ofSeconds(2),
-                            new Cancellation()))
-                    .isInstanceOf(SessionReplacedException.class);
+                    .hasCauseInstanceOf(ExecutionUnconfirmedException.class);
             control("assert-no-processes");
+            var resumed = client.execute(
+                    executor,
+                    secondPrincipal,
+                    workspace,
+                    "restart",
+                    Optional.empty(),
+                    "test \"$(cat restart-local)\" = retained; git rev-parse HEAD",
+                    Duration.ofSeconds(3),
+                    new Cancellation());
+            assertThat(resumed.exitCode()).isZero();
+            assertThat(resumed.copyId()).isEqualTo(beforeRestart.copyId());
+            assertThat(resumed.retention().resumed()).isTrue();
+            assertThat(resumed.retention().lastInterruptedCommand()).isNotNull();
             assertThat(client.execute(
                                     executor,
                                     secondPrincipal,
                                     workspace,
                                     "new-after-restart",
                                     Optional.empty(),
-                                    "git rev-parse HEAD",
+                                    "test ! -e restart-local; git rev-parse HEAD",
                                     Duration.ofSeconds(3),
                                     new Cancellation())
                             .exitCode())
                     .isZero();
-            assertThatThrownBy(() -> client.execute(
-                            executor,
-                            secondPrincipal,
-                            workspace,
-                            "restart",
-                            Optional.empty(),
-                            "pwd",
-                            Duration.ofSeconds(2),
-                            new Cancellation()))
-                    .isInstanceOf(SessionReplacedException.class);
-            passed("worker-restart-recovers-full-single-session-capacity-and-rejects-old-client");
+            assertThat(client.execute(
+                                    executor,
+                                    secondPrincipal,
+                                    workspace,
+                                    "restart",
+                                    Optional.empty(),
+                                    "cat restart-local",
+                                    Duration.ofSeconds(3),
+                                    new Cancellation())
+                            .stdout())
+                    .isEqualTo("retained");
+            passed("worker-restart-retains-copy-and-recycles-single-session-capacity");
         }
         control("assert-no-processes");
         sameTransportRestart(1);
         sameTransportRestart(4);
-        assertThat(released.get()).isGreaterThanOrEqualTo(6);
+        // Pristine worker seeds avoid later exports; every export actually created must be released.
+        assertThat(createdExports.get()).isPositive();
+        assertThat(released.get()).isEqualTo(createdExports.get());
         System.out.println(JSON.writeValueAsString(Map.of(
                 "summary",
                 "PASS",
@@ -511,7 +539,7 @@ public final class ExecutorNativeProbe {
             assertThatThrownBy(() -> executor.execute(
                             principal,
                             workspace,
-                            new RepositoryExecutor.CopyRequest(left.copyId()),
+                            new RepositoryExecutor.CopyRequest(UUID.randomUUID().toString()),
                             Optional.empty(),
                             "printf corrupted > local-draft",
                             Duration.ofSeconds(20),
@@ -537,6 +565,15 @@ public final class ExecutorNativeProbe {
                                     new Cancellation())
                             .stdout())
                     .isEqualTo("left");
+            for (String copy : List.of(left.copyId(), right.copyId())) {
+                assertThat(executor.discard(
+                                        principal,
+                                        workspace,
+                                        new RepositoryExecutor.DiscardRequest(copy),
+                                        new Cancellation())
+                                .status())
+                        .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
+            }
             int beforeRejected = released.get();
             assertThatThrownBy(() -> executor.execute(
                             principal,
@@ -561,7 +598,7 @@ public final class ExecutorNativeProbe {
             assertThat(fresh.exitCode()).isZero();
             assertThat(fresh.copyId()).isNotIn(left.copyId(), right.copyId());
             assertThat(fresh.commit()).isEqualTo(left.commit());
-            passed("expected-copy-guard-rejects-transparent-reconnect-and-parallel-chat-mismatch-before-execution");
+            passed("copy-ids-preserve-parallel-drafts-and-reject-unknown-or-discarded-copies");
         }
     }
 
@@ -579,9 +616,10 @@ public final class ExecutorNativeProbe {
         JsonNode descriptor = JSON.readTree(created.stdout());
         assertThat(descriptor.path("ok").booleanValue()).isTrue();
         String id = descriptor.path("artifact").path("artifactId").stringValue();
-        assertThat(readArtifact(executor, "first", id)).isEqualTo("original-artifact".getBytes(StandardCharsets.UTF_8));
+        assertThat(readArtifact(executor, id)).isEqualTo("original-artifact".getBytes(StandardCharsets.UTF_8));
         assertThat(executor.readArtifact(principal, workspace, id, 0, 64, new Cancellation()))
-                .isEmpty();
+                .hasValueSatisfying(chunk ->
+                        assertThat(chunk.bytes()).isEqualTo("original-artifact".getBytes(StandardCharsets.UTF_8)));
         assertThat(executor.readArtifact(principal, WorkspaceId.random(), id, 0, 64, new Cancellation()))
                 .isEmpty();
         assertThat(executor.readArtifact(principal(), workspace, id, 0, 64, new Cancellation()))
@@ -591,7 +629,7 @@ public final class ExecutorNativeProbe {
                 .isZero();
         assertThat(executor.readArtifact(principal, workspace, id, 0, 64, new Cancellation()))
                 .isEmpty();
-        passed("artifact-capture-is-immutable-protected-and-bound-to-workspace-key-and-client");
+        passed("artifact-capture-is-immutable-protected-and-bound-to-account-and-workspace");
 
         var complete = execute(
                 executor, "first", "python3 -c 'import sys; sys.stdout.write(\"x\"*65537)'", new Cancellation());
@@ -601,7 +639,7 @@ public final class ExecutorNativeProbe {
         assertThat(complete.artifactErrors()).isEmpty();
         var full = complete.artifacts().get("stdout");
         assertThat(full.truncated()).isFalse();
-        assertThat(readArtifact(executor, "first", full.artifactId()))
+        assertThat(readArtifact(executor, full.artifactId()))
                 .isEqualTo("x".repeat(65537).getBytes(StandardCharsets.UTF_8));
         passed("long-output-retains-complete-bytes-behind-bounded-preview");
 
@@ -615,7 +653,7 @@ public final class ExecutorNativeProbe {
         assertThat(limited.artifactErrors()).isEmpty();
         var prefix = limited.artifacts().get("stdout");
         assertThat(prefix.truncated()).isTrue();
-        assertThat(readArtifact(executor, "first", prefix.artifactId()))
+        assertThat(readArtifact(executor, prefix.artifactId()))
                 .isEqualTo("z".repeat(4 * 1024 * 1024).getBytes(StandardCharsets.UTF_8));
         assertThat(execute(executor, "first", "cat after-output-limit", new Cancellation())
                         .stdout())
@@ -623,7 +661,7 @@ public final class ExecutorNativeProbe {
         passed("output-limit-kills-command-retains-bounded-artifact-and-unselected-work");
     }
 
-    private byte[] readArtifact(IsolatedRepositoryExecutor executor, String session, String id) throws Exception {
+    private byte[] readArtifact(IsolatedRepositoryExecutor executor, String id) throws Exception {
         var output = new ByteArrayOutputStream();
         RepositoryExecutor.ArtifactChunk chunk;
         do {
@@ -702,7 +740,7 @@ public final class ExecutorNativeProbe {
                             .path("artifact")
                             .path("artifactId")
                             .stringValue();
-                    byte[] zip = readArtifact(executor, session, id);
+                    byte[] zip = readArtifact(executor, id);
                     assertThat(hash(zip))
                             .isEqualTo(receipt.path("result").path("sha256").stringValue());
                     var files = new LinkedHashMap<String, byte[]>();
@@ -794,6 +832,25 @@ public final class ExecutorNativeProbe {
         var actor = principal();
         try (var executor = adapter(path("socket"), capacity)) {
             var old = interruptedCopy(executor, actor);
+            var resumed = executor.execute(
+                    actor,
+                    workspace,
+                    new RepositoryExecutor.CopyRequest(old.copyId()),
+                    Optional.empty(),
+                    "test \"$(cat restart-local)\" = retained; git rev-parse HEAD",
+                    Duration.ofSeconds(3),
+                    new Cancellation());
+            assertThat(resumed.exitCode()).isZero();
+            assertThat(resumed.copyId()).isEqualTo(old.copyId());
+            assertThat(resumed.retention().resumed()).isTrue();
+            assertThat(resumed.retention().lastInterruptedCommand()).isNotNull();
+            assertThat(executor.discard(
+                                    actor,
+                                    workspace,
+                                    new RepositoryExecutor.DiscardRequest(old.copyId()),
+                                    new Cancellation())
+                            .status())
+                    .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
             assertThatThrownBy(() -> executor.execute(
                             actor,
                             workspace,
@@ -814,7 +871,7 @@ public final class ExecutorNativeProbe {
             assertThat(fresh.exitCode()).isZero();
             assertThat(fresh.copyId()).isNotEqualTo(old.copyId());
             assertThat(fresh.commit()).isEqualTo(old.commit());
-            passed("same-transport-explicit-restart-at-capacity-" + capacity);
+            passed("same-transport-recovery-and-explicit-disposal-at-capacity-" + capacity);
         }
         control("assert-no-processes");
     }
@@ -826,7 +883,7 @@ public final class ExecutorNativeProbe {
                 workspace,
                 new RepositoryExecutor.CopyRequest("new"),
                 Optional.empty(),
-                "pwd",
+                "printf retained > restart-local; pwd",
                 Duration.ofSeconds(3),
                 new Cancellation());
         var active = CompletableFuture.supplyAsync(() -> executor.execute(
@@ -839,7 +896,8 @@ public final class ExecutorNativeProbe {
                 new Cancellation()));
         control("await-descendant");
         control("restart-worker");
-        assertThatThrownBy(() -> active.get(25, TimeUnit.SECONDS)).hasCauseInstanceOf(WorkerUnavailableException.class);
+        assertThatThrownBy(() -> active.get(25, TimeUnit.SECONDS))
+                .hasCauseInstanceOf(ExecutionUnconfirmedException.class);
         control("assert-no-processes");
         return old;
     }
@@ -1999,7 +2057,7 @@ public final class ExecutorNativeProbe {
                     .path("artifact")
                     .path("artifactId")
                     .stringValue();
-            assertThat(new String(readArtifact(executor, "public-native", publicArtifactId), StandardCharsets.UTF_8))
+            assertThat(new String(readArtifact(executor, publicArtifactId), StandardCharsets.UTF_8))
                     .contains("public-native-body")
                     .doesNotContain("secret-needle");
             privateRead.set(true);
@@ -2015,7 +2073,7 @@ public final class ExecutorNativeProbe {
             assertThat(unchanged.exitCode()).isZero();
             assertThat(unchanged.commit()).isEqualTo(result.commit());
             assertThat(unchanged.copyId()).isEqualTo(result.copyId());
-            assertThat(new String(readArtifact(executor, "public-native", publicArtifactId), StandardCharsets.UTF_8))
+            assertThat(new String(readArtifact(executor, publicArtifactId), StandardCharsets.UTF_8))
                     .contains("public-native-body")
                     .doesNotContain("secret-needle");
             passed("permission-increase-does-not-expand-existing-public-worker-files");
