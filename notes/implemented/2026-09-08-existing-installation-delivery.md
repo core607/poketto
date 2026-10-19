@@ -2,44 +2,76 @@
 
 Date: 2026-09-08
 
-[Consumer identity](2026-09-20-consumer-identity-and-site-policy.md)
-defines the extension for explicit identity-setting injection. Its allowlist,
-protected overlay and reconciliation rules supersede this record's image-only
-restriction when that extension is enabled; unrelated settings retain this
-record's boundary.
-
-In pull mode both canonical digests are pulled before invoking the updater. Registry credentials are used only for those pulls and are deleted afterwards; application settings remain operator-owned.
+[Consumer identity](2026-09-20-consumer-identity-and-site-policy.md) extends the
+image-only boundary with explicit, allowlisted identity settings.
+[Coordinated worker delivery](2026-10-19-coordinated-worker-delivery.md) extends it
+with matching worker sources when execution is enabled. Other operator settings
+retain this record's boundary.
 
 ## Problem and decision
 
-An existing installation can use operator-owned Compose files, private environment files and a separately installed worker. Synchronizing the generic deployment stack into that directory replaces those choices. Streaming a repository password from an older CI configuration can also invalidate the application's current content authority.
+An existing installation can use operator-owned Compose files, private environment
+files and a separately provisioned worker. Synchronizing the generic stack would
+replace those choices. Forwarding a repository password from an older CI
+configuration could also invalidate the application's current content authority.
 
-Keep the [standard deployment entrance](2026-09-03-continuous-delivery.md) for installations managed by the supplied Compose templates. Add an `existing` layout for updating only the `app` and `frontend` images of an already configured Compose project. This layout uses verified-main publication with a canonical registry pull or a checksummed archive transfer. Pull mode is the default: the host authenticates to the canonical registry with the deployment job's own package-read token, which no operator credential has to carry. A host that cannot reach that registry selects mirror mode, and one that can reach neither keeps the archive transfer. Mode selection is operator configuration; the updater's behavior is identical once both image digests are present on the host. It does not synchronize Compose, forward application settings, restart dependencies or update the external worker.
+Keep the [standard entrance](2026-09-03-continuous-delivery.md) for installations
+managed by the supplied templates. The `existing` layout updates app/frontend
+images and the extensions above while preserving Compose files, storage, resource
+settings, networking and unrelated services. Application-code delivery remains on
+GitHub; the content repository's provider is an independent runtime setting, and
+the existing-layout CI step never receives its password secret.
+
+Delivery follows verified-main publication. Canonical registry pulls use the
+deployment job's package-read token, so operators need no reusable registry
+credential. Hosts without registry access use checksummed archive transfer;
+registry credentials are used only for pulls and removed afterwards. Both modes
+invoke the same installed privileged updater. Transfer never replaces that
+executable. Existing Docker access is already root-equivalent; this entrance does
+not create an unprivileged container-management boundary.
 
 ## Operator setup
 
-Install `deploy/update-existing.py` as the root-owned executable `/usr/local/sbin/poketto-update-existing`. The existing deployment account needs Docker access for image transfer and permission to invoke that fixed executable through noninteractive sudo. The deployment account's existing Docker access is already root-equivalent; this entrance does not create an unprivileged container-management boundary.
-
-Place a root-owned `deployment.json` in the deployment root using [existing.example.json](../../deploy/existing.example.json). Set the current Compose project name, the ordered relative Compose filenames, and the installation's loopback health entrances. The root and configuration must not be writable by other users. Compose continues to resolve the operator's original environment files, volumes, resource settings and network configuration.
-
-Use `--check` with the same image and revision arguments to validate the target without changing containers. The updater requires loaded images whose revision labels match the requested full commit. It refuses a declared environment that disagrees with the running app or frontend.
-
-Set production environment variables `POKETTO_DEPLOY_LAYOUT=existing` and `POKETTO_DEPLOY_ROOT` to the configured root; `POKETTO_DEPLOY_MODE` selects `pull` (the default) or `transfer` as described above. Existing SSH target, key and host-key secrets remain in use. After target validation, `POKETTO_DEPLOY_ENABLED=true` enables the GitHub deployment job. The existing-layout step does not receive the repository-password secret. Application-code delivery remains on GitHub; the content repository's provider is an independent runtime setting.
+The [deployment reference](../../deploy/README.md) owns installation, protected
+configuration, source updates and recovery commands. Operator-owned environment
+files, mounts and resource settings remain authoritative. Images must carry the
+requested full commit label, and declared environment values must agree with the
+running services before an update begins.
 
 ## Update and recovery
 
-The updater holds a nonblocking filesystem lock and writes an image-only override to `.deployment/images.json`. It checks the rendered candidate changes only the two selected images, then records a protected pending state before applying it. `compose up --no-deps` waits for app and frontend health without recreating other services. Final verification compares image identities, runtime configuration fingerprints, unrelated container IDs, rendered configuration and configured HTTP health responses. Only then does the state become healthy. State files contain hashes of environment-bearing data, not credential values.
+The updater serializes delivery with a filesystem lock. It validates the rendered
+candidate and records protected pending state before changing services. An
+image-only overlay retains the original Compose files. Success requires matching
+image identities, runtime fingerprints, unchanged unrelated container identities,
+rendered configuration and configured HTTP health responses. State stores hashes
+of environment-bearing data, not credentials.
 
-After the state is healthy, the updater retires only images this installation itself deployed and no longer needs. The state file's `knownImages` records every app/frontend image ID the updater deployed or found running as the previous version; an image that reached the host any other way, such as a build an operator loads or pulls by hand and never runs as the app or frontend, is never touched and stays the operator's to prune. The previous version is recorded by image ID, so a later delivery that points the same tag at a rebuilt image cannot change which image is retained. The selected and previous app/frontend images, every image in the rendered configuration and every image a container on the host uses are retained, and an unanswered lookup of a retained image ends the retirement before anything is removed, because the retained set must be complete first. Removal goes through tags and digests without `--force`; an image Docker declines to delete, or whose lookup goes unanswered, stays known for a later run. The image being removed is recorded as `removing` before `docker image rm`, so a run killed between the removal and its confirmation leaves a record the next run settles. A retirement problem never fails the healthy deployment; it is reported as `retirementError` in the result and the state file. [update-existing.py](../../deploy/update-existing.py) owns the result and state-file fields.
+Fingerprints include image-provided environment defaults, user and working
+directory. Changing those contracts requires a separate operator-reviewed
+configuration update; image delivery cannot silently approve it. HTTP health
+checks use loopback directly without proxies or redirects.
 
-Runtime fingerprints intentionally cover the effective environment, user and working directory, including image-provided defaults. A release that changes those settings needs a separate operator-reviewed configuration update; this entrance cannot silently approve it as an image-only change. HTTP health checks connect directly to loopback without environment proxies or redirects.
+A failed or interrupted attempt remains pending. Only the same images, revision
+and configuration can reconcile it. A contract failure may be discovered after
+containers change, so previous image identities are retained for deliberate
+recovery; automatic rollback cannot assume persistent-format compatibility.
+Deployment health does not replace product-flow acceptance or backups.
 
-Original Compose files are retained. After the first update, manual Compose commands must include `.deployment/images.json` last to use the selected image pins. Use the updater for normal image releases; synchronizing an old generic deployment entrance into this root is not an upgrade path.
-
-A failed or interrupted attempt remains pending. Retrying the same images, source commit and configuration reconciles it; a different target is refused until the operator inspects the protected state and actual containers. A runtime-contract failure can be detected after containers change and is not a rollback. Previous image references remain in the state for deliberate recovery. There is no automatic rollback across unknown persistent-format compatibility, and this mode does not add backups or final product-flow acceptance.
+Image retirement applies only to generations this installation recorded, retains
+running and recovery images by immutable identity, and never forces removal.
+An unresolved retained-image lookup stops retirement because its safe set is
+incomplete. Failures remain recorded for retry and do not fail an otherwise
+healthy deployment. The [updater](../../deploy/update-existing.py) owns retention,
+interrupted-removal reconciliation and result fields.
 
 ## Alternatives and verification
 
-Converting every existing installation to the generic Compose layout changes configuration and processes outside an image update. An independent release watcher duplicates GitHub's verified-main trigger. The selected adapter preserves both the existing installation and the standard delivery path.
+Converting every existing installation to the generic layout would alter
+configuration and processes outside image delivery. An independent release
+watcher would duplicate GitHub's verified-main trigger.
 
-`deployScriptTests` pins the workflow branches and the absence of repository-secret forwarding; `existingDeploymentTests` runs the Python updater tests on Linux in Docker. Real installation preflight and successful workflow deployment are separate operator evidence.
+`deployScriptTests` pins workflow routing and the absence of repository-secret
+forwarding. `existingDeploymentTests` pins protected updates and reconciliation.
+Real host preflight, workflow deployment and product acceptance remain distinct
+evidence.

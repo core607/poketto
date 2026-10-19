@@ -52,6 +52,10 @@ The first installs host distribution packages for Pillow, BeautifulSoup/lxml, py
 | `unitPrefix` | Matches `poketto-exec-[a-z0-9]+-` |
 | `resourceSlice` | Required; the slice the worker must run in |
 
+## Automatic source updates
+
+[Setup and recovery](../deploy/README.md#worker-source-updates) for automatic source updates.
+
 ## Account copy storage
 
 The application keeps a default disk copy per account, content workspace and reading scope, plus forks opened while it is busy; OAuth grants create no copies. [Account working copies](../notes/implemented/2026-09-14-account-working-copies.md) owns the storage and lifecycle decisions.

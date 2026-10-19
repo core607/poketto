@@ -462,6 +462,74 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertFalse(any("up" in call for call in self.docker.calls))
         self.assertEqual(self.docker.removed, [])
 
+    def enable_executor(self):
+        self.docker.configuration["services"]["app"]["environment"]["POKETTO_EXECUTOR_ENABLED"] = "true"
+        self.docker.running["app"]["Config"]["Env"].append("POKETTO_EXECUTOR_ENABLED=true")
+        self.config["executor"] = {"healthUrl": "http://127.0.0.1:8080/actuator/health/executor"}
+
+    def worker_plan(self):
+        return {"release": "1" * 64, "previousRelease": "2" * 64,
+                "configuration": "3" * 64, "installation": "4" * 64}
+
+    def test_enabled_executor_requires_a_deployment_configuration(self):
+        self.enable_executor()
+        del self.config["executor"]
+        with self.assertRaisesRegex(updater.DeploymentError, "configure the host worker"):
+            self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(self.docker.running["app"]["Id"], "app-original")
+        self.assertFalse(self.installation.state_file.exists())
+
+    def test_worker_failure_leaves_pending_state_without_replacing_the_application(self):
+        self.enable_executor()
+        with patch.object(updater, "WorkerRelease") as worker_type:
+            worker = worker_type.return_value
+            worker.prepare.return_value = self.worker_plan()
+            worker.install.side_effect = updater.DeploymentError("worker startup failed")
+            with self.assertRaisesRegex(updater.DeploymentError, "worker startup"):
+                self.installation.update(REVISION, "new-app", "new-frontend")
+            self.assertEqual(self.docker.running["app"]["Id"], "app-original")
+            self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
+            worker.prepare.return_value = {**self.worker_plan(), "release": "5" * 64}
+            with self.assertRaisesRegex(updater.DeploymentError, "same worker release"):
+                self.installation.update(REVISION, "new-app", "new-frontend")
+            self.assertEqual(worker.install.call_count, 1)
+
+    def test_worker_preflight_never_installs_sources_or_restarts_services(self):
+        self.enable_executor()
+        with patch.object(updater, "WorkerRelease") as worker_type:
+            worker = worker_type.return_value
+            worker.prepare.return_value = self.worker_plan()
+            self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend", True)["status"], "validated")
+            worker.install.assert_not_called()
+            self.assertEqual(self.docker.running["app"]["Id"], "app-original")
+            self.assertFalse(self.installation.state_file.exists())
+
+    def test_worker_protocol_health_gates_success_and_retry_retains_the_original_recovery_release(self):
+        self.enable_executor()
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.read.return_value = b'{"status":"DOWN"}'
+        opener = MagicMock()
+        opener.open.return_value = response
+        with patch.object(updater, "WorkerRelease") as worker_type, \
+                patch.object(updater.urllib.request, "build_opener", return_value=opener):
+            worker = worker_type.return_value
+            worker.prepare.return_value = self.worker_plan()
+            worker.install.side_effect = lambda plan: self.assertEqual(self.docker.running["app"]["Id"], "app-original")
+            with self.assertRaisesRegex(updater.DeploymentError, "did not confirm readiness"):
+                self.installation.update(REVISION, "new-app", "new-frontend")
+            self.assertEqual(self.docker.running["app"]["Id"], "app-updated")
+            self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
+            opener.open.assert_called_with(self.config["executor"]["healthUrl"], timeout=15)
+            worker.install.side_effect = None
+            worker.prepare.return_value = {**self.worker_plan(), "previousRelease": "1" * 64}
+            response.read.return_value = b'{"status":"UP"}'
+            result = self.installation.update(REVISION, "new-app", "new-frontend")
+            self.assertEqual(result["status"], "healthy")
+            self.assertEqual(result["workerRelease"], "1" * 64)
+            worker.install.assert_called_with(self.worker_plan())
+
     def test_failed_update_keeps_pending_state_and_same_target_can_be_reconciled(self):
         self.docker.fail_up = True
         with self.assertRaises(updater.DeploymentError):

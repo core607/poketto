@@ -229,7 +229,7 @@ val observabilityConfigCheck = tasks.register<Exec>("observabilityConfigCheck") 
 val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
     group = "verification"
     description = "Verifies existing-installation updates and interrupted-run reconciliation on Linux."
-    inputs.files("deploy/update-existing.py", "deploy/tests/test_existing_deployment.py")
+    inputs.files("deploy/update-existing.py", "deploy/worker_release.py", "deploy/tests/test_existing_deployment.py", "deploy/tests/test_worker_deployment.py")
     outputs.upToDateWhen { false }
     commandLine(
         "docker", "run", "--rm", "--network", "none", "--read-only",
@@ -238,7 +238,7 @@ val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
         "--mount", "type=bind,source=${layout.projectDirectory.dir("deploy").asFile.absolutePath},target=/suite,readonly",
         "--workdir", "/suite", "--entrypoint", "python",
         "python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254",
-        "-B", "-m", "unittest", "discover", "-s", "tests", "-p", "test_existing_deployment.py", "-v",
+        "-B", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*deployment.py", "-v",
     )
 }
 tasks.named("check") { dependsOn(existingDeploymentTests) }

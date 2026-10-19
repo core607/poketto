@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update app/frontend images in a root-owned existing Compose installation."""
+"""Update application images and their configured host worker in an existing installation."""
 
 import argparse
 import fcntl
@@ -13,16 +13,7 @@ import sys
 import urllib.parse
 import urllib.request
 
-
-class DeploymentError(RuntimeError):
-    def __init__(self, message, missing=False):
-        super().__init__(message)
-        self.missing = missing
-
-
-class NoRedirects(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, request, file, code, message, headers, new_url):
-        return None
+from worker_release import DeploymentError, NoRedirects, WorkerRelease, validate_config as validate_worker_config
 
 
 APPLICATION_SETTINGS = frozenset((
@@ -217,7 +208,11 @@ class Installation:
             raise DeploymentError("an unrelated Compose container changed")
         if digest(json.loads(self.compose("config", "--format", "json"))) != state["configuration"]:
             raise DeploymentError("installation configuration changed during deployment")
-        for index, check in enumerate(self.config.get("healthChecks", []), 1):
+        checks = list(self.config.get("healthChecks", []))
+        if state.get("worker"):
+            WorkerRelease(self.config["executor"], self.state_dir, self.command).verify(state["worker"])
+            checks.append({"url": self.config["executor"]["healthUrl"], "status": "UP"})
+        for index, check in enumerate(checks, 1):
             try:
                 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirects())
                 with opener.open(check["url"], timeout=15) as response:
@@ -230,6 +225,8 @@ class Installation:
                             raise DeploymentError("health check " + str(index) + " did not confirm readiness")
             except (OSError, ValueError) as error:
                 raise DeploymentError("health check " + str(index) + " is unavailable") from error
+        if state.get("worker"):
+            WorkerRelease(self.config["executor"], self.state_dir, self.command).probe()
 
     # None means Docker confirmed the image is absent; any other failure propagates, so an unanswered
     # lookup never shrinks the retained set.
@@ -359,11 +356,23 @@ class Installation:
                 comparable["services"][name].pop("environment", None)
         if comparable != before:
             raise DeploymentError("candidate changes more than selected images and application settings")
+        worker = None
+        worker_plan = None
+        if actual_environment.get("POKETTO_EXECUTOR_ENABLED", "false").lower() == "true":
+            if not self.config.get("executor"):
+                raise DeploymentError("execution is enabled; configure the host worker updater before deploying")
+            worker = WorkerRelease(self.config["executor"], self.state_dir, self.command)
+            worker_plan = worker.prepare(image_ids["app"], revision)
         # Every image this installation deployed stays on record until it is retired or gone.
         known = set(state.get("knownImages", [])) | set(state.get("imageIds", {}).values()) if state else set()
         if state and state["status"] == "pending":
             if state["revision"] != revision or state["imageIds"] != image_ids or state["configuration"] != digest(rendered):
                 raise DeploymentError("an unfinished deployment requires reconciliation with the same images and configuration")
+            pending_worker = state.get("worker")
+            if bool(worker_plan) != bool(pending_worker) or worker_plan and any(
+                    worker_plan[key] != pending_worker[key] for key in ("release", "configuration", "installation")):
+                raise DeploymentError("an unfinished deployment requires the same worker release and configuration")
+            worker_plan = pending_worker
         else:
             # Redeploying the images that are already running, whatever reference delivers them, keeps
             # the previous version's images: they are the local recovery path and must stay retained.
@@ -387,12 +396,15 @@ class Installation:
                 "runtimeContracts": {name: digest(contract) for name, contract in contracts.items()},
                 "otherContainers": {name: value["Id"] for name, value in containers.items() if name not in image_refs},
                 "removing": removing,
+                "worker": worker_plan,
             }
         state["knownImages"] = sorted(known | set(image_ids.values()))
         if check_only:
             candidate.unlink()
             return {"status": "validated", "revision": revision}
         write_json(self.state_file, state)
+        if worker:
+            worker.install(worker_plan)
         write_json(self.overlay, json.loads(candidate.read_text()))
         candidate.unlink()
         self.compose("up", "--detach", "--no-deps", "--no-build", "--pull", "never", "--wait",
@@ -401,6 +413,8 @@ class Installation:
         state["status"] = "healthy"
         write_json(self.state_file, state)
         result = {"status": "healthy", "revision": revision, "imageIds": image_ids}
+        if worker_plan:
+            result["workerRelease"] = worker_plan["release"]
         state.update(retiredImages=[], retirementError=None)
         try:
             retired = self.retire_images(state, rendered)
@@ -456,6 +470,8 @@ def load_config(root):
                 raise ValueError()
         except ValueError as error:
             raise DeploymentError("health check port must be between 1 and 65535") from error
+    if "executor" in config:
+        validate_worker_config(config["executor"])
     return config
 
 
