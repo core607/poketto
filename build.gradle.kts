@@ -69,6 +69,7 @@ dependencies {
     implementation("tools.jackson.dataformat:jackson-dataformat-yaml")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.springframework.modulith:spring-modulith-core:$springModulithVersion")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
     runtimeOnly("org.postgresql:postgresql")
     // Serves /actuator/prometheus only when POKETTO_METRICS_ENABLED turns the export on.
     runtimeOnly("io.micrometer:micrometer-registry-prometheus")
