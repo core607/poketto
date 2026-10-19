@@ -109,19 +109,48 @@ final class WorkerClient {
                 identity.serverSessionHash(),
                 identity.leaseId(),
                 data);
+        var event = new WorkerRequestEvents.Preparation();
+        event.operation = operation;
+        event.requestType = data == null ? "null" : data.getClass().getSimpleName();
+        event.begin();
         try {
-            byte[] bytes = json.writeValueAsBytes(payload);
-            Signature signer = Signature.getInstance("Ed25519");
-            signer.initSign(signingKey);
-            signer.update(bytes);
+            byte[] bytes = serialize(payload, event);
+            event.payloadBytes = bytes.length;
+            byte[] signature = sign(bytes, event);
             var encoding = Base64.getUrlEncoder().withoutPadding();
-            return new PreparedRequest(
-                    requestId, new Envelope(encoding.encodeToString(bytes), encoding.encodeToString(signer.sign())));
+            var prepared = new PreparedRequest(
+                    requestId, new Envelope(encoding.encodeToString(bytes), encoding.encodeToString(signature)));
+            event.prepared = true;
+            return prepared;
         } catch (GeneralSecurityException | RuntimeException exception) {
             log.warn(
                     "Worker request could not be signed ({})",
                     exception.getClass().getSimpleName());
             throw new WorkerUnavailableException(exception);
+        } finally {
+            event.end();
+            event.commit();
+        }
+    }
+
+    private byte[] serialize(Payload payload, WorkerRequestEvents.Preparation event) {
+        long started = System.nanoTime();
+        try {
+            return json.writeValueAsBytes(payload);
+        } finally {
+            event.serializationNanos = System.nanoTime() - started;
+        }
+    }
+
+    private byte[] sign(byte[] bytes, WorkerRequestEvents.Preparation event) throws GeneralSecurityException {
+        long started = System.nanoTime();
+        try {
+            Signature signer = Signature.getInstance("Ed25519");
+            signer.initSign(signingKey);
+            signer.update(bytes);
+            return signer.sign();
+        } finally {
+            event.signingNanos = System.nanoTime() - started;
         }
     }
 

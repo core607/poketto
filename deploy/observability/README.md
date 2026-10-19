@@ -30,6 +30,18 @@ Containers log under `SYSLOG_IDENTIFIER=poketto-<container>`. The executor and g
 `poketto-executor.service` and `poketto-games.service` units, and each command sandbox is a
 `poketto-exec-…` unit in their slice.
 
+## Executor request events
+
+The application's `poketto.WorkerRequestPreparation` JFR event records signed-request preparation:
+operation/type, payload byte count, serialization/signing elapsed time and whether an envelope was
+prepared. Preparation does not prove a request was sent; unsigned handshakes are excluded.
+
+`poketto.WorkerBridgePoll` separates authorization and request elapsed time and records whether a
+reply arrived, reported success or contained a bridge request. These flags precede lease validation.
+Its request time includes preparation and the socket exchange, and a poll can finish after its
+command. These events contain no payloads, keys or caller identities. Their elapsed durations
+overlap across requests and are not CPU time.
+
 ## Running this stack
 
 Copy this directory to the host and run `docker compose up -d` in it. Every service shares the host

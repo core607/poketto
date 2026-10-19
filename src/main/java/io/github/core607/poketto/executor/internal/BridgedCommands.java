@@ -123,18 +123,38 @@ final class BridgedCommands implements AutoCloseable {
     // One poll of the worker's bridge mailbox. A poll that fails while the session is stopping
     // ends the loop and leaves the command's own reply to decide the outcome.
     private Optional<JsonNode> pollBridge(ExecutionSession session, long deadline) {
-        io.authorize(session);
-        if (System.nanoTime() - deadline >= 0) {
-            throw new WorkerUnavailableException();
-        }
+        var event = new WorkerRequestEvents.BridgePoll();
+        event.begin();
         try {
-            return Optional.of(
-                    io.request(session, "BRIDGE_POLL", new WorkerRequests.BridgePoll(), Duration.ofSeconds(3)));
-        } catch (RuntimeException failed) {
-            if (session.stopping.get()) {
-                return Optional.empty();
+            long authorizing = System.nanoTime();
+            try {
+                io.authorize(session);
+            } finally {
+                event.authorizationNanos = System.nanoTime() - authorizing;
             }
-            throw failed;
+            if (System.nanoTime() - deadline >= 0) {
+                throw new WorkerUnavailableException();
+            }
+            long requesting = System.nanoTime();
+            try {
+                JsonNode reply =
+                        io.request(session, "BRIDGE_POLL", new WorkerRequests.BridgePoll(), Duration.ofSeconds(3));
+                event.receivedReply = true;
+                event.replyOk = reply.path("ok").asBoolean(false);
+                JsonNode request = reply.path("bridgeRequest");
+                event.requestPresent = !request.isMissingNode() && !request.isNull();
+                return Optional.of(reply);
+            } catch (RuntimeException failed) {
+                if (session.stopping.get()) {
+                    return Optional.empty();
+                }
+                throw failed;
+            } finally {
+                event.requestNanos = System.nanoTime() - requesting;
+            }
+        } finally {
+            event.end();
+            event.commit();
         }
     }
 
