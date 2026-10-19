@@ -716,7 +716,7 @@ class Service:
         # Polling must not hold the service lock or the command operation lock.
         try:
             if p['operation'] == 'BRIDGE_POLL':
-                request = s.bridge.poll(timeout=max(0, deadline - time.monotonic()), execution_id=execution_id)
+                request = self.poll_bridge(s.bridge, execution_id, deadline)
             else:
                 s.bridge.complete(data['bridgeRequestId'], data['response'])
                 request = None
@@ -729,6 +729,20 @@ class Service:
             if execution_id != s.execution_id:
                 request = None
             return {**self.response(s), 'executionId': execution_id, 'bridgeRequest': request}
+
+    @staticmethod
+    def poll_bridge(bridge, execution_id, deadline):
+        # RUNNING includes startup and cleanup while the mailbox is reset. Keep an empty
+        # transition inside this poll's budget instead of making the app sign and authorize
+        # another request. Each retry releases the reader so reset and close can proceed.
+        while True:
+            request = bridge.poll(timeout=max(0, deadline - time.monotonic()), execution_id=execution_id)
+            if request is not None:
+                return request
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            time.sleep(min(0.02, remaining))
 
     def cancel(self, s, reason):
         if s.state == 'CLOSED':
