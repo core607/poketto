@@ -296,6 +296,18 @@ final class SessionLifecycle {
         return current;
     }
 
+    boolean acknowledgeRefusal(
+            ExecutionSession session, AccountCommand held, BridgedCommands.CommandNotRunException notRun) {
+        held.refused();
+        session.accountRecord = held.record();
+        if (!notRun.leaseReusable()) {
+            return false;
+        }
+        io.authorize(session);
+        requireLive(session);
+        return true;
+    }
+
     void attach(ExecutionSession session) {
         io.authorize(session);
         synchronized (session) {

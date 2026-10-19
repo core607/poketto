@@ -248,7 +248,8 @@ with socket.socket(socket.AF_UNIX) as connection:
                 'public-media-list-ignores-local-index-tampering-and-stops-after-withdrawal'}
         elif mode == 'admission':
             assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
-                'worker-capacity-refusal-is-actionable-and-retry-does-not-leak-a-copy'}
+                'worker-capacity-refusal-is-actionable-and-retry-does-not-leak-a-copy',
+                'startup-refusal-reuses-real-lease-without-running-rejected-commands'}
         elif mode == 'public-scope':
             assert {item.get('test') for item in parsed if item.get('result') == 'PASS'} == {
                 'public-scope-real-projection-has-no-private-files-metadata-or-original-history',
@@ -309,6 +310,8 @@ with socket.socket(socket.AF_UNIX) as connection:
             'diskBytes': 33554432, 'diskInodes': 8192, 'temporaryBytes': 8388608, 'temporaryInodes': 1024,
             'memoryBytes': 201326592, 'tasksMax': 48, 'cpuQuotaPercent': 50,
             'idleUnitSeconds': 1800, 'maxTimeoutMillis': 30000, 'initTimeoutMillis': 15000}
+        if args.scenario == 'admission':
+            worker_config['maxLiveUnits'] = 1
         disk_pool.mkdir()
         disk_image = root / 'copies.img'
         run(['fallocate', '-l', '512M', str(disk_image)])

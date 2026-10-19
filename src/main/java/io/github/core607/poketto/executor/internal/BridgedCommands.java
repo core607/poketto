@@ -52,6 +52,7 @@ final class BridgedCommands implements AutoCloseable {
         } catch (WorkerUnavailableException stopped) {
             throw new CommandNotRunException(
                     ExecutionAdmissionException.Reason.UNAVAILABLE,
+                    false,
                     "The lease stopped before the command was sent",
                     stopped);
         }
@@ -82,12 +83,9 @@ final class BridgedCommands implements AutoCloseable {
             // must not turn a confirmed cancelled command into an unknown transport outcome.
             JsonNode response = running.get(Math.max(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
             timings.worker(response.path("result"));
-            if (refusedBeforeRunning(response) instanceof ExecutionAdmissionException.Reason refusal) {
-                throw new CommandNotRunException(
-                        refusal,
-                        "The worker refused the command: "
-                                + response.path("code").asString(""),
-                        null);
+            CommandNotRunException refusal = refusedBeforeRunning(response);
+            if (refusal != null) {
+                throw refusal;
             }
             return response;
         } catch (InterruptedException interrupted) {
@@ -163,17 +161,22 @@ final class BridgedCommands implements AutoCloseable {
      * A refusal the worker makes before the command runs; nothing executed, so a retry is safe. The
      * worker checks a lease's expiry before it accepts an EXEC, so an expired lease ran nothing.
      */
-    private static ExecutionAdmissionException.Reason refusedBeforeRunning(JsonNode response) {
+    private static CommandNotRunException refusedBeforeRunning(JsonNode response) {
+        ExecutionAdmissionException.Reason reason;
         if (WorkerResponses.refused(response, "EXECUTION_CAPACITY")) {
-            return ExecutionAdmissionException.Reason.CAPACITY;
+            reason = ExecutionAdmissionException.Reason.CAPACITY;
+        } else if (WorkerResponses.refused(response, "SESSION_BUSY")) {
+            reason = ExecutionAdmissionException.Reason.BUSY;
+        } else if (WorkerResponses.refused(response, "LEASE_EXPIRED")) {
+            reason = ExecutionAdmissionException.Reason.UNAVAILABLE;
+        } else {
+            return null;
         }
-        if (WorkerResponses.refused(response, "SESSION_BUSY")) {
-            return ExecutionAdmissionException.Reason.BUSY;
-        }
-        if (WorkerResponses.refused(response, "LEASE_EXPIRED")) {
-            return ExecutionAdmissionException.Reason.UNAVAILABLE;
-        }
-        return null;
+        return new CommandNotRunException(
+                reason,
+                WorkerResponses.reusableStartupRefusal(response),
+                "The worker refused the command: " + response.path("code").asString(""),
+                null);
     }
 
     private static boolean closedByWorker(JsonNode polled) {
@@ -217,14 +220,21 @@ final class BridgedCommands implements AutoCloseable {
      */
     static final class CommandNotRunException extends IllegalStateException {
         private final ExecutionAdmissionException.Reason reason;
+        private final boolean leaseReusable;
 
-        CommandNotRunException(ExecutionAdmissionException.Reason reason, String message, Throwable cause) {
+        CommandNotRunException(
+                ExecutionAdmissionException.Reason reason, boolean leaseReusable, String message, Throwable cause) {
             super(message, cause);
             this.reason = reason;
+            this.leaseReusable = leaseReusable;
         }
 
         ExecutionAdmissionException.Reason reason() {
             return reason;
+        }
+
+        boolean leaseReusable() {
+            return leaseReusable;
         }
     }
 }

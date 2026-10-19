@@ -54,6 +54,12 @@ final class WorkerResponses {
                 && response.path("code").asString("").equals(code);
     }
 
+    /** Only startup admission restores READY and releases the unused execution identity. */
+    static boolean reusableStartupRefusal(JsonNode response) {
+        return refused(response, "EXECUTION_CAPACITY")
+                && response.path("reason").asString("").equals("STARTUP_LIMIT");
+    }
+
     /**
      * Decoding happens after parsing succeeded, so it is the one step where a broken worker could
      * still be reported as a caller mistake. It leaves the same way an unparseable frame does.

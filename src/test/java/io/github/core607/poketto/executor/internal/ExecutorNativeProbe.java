@@ -34,6 +34,7 @@ import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -167,6 +168,7 @@ public final class ExecutorNativeProbe {
             probe.mediaFetch();
         } else if (args[1].equals("admission")) {
             probe.capacityAdmission();
+            probe.startupAdmission();
         } else if (args[1].equals("public-scope")) {
             probe.publicProjection();
         } else if (args[1].equals("peer-only")) {
@@ -2009,6 +2011,66 @@ public final class ExecutorNativeProbe {
             assertThat(result.exitCode()).isZero();
             assertThat(result.stdout()).isEqualTo("admitted");
             passed("worker-capacity-refusal-is-actionable-and-retry-does-not-leak-a-copy");
+        }
+    }
+
+    private void startupAdmission() throws Exception {
+        var accounts = AccountCopyTestData.disk(path("accountMetadata"));
+        try (var executor = adapter(path("socket"), 4, exports, accounts)) {
+            var cancellation = new Cancellation();
+            var running = CompletableFuture.supplyAsync(
+                    () -> execute(executor, "occupy-live-unit", descendant(), cancellation));
+            control("await-descendant");
+            var waiting = WorkspaceId.random();
+            String copy = "new";
+            UUID retainedLease = null;
+            for (int attempt = 0; attempt < 3; attempt++) {
+                try {
+                    executor.execute(
+                            principal,
+                            waiting,
+                            new RepositoryExecutor.CopyRequest(copy),
+                            Optional.empty(),
+                            "touch never-started",
+                            Duration.ofSeconds(5),
+                            new Cancellation());
+                    throw new AssertionError("A busy live-unit bound must refuse a cold command");
+                } catch (ExecutionAdmissionException refused) {
+                    assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.CAPACITY);
+                    copy = refused.copyId().orElseThrow();
+                }
+                UUID currentLease = copyLease(accounts, waiting, copy);
+                if (retainedLease != null) {
+                    assertThat(currentLease).isEqualTo(retainedLease);
+                }
+                retainedLease = currentLease;
+            }
+            cancellation.cancel();
+            assertThat(running.get(20, TimeUnit.SECONDS).terminationReason())
+                    .isEqualTo(RepositoryExecutor.TerminationReason.CANCELLED);
+            var result = executor.execute(
+                    principal,
+                    waiting,
+                    new RepositoryExecutor.CopyRequest(copy),
+                    Optional.empty(),
+                    "test ! -e never-started && printf admitted",
+                    Duration.ofSeconds(5),
+                    new Cancellation());
+            assertThat(result.exitCode()).isZero();
+            assertThat(result.stdout()).isEqualTo("admitted");
+            assertThat(copyLease(accounts, waiting, copy)).isEqualTo(retainedLease);
+            passed("startup-refusal-reuses-real-lease-without-running-rejected-commands");
+        }
+    }
+
+    private UUID copyLease(AccountCopyStore accounts, WorkspaceId selected, String copy) throws IOException {
+        var permitted = new AccountCopyRecord.Owner(principal.accountId(), selected.value(), true);
+        try (var held = accounts.acquire(accounts.ownerFor(permitted, copy))) {
+            var record = held.record().orElseThrow();
+            assertThat(record.phase()).isEqualTo(AccountCopyRecord.Phase.READY);
+            assertThat(record.executionId()).isNull();
+            assertThat(record.lastInterruptedCommand()).isNull();
+            return record.writer().leaseId();
         }
     }
 

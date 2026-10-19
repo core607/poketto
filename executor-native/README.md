@@ -52,7 +52,7 @@ synthetic authority, and checks cleanup. A focused result does not prove the omi
 | `exports` | Private and public CLI ZIP flows |
 | `media` | Original fetches, historical versions, local collision protection and member projection access while the anonymous website is disabled |
 | `public-scope` | Real public projection: no private files, metadata or history, unchanged copy after a permission increase, publication checks on artifact delivery and after withdrawal |
-| `admission` | Worker capacity refusal and a retry that does not leak a copy |
+| `admission` | Capacity refusal without copy leakage; startup retries reuse leases without executing rejected commands |
 | `peer-only` | Refusal of a non-root worker peer before it receives request bytes |
 | `games` | Separate game worker and slice: shared puzzle, complete saves, host/network denial, resource exhaustion, descendants, revocation, restart and repository execution during full game admission |
 | `cli-save`, `cli-save-recovery`, `cli-media-import`, `cli-media-link`, `cli-move`, `cli-move-installation`, `cli-move-recovery` | One CLI handler each; `cli-save` includes workspace sync and conflicts, and the recovery modes cover uncertain remote acknowledgement or local installation without repeating the original write |
