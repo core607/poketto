@@ -54,10 +54,12 @@ class CommandChannel:
             if len(self.buffer) > MAX_FRAME:
                 raise ValueError('Sandbox output frame exceeds its bound')
 
-    def execute(self, execution_id, command, timeout_ms, cancelled, cancellation_reason):
+    def execute(self, execution_id, command, timeout_ms, cancelled, cancellation_reason, timings):
         output = [bytearray(), bytearray()]
         truncated = [False, False]
-        deadline = time.monotonic() + timeout_ms / 1000
+        started = time.monotonic()
+        command_started = started if self.ready else None
+        deadline = started + timeout_ms / 1000
 
         def check():
             if cancelled():
@@ -86,6 +88,8 @@ class CommandChannel:
                         append(1, value)
                     elif value == {'kind': 'ready'}:
                         self.ready = True
+                        if command_started is None:
+                            command_started = time.monotonic()
                     else:
                         raise ValueError('Unexpected sandbox greeting')
             frame = memoryview(json.dumps(
@@ -123,3 +127,9 @@ class CommandChannel:
                         raise ValueError('Unexpected sandbox frame')
         except (OSError, ValueError, TypeError, RecursionError) as error:
             raise CommandEnded('sandbox_failed', output, truncated) from error
+        finally:
+            ended = time.monotonic()
+            ready_ended = ended if command_started is None else command_started
+            timings['readyMs'] = int((ready_ended - started) * 1000)
+            if command_started is not None:
+                timings['commandMs'] = int((ended - command_started) * 1000)

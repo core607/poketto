@@ -640,10 +640,8 @@ not recorded. A `repo_exec` call also leaves one `repo_exec stages` record:
 milliseconds per stage (`authorizeMs`, `journalMs`, `permitMs`, `admitMs`,
 `prepareMs`, `commandMs`, `completeMs`), bridge time and request count, the total,
 `stoppedIn`, where an early end stopped (`none` otherwise), and `cleanupMs`, the
-containment after a failure; unentered stages read `-1`. A command that ran adds
-`freshSandbox` and the worker's own stages: `workerRoomMs`, `workerLockMs`,
-`workerPrepareMs`, `workerRunMs` (a fresh sandbox's start-up included),
-`workerReleaseMs` and `workerFlushMs`.
+containment after a failure; unentered stages read `-1`. Command results add
+`freshSandbox` and [worker stage timings](../deploy/observability/README.md#executor-command-timings).
 
 Permission changes and authentication outcomes are recorded under the logger name
 `poketto.audit`, naming the action (such as `member.access.granted` or

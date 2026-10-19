@@ -41,12 +41,18 @@ class CommandChannelTests(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.TemporaryDirectory()
         self.addCleanup(self.root.cleanup)
+        self.start_channel()
+        self.addCleanup(self.close)
+
+    def start_channel(self, greeting_delay=0):
         self.process = subprocess.Popen(
-            [sys.executable, '-I', str(Path(__file__).with_name('shell_loop.py')), self.root.name],
+            [sys.executable, '-I', '-c',
+             'import runpy,sys,time; time.sleep(float(sys.argv[1])); sys.argv=sys.argv[2:]; '
+             'runpy.run_path(sys.argv[0],run_name="__main__")',
+             str(greeting_delay), str(Path(__file__).with_name('shell_loop.py')), self.root.name],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             start_new_session=True)
         self.channel = CommandChannel(self.process)
-        self.addCleanup(self.close)
 
     def close(self):
         try:
@@ -57,7 +63,32 @@ class CommandChannelTests(unittest.TestCase):
         self.channel.close()
 
     def execute(self, command, timeout=3000, cancelled=lambda: False):
-        return self.channel.execute(str(uuid.uuid4()), command, timeout, cancelled, lambda: 'revoked')
+        self.timings = {}
+        return self.channel.execute(str(uuid.uuid4()), command, timeout, cancelled, lambda: 'revoked', self.timings)
+
+    def test_delayed_greeting_is_separate_from_command_and_not_repeated_on_reuse(self):
+        self.close()
+        self.start_channel(greeting_delay=0.15)
+
+        result, _, _ = self.execute('sleep 0.15')
+
+        self.assertEqual(0, result['exitCode'])
+        self.assertGreaterEqual(self.timings['readyMs'], 100)
+        self.assertGreaterEqual(self.timings['commandMs'], 100)
+        self.execute('true')
+        self.assertEqual(0, self.timings['readyMs'])
+
+    def test_timeout_before_greeting_reports_only_the_wait_for_ready(self):
+        self.close()
+        self.start_channel(greeting_delay=1)
+
+        with self.assertRaises(CommandEnded) as raised:
+            self.execute('touch forbidden', timeout=100)
+
+        self.assertEqual('timeout', raised.exception.reason)
+        self.assertGreaterEqual(self.timings['readyMs'], 90)
+        self.assertNotIn('commandMs', self.timings)
+        self.assertFalse((Path(self.root.name) / 'forbidden').exists())
 
     def test_real_channel_reuses_shell_and_accepts_a_command_larger_than_the_pipe(self):
         self.execute('VALUE=kept; #' + 'x' * 60000)
@@ -72,6 +103,8 @@ class CommandChannelTests(unittest.TestCase):
             self.execute('printf before; sleep 30', timeout=500)
         self.assertEqual('timeout', raised.exception.reason)
         self.assertEqual(b'before', raised.exception.output[0])
+        self.assertEqual(0, self.timings['readyMs'])
+        self.assertGreaterEqual(self.timings['commandMs'], 450)
 
     def test_output_limit_is_combined_and_keeps_exactly_the_bounded_prefix(self):
         with self.assertRaises(CommandEnded) as raised:

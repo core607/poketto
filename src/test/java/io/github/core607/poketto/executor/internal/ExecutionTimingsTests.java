@@ -41,13 +41,22 @@ class ExecutionTimingsTests {
             timings.end(stage);
         }
         timings.worker(JsonMapper.builder().build().readTree("""
-                {"freshSandbox": true, "timings": {"roomMs": 3, "runMs": 812, "flushMs": 40, "lockMs": -1, "x": 9}}
+                {"freshSandbox": true, "timings": {
+                    "roomMs": 3, "runMs": 812, "readyMs": 700, "commandMs": 112,
+                    "flushMs": 40, "lockMs": -1, "x": 9}}
                 """));
 
         timings.record();
 
         String line = recordLine(output);
-        assertThat(line).contains("freshSandbox=true", "workerRoomMs=3", "workerRunMs=812", "workerFlushMs=40");
+        assertThat(line)
+                .contains(
+                        "freshSandbox=true",
+                        "workerRoomMs=3",
+                        "workerRunMs=812",
+                        "workerReadyMs=700",
+                        "workerCommandMs=112",
+                        "workerFlushMs=40");
         // A negative or unknown value is not the worker's to report.
         assertThat(line).doesNotContain("workerLockMs", "x=9");
     }
