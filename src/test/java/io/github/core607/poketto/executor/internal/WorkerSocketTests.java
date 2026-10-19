@@ -2206,7 +2206,11 @@ class WorkerSocketTests {
                     bridgeEntered.countDown();
                     Thread.sleep(50);
                     response.put("bridgeRequest", null);
-                    if (bridgeCommand != null && executionId != null && bridgeDelivered.compareAndSet(false, true)) {
+                    if (bridgeCommand != null
+                            && executionId != null
+                            && executionId.equals(
+                                    request.path("data").path("executionId").asString(""))
+                            && bridgeDelivered.compareAndSet(false, true)) {
                         response.put("executionId", executionId);
                         response.put("bridgeRequest", bridgeCommand);
                     }

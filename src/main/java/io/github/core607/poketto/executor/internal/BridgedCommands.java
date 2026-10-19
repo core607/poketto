@@ -22,9 +22,9 @@ import tools.jackson.databind.JsonNode;
  * <p>A bridge poll waits up to the worker's poll interval for a frame, and that wait cannot be cut
  * short from here. Polls therefore run on their own threads while the caller blocks until either
  * the poll or the command completes, so a command that finishes during a poll is returned at once
- * instead of after the poll times out, and nothing spins meanwhile. An abandoned poll ends on its
- * own within that interval; the command's reply is final, exactly as when the loop ended after a
- * poll before.
+ * instead of after the poll times out, and nothing spins meanwhile. Each poll names its command,
+ * so an abandoned poll cannot consume the next command's requests even if it reaches the worker
+ * after that command starts.
  */
 final class BridgedCommands implements AutoCloseable {
     private final SessionWorker io;
@@ -66,7 +66,7 @@ final class BridgedCommands implements AutoCloseable {
         long deadline = System.nanoTime() + timeout.plusSeconds(5).toNanos();
         try {
             while (!running.isDone() && !session.stopping.get()) {
-                Optional<JsonNode> polled = awaitPoll(session, deadline, finished);
+                Optional<JsonNode> polled = awaitPoll(session, executionId, deadline, finished);
                 if (polled.isEmpty() || running.isDone() || session.stopping.get() || closedByWorker(polled.get())) {
                     break;
                 }
@@ -106,12 +106,13 @@ final class BridgedCommands implements AutoCloseable {
     }
 
     /** The poll's result, or empty once the command finished while the poll was still waiting. */
-    private Optional<JsonNode> awaitPoll(ExecutionSession session, long deadline, CompletableFuture<Void> finished)
+    private Optional<JsonNode> awaitPoll(
+            ExecutionSession session, String executionId, long deadline, CompletableFuture<Void> finished)
             throws InterruptedException, ExecutionException {
         var poll = new CompletableFuture<Optional<JsonNode>>();
         polls.execute(() -> {
             try {
-                poll.complete(pollBridge(session, deadline));
+                poll.complete(pollBridge(session, executionId, deadline));
             } catch (Throwable failure) {
                 poll.completeExceptionally(failure);
             }
@@ -122,7 +123,7 @@ final class BridgedCommands implements AutoCloseable {
 
     // One poll of the worker's bridge mailbox. A poll that fails while the session is stopping
     // ends the loop and leaves the command's own reply to decide the outcome.
-    private Optional<JsonNode> pollBridge(ExecutionSession session, long deadline) {
+    private Optional<JsonNode> pollBridge(ExecutionSession session, String executionId, long deadline) {
         var event = new WorkerRequestEvents.BridgePoll();
         event.begin();
         try {
@@ -137,8 +138,8 @@ final class BridgedCommands implements AutoCloseable {
             }
             long requesting = System.nanoTime();
             try {
-                JsonNode reply =
-                        io.request(session, "BRIDGE_POLL", new WorkerRequests.BridgePoll(), Duration.ofSeconds(3));
+                JsonNode reply = io.request(
+                        session, "BRIDGE_POLL", new WorkerRequests.BridgePoll(executionId), Duration.ofSeconds(3));
                 event.receivedReply = true;
                 event.replyOk = reply.path("ok").asBoolean(false);
                 JsonNode request = reply.path("bridgeRequest");

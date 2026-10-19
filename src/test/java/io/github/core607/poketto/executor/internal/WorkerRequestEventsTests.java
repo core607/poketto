@@ -79,7 +79,11 @@ class WorkerRequestEventsTests {
         try (var recording = new Recording()) {
             recording.enable(WorkerRequestEvents.Preparation.class);
             recording.start();
-            assertThatThrownBy(() -> client.prepare(hello, identity, "BRIDGE_POLL", new WorkerRequests.BridgePoll()))
+            assertThatThrownBy(() -> client.prepare(
+                            hello,
+                            identity,
+                            "BRIDGE_POLL",
+                            new WorkerRequests.BridgePoll(UUID.randomUUID().toString())))
                     .isInstanceOf(WorkerUnavailableException.class)
                     .hasCauseInstanceOf(InvalidKeyException.class);
             recording.stop();
