@@ -157,7 +157,7 @@ final class DefaultPlazaService implements PlazaService {
                         ""),
                 new Help(
                         "rumor <quoted-keywords> [offset]",
-                        "Ask a passerby. Try another phrase if the street stays quiet.",
+                        "Ask a passerby about all your words; the closest papers come first.",
                         ""),
                 new Help("read <quoted-space/route> [offset]", "Read a currently open pocket.", ""),
                 new Help("mirror [offset]", "See this connection's space as others do.", ""),

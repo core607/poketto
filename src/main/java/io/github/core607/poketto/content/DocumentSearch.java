@@ -77,7 +77,16 @@ public record DocumentSearch(String query, String tag, Instant from, Instant to,
     public String snippet(String title, String markdown) {
         String body = query.isEmpty() ? MarkdownText.lead(title, markdown) : MarkdownText.summary(title, markdown);
         int match = query.isEmpty() ? 0 : Math.max(0, body.indexOf(query));
-        int lead = Math.min(SNIPPET_LEAD, SNIPPET_LENGTH - query.length());
+        return excerpt(body, match, query.length());
+    }
+
+    /**
+     * Cuts {@link #SNIPPET_LENGTH} characters of {@code body} so that the match at {@code match},
+     * {@code matchLength} characters long, keeps up to 60 characters of context before it. Other
+     * searches that locate their own match use this cut so that every excerpt follows one rule.
+     */
+    public static String excerpt(String body, int match, int matchLength) {
+        int lead = Math.min(SNIPPET_LEAD, SNIPPET_LENGTH - matchLength);
         int start = Math.max(0, match - lead);
         if (start > 0 && Character.isLowSurrogate(body.charAt(start))) {
             start++;

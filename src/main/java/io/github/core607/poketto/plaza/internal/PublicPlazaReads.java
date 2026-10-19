@@ -2,6 +2,7 @@ package io.github.core607.poketto.plaza.internal;
 
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.DocumentSearch;
+import io.github.core607.poketto.content.MarkdownText;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
@@ -27,6 +28,10 @@ import org.springframework.web.util.UriUtils;
 final class PublicPlazaReads {
     private static final int PAGE = 10;
     private static final int TEXT_PAGE = 8192;
+    private static final Comparator<Hit> NEWEST = Comparator.comparing(
+                    (Hit hit) -> hit.article().createdAt())
+            .reversed()
+            .thenComparing(Hit::reference);
     private final WorkspacePublications publications;
     private final PublicContentSnapshots snapshots;
     private final Limits limits;
@@ -91,22 +96,67 @@ final class PublicPlazaReads {
 
     Page search(String query, String tag, int offset) {
         var search = new DocumentSearch(query, tag, null, null, offset, PAGE);
+        // Refuse too many keywords before taking a scan permit and reading the catalogue.
+        KeywordRanking.parse(query);
         return catalogue(sources -> search(sources, search));
     }
 
+    /**
+     * Keyword queries return documents containing every keyword, most relevant first; an empty or
+     * blank query lists the filtered documents newest first. Cards, and the snippet parsing they
+     * need, are built for the requested page only.
+     */
     Page search(List<Source> sources, DocumentSearch search) {
-        List<Card> matches = sources.stream()
-                .flatMap(source -> source.snapshot().articles().stream()
-                        .filter(article ->
-                                search.matches(article.title(), article.body(), article.tags(), article.createdAt()))
-                        .map(article -> card(source.publication(), article, search)))
-                .sorted(Comparator.comparing(Card::createdAt).reversed().thenComparing(Card::reference))
-                .toList();
+        KeywordRanking keywords = KeywordRanking.parse(search.query());
+        var filter = new DocumentSearch("", search.tag(), search.from(), search.to(), 0, 1);
+        List<Hit> matches = keywords.isEmpty() ? newest(sources, filter) : ranked(sources, filter, keywords);
         int end = Math.min(matches.size(), search.offset() + search.limit());
-        List<Card> page = search.offset() >= matches.size() ? List.of() : matches.subList(search.offset(), end);
+        List<Card> page = search.offset() >= matches.size()
+                ? List.of()
+                : matches.subList(search.offset(), end).stream()
+                        .map(hit -> {
+                            PublicArticle article = hit.article();
+                            String snippet = keywords.isEmpty()
+                                    ? filter.snippet(article.title(), article.body())
+                                    : keywords.snippet(article.title(), article.body());
+                            return card(hit.publication(), article, snippet);
+                        })
+                        .toList();
         boolean more = end < matches.size();
         boolean refineQuery = more && end > DocumentSearch.MAX_OFFSET;
         return new Page(page, matches.size(), more && !refineQuery ? end : null, refineQuery);
+    }
+
+    private static List<Hit> newest(List<Source> sources, DocumentSearch filter) {
+        return sources.stream()
+                .flatMap(source -> source.snapshot().articles().stream()
+                        .filter(article ->
+                                filter.matches(article.title(), article.body(), article.tags(), article.createdAt()))
+                        .map(article -> new Hit(source.publication(), article)))
+                .sorted(NEWEST)
+                .toList();
+    }
+
+    private static List<Hit> ranked(List<Source> sources, DocumentSearch filter, KeywordRanking keywords) {
+        KeywordRanking.Scan<Hit> scan = keywords.scan();
+        for (Source source : sources) {
+            for (PublicArticle article : source.snapshot().articles()) {
+                if (filter.matches(article.title(), article.body(), article.tags(), article.createdAt())) {
+                    scan.add(
+                            new Hit(source.publication(), article),
+                            article.title(),
+                            MarkdownText.visible(article.body()));
+                }
+            }
+        }
+        Comparator<KeywordRanking.Scored<Hit>> order = Comparator.comparingDouble(
+                        (KeywordRanking.Scored<Hit> scored) -> scored.score())
+                .reversed()
+                .thenComparing(KeywordRanking.Scored::item, NEWEST);
+        return scan.matches().stream()
+                .sorted(order)
+                .map(KeywordRanking.Scored::item)
+                .toList();
     }
 
     Reading read(String reference, int offset) {
@@ -132,7 +182,10 @@ final class PublicPlazaReads {
             String text = article.body().substring(start, end);
             publications.requireEnabled(publication.workspaceId());
             return new Reading(
-                    card(publication, article, new DocumentSearch("", "", null, null, 0, PAGE)),
+                    card(
+                            publication,
+                            article,
+                            new DocumentSearch("", "", null, null, 0, PAGE).snippet(article.title(), article.body())),
                     text,
                     start,
                     end < article.body().length() ? end : null);
@@ -176,7 +229,7 @@ final class PublicPlazaReads {
                 && before.authorName().equals(after.authorName());
     }
 
-    private Card card(WorkspacePublications.Publication publication, PublicArticle article, DocumentSearch search) {
+    private Card card(WorkspacePublications.Publication publication, PublicArticle article, String snippet) {
         String reference = publication.slug() + article.route();
         return new Card(
                 reference,
@@ -184,7 +237,7 @@ final class PublicPlazaReads {
                         + UriUtils.encodePath(
                                 "/s/" + publication.slug() + "/read" + article.route(), StandardCharsets.UTF_8),
                 article.title(),
-                search.snippet(article.title(), article.body()),
+                snippet,
                 article.tags(),
                 article.createdAt(),
                 PublicAuthorNames.select(article.publicAuthor(), publication.authorName()));
@@ -267,6 +320,12 @@ final class PublicPlazaReads {
     }
 
     record Source(WorkspacePublications.Publication publication, PublicContentSnapshot snapshot) {}
+
+    private record Hit(WorkspacePublications.Publication publication, PublicArticle article) {
+        String reference() {
+            return publication.slug() + article.route();
+        }
+    }
 
     record Card(
             String reference,

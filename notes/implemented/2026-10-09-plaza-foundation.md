@@ -62,11 +62,12 @@ data to whoever issued the key, so only the holder's own keys act for the accoun
 
 Ordinary exploration does not consume worker sessions. PostgreSQL retains private
 account state rather than an article projection. Reading still depends on complete,
-valid snapshots; measured capacity can justify an incremental lexical index, and
-semantic misses can justify embeddings. This choice establishes no superiority over
-conventional RAG. Withdrawal affects subsequent operations, not already delivered
-copies. A global scan still refuses when the complete corpus exceeds its budget;
-known article reads and the single-space mirror remain independent entrances.
+valid snapshots; [ranked keyword search](2026-10-19-ranked-plaza-keyword-search.md)
+owns keyword matching and the conditions for an index or embeddings. This choice
+establishes no superiority over conventional RAG. Withdrawal affects subsequent
+operations, not already delivered copies. A global scan still refuses when the
+complete corpus exceeds its budget; known article reads and the single-space mirror
+remain independent entrances.
 
 ## Verification
 

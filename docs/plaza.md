@@ -40,7 +40,7 @@ bounded to 256 KiB.
 | `--help` | Every action's syntax, hint and current lock |
 | `look [offset]` | Stalls and today's well decoration |
 | `stall <tag-or-handle> [offset]` | Public articles carrying that tag |
-| `rumor <keywords> [offset]` | Literal keyword matches with snippets and public links |
+| `rumor <keywords> [offset]` | Articles containing every keyword, most relevant first, with snippets and public links |
 | `read <space/route> [offset]` | Current public article text and its next reading offset |
 | `mirror [offset]` | Public articles from the connection's own space |
 | `pocket` | Account notes, next note request number, candy balance/flavor and next claim time |
@@ -57,6 +57,15 @@ from a missing note. An unpublished space's mirror reports `WEBSITE_NOT_PUBLIC`.
 when enabled. `wish` uses [creator QA](qa.md), reserving one candy under the shared
 model budget. Its status and clarification commands retain the same request ID.
 Claiming candy does not invoke a model or spend money.
+
+`rumor` and the QA `search` tool take up to eight keywords separated by spaces,
+including the ideographic space. Each keyword must occur in the title or visible
+text; letter case is ignored. Matches are ordered by BM25 relevance computed over
+the searched articles at request time, with title occurrences weighted higher and
+newest first among equal scores. A blank query lists articles newest first.
+Publication changes can reorder later pages. Website search keeps its literal,
+case-sensitive phrase match, so `rumor` finds every article that website search
+finds for the same text. See [ranked keyword search](../notes/implemented/2026-10-19-ranked-plaza-keyword-search.md).
 
 Article lists contain at most ten entries. Use returned `nextOffset` values. Search offsets
 are limited to 10,000; `refineQuery` asks for narrower keywords when further results
