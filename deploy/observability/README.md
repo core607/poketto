@@ -30,6 +30,18 @@ Containers log under `SYSLOG_IDENTIFIER=poketto-<container>`. The executor and g
 `poketto-executor.service` and `poketto-games.service` units, and each command sandbox is a
 `poketto-exec-…` unit in their slice.
 
+## Executor command timings
+
+Command result timings appear in the application's `repo_exec stages` records as
+`workerRoomMs`, `workerLockMs`, `workerPrepareMs`, `workerRunMs`, `workerReleaseMs`
+and `workerFlushMs`.
+
+`workerRunMs` includes a fresh sandbox's startup. Within it, `workerReadyMs` measures
+the wait for the shell's greeting (zero on reuse), and `workerCommandMs` measures
+command delivery and response handling after that greeting. A failure before the
+greeting reports the ready wait and omits `workerCommandMs`. Both share the command's
+timeout budget; these are elapsed times, not command CPU time.
+
 ## Executor request events
 
 The application's `poketto.WorkerRequestPreparation` JFR event records signed-request preparation:

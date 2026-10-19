@@ -1074,7 +1074,7 @@ class SystemdBackend:
         try:
             completion, output, truncated = s.channel.execute(
                 data['executionId'], data['command'], data['timeoutMillis'],
-                s.cancelled.is_set, lambda: s.reason)
+                s.cancelled.is_set, lambda: s.reason, s.timings)
             exit_code, ended = completion['exitCode'], completion['shellExited']
         except CommandEnded as error:
             reason, output, truncated = error.reason, error.output, error.truncated

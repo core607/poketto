@@ -33,7 +33,7 @@ final class ExecutionTimings {
     private int bridgeRequests;
     private final Map<String, Object> worker = new LinkedHashMap<>();
     private static final List<String> WORKER_STAGES =
-            List.of("roomMs", "lockMs", "prepareMs", "runMs", "releaseMs", "flushMs");
+            List.of("roomMs", "lockMs", "prepareMs", "runMs", "readyMs", "commandMs", "releaseMs", "flushMs");
 
     ExecutionTimings() {
         Arrays.fill(stages, -1);
