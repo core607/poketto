@@ -6,7 +6,8 @@ import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;
 
 /** Checks the execution protocol without creating a lease or touching an account's files. */
-@Component
+// Health groups and contributors share a namespace; the public group is executor.
+@Component("executorProtocolHealthIndicator")
 final class ExecutorHealthIndicator implements HealthIndicator {
     private final Optional<IsolatedRepositoryExecutor> executor;
 

@@ -5,6 +5,11 @@ Set `POKETTO_DEPLOY_LAYOUT=existing` to update an operator-owned Compose project
 replaces that executable. The deployment account needs Docker access and
 noninteractive sudo for `/usr/local/sbin/poketto-update-existing`.
 
+Every installation, including one with execution disabled, must install
+[update-existing.py](update-existing.py) as `/usr/local/sbin/poketto-update-existing`
+and [worker_release.py](worker_release.py) beside it. Both files must be root-owned
+and unwritable by other accounts.
+
 Keep the deployment root and its `deployment.json` root-owned and unwritable by
 other users. Use [existing.example.json](existing.example.json) for the project,
 ordered relative Compose files and loopback HTTP health checks. The worker
@@ -27,9 +32,7 @@ application rollback across unknown persistent-format changes.
 ## Worker source updates
 
 Existing-layout deployments update the configured worker from `/opt/poketto-worker`
-in the selected application image. Install [update-existing.py](update-existing.py) as
-`/usr/local/sbin/poketto-update-existing` and [worker_release.py](worker_release.py) beside it,
-both root-owned and unwritable by other accounts. In the protected
+in the selected application image. In the protected
 `deployment.json`, add an `executor` object like this, using the installed paths:
 
 ```json
@@ -46,7 +49,7 @@ both root-owned and unwritable by other accounts. In the protected
 
 The service must invoke `python sourceDirectory/worker.py --config configFile`;
 `ExecStopPost` must use the same command with `--cleanup` appended.
-the worker configuration's `launcher` must be `sourceDirectory/launcher.py`.
+The worker configuration's `launcher` must be `sourceDirectory/launcher.py`.
 Initial host provisioning and pinned Python dependencies remain prerequisites.
 Enabled execution without this deployment object blocks an image update.
 
