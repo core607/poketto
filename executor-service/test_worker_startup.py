@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import test_worker as fixture
-from worker import Rejected, load_config
+from worker import Rejected, StartRefused, load_config
 
 
 class WorkerStartupTests(unittest.TestCase):
@@ -86,6 +86,7 @@ class WorkerStartupTests(unittest.TestCase):
             self.assertTrue(entered.wait(2))
             refused = pool.submit(self.harness.send, retry).result(2)
             self.assertEqual('EXECUTION_CAPACITY', refused['code'])
+            self.assertEqual('STARTUP_LIMIT', refused.get('reason'))
             self.assertEqual('READY', waiting.state)
             self.assertNotIn((waiting.id, retry['data']['executionId']), self.service.executions)
             self.assertFalse(self.backend.stopped)
@@ -109,6 +110,34 @@ class WorkerStartupTests(unittest.TestCase):
             self.assertTrue(pool.submit(self.harness.send, self.execution(second)).result(2)['ok'])
             self.assertFalse(running.done())
         self.assertTrue(running.result()['ok'])
+
+    def test_cancelled_startup_refusal_does_not_offer_lease_reuse(self):
+        request, session = self.opened('a')
+
+        def cancelled(*unused):
+            self.service.mark_cancelled(session, 'cancelled')
+            raise StartRefused()
+
+        with patch.object(self.service, 'start_unit', side_effect=cancelled):
+            with self.holding_start(session):
+                refused = self.harness.send(self.execution(request))
+        self.assertEqual('EXECUTION_CAPACITY', refused['code'])
+        self.assertNotIn('reason', refused)
+        self.assertEqual('CLOSED', session.state)
+
+    def test_expired_startup_refusal_does_not_offer_lease_reuse(self):
+        request, session = self.opened('a')
+
+        def expired(*unused):
+            session.deadline = self.service.clock() - 1
+            raise StartRefused()
+
+        with patch.object(self.service, 'start_unit', side_effect=expired):
+            with self.holding_start(session):
+                refused = self.harness.send(self.execution(request))
+        self.assertEqual('EXECUTION_CAPACITY', refused['code'])
+        self.assertNotIn('reason', refused)
+        self.assertEqual('LEASE_EXPIRED', self.harness.send(self.request(request, 'RENEW'))['code'])
 
     def test_cancelled_startup_retains_capacity_until_containment(self):
         first, starting = self.opened('a')

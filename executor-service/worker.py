@@ -379,7 +379,7 @@ class Service:
                     self.release_startups(s)
                     s.state = 'CLOSED'
                     return self.operation_response(s, result)
-        except StartRefused:
+        except StartRefused as refused:
             with self.lock:
                 self.startups.discard(execution_key)
                 self.executions.discard(execution_key)
@@ -387,6 +387,8 @@ class Service:
                 if not s.cancelled.is_set():
                     s.state = 'READY'
                     s.execution_id = ''
+                    if s.deadline > self.clock():
+                        refused.reason = 'STARTUP_LIMIT'
             raise
         except Exception:
             failed = True

@@ -872,7 +872,9 @@ class ProtocolTests(unittest.TestCase):
         self.service.config['maxExecutionsPerSession'] = 1
         self.opened()
         self.assertTrue(self.send(self.execution())['ok'])
-        self.assertEqual('EXECUTION_CAPACITY', self.send(self.execution())['code'])
+        refused = self.send(self.execution())
+        self.assertEqual('EXECUTION_CAPACITY', refused['code'])
+        self.assertNotIn('reason', refused)
 
     def test_a_seeded_open_needs_an_exact_seed_and_names_no_export(self):
         seeded = {'commit': 'c' * 40, 'copyId': str(uuid.uuid4()), 'scope': 'full', 'seed': True}

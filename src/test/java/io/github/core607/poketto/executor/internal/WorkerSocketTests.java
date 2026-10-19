@@ -608,12 +608,14 @@ class WorkerSocketTests {
                 var executor = executor(fullAuth(), exports(), peer)) {
             command(executor, actor, "new");
             peer.sessionBusy = true;
+            peer.startupCapacity = true;
 
             // Refused before it ran: a retry is safe, unlike an unconfirmed command.
             assertThatThrownBy(() -> command(executor, actor, "new"))
                     .isInstanceOfSatisfying(
                             ExecutionAdmissionException.class,
                             refused -> assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.BUSY));
+            assertThat(peer.operations("CLOSE")).hasSize(1);
         }
     }
 
@@ -642,6 +644,42 @@ class WorkerSocketTests {
             assertThat(resumed.retention().lastInterruptedCommand()).isNull();
             assertThat(peer.operations("OPEN")).hasSize(1);
             assertThat(peer.operations("ATTACH")).hasSize(1);
+        }
+    }
+
+    @Test
+    void aStartupRefusalRetainsTheLeaseForRepeatedRetries() throws Exception {
+        var actor = principal();
+        var copy = new AtomicReference<String>();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.executionCapacity = true;
+            peer.startupCapacity = true;
+            for (int attempt = 0; attempt < 3; attempt++) {
+                String expected = copy.get() == null ? "new" : copy.get();
+                assertThatThrownBy(() -> command(executor, actor, expected))
+                        .isInstanceOfSatisfying(ExecutionAdmissionException.class, refused -> {
+                            assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.CAPACITY);
+                            assertThat(refused.recoveryAvailable()).isTrue();
+                            if (copy.get() != null) {
+                                assertThat(refused.copyId()).contains(copy.get());
+                            }
+                            copy.set(refused.copyId().orElseThrow());
+                        });
+            }
+            assertThat(peer.operations("CLOSE")).isEmpty();
+            peer.executionCapacity = false;
+
+            var resumed = command(executor, actor, copy.get());
+
+            assertThat(resumed.copyId()).isEqualTo(copy.get());
+            assertThat(resumed.retention().lastInterruptedCommand()).isNull();
+            assertThat(peer.operations("OPEN")).hasSize(1);
+            assertThat(peer.operations("ATTACH")).isEmpty();
+            assertThat(peer.operations("EXEC").stream()
+                            .map(request -> request.path("leaseId").asString(""))
+                            .distinct())
+                    .hasSize(1);
         }
     }
 
@@ -2035,6 +2073,7 @@ class WorkerSocketTests {
         private volatile boolean wrongRequestId;
         private volatile boolean stallExec;
         private volatile boolean executionCapacity;
+        private volatile boolean startupCapacity;
         private volatile boolean sessionBusy;
         private volatile boolean execLeaseExpired;
         private volatile int refuseEveryNthExec;
@@ -2281,6 +2320,9 @@ class WorkerSocketTests {
                     if (executionCapacity || sessionBusy) {
                         response.put("ok", false);
                         response.put("code", executionCapacity ? "EXECUTION_CAPACITY" : "SESSION_BUSY");
+                        if (startupCapacity) {
+                            response.put("reason", "STARTUP_LIMIT");
+                        }
                         break;
                     }
                     if (execLeaseExpired) {

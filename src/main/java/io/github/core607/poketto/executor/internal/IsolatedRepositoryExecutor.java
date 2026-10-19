@@ -331,6 +331,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             boolean refreshed,
             ExecutionTimings timings) {
         boolean attempted = false;
+        boolean reusableRefusal = false;
         try (var registration = cancellation.onCancel(() -> lifecycle.stopAndAwait(session, "cancelled"))) {
             requireLive(session);
             if (held.record() != null
@@ -351,8 +352,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             } catch (BridgedCommands.CommandNotRunException notRun) {
                 timings.end(ExecutionTimings.Stage.COMMAND);
                 attempted = false;
-                held.refused();
-                session.accountRecord = held.record();
+                reusableRefusal = lifecycle.acknowledgeRefusal(session, held, notRun);
                 log.info("Account command did not run: {}", notRun.getMessage());
                 throw new ExecutionAdmissionException(notRun.reason(), true, notRun);
             }
@@ -370,7 +370,11 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             }
             return result;
         } catch (RuntimeException failure) {
-            containFailedCommand(session, failure, timings);
+            if (reusableRefusal && failure instanceof ExecutionAdmissionException) {
+                timings.failed();
+            } else {
+                containFailedCommand(session, failure, timings);
+            }
             if (attempted) {
                 log.warn("Account command completion was not confirmed", failure);
                 throw new ExecutionUnconfirmedException(
