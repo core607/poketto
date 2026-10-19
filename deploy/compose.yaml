@@ -61,6 +61,9 @@ services:
       # than parsing a sentence. POKETTO_LOG_FORMAT selects the format for a deployment that wants
       # a different one; whether an empty value falls back or refuses to start is untested.
       LOGGING_STRUCTURED_FORMAT_CONSOLE: "${POKETTO_LOG_FORMAT-ecs}"
+      # Off by default. When true, /actuator/prometheus answers on the loopback application port for
+      # a scraper such as the one in observability/; the gateway still refuses /actuator.
+      POKETTO_METRICS_ENABLED: "${POKETTO_METRICS_ENABLED:-false}"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=65 -XX:+ExitOnOutOfMemoryError"
     ports:
       - "127.0.0.1:${POKETTO_HTTP_PORT:-8080}:8080"

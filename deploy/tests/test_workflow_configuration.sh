@@ -43,6 +43,8 @@ fi
 
 grep -Fq 'dependsOn(gatewayConfigCheck)' "$DEPLOY_DIR/../build.gradle.kts"
 grep -Fq 'deploy/tests/validate_gateway.sh' "$DEPLOY_DIR/../build.gradle.kts"
+grep -Fq 'dependsOn(observabilityConfigCheck)' "$DEPLOY_DIR/../build.gradle.kts"
+grep -Fq 'deploy/tests/validate_observability.sh' "$DEPLOY_DIR/../build.gradle.kts"
 grep -Fq 'python-version: "3.12.14"' "$workflow"
 
 grep -Fq 'dependsOn(appImageIdentityCheck)' "$DEPLOY_DIR/../build.gradle.kts"

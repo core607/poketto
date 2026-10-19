@@ -1,0 +1,65 @@
+# Optional single-host monitoring for a Poketto deployment. Nothing starts it: deploy.sh and the CI
+# delivery never read this directory. An operator who wants it runs `docker compose up -d` here.
+# README.md owns the setup, the retention variables and what each service collects.
+#
+# Every service shares the host network and listens on loopback only, so it reaches the application
+# port that compose.yaml publishes on 127.0.0.1 and exposes nothing beyond the host. The application
+# answers the scrape only with POKETTO_METRICS_ENABLED=true.
+name: poketto-observability
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${POKETTO_METRICS_RETENTION:-15d}
+      - --web.listen-address=127.0.0.1:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus:/prometheus
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=127.0.0.1:9100
+      # Unit states for the executor, the game runner and every live command sandbox.
+      - --collector.systemd
+      - --collector.systemd.unit-include=poketto.+\.service
+    volumes:
+      - /:/host:ro,rslave
+      - /run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
+
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0@sha256:251121fa882af99b95ba0c230a4a2f412ea602d2698c64a96c58dc9842bb755d
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - -httpListenAddr=127.0.0.1:9428
+      - -storageDataPath=/victoria-logs-data
+      - -retentionPeriod=${POKETTO_LOGS_RETENTION:-30d}
+    volumes:
+      - victorialogs:/victoria-logs-data
+
+  fluent-bit:
+    image: fluent/fluent-bit:5.1.4@sha256:a9cc9627aeabb8bb33077ee85b6ec8c0fe40aff8e7000bb4e8cd924511fa626c
+    restart: unless-stopped
+    network_mode: host
+    command: ["/fluent-bit/bin/fluent-bit", "-c", "/fluent-bit/etc/poketto.conf"]
+    volumes:
+      - ./fluent-bit.conf:/fluent-bit/etc/poketto.conf:ro
+      - /var/log/journal:/var/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - fluent-bit:/fluent-bit/state
+
+volumes:
+  prometheus: {}
+  victorialogs: {}
+  fluent-bit: {}

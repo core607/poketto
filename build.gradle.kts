@@ -70,10 +70,13 @@ dependencies {
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.springframework.modulith:spring-modulith-core:$springModulithVersion")
     runtimeOnly("org.postgresql:postgresql")
+    // Serves /actuator/prometheus only when POKETTO_METRICS_ENABLED turns the export on.
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
     runtimeOnly("com.twelvemonkeys.imageio:imageio-jpeg:3.15.0")
     runtimeOnly("com.twelvemonkeys.imageio:imageio-webp:3.15.0")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("io.micrometer:micrometer-registry-prometheus")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.springframework.modulith:spring-modulith-starter-test:$springModulithVersion")
     testImplementation("org.junit.platform:junit-platform-launcher")
@@ -215,6 +218,14 @@ val gatewayConfigCheck = tasks.register<Exec>("gatewayConfigCheck") {
     commandLine(bashScript("deploy/tests/validate_gateway.sh"))
 }
 
+val observabilityConfigCheck = tasks.register<Exec>("observabilityConfigCheck") {
+    group = "verification"
+    description = "Validates the optional monitoring examples and ships a probe record through them."
+    inputs.files(fileTree("deploy/observability"), "deploy/tests/validate_observability.sh")
+    outputs.upToDateWhen { false }
+    commandLine(bashScript("deploy/tests/validate_observability.sh"))
+}
+
 val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
     group = "verification"
     description = "Verifies existing-installation updates and interrupted-run reconciliation on Linux."
@@ -300,6 +311,7 @@ tasks.check {
     dependsOn(deployScriptTests)
     dependsOn(linuxStorageTest)
     dependsOn(gatewayConfigCheck)
+    dependsOn(observabilityConfigCheck)
     dependsOn(appImageIdentityCheck)
 }
 

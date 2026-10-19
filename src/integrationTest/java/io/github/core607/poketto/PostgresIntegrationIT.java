@@ -14,6 +14,9 @@ import io.github.core607.poketto.workspace.WorkspaceCatalog;
 import io.github.core607.poketto.workspace.WorkspacePaths;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.regex.MatchResult;
+import java.util.regex.Pattern;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.transport.RefSpec;
 import org.junit.jupiter.api.Test;
@@ -58,6 +61,7 @@ class PostgresIntegrationIT {
             throw new IllegalStateException("integration-test remote cannot be created", exception);
         }
         registry.add("poketto.test.repository-path", remote::toString);
+        registry.add("POKETTO_METRICS_ENABLED", () -> "true");
     }
 
     private static final DockerImageName POSTGRES_IMAGE =
@@ -124,6 +128,30 @@ class PostgresIntegrationIT {
         assertThat(workspaces.defaultWorkspace()).isEqualTo(before);
         assertThat(jdbc.queryForObject("select count(*) from workspaces", Integer.class))
                 .isOne();
+    }
+
+    @Test
+    void servesEveryApplicationMetricTheMonitoringExamplesName() throws Exception {
+        mvc.perform(get("/actuator/health")).andExpect(status().isOk());
+        String scrape = mvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        // Executor metrics exist only with an executor; WorkerSocketTests checks those names.
+        String examples = Files.readString(Path.of("deploy/observability/alerts.yml"))
+                + Files.readString(Path.of("deploy/observability/README.md"));
+        List<String> alerted = Pattern.compile(
+                        "(?<![a-z0-9_])(?:http_server|hikaricp|jvm|process|poketto_images)_[a-z0-9_]+")
+                .matcher(examples)
+                .results()
+                .map(MatchResult::group)
+                .distinct()
+                .toList();
+        assertThat(alerted).contains("hikaricp_connections_pending", "http_server_requests_seconds_count");
+        for (String name : alerted) {
+            assertThat(scrape).as(name).containsPattern("(?m)^" + name + "[{ ]");
+        }
     }
 
     @Test
