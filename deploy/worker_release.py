@@ -40,6 +40,12 @@ def sync_directory(path):
 def protected(path, directory=False):
     if not path.is_absolute() or path.resolve() != path or path.is_symlink():
         raise DeploymentError("worker paths must be canonical and must not traverse symlinks")
+    for parent in path.parents:
+        ancestor = parent.stat()
+        # A root-owned sticky directory protects root-owned children, including private /tmp fixtures.
+        writable = ancestor.st_mode & 0o022 and not ancestor.st_mode & stat.S_ISVTX
+        if ancestor.st_uid != 0 or writable:
+            raise DeploymentError("worker path ancestors must prevent replacement by other users")
     info = path.stat()
     kind = stat.S_ISDIR if directory else stat.S_ISREG
     if not kind(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:

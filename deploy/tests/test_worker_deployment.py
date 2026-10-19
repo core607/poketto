@@ -251,6 +251,14 @@ class WorkerDeploymentTests(unittest.TestCase):
         with self.assertRaisesRegex(DeploymentError, "root-owned"):
             WorkerRelease(self.config, self.base, self.command)
 
+    def test_a_root_owned_source_directory_cannot_have_a_replaceable_parent(self):
+        self.base.chmod(0o777)
+        try:
+            with self.assertRaisesRegex(DeploymentError, "ancestors must prevent replacement"):
+                WorkerRelease(self.config, self.base, self.command)
+        finally:
+            self.base.chmod(0o700)
+
     def test_mcp_probe_uses_only_the_configured_copy_and_does_not_follow_redirects(self):
         response = MagicMock()
         response.__enter__.return_value = response
