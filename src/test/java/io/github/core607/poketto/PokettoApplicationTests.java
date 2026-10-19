@@ -60,5 +60,7 @@ class PokettoApplicationTests {
     void exposesNoOtherManagementEndpoint() throws Exception {
         mvc.perform(get("/actuator/env")).andExpect(status().isNotFound());
         mvc.perform(get("/actuator/beans")).andExpect(status().isNotFound());
+        // Metrics stay off unless POKETTO_METRICS_ENABLED turns the export on.
+        mvc.perform(get("/actuator/prometheus")).andExpect(status().isNotFound());
     }
 }

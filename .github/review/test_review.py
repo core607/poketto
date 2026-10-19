@@ -589,8 +589,8 @@ class ReviewTests(unittest.TestCase):
         for task in ("test", "spotlessCheck", "checkstyleMain", "checkstyleTest",
                      "checkstyleIntegrationTest", "repoCheck", "integrationTest", "frontendCheck",
                      "appImageIdentityCheck", "executorServiceTests", "deployScriptTests",
-                     "existingDeploymentTests", "gatewayConfigCheck", "proxyForwardingCheck",
-                     "linuxStorageTest"):
+                     "existingDeploymentTests", "gatewayConfigCheck", "observabilityConfigCheck",
+                     "proxyForwardingCheck", "linuxStorageTest"):
             self.assertIn(" " + task, ci, task + " is no longer run by any lane")
 
     def test_identity_accepts_only_an_open_owner_pr_targeting_main(self):

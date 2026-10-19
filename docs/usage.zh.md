@@ -256,6 +256,8 @@ sudo systemctl restart systemd-journald
 
 网关记录到不了应用的请求，不含查询字符串、图片地址、凭证类请求头、Referer 和下载文件名。查看单个服务用 `journalctl CONTAINER_NAME=<容器名> -o cat`（结构化输出可接 `| jq`），筛安全历史用 `journalctl -o cat | jq 'select(.log.logger=="poketto.audit")'`。
 
+设置 `POKETTO_METRICS_ENABLED=true` 后，应用在本机端口的 `/actuator/prometheus` 提供 Prometheus 指标；网关拒绝所有 `/actuator` 路径。[可选监控](../deploy/observability/README.md)（英文）列出这些指标，并给出收集指标和日志的示例。
+
 运维自行维护的 Compose 实例不会通过镜像交付收到这些设置：需把各服务的日志驱动改为 `journald`、为应用设置 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`，并加上网关访问日志及跳过图片地址的规则。在此之前，日志仍是可读文本，且会在重新部署时被丢弃。详见[诊断记录](../notes/implemented/2026-09-14-service-diagnostics.md)。
 
 ## OAuth 连接

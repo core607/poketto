@@ -92,7 +92,7 @@ A copy keeps its reading scope when a grant gains private-read permission, and a
 
 `repo_discard` takes the exact copy ID and requires current execution permission and account ownership, but not content-read permission. A busy writer prevents deletion. `DISCARDED` and `ABSENT` confirm completion; retry an unconfirmed result only with the same ID. Remote Git commits remain unchanged.
 
-Micrometer exposes `poketto.executor.sessions.active`, `poketto.executor.operations.active`, `poketto.executor.sessions.created`, `poketto.executor.sessions.released` and `poketto.executor.admission.rejected` with bounded reason tags. Their HTTP exposure is operator-configured, and they do not measure memory or disk.
+Micrometer exposes `poketto.executor.sessions.active`, `poketto.executor.operations.active`, `poketto.executor.sessions.created`, `poketto.executor.sessions.released` and `poketto.executor.admission.rejected` with bounded reason tags. `POKETTO_METRICS_ENABLED` serves them at `/actuator/prometheus` ([names](../deploy/observability/README.md)); they omit memory and disk.
 
 ## Wire version 1
 

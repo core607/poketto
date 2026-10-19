@@ -108,6 +108,8 @@ grep -Fq 'request>uri regexp' "$DEPLOY_DIR/Caddyfile"
 grep -Fq 'LOGGING_STRUCTURED_FORMAT_CONSOLE: "${POKETTO_LOG_FORMAT-ecs}"' "$DEPLOY_DIR/compose.yaml"
 # A documented setting that the configuration whitelist rejects cannot be applied.
 grep -Fq 'POKETTO_LOG_FORMAT' "$DEPLOY_DIR/deploy.sh"
+grep -Fq 'POKETTO_METRICS_ENABLED: "${POKETTO_METRICS_ENABLED:-false}"' "$DEPLOY_DIR/compose.yaml"
+grep -Fq 'POKETTO_METRICS_ENABLED' "$DEPLOY_DIR/deploy.sh"
 grep -Fq '[ -S /run/systemd/journal/socket ]' "$DEPLOY_DIR/deploy.sh"
 if grep -q 'driver: json-file' "$DEPLOY_DIR/compose.yaml"; then
     echo "a service still logs to a driver that is discarded with its container"

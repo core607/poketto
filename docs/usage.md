@@ -671,6 +671,11 @@ service with `journalctl CONTAINER_NAME=<container> -o cat` (add `| jq` for
 structured output) and the security history with
 `journalctl -o cat | jq 'select(.log.logger=="poketto.audit")'`.
 
+`POKETTO_METRICS_ENABLED=true` serves Prometheus metrics at `/actuator/prometheus` on the
+loopback application port; the gateway refuses every `/actuator` path. [Optional
+monitoring](../deploy/observability/README.md) lists the metrics and an example collector for
+metrics and logs.
+
 An operator-owned Compose installation does not receive these settings through image
 delivery: set each service's logging driver to `journald`, the application's
 `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`, and the gateway access log with its rule that

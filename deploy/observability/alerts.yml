@@ -1,0 +1,68 @@
+# Example alert rules. Prometheus evaluates them and lists firing ones on its Alerts page; no
+# notification channel is configured. Add an Alertmanager to deliver them. PostgresIntegrationIT and,
+# for the executor, WorkerSocketTests check every application metric named here against the
+# application's real output, so a renamed metric fails a test instead of silently never firing.
+groups:
+  - name: poketto-application
+    rules:
+      - alert: PokettoApplicationDown
+        expr: up{job="poketto-app"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: The application has not answered /actuator/prometheus for two minutes.
+
+      - alert: PokettoServerErrors
+        expr: sum(rate(http_server_requests_seconds_count{job="poketto-app", status=~"5.."}[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than one server error every ten seconds for ten minutes.
+
+      - alert: PokettoDatabasePoolWaiting
+        expr: max(hikaricp_connections_pending{job="poketto-app"}) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Requests have waited for a database connection for two minutes.
+
+      - alert: PokettoHeapNearLimit
+        expr: >-
+          sum(jvm_memory_used_bytes{job="poketto-app", area="heap"})
+          / sum(jvm_memory_max_bytes{job="poketto-app", area="heap"} > 0) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: The application heap has stayed above 90% of its maximum for ten minutes.
+
+      - alert: PokettoExecutionRefusals
+        expr: sum(rate(poketto_executor_admission_rejected_total{job="poketto-app"}[5m])) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Command execution has refused more than one request every five seconds.
+
+  - name: poketto-host
+    rules:
+      - alert: PokettoExecutorStopped
+        expr: node_systemd_unit_state{name="poketto-executor.service", state="active"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: The host execution service has not been active for five minutes.
+
+      - alert: HostDiskNearlyFull
+        expr: >-
+          node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"}
+          / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"} < 0.15
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.mountpoint }} has less than 15% free space."

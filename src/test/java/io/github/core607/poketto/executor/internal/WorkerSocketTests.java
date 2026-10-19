@@ -35,7 +35,8 @@ import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.StandardProtocolFamily;
@@ -71,6 +72,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.MatchResult;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -245,7 +248,7 @@ class WorkerSocketTests {
     void transportExpiryKeepsTheAccountCopyAndExactIdentityGuard() throws Exception {
         var actor = principal();
         var exports = exports();
-        var meters = new SimpleMeterRegistry();
+        var meters = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports, peer)) {
             executor.bindMetrics(meters);
@@ -297,6 +300,16 @@ class WorkerSocketTests {
             assertThat(meters.getMeters())
                     .allSatisfy(meter -> assertThat(meter.getId().getTags())
                             .allSatisfy(tag -> assertThat(tag.getKey()).isEqualTo("reason")));
+            // The monitoring examples name executor metrics that only an executor registers.
+            List<String> alerted = Pattern.compile("poketto_executor_[a-z0-9_]+")
+                    .matcher(Files.readString(Path.of("deploy/observability/alerts.yml"))
+                            + Files.readString(Path.of("deploy/observability/README.md")))
+                    .results()
+                    .map(MatchResult::group)
+                    .distinct()
+                    .toList();
+            assertThat(alerted).isNotEmpty();
+            assertThat(meters.scrape()).contains(alerted);
         } finally {
             meters.close();
         }
