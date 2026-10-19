@@ -12,13 +12,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
 /** Streams one authoritative object snapshot; it never refreshes or resolves history per file. */
 final class JGitRepositoryBaselineReader {
-    private final Repository repository;
+    private final ObjectReader objects;
     private final WorkspaceId workspace;
     private final Optional<String> commit;
     private final RepositoryBaselineLimits limits;
@@ -28,13 +28,13 @@ final class JGitRepositoryBaselineReader {
     private long textBytes;
 
     JGitRepositoryBaselineReader(
-            Repository repository,
+            ObjectReader objects,
             WorkspaceId workspace,
             String commit,
             RepositoryBaselineLimits limits,
             long deadline,
             Consumer<RepositoryFile> sink) {
-        this.repository = repository;
+        this.objects = objects;
         this.workspace = workspace;
         this.commit = Optional.of(commit);
         this.limits = limits;
@@ -44,9 +44,9 @@ final class JGitRepositoryBaselineReader {
 
     void visit() throws IOException {
         checkDeadline();
-        var policy = PublicRepositoryDirectories.publicPolicy(repository, commit);
-        try (var revisions = new RevWalk(repository);
-                var entries = new TreeWalk(repository)) {
+        var policy = JGitPublicContentSnapshots.policy(objects, commit.orElseThrow());
+        try (var revisions = new RevWalk(objects);
+                var entries = new TreeWalk(objects)) {
             ObjectId tree = revisions
                     .parseCommit(ObjectId.fromString(commit.orElseThrow()))
                     .getTree();
@@ -57,12 +57,12 @@ final class JGitRepositoryBaselineReader {
                 }
                 String path = StrictText.utf8(entries.getRawPath());
                 reserve(path);
-                emit(JGitRepositoryFileReader.read(repository, workspace, commit, path, policy.permitsPath(path)));
+                emit(JGitRepositoryFileReader.read(objects, workspace, commit, path, policy.permitsPath(path)));
                 if (entries.isSubtree()) {
                     entries.enterSubtree();
                 }
             }
-            var media = JGitRepositoryContentReader.readMediaIndex(repository, tree);
+            var media = JGitRepositoryContentReader.readMediaIndex(objects, tree);
             for (String path : media.files().keySet()) {
                 if (!visited.contains(path)) {
                     reserve(path);

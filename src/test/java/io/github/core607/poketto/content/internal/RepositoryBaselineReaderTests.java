@@ -34,6 +34,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
@@ -51,6 +54,56 @@ class RepositoryBaselineReaderTests {
     private final WorkspaceId workspace = WorkspaceId.random();
     private static final RepositoryBaselineLimits LIMITS =
             new RepositoryBaselineLimits(100, 4 * 1024 * 1024, Duration.ofSeconds(30));
+
+    @Test
+    void aBlockedBaselineSinkPinsItsObjectsWithoutDelayingTheNextRemoteHeadRead() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory, 1);
+        var commit = fixture.commitRemote(workspace, Map.of("one.md", bytes("old one"), "two.md", bytes("old two")));
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        WorkspaceId other = WorkspaceId.random();
+        try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
+            var reading = workers.submit(() -> {
+                var captured = new ArrayList<RepositoryFile>();
+                reader.visitBaseline(workspace, commit.name(), LIMITS, file -> {
+                    if (captured.isEmpty()) {
+                        entered.countDown();
+                        await(release);
+                    }
+                    captured.add(file);
+                });
+                return captured;
+            });
+            try {
+                await(entered);
+                assertThatThrownBy(() -> fixture.authority().readObjects(other, snapshot -> snapshot.commitId()))
+                        .isInstanceOf(ContentRepositoryException.class)
+                        .hasMessageContaining("capacity is occupied by active or protected workspaces");
+                var latest = fixture.commitRemote(workspace, Map.of("one.md", bytes("new one")));
+                var remote = workers.submit(
+                        () -> fixture.authority().readObjects(workspace, snapshot -> snapshot.commitId()));
+                assertThat(remote.get(5, TimeUnit.SECONDS)).contains(latest.name());
+                assertThat(reading).isNotDone();
+            } finally {
+                release.countDown();
+            }
+            assertThat(reading.get(5, TimeUnit.SECONDS))
+                    .extracting(file -> file.source().orElseThrow())
+                    .containsExactly("old one", "old two");
+            fixture.authority().readObjects(other, snapshot -> snapshot.commitId());
+            assertThat(fixture.cache(workspace)).doesNotExist();
+        }
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            assertThat(latch.await(15, TimeUnit.SECONDS)).isTrue();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("baseline fixture interrupted", interrupted);
+        }
+    }
 
     @Test
     void preservesTheSingleFileSemanticsForTextLinksDirectoriesAndManagedPaths() throws Exception {

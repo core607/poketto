@@ -7,6 +7,9 @@ import java.util.function.Consumer;
 
 /** Repository primitives for already-authorized callers; these results include private content. */
 public interface RepositoryContentReader {
+    /** Resolves remote main without inspecting its tree or media index; empty when main is unborn. */
+    Optional<String> currentCommit(WorkspaceId workspace);
+
     /** An absent commit selects remote main. An explicit commit must belong to its history. */
     RepositoryTree readTree(WorkspaceId workspaceId, Optional<String> commit);
 

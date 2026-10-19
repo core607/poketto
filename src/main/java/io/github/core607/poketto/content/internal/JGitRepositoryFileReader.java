@@ -12,6 +12,7 @@ import java.util.Optional;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.treewalk.TreeWalk;
@@ -23,6 +24,14 @@ final class JGitRepositoryFileReader {
     static RepositoryFile read(
             Repository repository, WorkspaceId workspace, Optional<String> commit, String path, boolean publicScope)
             throws IOException {
+        try (var objects = repository.newObjectReader()) {
+            return read(objects, workspace, commit, path, publicScope);
+        }
+    }
+
+    static RepositoryFile read(
+            ObjectReader objects, WorkspaceId workspace, Optional<String> commit, String path, boolean publicScope)
+            throws IOException {
         try {
             RepositoryPathRules.validate(path);
         } catch (IllegalArgumentException exception) {
@@ -31,13 +40,13 @@ final class JGitRepositoryFileReader {
         if (commit.isEmpty()) {
             return absent(workspace, commit, path, publicScope);
         }
-        try (var revisions = new RevWalk(repository)) {
+        try (var revisions = new RevWalk(objects)) {
             ObjectId tree = revisions
                     .parseCommit(ObjectId.fromString(commit.orElseThrow()))
                     .getTree();
-            try (TreeWalk entry = TreeWalk.forPath(repository, path, tree)) {
+            try (TreeWalk entry = TreeWalk.forPath(objects, path, tree)) {
                 if (entry == null) {
-                    return JGitRepositoryContentReader.readMediaIndex(repository, tree)
+                    return JGitRepositoryContentReader.readMediaIndex(objects, tree)
                                     .files()
                                     .containsKey(path)
                             ? managed(workspace, commit, path, publicScope)
@@ -47,7 +56,7 @@ final class JGitRepositoryFileReader {
                     return invalid(
                             workspace, commit, path, "NOT_REGULAR_FILE", "path is not a regular file", publicScope);
                 }
-                ObjectLoader loader = repository.open(entry.getObjectId(0), Constants.OBJ_BLOB);
+                ObjectLoader loader = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
                 if (loader.getSize() > ContentLimits.MAX_DOCUMENT_BYTES) {
                     return invalid(
                             workspace, commit, path, "FILE_TOO_LARGE", "file exceeds the text byte limit", publicScope);
