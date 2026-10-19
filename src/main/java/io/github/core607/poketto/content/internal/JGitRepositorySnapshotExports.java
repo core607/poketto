@@ -1,5 +1,6 @@
 package io.github.core607.poketto.content.internal;
 
+import static io.github.core607.poketto.content.internal.SnapshotExportBounds.checkDeadline;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
@@ -12,8 +13,9 @@ import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositoryEmptyException;
 import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
+import io.github.core607.poketto.content.internal.SnapshotExportBounds.BoundedOutput;
+import io.github.core607.poketto.content.internal.SnapshotExportBounds.DeadlineMonitor;
 import io.github.core607.poketto.workspace.WorkspaceId;
-import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.channels.FileChannel;
@@ -47,7 +49,6 @@ import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectInserter;
 import org.eclipse.jgit.lib.PersonIdent;
-import org.eclipse.jgit.lib.ProgressMonitor;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.ObjectWalk;
 import org.eclipse.jgit.revwalk.RevObject;
@@ -337,22 +338,24 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     @Override
     public String resolve(AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested) {
         auth.authorize(actor, workspace, Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
-        return authority.withPreparedCredentials(
-                workspace,
-                () -> auth.withAuthorization(
-                        actor,
-                        workspace,
-                        Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY),
-                        () -> authority.readObjects(workspace, Optional.empty(), snapshot -> {
-                            String head = snapshot.commitId().orElseThrow(RepositoryEmptyException::new);
-                            try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspace)) {
-                                return reachable(repository, head, requested, System.nanoTime() + timeout.toNanos());
-                            } catch (IOException exception) {
-                                throw new ContentRepositoryException(
-                                        "repository execution commit could not be resolved within its bounds",
-                                        exception);
-                            }
-                        })));
+        return authority.withPreparedCredentials(workspace, () -> {
+            auth.withAuthorization(
+                    actor, workspace, Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY), () -> null);
+            String commit = authority.readObjects(workspace, Optional.empty(), snapshot -> {
+                String head = snapshot.commitId().orElseThrow(RepositoryEmptyException::new);
+                try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspace)) {
+                    return reachable(repository, head, requested, System.nanoTime() + timeout.toNanos());
+                } catch (IOException exception) {
+                    throw new ContentRepositoryException(
+                            "repository execution commit could not be resolved within its bounds", exception);
+                }
+            });
+            return auth.withAuthorization(
+                    actor,
+                    workspace,
+                    Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY),
+                    () -> authority.withPreparedCredentials(workspace, () -> commit));
+        });
     }
 
     @Override
@@ -372,42 +375,58 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
 
     private Export createAuthorized(
             AuthPrincipal actor, WorkspaceId workspace, Optional<String> requested, Optional<String> baseline) {
-        return auth.withAuthorization(
-                actor,
-                workspace,
-                Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY),
-                // An incremental export pins a commit this host acknowledged, which needs no fetch.
-                () -> authority.readObjects(
-                        workspace, baseline.isPresent() ? requested : Optional.empty(), snapshot -> {
-                            // Named before the export's own failure handling: an unborn main is the owner's to
-                            // initialize.
-                            String head = snapshot.commitId().orElseThrow(RepositoryEmptyException::new);
-                            UUID id = UUID.randomUUID();
-                            Path pending = staging.resolve(id + ".pending");
-                            try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspace)) {
-                                long deadline = System.nanoTime() + timeout.toNanos();
-                                String commit = reachable(repository, head, requested, deadline);
-                                preflight(repository, commit, baseline, deadline);
-                                safeStaging();
-                                clearAbandoned();
-                                MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                                writeSnapshotBundle(
-                                        repository, ObjectId.fromString(commit), baseline, pending, digest, deadline);
-                                long size = Files.size(pending);
-                                Files.move(pending, staging.resolve(id + ".bundle"), StandardCopyOption.ATOMIC_MOVE);
-                                exports.add(id);
-                                return new Export(id, commit, HexFormat.of().formatHex(digest.digest()), size);
-                            } catch (Exception exception) {
-                                try {
-                                    Files.deleteIfExists(pending);
-                                } catch (IOException ignored) {
-                                    /* Disposable incomplete export. */
-                                }
-                                throw new ContentRepositoryException(
-                                        "repository execution snapshot could not be exported within its bounds",
-                                        exception);
-                            }
-                        }));
+        auth.withAuthorization(
+                actor, workspace, Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY), () -> null);
+        // Repository waits and packing cannot retain a connection needed by authorization and lease renewal.
+        Export prepared =
+                authority.readObjects(workspace, baseline.isPresent() ? requested : Optional.empty(), snapshot -> {
+                    // Named before the export's own failure handling: an unborn main is the owner's to
+                    // initialize.
+                    String head = snapshot.commitId().orElseThrow(RepositoryEmptyException::new);
+                    UUID id = UUID.randomUUID();
+                    Path pending = staging.resolve(id + ".pending");
+                    try (Repository repository = RepositoryCaches.openCache(snapshot.worktree(), workspace)) {
+                        long deadline = System.nanoTime() + timeout.toNanos();
+                        String commit = reachable(repository, head, requested, deadline);
+                        preflight(repository, commit, baseline, deadline);
+                        safeStaging();
+                        clearAbandoned();
+                        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                        writeSnapshotBundle(
+                                repository, ObjectId.fromString(commit), baseline, pending, digest, deadline);
+                        long size = Files.size(pending);
+                        Files.move(pending, staging.resolve(id + ".bundle"), StandardCopyOption.ATOMIC_MOVE);
+                        exports.add(id);
+                        return new Export(id, commit, HexFormat.of().formatHex(digest.digest()), size);
+                    } catch (Exception exception) {
+                        try {
+                            Files.deleteIfExists(pending);
+                        } catch (IOException ignored) {
+                            /* Disposable incomplete export. */
+                        }
+                        throw new ContentRepositoryException(
+                                "repository execution snapshot could not be exported within its bounds", exception);
+                    }
+                });
+        return acknowledge(actor, workspace, prepared);
+    }
+
+    private Export acknowledge(AuthPrincipal actor, WorkspaceId workspace, Export prepared) {
+        boolean acknowledged = false;
+        try {
+            Export result = auth.withAuthorization(
+                    actor,
+                    workspace,
+                    Set.of(Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY),
+                    // The outer credential scope makes this a current-binding check without another provider call.
+                    () -> authority.withPreparedCredentials(workspace, () -> prepared));
+            acknowledged = true;
+            return result;
+        } finally {
+            if (!acknowledged) {
+                release(prepared.exportId());
+            }
+        }
     }
 
     /** The requested commit, or the head, once it is found from the head within the walk bound. */
@@ -526,74 +545,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
         }
     }
 
-    private static void checkDeadline(long deadline) {
-        if (System.nanoTime() - deadline > 0 || Thread.currentThread().isInterrupted()) {
-            throw unavailable();
-        }
-    }
-
     private static ContentRepositoryException unavailable() {
         return new ContentRepositoryException("repository execution snapshot could not be exported within its bounds");
-    }
-
-    private static final class BoundedOutput extends FilterOutputStream {
-        private final long maximum;
-        private final long deadline;
-        private long bytes;
-
-        BoundedOutput(OutputStream output, long maximum, long deadline) {
-            super(output);
-            this.maximum = maximum;
-            this.deadline = deadline;
-        }
-
-        @Override
-        public void write(int value) throws IOException {
-            checkDeadline(deadline);
-            if (++bytes > maximum) {
-                throw unavailable();
-            }
-            out.write(value);
-        }
-
-        @Override
-        public void write(byte[] value, int offset, int length) throws IOException {
-            checkDeadline(deadline);
-            if (length > maximum - bytes) {
-                throw unavailable();
-            }
-            bytes += length;
-            out.write(value, offset, length);
-        }
-    }
-
-    private record DeadlineMonitor(long deadline) implements ProgressMonitor {
-        @Override
-        public void start(int tasks) {
-            checkDeadline(deadline);
-        }
-
-        @Override
-        public void beginTask(String title, int work) {
-            checkDeadline(deadline);
-        }
-
-        @Override
-        public void update(int completed) {
-            checkDeadline(deadline);
-        }
-
-        @Override
-        public void endTask() {
-            checkDeadline(deadline);
-        }
-
-        @Override
-        public boolean isCancelled() {
-            return System.nanoTime() - deadline > 0 || Thread.currentThread().isInterrupted();
-        }
-
-        @Override
-        public void showDuration(boolean enabled) {}
     }
 }
