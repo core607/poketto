@@ -45,7 +45,10 @@ class Backend:
     def has_seed(self, workspace_id, scope, commit):
         return (workspace_id, scope, commit) in getattr(self, 'seeds', set())
 
-    def execute(self, session, data):
+    def execute(self, session, data, on_start, on_ready):
+        if session.channel is None:
+            on_start()
+        on_ready()
         self.executed.append(data)
         self.entered.set()
         if self.wait:

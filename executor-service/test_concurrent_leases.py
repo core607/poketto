@@ -40,13 +40,15 @@ class UnitBackend:
     def has_seed(self, workspace_id, scope, commit):
         return False
 
-    def execute(self, session, data):
+    def execute(self, session, data, on_start, on_ready):
         if session.channel is None:
+            on_start()
             time.sleep(0.03)
             with self.lock:
                 self.live.add(session.id)
                 self.most_live = max(self.most_live, len(self.live))
             session.channel, session.unit = object(), 'unit-' + session.id
+        on_ready()
         time.sleep(0.003)
         return {'exitCode': 0, 'terminationReason': 'normal', 'freshSandbox': False}
 
