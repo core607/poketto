@@ -10,7 +10,6 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
-import java.security.Signature;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Base64;
@@ -145,10 +144,7 @@ final class WorkerClient {
     private byte[] sign(byte[] bytes, WorkerRequestEvents.Preparation event) throws GeneralSecurityException {
         long started = System.nanoTime();
         try {
-            Signature signer = Signature.getInstance("Ed25519");
-            signer.initSign(signingKey);
-            signer.update(bytes);
-            return signer.sign();
+            return WorkerSignatures.sign(signingKey, bytes);
         } finally {
             event.signingNanos = System.nanoTime() - started;
         }

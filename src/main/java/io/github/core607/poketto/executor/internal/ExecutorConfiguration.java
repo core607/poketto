@@ -14,9 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
-import java.security.KeyFactory;
 import java.security.PrivateKey;
-import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Base64;
@@ -141,7 +139,7 @@ class ExecutorConfiguration {
             String pem = Files.readString(path);
             byte[] bytes = Base64.getMimeDecoder()
                     .decode(pem.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", ""));
-            return KeyFactory.getInstance("Ed25519").generatePrivate(new PKCS8EncodedKeySpec(bytes));
+            return WorkerSignatures.privateKey(bytes);
         } catch (Exception exception) {
             // The message states the requirement; the cause says which part of it failed.
             throw new IllegalStateException(
