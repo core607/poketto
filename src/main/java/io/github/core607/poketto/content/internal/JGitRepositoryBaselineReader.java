@@ -57,7 +57,14 @@ final class JGitRepositoryBaselineReader {
                 }
                 String path = StrictText.utf8(entries.getRawPath());
                 reserve(path);
-                emit(JGitRepositoryFileReader.read(objects, workspace, commit, path, policy.permitsPath(path)));
+                emit(JGitRepositoryFileReader.readEntry(
+                        objects,
+                        workspace,
+                        commit,
+                        path,
+                        entries.getFileMode(0),
+                        entries.getObjectId(0),
+                        policy.permitsPath(path)));
                 if (entries.isSubtree()) {
                     entries.enterSubtree();
                 }

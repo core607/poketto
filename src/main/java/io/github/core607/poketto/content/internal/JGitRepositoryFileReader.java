@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.ObjectReader;
@@ -52,18 +53,30 @@ final class JGitRepositoryFileReader {
                             ? managed(workspace, commit, path, publicScope)
                             : absent(workspace, commit, path, publicScope);
                 }
-                if (!RepositoryBlobs.isFile(entry.getFileMode(0))) {
-                    return invalid(
-                            workspace, commit, path, "NOT_REGULAR_FILE", "path is not a regular file", publicScope);
-                }
-                ObjectLoader loader = objects.open(entry.getObjectId(0), Constants.OBJ_BLOB);
-                if (loader.getSize() > ContentLimits.MAX_DOCUMENT_BYTES) {
-                    return invalid(
-                            workspace, commit, path, "FILE_TOO_LARGE", "file exceeds the text byte limit", publicScope);
-                }
-                return decode(workspace, commit, path, publicScope, loader.getBytes(ContentLimits.MAX_DOCUMENT_BYTES));
+                return readEntry(
+                        objects, workspace, commit, path, entry.getFileMode(0), entry.getObjectId(0), publicScope);
             }
         }
+    }
+
+    /** Decodes an entry whose validated path was already resolved in the pinned tree. */
+    static RepositoryFile readEntry(
+            ObjectReader objects,
+            WorkspaceId workspace,
+            Optional<String> commit,
+            String path,
+            FileMode mode,
+            ObjectId object,
+            boolean publicScope)
+            throws IOException {
+        if (!RepositoryBlobs.isFile(mode)) {
+            return invalid(workspace, commit, path, "NOT_REGULAR_FILE", "path is not a regular file", publicScope);
+        }
+        ObjectLoader loader = objects.open(object, Constants.OBJ_BLOB);
+        if (loader.getSize() > ContentLimits.MAX_DOCUMENT_BYTES) {
+            return invalid(workspace, commit, path, "FILE_TOO_LARGE", "file exceeds the text byte limit", publicScope);
+        }
+        return decode(workspace, commit, path, publicScope, loader.getBytes(ContentLimits.MAX_DOCUMENT_BYTES));
     }
 
     private static RepositoryFile decode(
