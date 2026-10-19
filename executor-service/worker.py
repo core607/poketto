@@ -58,6 +58,12 @@ class Rejected(Exception):
         self.reason = reason
 
 
+class StartRefused(Rejected):
+    """Admission failed before this execution started a unit or delivered a command."""
+    def __init__(self):
+        super().__init__('EXECUTION_CAPACITY')
+
+
 def identifier(value):
     try:
         if str(uuid.UUID(value)) != value:
@@ -165,6 +171,7 @@ class Service:
         self.sessions = {}
         self.requests = {}
         self.executions = set()
+        self.startups = set()
         self.revoked_keys = {}
         self.revoked_accounts = {}
         self.closed_leases = {}
@@ -337,20 +344,8 @@ class Service:
         if expired:
             self.cancel(s, 'lease_expired')
             raise Rejected('LEASE_EXPIRED')
-        # A command that would start a unit first makes room among the live units. When none can
-        # stop, the command is refused before it runs and the lease stays usable.
         if op == 'EXEC':
-            s.timings = {}
-            making_room = time.monotonic()
-        if op == 'EXEC' and s.channel is None and not self.make_room(s, room_deadline):
-            with self.lock:
-                self.executions.discard(execution_key)
-                if s.state == 'RUNNING':
-                    s.state = 'READY'
-                    s.execution_id = ''
-            raise Rejected('EXECUTION_CAPACITY')
-        if op == 'EXEC':
-            s.timings['roomMs'] = elapsed_ms(making_room)
+            s.timings = {'roomMs': 0}
             waiting = time.monotonic()
         failed = False
         try:
@@ -366,9 +361,14 @@ class Service:
                     self.backend.attach(s)
                     result = None
                 else:
-                    result = self.backend.execute(s, d)
+                    result = self.backend.execute(
+                        s, d, lambda: self.start_unit(s, execution_key, room_deadline),
+                        lambda: self.finish_startup(execution_key))
                 with self.lock:
                     if not s.cancelled.is_set():
+                        s.starting = False
+                        if op == 'EXEC':
+                            self.startups.discard(execution_key)
                         s.state = 'READY'
                         s.execution_id = ''
                         s.idle_since = self.clock()
@@ -376,19 +376,53 @@ class Service:
                 # This command owns s.operation; containment may wait on systemd and files.
                 self.backend.close(s)
                 with self.lock:
+                    self.release_startups(s)
                     s.state = 'CLOSED'
                     return self.operation_response(s, result)
+        except StartRefused:
+            with self.lock:
+                self.startups.discard(execution_key)
+                self.executions.discard(execution_key)
+                s.starting = False
+                if not s.cancelled.is_set():
+                    s.state = 'READY'
+                    s.execution_id = ''
+            raise
         except Exception:
             failed = True
             self.cancel(s, 'sandbox_failed')
             raise
         finally:
-            if op == 'EXEC':
-                with self.lock:
-                    s.starting = False
             # Cancellation can arrive after READY was published but before operation released.
             if not failed and s.cancelled.is_set():
                 self.cancel(s, s.reason)
+
+    def start_unit(self, s, execution_key, deadline):
+        """Reserve startup capacity before evicting another lease's warm unit."""
+        since = time.monotonic()
+        with self.lock:
+            if s.cancelled.is_set():
+                raise Rejected('SESSION_CLOSED')
+            if len(self.startups) >= self.config.get('maxStartingUnits', self.config['maxSessions']):
+                raise StartRefused()
+            self.startups.add(execution_key)
+        try:
+            if not self.make_room(s, deadline):
+                raise StartRefused()
+        except Exception:
+            self.finish_startup(execution_key)
+            raise
+        finally:
+            s.timings['roomMs'] = elapsed_ms(since)
+
+    def finish_startup(self, execution_key):
+        with self.lock:
+            self.startups.discard(execution_key)
+
+    def release_startups(self, s):
+        # The caller has confirmed containment and holds the service lock.
+        self.startups = {key for key in self.startups if key[0] != s.id}
+        s.starting = False
 
     def operation_response(self, s, result):
         answer = self.response(s)
@@ -807,6 +841,7 @@ class Service:
                         return
                 self.backend.close(s)
                 with self.lock:
+                    self.release_startups(s)
                     s.state = 'CLOSED'
             finally:
                 s.operation.release()
@@ -1101,7 +1136,7 @@ class SystemdBackend:
             destination.unlink(missing_ok=True)
             (target / '.git-baseline.pending').unlink(missing_ok=True)
 
-    def execute(self, s, data):
+    def execute(self, s, data, on_start, on_ready):
         preparing = time.monotonic()
         self.pool.verify()
         with s.files_lock:
@@ -1109,14 +1144,16 @@ class SystemdBackend:
                 self.stop_unit(s)
             fresh = s.channel is None
             if fresh:
-                s.bridge.reset_command(data['executionId'])
-                args, record, settings = self.unit_arguments(s, {'mode': 'shell'}, None)
-                s.unit_files = (record, settings)
+                on_start()
                 try:
+                    s.bridge.reset_command(data['executionId'])
+                    args, record, settings = self.unit_arguments(s, {'mode': 'shell'}, None)
+                    s.unit_files = (record, settings)
                     process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     s.channel = CommandChannel(process)
                 except Exception:
                     self.stop_unit(s)
+                    on_ready()
                     raise
             else:
                 with self.frozen(s):
@@ -1128,7 +1165,7 @@ class SystemdBackend:
         try:
             completion, output, truncated = s.channel.execute(
                 data['executionId'], data['command'], data['timeoutMillis'],
-                s.cancelled.is_set, lambda: s.reason, s.timings)
+                s.cancelled.is_set, lambda: s.reason, s.timings, on_ready)
             exit_code, ended = completion['exitCode'], completion['shellExited']
         except CommandEnded as error:
             reason, output, truncated = error.reason, error.output, error.truncated
@@ -1147,6 +1184,7 @@ class SystemdBackend:
             with s.files_lock:
                 if ended or s.cancelled.is_set():
                     self.stop_unit(s)
+                    on_ready()
                     s.bridge.reset_command()
                 else:
                     with self.frozen(s):
@@ -1501,8 +1539,8 @@ class DiskSystemdBackend(SystemdBackend):
     def flush(self, s):
         checked(['sync', '-f', str(self.mount_path(s))])
 
-    def execute(self, s, data):
-        result = super().execute(s, data)
+    def execute(self, s, data, on_start, on_ready):
+        result = super().execute(s, data, on_start, on_ready)
         flushing = time.monotonic()
         self.flush(s)
         s.timings['flushMs'] = elapsed_ms(flushing)
@@ -1607,6 +1645,8 @@ def load_config(path):
     integer(c['idleUnitSeconds'], 1, 86400)
     if 'maxLiveUnits' in c:
         integer(c['maxLiveUnits'], 1, c['maxSessions'])
+    if 'maxStartingUnits' in c:
+        integer(c['maxStartingUnits'], 1, c['maxSessions'])
     if c['renewAfterSeconds'] >= c['leaseSeconds'] or not re.fullmatch(r'poketto-exec-[a-z0-9]+-', c['unitPrefix']):
         raise ValueError('Invalid executor configuration')
     root = Path(c['copyRoot'])

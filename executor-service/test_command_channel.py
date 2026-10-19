@@ -62,9 +62,24 @@ class CommandChannelTests(unittest.TestCase):
         self.process.wait(timeout=3)
         self.channel.close()
 
-    def execute(self, command, timeout=3000, cancelled=lambda: False):
+    def execute(self, command, timeout=3000, cancelled=lambda: False, on_ready=lambda: None):
         self.timings = {}
-        return self.channel.execute(str(uuid.uuid4()), command, timeout, cancelled, lambda: 'revoked', self.timings)
+        return self.channel.execute(str(uuid.uuid4()), command, timeout, cancelled, lambda: 'revoked', self.timings, on_ready)
+
+    def test_greeting_callback_precedes_delivery_of_the_first_command(self):
+        self.close()
+        self.start_channel(greeting_delay=0.15)
+        observed = []
+
+        def ready():
+            self.assertTrue(self.channel.ready)
+            self.assertFalse((Path(self.root.name) / 'delivered').exists())
+            observed.append(True)
+
+        result, _, _ = self.execute('touch delivered', on_ready=ready)
+        self.assertEqual(0, result['exitCode'])
+        self.assertEqual([True], observed)
+        self.assertTrue((Path(self.root.name) / 'delivered').exists())
 
     def test_delayed_greeting_is_separate_from_command_and_not_repeated_on_reuse(self):
         self.close()
@@ -81,14 +96,16 @@ class CommandChannelTests(unittest.TestCase):
     def test_timeout_before_greeting_reports_only_the_wait_for_ready(self):
         self.close()
         self.start_channel(greeting_delay=1)
+        ready = Mock()
 
         with self.assertRaises(CommandEnded) as raised:
-            self.execute('touch forbidden', timeout=100)
+            self.execute('touch forbidden', timeout=100, on_ready=ready)
 
         self.assertEqual('timeout', raised.exception.reason)
         self.assertGreaterEqual(self.timings['readyMs'], 90)
         self.assertNotIn('commandMs', self.timings)
         self.assertFalse((Path(self.root.name) / 'forbidden').exists())
+        ready.assert_not_called()
 
     def test_real_channel_reuses_shell_and_accepts_a_command_larger_than_the_pipe(self):
         self.execute('VALUE=kept; #' + 'x' * 60000)

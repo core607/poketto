@@ -15,6 +15,7 @@
   "renewAfterSeconds": 5,
   "idleUnitSeconds": 300,
   "maxLiveUnits": 4,
+  "maxStartingUnits": 1,
   "maxRequests": 4096,
   "maxConnections": 32,
   "maxExecutionsPerSession": 1000,

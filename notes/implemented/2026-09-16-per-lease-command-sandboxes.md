@@ -35,10 +35,12 @@ One systemd command unit per lease. The lease already is the session boundary: t
 - On timeout, kill only the command's process group and keep the shell. Commands run in the shell's own process so that builtins persist, so a builtin has no separate process group to kill, and a process-group kill cannot show the control group empty, which is the containment proof every stop path relies on. Not adopted.
 - Tie the unit to the lease with no idle end. Simplest, and four idle sandboxes cost about 150 MB, but a forgotten background process would run for days. The idle window bounds that; an operator can raise it.
 - A warm pool shared across leases. A sandbox must never outlive its lease's identity. Not adopted.
+- A live-unit bound alone limits resident memory, but a larger working set can repeatedly replace warm units and saturate CPU with startup work. Independent startup admission reserves capacity before eviction and releases it at the shell greeting, so a long first command does not block later startups. Raising the live bound instead spends more memory; queueing every cold request occupies execution capacity while warm commands wait. Operators size the separate startup budget in the [worker configuration](../../executor-service/README.md#configuration).
 
 ## Consequences and risks
 
 - State loss becomes visible instead of constant: timeout, output limit, shell exit, idle cleanup and lease replacement reset it, and the next result says so.
+- Startup admission trades additional capacity refusals for bounded initialization concurrency; it does not promise enough resident memory or successful execution for every lease in a larger working set.
 - systemd's per-unit `Consumed` and memory-peak figures no longer describe one command; per-command resource attribution needs the control group's counters at command boundaries if it is still wanted.
 - Each command has separate output FIFOs. The driver closes attribution at completion and drains later background bytes without adding them to another command. At most 128 readers, including the current pair, remain open; excess oldest readers close and later writers receive `EPIPE`/`SIGPIPE`. The existing combined output bound still stops the whole unit. After containment, the supervisor closes channel pipes before waiting for the host forwarding client so buffered output cannot block cleanup.
 - The shell loop is new code inside the sandbox boundary. The driver is loaded from the root-owned bootstrap and receives commands only through the supervisor's channel; command payloads are evaluated inside SRT.
@@ -46,6 +48,6 @@ One systemd command unit per lease. The lease already is the session boundary: t
 
 ## Verification
 
-`WorkerSocketTests`, `WorkerAnswerTests`, the worker's `test_shell_loop.py` and `test_command_channel.py`, and `native_probe.py --lease-sandbox-only` on real SRT pin state continuity, resets, `freshSandbox`, idle cleanup and containment. On the native worker fixture an idle unit used 40,878,080 bytes of cgroup memory and twenty reused `true` commands averaged 11.41 ms; these local figures exclude HTTP and client latency.
+`WorkerSocketTests`, `WorkerAnswerTests`, the worker's `test_shell_loop.py`, `test_command_channel.py` and `test_worker_startup.py`, and the [native adapter probe](../../executor-native/README.md) pin state continuity, resets, startup admission, `freshSandbox`, idle cleanup and containment. On the native worker fixture an idle unit used 40,878,080 bytes of cgroup memory and twenty reused `true` commands averaged 11.41 ms; these local figures exclude HTTP and client latency.
 
 Related: [account working copies](../implemented/2026-09-14-account-working-copies.md) own copy retention, including that a timeout keeps the copy; the [local execution supervisor](../implemented/2026-09-05-local-execution-supervisor.md) keeps the privileged boundary this note builds on.

@@ -54,7 +54,7 @@ class CommandChannel:
             if len(self.buffer) > MAX_FRAME:
                 raise ValueError('Sandbox output frame exceeds its bound')
 
-    def execute(self, execution_id, command, timeout_ms, cancelled, cancellation_reason, timings):
+    def execute(self, execution_id, command, timeout_ms, cancelled, cancellation_reason, timings, on_ready):
         output = [bytearray(), bytearray()]
         truncated = [False, False]
         started = time.monotonic()
@@ -92,6 +92,7 @@ class CommandChannel:
                             command_started = time.monotonic()
                     else:
                         raise ValueError('Unexpected sandbox greeting')
+            on_ready()
             frame = memoryview(json.dumps(
                 {'executionId': execution_id, 'command': command},
                 ensure_ascii=False, separators=(',', ':')).encode() + b'\n')

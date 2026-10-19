@@ -305,7 +305,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'appUid': app_account.pw_uid, 'appGid': app_account.pw_gid,
             'unitPrefix': 'poketto-exec-j' + token + '-', 'supervisorUnit': supervisor + '.service', 'resourceSlice': resource_pool.name,
             'leaseSeconds': 15, 'renewAfterSeconds': 5, 'maxRequests': 4096, 'maxConnections': 32,
-            'maxExecutionsPerSession': 1000, 'maxSessions': 4, 'maxBundleBytes': 16777216,
+            'maxExecutionsPerSession': 1000, 'maxSessions': 4, 'maxStartingUnits': 1, 'maxBundleBytes': 16777216,
             'diskBytes': 33554432, 'diskInodes': 8192, 'temporaryBytes': 8388608, 'temporaryInodes': 1024,
             'memoryBytes': 201326592, 'tasksMax': 48, 'cpuQuotaPercent': 50,
             'idleUnitSeconds': 1800, 'maxTimeoutMillis': 30000, 'initTimeoutMillis': 15000}
