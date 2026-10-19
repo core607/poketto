@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,6 +31,8 @@ final class RepositoryMarkdownParser {
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
             .build());
     private static final Pattern HEADING = Pattern.compile("^ {0,3}#{1,6} +(.+?) *#* *$");
+    private static final Pattern SETEXT = Pattern.compile(" {0,3}(=+|-+) *");
+    private static final Pattern LINE_END = Pattern.compile("\\r?\\n");
 
     static String decode(byte[] bytes) {
         try {
@@ -177,7 +180,8 @@ final class RepositoryMarkdownParser {
 
     private static String title(String path, JsonNode metadata, String body) {
         String title = optionalText(metadata, "title")
-                .orElse(firstHeading(body).orElse(path.substring(path.lastIndexOf('/') + 1, path.length() - 3)))
+                .orElseGet(() -> firstHeading(body)
+                        .orElseGet(() -> path.substring(path.lastIndexOf('/') + 1, path.length() - 3)))
                 .strip();
         if (title.isEmpty() || title.codePointCount(0, title.length()) > ContentLimits.MAX_TITLE_LENGTH) {
             throw new IllegalArgumentException("title must be nonempty and within its length limit");
@@ -217,7 +221,9 @@ final class RepositoryMarkdownParser {
         char fence = 0;
         int fenceLength = 0;
         String previous = "";
-        for (String line : body.split("\\r?\\n")) {
+        Iterator<String> lines = LINE_END.splitAsStream(body).iterator();
+        while (lines.hasNext()) {
+            String line = lines.next();
             String stripped = line.stripLeading();
             if (stripped.startsWith("```") || stripped.startsWith("~~~")) {
                 char marker = stripped.charAt(0);
@@ -243,7 +249,7 @@ final class RepositoryMarkdownParser {
             if (match.matches()) {
                 return Optional.of(match.group(1));
             }
-            if (!previous.isBlank() && line.matches(" {0,3}(=+|-+) *")) {
+            if (!previous.isBlank() && SETEXT.matcher(line).matches()) {
                 return Optional.of(previous.strip());
             }
             previous = line;

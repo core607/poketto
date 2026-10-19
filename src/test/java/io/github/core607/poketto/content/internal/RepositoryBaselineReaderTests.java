@@ -3,8 +3,11 @@ package io.github.core607.poketto.content.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.AdditionalAnswers.delegatesTo;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -37,10 +40,13 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.TreeFormatter;
@@ -54,6 +60,44 @@ class RepositoryBaselineReaderTests {
     private final WorkspaceId workspace = WorkspaceId.random();
     private static final RepositoryBaselineLimits LIMITS =
             new RepositoryBaselineLimits(100, 4 * 1024 * 1024, Duration.ofSeconds(30));
+
+    @Test
+    void streamingManyFilesDoesNotReloadTheRootTreeForEveryEntry() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var files = new LinkedHashMap<String, byte[]>();
+        for (int i = 0; i < 128; i++) {
+            files.put("notes/note-" + i + ".md", bytes("# Note " + i + "\nBody\n"));
+        }
+        var commit = fixture.commitRemote(workspace, files);
+        try (var repository = fixture.openRemote(workspace);
+                var objects = repository.newObjectReader()) {
+            ObjectId rootTree = repository.resolve(commit.name() + "^{tree}");
+            var rootReads = new AtomicInteger();
+            var observed = mock(ObjectReader.class, delegatesTo(objects));
+            doAnswer(invocation -> {
+                        AnyObjectId object = invocation.getArgument(0);
+                        int type = invocation.getArgument(1);
+                        if (object.equals(rootTree)) {
+                            rootReads.incrementAndGet();
+                        }
+                        return objects.open(object, type);
+                    })
+                    .when(observed)
+                    .open(any(AnyObjectId.class), anyInt());
+            var captured = new ArrayList<RepositoryFile>();
+            new JGitRepositoryBaselineReader(
+                            observed,
+                            workspace,
+                            commit.name(),
+                            new RepositoryBaselineLimits(129, 4096, Duration.ofSeconds(30)),
+                            System.nanoTime() + TimeUnit.SECONDS.toNanos(30),
+                            captured::add)
+                    .visit();
+            assertThat(captured.stream().filter(file -> file.source().isPresent()))
+                    .hasSize(128);
+            assertThat(rootReads.get()).as("root tree reads for 128 files").isLessThan(10);
+        }
+    }
 
     @Test
     void aBlockedBaselineSinkPinsItsObjectsWithoutDelayingTheNextRemoteHeadRead() throws Exception {
