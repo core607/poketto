@@ -116,30 +116,34 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                     workspace.value(),
                     access.capabilities().contains(Capability.READ_PRIVATE));
             try (var held = command(principal, owner, expected, cancellation)) {
-                timings.end(ExecutionTimings.Stage.JOURNAL);
-                var slot = acquireExecution(principal, cancellation);
-                timings.end(ExecutionTimings.Stage.PERMIT);
                 try {
-                    var admitted = refresh.current(
-                            accountSession(principal, workspace, expected, held, cancellation), held, cancellation);
-                    timings.end(ExecutionTimings.Stage.ADMIT);
-                    ExecutionSession session = admitted.session();
+                    timings.end(ExecutionTimings.Stage.JOURNAL);
+                    var slot = acquireExecution(principal, cancellation);
+                    timings.end(ExecutionTimings.Stage.PERMIT);
                     try {
-                        return executeAccount(
-                                session,
-                                held,
-                                requested,
-                                command,
-                                timeout,
-                                cancellation,
-                                admitted.refreshed(),
-                                timings);
+                        var admitted = refresh.current(
+                                accountSession(principal, workspace, expected, held, cancellation), held, cancellation);
+                        timings.end(ExecutionTimings.Stage.ADMIT);
+                        ExecutionSession session = admitted.session();
+                        try {
+                            return executeAccount(
+                                    session,
+                                    held,
+                                    requested,
+                                    command,
+                                    timeout,
+                                    cancellation,
+                                    admitted.refreshed(),
+                                    timings);
+                        } finally {
+                            session.busy.set(false);
+                        }
                     } finally {
-                        session.busy.set(false);
+                        registry.releaseOperation();
+                        slot.close();
                     }
-                } finally {
-                    registry.releaseOperation();
-                    slot.close();
+                } catch (ExecutionAdmissionException refused) {
+                    throw refused.copyId().isPresent() ? refused : admissionFailure(refused, held.record());
                 }
             } catch (RuntimeException failure) {
                 timings.failed();
@@ -416,8 +420,10 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
     }
 
     static RuntimeException admissionFailure(RuntimeException failure, AccountCopyRecord record) {
-        if (failure instanceof ExecutionAdmissionException
-                || failure instanceof ExecutionUnconfirmedException
+        if (failure instanceof ExecutionAdmissionException refused) {
+            return record == null ? refused : refused.withCopyId(record.copyId().toString());
+        }
+        if (failure instanceof ExecutionUnconfirmedException
                 || failure instanceof AuthException
                 || failure instanceof SecurityException
                 || failure instanceof IllegalArgumentException
@@ -438,7 +444,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 }
                 : ExecutionAdmissionException.Reason.UNAVAILABLE;
         boolean available = record != null && record.expiresAt() > System.currentTimeMillis();
-        return new ExecutionAdmissionException(reason, available, failure);
+        var refused = new ExecutionAdmissionException(reason, available, failure);
+        return record == null ? refused : refused.withCopyId(record.copyId().toString());
     }
 
     @Override
