@@ -7,6 +7,8 @@ import io.github.core607.poketto.content.DocumentSearch;
 import io.github.core607.poketto.content.PublicArticle;
 import io.github.core607.poketto.content.PublicContentSnapshot;
 import io.github.core607.poketto.content.PublicContentSnapshots;
+import io.github.core607.poketto.games.GameContentSnapshots;
+import io.github.core607.poketto.games.GameLibrary;
 import io.github.core607.poketto.workspace.PublicAuthorNames;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.github.core607.poketto.workspace.WorkspacePublications;
@@ -32,10 +34,12 @@ final class PublicDiscovery {
     private static final long MAX_TEXT_BYTES = 8L * 1024 * 1024;
     private static final int SPACES_PER_BATCH = 32;
     private static final int CARDS_PER_SPACE = DiscoverySelection.LIMIT;
+    private static final int TARGET_CARDS = 24;
     private static final int PAGE_SIZE = 6;
     private static final Duration LIFETIME = Duration.ofMinutes(30);
     private final WorkspacePublications publications;
     private final PublicContentSnapshots snapshots;
+    private final PublicContentSnapshots selectionSnapshots;
     private final AssetService assets;
     private final Clock clock;
     private final Semaphore building = new Semaphore(2);
@@ -43,9 +47,14 @@ final class PublicDiscovery {
     private long textBytes;
 
     PublicDiscovery(
-            WorkspacePublications publications, PublicContentSnapshots snapshots, AssetService assets, Clock clock) {
+            WorkspacePublications publications,
+            PublicContentSnapshots snapshots,
+            AssetService assets,
+            Clock clock,
+            GameLibrary games) {
         this.publications = publications;
         this.snapshots = snapshots;
+        this.selectionSnapshots = new GameContentSnapshots(snapshots, games);
         this.assets = assets;
         this.clock = clock;
     }
@@ -106,8 +115,14 @@ final class PublicDiscovery {
                 spaces = publications.publishedAfter(Optional.empty(), SPACES_PER_BATCH + 1);
             }
             var random = new Random();
+            List<Sample> samples = spaces.stream()
+                    .limit(SPACES_PER_BATCH)
+                    .map(space -> sample(space, tag, random))
+                    .flatMap(Optional::stream)
+                    .toList();
+            fill(samples, tag, random);
             var entries = new ArrayList<Entry>();
-            spaces.stream().limit(SPACES_PER_BATCH).forEach(space -> entries.addAll(sample(space, tag, random)));
+            samples.forEach(sample -> entries.addAll(entries(sample)));
             Collections.shuffle(entries, random);
             Optional<WorkspaceId> next = spaces.size() > SPACES_PER_BATCH
                     ? Optional.of(spaces.get(SPACES_PER_BATCH - 1).workspaceId())
@@ -127,19 +142,45 @@ final class PublicDiscovery {
         }
     }
 
-    private List<Entry> sample(WorkspacePublications.Publication space, String tag, Random random) {
+    private Optional<Sample> sample(WorkspacePublications.Publication space, String tag, Random random) {
         try {
-            return snapshots.withCurrent(space.workspaceId(), snapshot -> sample(space, snapshot, tag, random));
+            return selectionSnapshots.withCurrent(
+                    space.workspaceId(),
+                    snapshot -> Optional.of(new Sample(
+                            space,
+                            snapshot,
+                            new ArrayList<>(DiscoverySelection.select(snapshot.articles(), tag, random)))));
         } catch (ContentRepositoryException unavailable) {
-            return List.of();
+            return Optional.empty();
         }
     }
 
-    private static List<Entry> sample(
-            WorkspacePublications.Publication space, PublicContentSnapshot snapshot, String tag, Random random) {
-        List<PublicArticle> selected = DiscoverySelection.select(snapshot.articles(), tag, random);
+    private static void fill(List<Sample> samples, String tag, Random random) {
+        int count =
+                samples.stream().mapToInt(sample -> sample.selected().size()).sum();
+        var remaining = new ArrayList<>(samples);
+        Collections.shuffle(remaining, random);
+        while (count < TARGET_CARDS && !remaining.isEmpty()) {
+            var iterator = remaining.iterator();
+            while (count < TARGET_CARDS && iterator.hasNext()) {
+                Sample sample = iterator.next();
+                Optional<PublicArticle> next =
+                        DiscoverySelection.next(sample.snapshot().articles(), tag, sample.selected(), random);
+                if (next.isEmpty()) {
+                    iterator.remove();
+                } else {
+                    sample.selected().add(next.orElseThrow());
+                    count++;
+                }
+            }
+        }
+    }
+
+    private static List<Entry> entries(Sample sample) {
+        WorkspacePublications.Publication space = sample.space();
+        PublicContentSnapshot snapshot = sample.snapshot();
         var search = new DocumentSearch("", "", null, null, 0, CARDS_PER_SPACE);
-        return selected.stream()
+        return sample.selected().stream()
                 .map(article -> new Entry(
                         space.workspaceId(),
                         snapshot.commit().orElse(""),
@@ -169,6 +210,7 @@ final class PublicDiscovery {
     private Map<Entry, Card> visibleCards(List<Entry> entries) {
         try {
             Entry first = entries.getFirst();
+            // Display tags are a projection; cover and publication checks compare the original articles.
             PublicContentSnapshot selected = snapshots.withCurrent(first.workspace(), snapshot -> snapshot);
             var articles = new LinkedHashMap<Entry, PublicArticle>();
             for (Entry entry : entries) {
@@ -269,6 +311,9 @@ final class PublicDiscovery {
                         })
                         .sum();
     }
+
+    private record Sample(
+            WorkspacePublications.Publication space, PublicContentSnapshot snapshot, List<PublicArticle> selected) {}
 
     private record Entry(WorkspaceId workspace, String commit, Card card) {}
 

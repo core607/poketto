@@ -87,7 +87,7 @@ class PublicDiscoveryTests {
                         .collect(java.util.stream.Collectors.toMap(
                                 PublicArticle::route, value -> new PublicAlbumCover(false, null)));
             });
-            discovery = new PublicDiscovery(publications, snapshots, assets, clock);
+            discovery = new PublicDiscovery(publications, snapshots, assets, clock, null);
         }
     }
 

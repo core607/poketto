@@ -351,15 +351,15 @@ used by link previews: it serves the first public inline image's thumbnail, redi
 to the site's `/share.png` when there is none, and answers 404 once the article is no
 longer public.
 
-The homepage samples enabled spaces into a browsing batch that keeps its order for up
-to 30 minutes; **New batch** reshuffles, and an expired link offers a new one. A batch
-takes at most four cards from each of up to 32 spaces, so it is not exhaustive. Each
-space's cards favor an authored `featured: true` article, a recent one and tag
-variety, then random content; private reading history and follow lists are never
-used.
-**Discover by tag** filters by a complete, case-sensitive tag of up to 64 characters.
-Links in a folder landing form a collection read in authored order with
-previous/next links. See [discovery batches](../notes/implemented/2026-09-14-public-discovery-batches.md),
+The homepage samples up to 32 enabled spaces: initially up to four cards each, then
+round-robin supplements of distinct matches if fewer than 24 were selected.
+Filling stops at 24 or exhaustion; batches have at most 128 cards and six positions
+per page, and are not exhaustive. Initial choices favor `featured: true`, recency
+and tag variety, then random content; private reading history and follow lists
+are never used. Order lasts up to 30 minutes. **New batch** reshuffles; expired
+links offer another batch. **Discover by tag** matches complete, case-sensitive
+tags up to 64 characters. Folder landing links form collections with authored
+order and previous/next navigation. See [discovery batches](../notes/implemented/2026-09-14-public-discovery-batches.md),
 [authoring and discovery](../notes/implemented/2026-09-23-authoring-and-discovery-experience.md)
 and [collection reading](../notes/implemented/2026-09-14-collection-reading.md).
 

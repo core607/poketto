@@ -141,7 +141,7 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 `/sitemap.xml` 为站点首页和所有已开启的空间提供索引；快照不可用时返回 503，不交付不完整列表。`/robots.txt` 使用 `POKETTO_PUBLIC_URL`，并建议爬虫避开 `/admin`、`/api/` 和首页批次地址。每篇公开文章有固定的封面地址 `/s/{slug}/cover/{route}`，供分享卡片使用：返回正文第一张公开图片的缩略图；没有封面时跳转到网站的 `/share.png`；文章不再公开后返回 404。
 
-站点首页从已开启的空间抽取内容组成浏览批次，最长 30 分钟内保持顺序；点击“换一批”重新抽取，过期链接会提供新批次。每批最多从 32 个空间各取四张卡片，并非完整目录。每个空间的卡片优先考虑作者标注 `featured: true` 的文章、较新文章和不同标签，其余随机；不使用私密阅读历史或关注名单。“按标签发现”按完整标签精确筛选，区分大小写，最多 64 字符。文件夹入口中的文章链接按作者编排顺序组成合集，可用上下篇链接阅读。详见[发现批次](../notes/implemented/2026-09-14-public-discovery-batches.md)、[创作与发现](../notes/implemented/2026-09-23-authoring-and-discovery-experience.md)和[合集阅读](../notes/implemented/2026-09-14-collection-reading.md)。
+首页从最多 32 个已开启空间各取至多四张卡片；不足 24 张时，各空间轮流补选不同的匹配内容，直到凑足或内容用尽。每批最多 128 张，每页六个位置，并非完整目录。初选优先考虑作者标注 `featured: true`、较新文章和不同标签，其余随机；不使用私密阅读历史或关注名单。顺序最多保持 30 分钟；“换一批”重新抽取，过期链接提供新批次。“按标签发现”匹配整个标签，区分大小写，最多 64 字符。目录页的文章链接按作者顺序组成合集，支持上下篇阅读。详见[发现批次](../notes/implemented/2026-09-14-public-discovery-batches.md)、[创作与发现](../notes/implemented/2026-09-23-authoring-and-discovery-experience.md)和[合集阅读](../notes/implemented/2026-09-14-collection-reading.md)。
 
 ## 收集入口
 

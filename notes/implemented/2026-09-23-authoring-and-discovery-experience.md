@@ -86,11 +86,12 @@ four slots within each bounded space sample: one optional authored
 `featured: true` choice, one most-recent article by its existing creation date, one
 article contributing the most unseen tags, and random remaining content. Ties use
 reservoir sampling; absent featured choices leave another random slot. Selection
-retains only four article references and scans the existing public snapshot. Only
+retains bounded article references and scans the existing public snapshot. Only
 a boolean enables the optional featured field; malformed values leave it disabled.
 A featured signal is an author's selection for their own space, not a site
-endorsement. A space contributes at most four cards regardless of its volume or
-featured flags. Randomized
+endorsement. The initial sample has at most four cards per space regardless of its
+volume or featured flags; [small-catalog filling](2026-10-19-discovery-sample-fill.md)
+relaxes that quota only when the combined sample is short. Randomized
 selection among remaining candidates keeps older and differently tagged content
 discoverable. Optional tag selection is public, explicit, exact and retained with the batch.
 Continuation inherits that tag; a conflicting tag on replay or continuation is
