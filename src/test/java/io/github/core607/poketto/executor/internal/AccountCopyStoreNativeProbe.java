@@ -31,6 +31,7 @@ record AccountCopyStoreNativeProbe(Path root) {
     private static final Instant START = Instant.parse("2026-09-14T00:00:00Z");
 
     void produce() throws Exception {
+        assertForkCandidates();
         AccountCopyStore store = store(0);
         var state = new SelectedFileSaves.State("a".repeat(40));
         state.uncertain = true;
@@ -70,6 +71,46 @@ record AccountCopyStoreNativeProbe(Path root) {
                     .isInstanceOfSatisfying(
                             RetainedCopyException.class,
                             failure -> assertThat(failure.reason()).isEqualTo(RetainedCopyException.Reason.BUSY));
+        }
+    }
+
+    private void assertForkCandidates() throws Exception {
+        Path candidates = root.resolve("claim-candidates");
+        var claim = Duration.ofMinutes(2);
+        var old = AccountCopyTestData.disk(candidates, Clock.fixed(START, ZoneOffset.UTC));
+        var fork = OWNER.forked(UUID.randomUUID());
+        initializeCandidate(old, OWNER);
+        initializeCandidate(old, fork);
+        initializeCandidate(
+                old, new AccountCopyRecord.Owner(UUID.randomUUID(), WORKSPACE, true).forked(UUID.randomUUID()));
+        initializeCandidate(
+                old, new AccountCopyRecord.Owner(ACCOUNT, UUID.randomUUID(), true).forked(UUID.randomUUID()));
+        var recent = AccountCopyTestData.disk(candidates, Clock.fixed(START.plusSeconds(61), ZoneOffset.UTC));
+        initializeCandidate(recent, OWNER.forked(UUID.randomUUID()));
+
+        var before = AccountCopyTestData.disk(candidates, Clock.fixed(START.plusMillis(119999), ZoneOffset.UTC));
+        assertThat(before.unclaimedForksOf(OWNER, claim)).isEmpty();
+        var boundary = AccountCopyTestData.disk(candidates, Clock.fixed(START.plus(claim), ZoneOffset.UTC));
+        assertThat(boundary.unclaimedForksOf(OWNER, claim)).containsExactly(fork);
+        assertThat(boundary.unclaimedForksOf(new AccountCopyRecord.Owner(ACCOUNT, WORKSPACE, false), claim))
+                .isEmpty();
+    }
+
+    private static void initializeCandidate(AccountCopyStore store, AccountCopyRecord.Owner owner) throws Exception {
+        try (var lease = store.acquire(owner)) {
+            lease.write(new AccountCopyRecord(
+                    owner,
+                    owner.newCopyId(),
+                    0,
+                    store.nextExpiry(),
+                    new AccountCopyRecord.Writer(
+                            UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()),
+                    AccountCopyRecord.Phase.INITIALIZING,
+                    null,
+                    null,
+                    new SelectedFileSaves.State("a".repeat(40)).snapshot(),
+                    null,
+                    null));
         }
     }
 

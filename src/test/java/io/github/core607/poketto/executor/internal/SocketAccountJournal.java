@@ -52,14 +52,15 @@ final class SocketAccountJournal {
         });
         when(store.acquire(any())).thenAnswer(call -> acquire(call.getArgument(0)));
         when(store.recentlyUsed(any(), any())).thenAnswer(call -> recent);
-        when(store.forksOf(any())).thenAnswer(call -> {
+        when(store.unclaimedForksOf(any(), any())).thenAnswer(call -> {
             AccountCopyRecord.Owner base = call.getArgument(0);
             return entries.entrySet().stream()
                     .filter(entry -> entry.getKey().fork() != null
                             && entry.getKey().accountId().equals(base.accountId())
                             && entry.getKey().workspaceId().equals(base.workspaceId())
                             && entry.getKey().fullRead() == base.fullRead()
-                            && entry.getValue().record.get() != null)
+                            && entry.getValue().record.get() != null
+                            && !recent)
                     .map(Map.Entry::getKey)
                     .toList();
         });

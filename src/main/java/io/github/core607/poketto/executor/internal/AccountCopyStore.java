@@ -163,19 +163,24 @@ final class AccountCopyStore {
         }
     }
 
-    /** The forks of the owner's account, workspace and scope that have a record. */
-    List<AccountCopyRecord.Owner> forksOf(AccountCopyRecord.Owner owner) {
+    /**
+     * Fork candidates outside the agent claim. Selection still locks and rereads each candidate:
+     * another command may have claimed it since this inventory was read.
+     */
+    List<AccountCopyRecord.Owner> unclaimedForksOf(AccountCopyRecord.Owner owner, Duration claim) {
         try (var index = index()) {
             index.requireValid();
             var forks = new ArrayList<AccountCopyRecord.Owner>();
             try (var entries = Files.newDirectoryStream(root, "*.account")) {
                 for (Path entry : entries) {
                     directory.checkFile(entry);
-                    var stored = files.read(entry, StoredAccountCopy.class).owner();
+                    var record = files.read(entry, StoredAccountCopy.class);
+                    var stored = record.owner();
                     if (stored.fork() != null
                             && stored.accountId().equals(owner.accountId())
                             && stored.workspaceId().equals(owner.workspaceId())
-                            && stored.fullRead() == owner.fullRead()) {
+                            && stored.fullRead() == owner.fullRead()
+                            && !usedWithin(record.expiresAt(), limits.idle(), clock.millis(), claim)) {
                         forks.add(stored);
                     }
                 }
