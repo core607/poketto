@@ -98,13 +98,14 @@ final class JGitRepositoryWrites {
         var write = new Write(principal, workspace, baseCommit, suggestedBy, recovery, checkpoint, preparer);
         try {
             auth.authorize(principal, workspace, capabilities.toArray(Capability[]::new));
+            // A queued writer must not retain the connection needed by the repository lock's current reader.
             return authority.withPreparedCredentials(
                     workspace,
-                    () -> auth.withAuthorization(
-                            principal,
+                    () -> authority.writeObjects(
                             workspace,
-                            capabilities,
-                            () -> authority.writeObjects(workspace, write.knownBase(), write::run)));
+                            write.knownBase(),
+                            (snapshot, advancer) -> auth.withAuthorization(
+                                    principal, workspace, capabilities, () -> write.run(snapshot, advancer))));
         } catch (RuntimeException exception) {
             throw write.outcome(exception);
         }
