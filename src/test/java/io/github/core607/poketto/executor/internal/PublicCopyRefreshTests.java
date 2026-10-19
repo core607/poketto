@@ -702,8 +702,8 @@ class PublicCopyRefreshTests {
             var hello = new LinkedHashMap<String, Object>();
             hello.put("ok", true);
             hello.put("version", 1);
+            hello.put("codeActProtocol", 2);
             for (String marker : List.of(
-                    "codeActProtocol",
                     "artifactProtocol",
                     "moveProtocol",
                     "exportProtocol",

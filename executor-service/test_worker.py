@@ -533,7 +533,7 @@ class ProtocolTests(unittest.TestCase):
     def test_hello_advertises_the_codeact_bridge_contract(self):
         response = self.service.hello()
         self.assertEqual(1, response['version'])
-        self.assertEqual(1, response['codeActProtocol'])
+        self.assertEqual(2, response['codeActProtocol'])
         self.assertEqual(1, response['artifactProtocol'])
         self.assertEqual(1, response['moveProtocol'])
         self.assertEqual(1, response['exportProtocol'])

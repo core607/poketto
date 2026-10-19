@@ -172,7 +172,7 @@ class Service:
         self.shutdown_started = False
 
     def hello(self):
-        return {'ok': True, 'version': 1, 'codeActProtocol': 1, 'artifactProtocol': 1, 'moveProtocol': 1, 'exportProtocol': 1,
+        return {'ok': True, 'version': 1, 'codeActProtocol': 2, 'artifactProtocol': 1, 'moveProtocol': 1, 'exportProtocol': 1,
                 'diskCopyProtocol': 1 if self.config.get('copyRoot') else 0, 'gitBaselineProtocol': 1, 'workspaceSyncProtocol': 1,
                 'leaseSandboxProtocol': 1, 'seedProtocol': 1,
                 'workerBootId': self.boot,
