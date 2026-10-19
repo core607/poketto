@@ -143,11 +143,9 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
 
     private RepositoryMovePlan planAuthorized(
             AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request) {
-        return auth.withAuthorization(
-                principal,
+        return authority.readObjects(
                 workspace,
-                Set.of(),
-                () -> authority.readObjects(workspace, snapshot -> {
+                snapshot -> auth.withAuthorization(principal, workspace, Set.of(), () -> {
                     if (!snapshot.commitId().equals(Optional.of(request.baseCommit()))) {
                         throw new RepositoryConflictException("repository base changed before preparing move");
                     }
