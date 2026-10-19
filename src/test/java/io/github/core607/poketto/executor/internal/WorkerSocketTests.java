@@ -618,6 +618,34 @@ class WorkerSocketTests {
     }
 
     @Test
+    void aFirstCommandRefusalNamesTheCopySoRetryDoesNotForkAgain() throws Exception {
+        var actor = principal();
+        var copy = new AtomicReference<String>();
+        try (var peer = new Peer();
+                var executor = executor(fullAuth(), exports(), peer)) {
+            peer.executionCapacity = true;
+            assertThatThrownBy(() -> command(executor, actor, "new"))
+                    .isInstanceOfSatisfying(ExecutionAdmissionException.class, refused -> {
+                        assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.CAPACITY);
+                        assertThat(refused.recoveryAvailable()).isTrue();
+                        assertThat(refused.copyId()).isPresent();
+                        copy.set(refused.copyId().orElseThrow());
+                    });
+            assertThat(peer.operations("CLOSE")).hasSize(1);
+            peer.executionCapacity = false;
+            peer.accounts.usedRecently(true);
+
+            var resumed = command(executor, actor, copy.get());
+
+            assertThat(resumed.copyId()).isEqualTo(copy.get());
+            assertThat(resumed.retention().resumed()).isTrue();
+            assertThat(resumed.retention().lastInterruptedCommand()).isNull();
+            assertThat(peer.operations("OPEN")).hasSize(1);
+            assertThat(peer.operations("ATTACH")).hasSize(1);
+        }
+    }
+
+    @Test
     void aCommandTheWorkerRefusesStillClaimsItsCopy() throws Exception {
         var actor = principal();
         try (var peer = new Peer();
@@ -647,7 +675,7 @@ class WorkerSocketTests {
                     .isInstanceOfSatisfying(ExecutionAdmissionException.class, refused -> {
                         assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE);
                         assertThat(refused.recoveryAvailable()).isTrue();
-                        assertThat(refused.getCause()).hasMessageContaining("LEASE_EXPIRED");
+                        assertThat(refused).hasStackTraceContaining("LEASE_EXPIRED");
                     });
             peer.execLeaseExpired = false;
             assertThat(command(executor, actor, first.copyId()).retention().lastInterruptedCommand())
@@ -680,7 +708,7 @@ class WorkerSocketTests {
                             cancellation))
                     .isInstanceOfSatisfying(ExecutionAdmissionException.class, refused -> {
                         assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.UNAVAILABLE);
-                        assertThat(refused.getCause()).hasMessageContaining("stopped before the command was sent");
+                        assertThat(refused).hasStackTraceContaining("stopped before the command was sent");
                     });
             assertThat(peer.operations("EXEC")).hasSize(sent);
             peer.accounts.afterWrite(record -> {});
@@ -939,7 +967,9 @@ class WorkerSocketTests {
                             "pwd",
                             Duration.ofSeconds(1),
                             new Cancellation()))
-                    .isInstanceOf(ExecutionAdmissionException.class);
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            refused -> assertThat(refused.copyId()).isEmpty());
             assertThat(peer.operations("OPEN")).isEmpty();
             assertThat(peer.operations("EXEC")).isEmpty();
             verify(exports, never()).create(any(), any(), any());
@@ -1723,7 +1753,9 @@ class WorkerSocketTests {
                             "pwd",
                             Duration.ofSeconds(1),
                             new Cancellation()))
-                    .isInstanceOf(ExecutionAdmissionException.class);
+                    .isInstanceOfSatisfying(
+                            ExecutionAdmissionException.class,
+                            refused -> assertThat(refused.copyId()).isPresent());
             assertThat(client.execute(
                                     executor,
                                     principal(),

@@ -382,6 +382,7 @@ class PublicCopyRefreshTests {
                     .isInstanceOfSatisfying(ExecutionAdmissionException.class, refused -> {
                         assertThat(refused.reason()).isEqualTo(ExecutionAdmissionException.Reason.CAPACITY);
                         assertThat(refused.recoveryAvailable()).isTrue();
+                        assertThat(refused.copyId()).contains(copy);
                     });
 
             assertThat(worker.operations("DISCARD")).isEmpty();

@@ -57,7 +57,19 @@ public final class ExecutionAdmissionException extends RuntimeException {
         return recoveryAvailable;
     }
 
-    /** The copy the caller must act on; present only for {@link Reason#PUBLICATION_CHANGED}. */
+    /** Names an established copy without changing the reason or the recovery guarantee. */
+    public ExecutionAdmissionException withCopyId(String retainedCopyId) {
+        if (copyId.isPresent()) {
+            return this;
+        }
+        String retained = RepositoryExecutor.requireCopyId(retainedCopyId);
+        if (RepositoryExecutor.NEW_COPY.equals(retained)) {
+            throw new IllegalArgumentException("A retained copy needs its existing ID");
+        }
+        return new ExecutionAdmissionException(reason, recoveryAvailable, Optional.of(retained), this);
+    }
+
+    /** The known copy the caller can address after refusal; absent before copy identity is established. */
     public Optional<String> copyId() {
         return copyId;
     }

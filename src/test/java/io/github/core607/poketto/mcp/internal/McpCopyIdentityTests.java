@@ -185,6 +185,23 @@ class McpCopyIdentityTests {
     }
 
     @Test
+    void firstCallCapacityRefusalReturnsTheRetainedCopyForRetry() {
+        String copy = UUID.randomUUID().toString();
+        when(executor.execute(
+                        any(), any(), eq(new RepositoryExecutor.CopyRequest("new")), any(), anyString(), any(), any()))
+                .thenThrow(new ExecutionAdmissionException(ExecutionAdmissionException.Reason.CAPACITY, true)
+                        .withCopyId(copy));
+
+        JsonNode refused = body(call(Map.of("expectedCopyId", "new", "command", "pwd")));
+
+        assertThat(refused.path("code").stringValue()).isEqualTo("EXECUTION_REFUSED");
+        assertThat(refused.path("reason").stringValue()).isEqualTo("CAPACITY");
+        assertThat(refused.path("executed").booleanValue()).isFalse();
+        assertThat(refused.path("recoveryAvailable").booleanValue()).isTrue();
+        assertThat(refused.path("copyId").stringValue()).isEqualTo(copy);
+    }
+
+    @Test
     void aChangedPublicationOverLocalWorkNamesTheKeptCopyAndHowToDiscardIt() {
         String copy = UUID.randomUUID().toString();
         when(executor.execute(
