@@ -28,6 +28,7 @@ import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
 import java.nio.ByteBuffer;
@@ -240,6 +241,17 @@ class PublicCopyRefreshTests {
             }
             assertThat(worker.commands()).extracting(Worker.Command::command).containsExactly("ls");
             assertThat(worker.operations("DISCARD")).isEmpty();
+        }
+    }
+
+    @Test
+    void aBridgePollAbandonedOnExecutorShutdownDoesNotFailWorkerCleanup() throws Exception {
+        try (var worker = new Worker()) {
+            worker.awaitPollReaderClose = true;
+            try (var executor = executor(worker)) {
+                assertThat(run(executor, "new", "ls").exitCode()).isZero();
+            }
+            assertThat(worker.pollReplyFinished.await(10, TimeUnit.SECONDS)).isTrue();
         }
     }
 
@@ -612,11 +624,14 @@ class PublicCopyRefreshTests {
         private final CountDownLatch inspectionRelease = new CountDownLatch(1);
         private final CountDownLatch discardEntered = new CountDownLatch(1);
         private final CountDownLatch discardRelease = new CountDownLatch(1);
+        private final CountDownLatch pollEntered = new CountDownLatch(1);
+        private final CountDownLatch pollReplyFinished = new CountDownLatch(1);
         private volatile boolean dirty;
         private volatile boolean holdInspection;
         private volatile boolean inspectionCapacity;
         private volatile boolean holdDiscard;
         private volatile boolean failNextOpen;
+        private volatile boolean awaitPollReaderClose;
         private volatile String attachedGitCommit;
         private volatile Runnable onInspection = () -> {};
 
@@ -670,6 +685,7 @@ class PublicCopyRefreshTests {
         }
 
         private void respond(SocketChannel connection) {
+            boolean bridgePoll = false;
             try (connection;
                     var input = Channels.newInputStream(connection);
                     var output = new DataOutputStream(Channels.newOutputStream(connection))) {
@@ -686,15 +702,32 @@ class PublicCopyRefreshTests {
                     JsonNode request = json.readTree(Base64.getUrlDecoder()
                             .decode(envelope.path("payload").stringValue()));
                     requests.add(request);
+                    bridgePoll = request.path("operation").asString("").equals("BRIDGE_POLL");
+                    if (bridgePoll && awaitPollReaderClose) {
+                        pollEntered.countDown();
+                        assertThat(input.read()).as("abandoned poll receiver").isEqualTo(-1);
+                    }
                     response = handle(request);
                 }
                 byte[] bytes = json.writeValueAsBytes(response);
-                output.writeInt(bytes.length);
-                output.write(bytes);
-                output.flush();
+                try {
+                    output.writeInt(bytes.length);
+                    output.write(bytes);
+                    output.flush();
+                } catch (IOException disconnected) {
+                    // EXEC can finish before its poll replies; shutdown then closes that receiver.
+                    // Parsing, handler failures and writes for every other operation still fail.
+                    if (!bridgePoll) {
+                        throw disconnected;
+                    }
+                }
             } catch (Throwable exception) {
                 if (!closed.get()) {
                     failure.compareAndSet(null, exception);
+                }
+            } finally {
+                if (bridgePoll && awaitPollReaderClose) {
+                    pollReplyFinished.countDown();
                 }
             }
         }
@@ -780,6 +813,9 @@ class PublicCopyRefreshTests {
         }
 
         private void exec(String lease, JsonNode data, Map<String, Object> response) throws InterruptedException {
+            if (awaitPollReaderClose) {
+                assertThat(pollEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            }
             String command = data.path("command").stringValue();
             String commit = leaseCommits.get(lease);
             boolean fresh = startedUnits.add(lease);
