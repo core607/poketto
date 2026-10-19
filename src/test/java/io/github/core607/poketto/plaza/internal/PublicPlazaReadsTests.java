@@ -112,6 +112,48 @@ class PublicPlazaReadsTests {
         }
     }
 
+    @Test
+    void keywordsMustAllOccurAndRelevanceOutranksDate() {
+        add("old", "/guide", "Moss lantern guide", "A lantern hangs over moss.", NOW.minus(Duration.ofDays(30)));
+        add("new", "/notes", "Notes", "A LANTERN beside the moss.", NOW);
+        add("miss", "/lantern", "Lantern", "Only a lantern here.", NOW.plus(Duration.ofDays(1)));
+        var result = reads().search("moss\u3000lantern", "", 0);
+        assertThat(result.total()).isEqualTo(2);
+        assertThat(result.items())
+                .extracting(PublicPlazaReads.Card::reference)
+                .containsExactly("old/guide", "new/notes");
+        assertThat(result.items().get(1).snippet()).contains("LANTERN beside the moss");
+    }
+
+    @Test
+    void keywordSearchFindsEveryWebsitePhraseMatch() {
+        add("phrase", "/a", "Needle from the sea");
+        add("apart", "/b", "From the sea, a needle");
+        add("other", "/c", "Nothing to see");
+        var phrase = new DocumentSearch("Needle from", "", null, null, 0, 10);
+        List<String> website = snapshots.values.values().stream()
+                .flatMap(snapshot -> snapshot.articles().stream())
+                .filter(article -> phrase.matches(article.title(), article.body(), article.tags(), article.createdAt()))
+                .map(PublicArticle::body)
+                .toList();
+        var result = reads().search("Needle from", "", 0);
+        assertThat(website).containsExactly("Needle from the sea");
+        assertThat(result.items())
+                .extracting(PublicPlazaReads.Card::snippet)
+                .containsExactlyInAnyOrder("Needle from the sea", "From the sea, a needle");
+    }
+
+    @Test
+    void blankQueriesListNewestFirstAndTooManyKeywordsAreRefused() {
+        add("old", "/a", "A public paper", "First", NOW.minus(Duration.ofDays(1)));
+        add("new", "/b", "A public paper", "Second", NOW);
+        var reads = reads();
+        assertThat(reads.search(" \u3000 ", "", 0).items())
+                .extracting(PublicPlazaReads.Card::reference)
+                .containsExactly("new/b", "old/a");
+        assertThatThrownBy(() -> reads.search("a b c d e f g h i", "", 0)).isInstanceOf(IllegalArgumentException.class);
+    }
+
     private PublicPlazaReads reads() {
         when(publications.publishedAfter(any(), anyInt())).thenReturn(List.copyOf(catalogue));
         return new PublicPlazaReads(publications, snapshots);
@@ -162,6 +204,11 @@ class PublicPlazaReadsTests {
     }
 
     private WorkspacePublications.Publication add(String slug, String route, String body) {
+        return add(slug, route, "A public paper", body, NOW);
+    }
+
+    private WorkspacePublications.Publication add(
+            String slug, String route, String title, String body, Instant createdAt) {
         var id = WorkspaceId.random();
         var publication = new WorkspacePublications.Publication(id, slug, slug, true, true, "author", "", false);
         catalogue.add(publication);
@@ -170,11 +217,11 @@ class PublicPlazaReadsTests {
         var article = new PublicArticle(
                 "public/source-only-name.md",
                 route,
-                "A public paper",
+                title,
                 body,
                 List.of("topic"),
-                NOW,
-                NOW,
+                createdAt,
+                createdAt,
                 false,
                 "author",
                 null,

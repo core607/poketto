@@ -56,7 +56,7 @@ The model supplies paragraphs, source identities and exact quotes; the platform
 supplies links after rereading the current public source. Quote fidelity does not
 prove semantic entailment, so human evaluation remains necessary. Sources cannot
 register tools or authorize writes. No shell or author game runtime participates.
-The [plaza retrieval decision](2026-10-09-plaza-foundation.md) continues to own the
+[Ranked keyword search](2026-10-19-ranked-plaza-keyword-search.md) owns the
 conditions for adding an index or embeddings; this feature establishes no ranking
 over conventional RAG.
 

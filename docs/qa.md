@@ -21,8 +21,9 @@ deduplication; those rows have no automatic deletion policy.
 QA uses the [plaza's current public search and reading boundary](plaza.md). It has
 no shell, private repository, history, game, comment or spending tool. Article text
 is untrusted. The Java loop executes multiple search/read calls in one model turn
-sequentially, counting each toward the same question's tool limit. Tags and literal
-keywords are available; this entrance does not use embeddings or reranking.
+sequentially, counting each toward the same question's tool limit. Tags and
+[ranked keyword search](plaza.md) are available; this entrance uses no embeddings or
+reranking model.
 
 Answers contain plain text, clickable article links and exact quoted passages.
 Before returning a citation, the platform rereads its current public page and
