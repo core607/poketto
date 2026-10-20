@@ -1,7 +1,7 @@
 # Java and sandbox execution acceptance
 
 This probe runs the production Java executor adapter, Unix peer checks, Ed25519 requests, the Python
-worker and SRT against a real Linux systemd host, so a failure here names the isolation layer.
+worker and sandbox against a real Linux systemd host, so a failure here names the isolation layer.
 Authentication and the Git authority are synthetic fixtures on purpose. The probe does not replace
 PostgreSQL integration tests, the HTTP MCP entrance, or [client acceptance](../acceptance/clients/README.md)
 with real login, issued API keys and actual Codex and Claude Code clients. The worker's own contract and
@@ -27,7 +27,7 @@ For `--scenario games`, also stage `game_fixture.py` beside `probe.py`. Run
 `game-runtime.mjs` and `game-example.mjs` to the staged worker sources.
 
 The host needs cgroup v2, systemd, root access, Git, Python with the worker's pinned dependencies and
-its prepared SRT toolchain. The probe requires a Java 26 runtime; `prepare-jdk.sh NEW_DIRECTORY`
+its prepared sandbox toolchain. The probe requires a Java 26 runtime; `prepare-jdk.sh NEW_DIRECTORY`
 downloads an isolated Temurin 26.0.2+10 archive and verifies its pinned SHA-256 without installing it
 globally. Runtime classes and JARs must be readable by the probe's temporary application account.
 
@@ -78,9 +78,9 @@ production `UMask=0077` and a disposable finite resource slice shared with its c
 controller's test mailbox observes detached descendants, checks unchanged source bytes and restarts only
 its own transient worker unit.
 
-Repository copies must never be staged on tmpfs or below broadly writable `/tmp`. SRT 0.0.75 mounts
-read grants after write grants, so the worker grants read access to specific session paths, never to
-the whole session directory; a fixture under `/tmp` inherits a write grant that hides a violation
+Repository copies must never be staged on tmpfs or below broadly writable `/tmp`. The worker grants
+read access to specific session paths, never to the whole session directory; a fixture under `/tmp`
+inherits a write grant that hides a violation
 ([supervisor decision](../notes/implemented/2026-09-05-local-execution-supervisor.md#supervisor-and-worker)).
 
 For the peer check, a root-owned socket is served by the application account. The peer records an
@@ -96,7 +96,7 @@ the scenario, runtime manifest and source hashes, and a different build requires
 ## Isolated peer regression
 
 This container check exercises the peer-identity assertion through the production configuration and
-socket client, with root-owned paths and a non-root peer. It does not run SRT or replace the host probe.
+socket client, with root-owned paths and a non-root peer. It does not run a sandbox or replace the host probe.
 
 ```sh
 ./gradlew stageExecutorNativeTest
@@ -114,6 +114,17 @@ Success requires Java exit zero, `accepted: true`, `requestBytes: 0` and fixture
 build without the production peer guard must fail with nonzero request bytes; restore production source
 before delivery. The fixture changes only container-local UIDs, paths and processes and opens no network
 listener.
+
+## Launcher comparison
+
+[sandbox_probe.py](sandbox_probe.py) and [sandbox_snapshot.py](sandbox_snapshot.py) compare the
+current launcher with a supplied reference on one prepared x64 host, without application copies.
+Run as root with `--worker-source`, `--tools`, `--reference-launcher` and `--output`.
+Each path runs three serial fresh shells at 50% CPU and 192 MiB. The probe verifies live mounts,
+permissions, environment differences, seccomp, visible processes and tool tampering, records cgroup
+CPU/memory/tasks, and requires each direct/reference median resource ratio to be at most one third.
+Add `--toolkit` and [sandbox_toolkit.py](sandbox_toolkit.py) to verify installed image, PDF, Office,
+archive and Git operations. Require exit zero and `cleanup: PASS`; these figures do not establish HTTP capacity.
 
 ## Evidence
 

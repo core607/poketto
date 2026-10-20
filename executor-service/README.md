@@ -2,14 +2,16 @@
 
 This worker supplies the Linux process boundary for repository execution. Spring
 authorizes the principal and exports a credential-free Git bundle; the worker
-accepts a signed lease and runs SRT 0.0.75 as a separate unprivileged account.
+accepts a signed lease and starts a bubblewrap sandbox as a separate unprivileged account.
 It never opens an application repository or accepts a caller-specified host path.
 The [supervisor decision](../notes/implemented/2026-09-05-local-execution-supervisor.md)
 owns topology, rationale and alternatives.
 
 ## Runtime
 
-The host needs Linux with cgroup v2, systemd, unprivileged user namespaces, Python 3.10+, Git and the SRT toolchain that [prepare-tools.sh](prepare-tools.sh) builds in a new directory: a checksum-verified Node.js 22.22.0, the sandbox runtime pinned by [sandbox-runtime/package-lock.json](sandbox-runtime/package-lock.json), and extracted bubblewrap, socat, ripgrep and `which`.
+The host needs x64 Linux with cgroup v2, systemd, capability-bearing unprivileged user namespaces, Python 3.10+, Git and the toolchain from [prepare-tools.sh](prepare-tools.sh): checksum-verified Node.js 22.22.0, the package pinned by [sandbox-runtime/package-lock.json](sandbox-runtime/package-lock.json), and distribution bubblewrap, socat, ripgrep and `which`. The launcher uses bubblewrap 0.6.1+ and the SHA-256-pinned static `apply-seccomp` from SRT 0.0.75; Node.js remains available to commands and the game runtime. The SRT CLI and its proxies are outside the execution path.
+
+Supervisor startup and every launch verify both isolation tools. Binaries and every parent directory must be root-owned, nonsymlink and unwritable by other accounts; `apply-seccomp` must match the source pin. Invalid tools prevent startup or execution, including during automatic deployment. Cleanup remains available. [Direct sandbox launch](../notes/implemented/2026-10-18-direct-sandbox-launch.md) owns the isolation and upgrade contract.
 
 Install [requirements.txt](requirements.txt) into a root-owned virtual environment at `/opt/poketto-executor/venv`, where [poketto-executor.service](poketto-executor.service) expects it, and the worker sources in one directory: `worker.py`, `launcher.py`, `command_channel.py`, `shell_loop.py`, `disk_pool.py`, `resource_pool.py`, `bridge.py`, `cli.py`, `session_files.py`, `binary_capture.py`, `materialize.py` and `artifacts.py`. Worker code, launcher, tools, configuration and public key must be root-owned and unwritable by the application and execution accounts. The worker receives only the PEM public key; the application holds the Ed25519 private key. Never put the signing key or a real operator configuration in this repository.
 
@@ -29,12 +31,9 @@ Provision the [content toolkit](../notes/implemented/2026-09-05-local-execution-
 
 ```sh
 sudo bash executor-service/install-sandbox-tools.sh /opt/poketto-executor/tools
-sudo bash executor-service/install-compile-cache.sh /opt/poketto-executor/tools poketto-exec
 ```
 
-The second command fills `compile-cache` in the tools directory, which the launcher gives SRT's Node.js read-only and only this step writes ([why](../notes/implemented/2026-09-05-local-execution-supervisor.md#alternatives-and-consequences)). Node.js keys it by user ID: run it for each worker's `execUser`, and again after changing Node.js or SRT.
-
-The first installs host distribution packages for Pillow, BeautifulSoup/lxml, pypdf, openpyxl, python-docx, `awk`, `zip`, Poppler (`pdftotext`, `pdfinfo`, `pdftoppm`) and Noto CJK fonts, and links `python` and `awk` inside the tools directory without changing host-wide commands. It runs no system upgrade and restarts no service; on an existing host, inspect `apt-get --simulate install` with its package list first. Afterwards validate through `repo_exec`, including native image and PDF operations.
+This installs host distribution packages for Pillow, BeautifulSoup/lxml, pypdf, openpyxl, python-docx, `awk`, `zip`, Poppler (`pdftotext`, `pdfinfo`, `pdftoppm`) and Noto CJK fonts, and links `python` and `awk` inside the tools directory without changing host-wide commands. It runs no system upgrade and restarts no service; on an existing host, inspect `apt-get --simulate install` with its package list first. Afterwards validate through `repo_exec`, including native image and PDF operations.
 
 [config.example.json](config.example.json) lists every setting; its UID/GID and numeric limits are examples, not production values. Startup enforces these rules:
 
@@ -52,6 +51,8 @@ The first installs host distribution packages for Pillow, BeautifulSoup/lxml, py
 | `renewAfterSeconds` | Less than `leaseSeconds` |
 | `unitPrefix` | Matches `poketto-exec-[a-z0-9]+-` |
 | `resourceSlice` | Required; the slice the worker must run in |
+
+Size `maxLiveUnits` from measured cgroup memory and tasks, leaving room for the supervisor and active commands within the slice's `MemoryMax` and `TasksMax`. Idle shell measurements exclude command workloads. A working set beyond this bound repeatedly replaces units; size the independent `maxStartingUnits` with a guarded ramp, not from idle memory alone. The [launcher comparison](../executor-native/README.md#launcher-comparison) measures startup cost before HTTP load testing.
 
 ## Automatic source updates
 
@@ -75,7 +76,7 @@ For full-read copies, an acknowledged save or move installs its authoritative co
 
 ## Process boundary
 
-The root supervisor only verifies requests, copies bounded exports, mounts disk copies and controls fixed systemd units. Git initialization and commands run as `execUser`, always through the pinned SRT launcher; a failed launcher or SRT invocation never runs a replacement command. SRT starts in a root-owned bootstrap directory, and the launcher enters the repository only after SRT has installed its boundary, so Git and shell configuration cannot influence startup.
+The root supervisor only verifies requests, copies bounded exports, mounts disk copies and controls fixed systemd units. Git initialization and commands run as `execUser` through bubblewrap and the pinned seccomp helper, without an unsandboxed fallback. The launcher starts in a root-owned bootstrap and enters the repository only inside the boundary, so Git and shell configuration cannot influence startup. Its empty root binds only the worker's readable and writable grants; network, user and PID namespaces, dropped capabilities and seccomp isolate every mode. Proxy variables are absent and `TMPDIR=/tmp` names the unit's private tmpfs.
 
 Each lease starts one systemd unit lazily and retains shell state, working directory, environment, `/tmp` and background processes ([per-lease command sandboxes](../notes/implemented/2026-09-16-per-lease-command-sandboxes.md)). Units never cross lease identities. systemd bounds memory, swap, CPU, tasks and private temporary storage, including background work; XFS bounds repository storage. Timeout, output limit, shell exit, `idleUnitSeconds` expiry or `maxLiveUnits` eviction stops the unit. Only confirmed empty cgroups prove containment; exit codes cannot. After containment, the lease's next command starts a unit with `freshSandbox: true`. Background output after command completion is discarded. The driver retains at most 128 output readers, closing the oldest beyond that bound; later background writes receive `EPIPE`/`SIGPIPE`.
 
@@ -123,7 +124,7 @@ The worker rejects `data` with a missing or extra field; [java-frames.json](java
 | Operation | Behavior |
 |---|---|
 | `OPEN` | Creates copy `copyId` (`scope` `full` or `public`) at `commit` from export `exportId` after checking its size, at most `maxBundleBytes`, and SHA-256. Blocks until READY or failure within `initTimeoutMillis`, accepting RENEW meanwhile. With `seed: true` and no export, it is reflinked from the seed at `commit`, or refused with `SEED_ABSENT` before any lease exists. |
-| `BASELINE` | Full-read copies only. Freezes the lease unit, idle or running, installs the bundle's commit as Git HEAD and index inside SRT, keeps working files and returns `gitCommit`. |
+| `BASELINE` | Full-read copies only. Freezes the lease unit, idle or running, installs the bundle's commit as Git HEAD and index inside the sandbox, keeps working files and returns `gitCommit`. |
 | `ATTACH` | Claims an existing copy for a new lease after checking account, workspace, scope, pinned commit and the exclusive copy lock. Never clones or replaces files. |
 | `DISCARD` | Deletes an owner-matched copy once no lease holds its lock. Returns DISCARDED or ABSENT, or `COPY_BUSY`. |
 | `EXEC` | Runs `command` (1 byte to 64 KiB of UTF-8, no NUL) within `timeoutMillis`, at most `maxTimeoutMillis`. Requires READY and the pinned `commit`; blocks until completion or containment. |
@@ -170,7 +171,7 @@ Poll CLOSE or REVOKE with fresh request IDs until CLOSED; a reused request ID re
 
 ## Sandbox CLI
 
-Commands reach the host only through `poketto` (`cli.py` in the lease's protected bootstrap directory), which uses a lease-specific FIFO, writer lock and read-only reply directory; SRT keeps Unix socket creation disabled. The application authorizes every request and rechecks the lease before replying. The supervisor changes the bridge epoch with the unit frozen, so requests from completed commands or idle background processes never reach the host; the execution ID each CLI process inherits grants no authority. The sandbox has no outbound network or access to client-local paths; clients send images through [MCP URL import or temporary raw upload](../docs/usage.md).
+Commands reach the host only through `poketto` (`cli.py` in the lease's protected bootstrap directory), which uses a lease-specific FIFO, writer lock and read-only reply directory; the pinned seccomp filter keeps Unix socket creation disabled. The application authorizes every request and rechecks the lease before replying. The supervisor changes the bridge epoch with the unit frozen, so requests from completed commands or idle background processes never reach the host; the execution ID each CLI process inherits grants no authority. The sandbox has no outbound network or access to client-local paths; clients send images through [MCP URL import or temporary raw upload](../docs/usage.md).
 
 `poketto edit PATH --old TEXT --new TEXT` replaces one exact, unique match in an existing UTF-8 file; `poketto create PATH --text TEXT` creates an absent file. `--stdin`, `--text-file`, `--old-file`, `--new-stdin` and `--new-file` read long UTF-8 text with final newlines, resolving files from the shell's directory. Both install through frozen compare-and-replace, so an intervening local write fails, and neither changes the save baseline or remote Git. Failures return `EDIT_REJECTED` with `OLD_TEXT_NOT_FOUND`, `AMBIGUOUS_MATCH`, `ALREADY_EXISTS` or `LOCAL_FILE_CHANGED`. The 16,384-character `repo_exec` command and 512 KiB encoded bridge frame still bound the text; ordinary shell writes get none of these checks.
 
@@ -236,4 +237,4 @@ The [resource pool probe](resource_pool_probe.py) needs root, systemd with cgrou
 sudo python3 resource_pool_probe.py --output /temporary/new-pool-evidence.json
 ```
 
-In a 96 MiB pool it checks the deployment helper against real services and missing limits, and verifies that tmpfs pages stay charged after their writer exits, so the pool's memory limit stops a second write. It removes only what it created and requires `result: PASS`; it is not an SRT or production-capacity acceptance. The [recorded result](resource-pool-evidence.json) holds source hashes and synthetic counters.
+In a 96 MiB pool it checks the deployment helper against real services and missing limits, and verifies that tmpfs pages stay charged after their writer exits, so the pool's memory limit stops a second write. It removes only what it created and requires `result: PASS`; it is not a sandbox or production-capacity acceptance. The [recorded result](resource-pool-evidence.json) holds source hashes and synthetic counters.

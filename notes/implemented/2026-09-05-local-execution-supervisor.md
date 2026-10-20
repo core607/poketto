@@ -29,8 +29,9 @@ separate worker and resource pool, without repository copies or a command bridge
 A small root resource supervisor sits behind a permissioned local UNIX socket.
 It verifies Ed25519-signed Spring requests, mounts quota-bounded disk copies,
 and launches fixed systemd units under an independent unprivileged execution
-account. Both Git initialization and user commands run through pinned SRT
-0.0.75. The supervisor never interprets shell commands or opens application
+account. Both Git initialization and user commands use the
+[direct sandbox launcher](2026-10-18-direct-sandbox-launch.md), with bubblewrap
+and the pinned static seccomp helper. The supervisor never interprets shell commands or opens application
 repository caches. Spring receives no Docker socket or elevated host capability.
 
 Spring exports a bounded Git bundle containing the pinned commit and ancestor
@@ -40,7 +41,7 @@ The worker maps opaque export IDs under its configured export directory; caller
 arguments cannot select a host path or remote address. A new bundle clone has
 no source inode sharing, alternates, credentials, or inherited Git configuration.
 
-Commands share a fixed low-privilege SRT unit within one lease while
+Commands share a fixed low-privilege sandbox unit within one lease while
 the account/workspace copy persists across transports. Runtime, CPU, memory, swap,
 descendant count, output, temporary storage, and repository storage are bounded
 outside the command. Only one command runs per shared copy. Lease and request
@@ -79,13 +80,13 @@ worker, but cannot infer cleanup from a failed connection or an unchanged ID.
 The [worker reference](../../executor-service/README.md) owns the exact wire
 schema, state transitions, operational requirements, and executable tests.
 
-SRT's Linux mount ordering requires disjoint read-only and writable grants.
+The launcher requires disjoint read-only and writable grants.
 The worker grants read access to the trusted bootstrap directory, the bridge
 lock, state and response paths, and, only while initializing or installing a
 baseline, the snapshot or baseline bundle; working, home and bridge request
 directories receive their own write grants. It never grants read access to the
-whole session directory: a read grant for the whole session parent can install
-a later read-only bind over the writable children. Keeping test runtime state
+whole session directory: a read grant for the whole session parent would
+expose paths outside the specific grants and overlap writable children. Keeping test runtime state
 under `/tmp` can conceal that error because the invocation's temporary-write
 grant also covers it. The native probe therefore places runtime state under
 `/run`, with the production supervisor umask, while synthetic source and tools
@@ -188,8 +189,8 @@ than Python packages installed independently with pip.
 
 The supervisor is security-sensitive privileged code. Its executable, toolchain,
 configuration, verification key, and generated records must be root-owned.
-That includes SRT's compile cache: a V8 code cache is executable code every
-later sandbox would load, so it is generated at installation, never by a lease.
+Any provisioned Node compile cache is executable code and remains read-only
+to leases; only the operator may generate or replace it.
 Signed requests do not excuse unsafe filesystem cleanup or arbitrary systemd
 properties. Resource examples require real corpus sizing before production.
 
@@ -199,7 +200,7 @@ The Gradle `executorServiceTests` task runs the worker's tests, with real Ed2551
 signatures, on Linux with zero skipped or aborted tests; Windows uses a pinned
 Linux container. `WorkerSocketTests`, `WorkerAnswerTests` and
 `WorkerFrameContractTests` pin the Java adapter, and `McpProtocolIntegrationIT` the
-HTTP MCP entrance. These gates do not rerun the privileged SRT probe. The
+HTTP MCP entrance. These gates do not rerun the privileged sandbox probes. The
 privileged runs are recorded in the [native evidence](../../executor-service/evidence.jsonl),
 the [combined Java/worker evidence](../../executor-native/evidence/2026-09-05-combined.json),
 the [real-corpus worker sample](../../acceptance/evidence/2026-09-15-real-corpus-worker-timing.json)
