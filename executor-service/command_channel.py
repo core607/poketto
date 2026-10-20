@@ -96,10 +96,11 @@ class CommandChannel:
             frame = memoryview(json.dumps(
                 {'executionId': execution_id, 'command': command},
                 ensure_ascii=False, separators=(',', ':')).encode() + b'\n')
+            writer = select.poll()
+            writer.register(self.process.stdin, select.POLLOUT)
             while frame:
                 check()
-                _, writable, _ = select.select([], [self.process.stdin], [], 0.05)
-                if writable:
+                if writer.poll(50):
                     try:
                         frame = frame[os.write(self.process.stdin.fileno(), frame):]
                     except BlockingIOError:

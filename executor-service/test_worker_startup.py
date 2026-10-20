@@ -2,13 +2,38 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 import json
 from pathlib import Path
+import resource
 import tempfile
 import threading
 import unittest
 from unittest.mock import Mock, patch
 
 import test_worker as fixture
-from worker import Rejected, StartRefused, load_config
+from worker import Rejected, StartRefused, load_config, prepare_descriptor_limit
+
+
+class DescriptorLimitTests(unittest.TestCase):
+    def test_soft_limit_uses_existing_hard_allowance_without_raising_it(self):
+        limits = resource.getrlimit(resource.RLIMIT_NOFILE)
+        self.assertTrue(limits[1] == resource.RLIM_INFINITY or limits[1] > 1024)
+        try:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (1024, limits[1]))
+            prepare_descriptor_limit()
+            self.assertEqual((limits[1], limits[1]), resource.getrlimit(resource.RLIMIT_NOFILE))
+        finally:
+            resource.setrlimit(resource.RLIMIT_NOFILE, limits)
+
+    def test_limit_setup_failure_prevents_startup_instead_of_being_ignored(self):
+        with patch('worker.resource.getrlimit', return_value=(1024, 524288)), \
+                patch('worker.resource.setrlimit', side_effect=PermissionError('denied')):
+            with self.assertRaises(PermissionError):
+                prepare_descriptor_limit()
+
+    def test_an_existing_equal_limit_needs_no_change(self):
+        with patch('worker.resource.getrlimit', return_value=(524288, 524288)), \
+                patch('worker.resource.setrlimit') as change:
+            prepare_descriptor_limit()
+        change.assert_not_called()
 
 
 class WorkerStartupTests(unittest.TestCase):

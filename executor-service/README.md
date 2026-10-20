@@ -54,6 +54,8 @@ This installs host distribution packages for Pillow, BeautifulSoup/lxml, pypdf, 
 
 Size `maxLiveUnits` from measured cgroup memory and tasks, leaving room for the supervisor and active commands within the slice's `MemoryMax` and `TasksMax`. Idle shell measurements exclude command workloads. A working set beyond this bound repeatedly replaces units; size the independent `maxStartingUnits` with a guarded ramp, not from idle memory alone. The [launcher comparison](../executor-native/README.md#launcher-comparison) measures startup cost before HTTP load testing.
 
+After startup cleanup and before listening, the supervisor raises `RLIMIT_NOFILE`'s soft limit to its existing hard limit. Bridge and command waits support descriptor numbers above 1023. Size the service's `LimitNOFILE` hard limit for leases, retained artifacts and active connections; cgroup memory and configured capacities still bound resource use.
+
 ## Automatic source updates
 
 [Setup and recovery](../deploy/README.md#worker-source-updates) for automatic source updates.

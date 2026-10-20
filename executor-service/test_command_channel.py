@@ -1,5 +1,7 @@
+import fcntl
 import os
 from pathlib import Path
+import resource
 import signal
 import subprocess
 import sys
@@ -15,6 +17,20 @@ from worker import SystemdBackend
 
 
 class CommandChannelTests(unittest.TestCase):
+    def test_command_delivery_accepts_a_pipe_above_select_descriptor_range(self):
+        limits = resource.getrlimit(resource.RLIMIT_NOFILE)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (max(2048, limits[0]), limits[1]))
+        self.addCleanup(resource.setrlimit, resource.RLIMIT_NOFILE, limits)
+        previous = self.process.stdin
+        descriptor = fcntl.fcntl(previous.fileno(), fcntl.F_DUPFD_CLOEXEC, 1024)
+        self.process.stdin = os.fdopen(descriptor, 'wb', buffering=0)
+        previous.close()
+        self.assertGreaterEqual(descriptor, 1024)
+        result, output, truncated = self.execute('printf high-descriptor')
+        self.assertEqual(0, result['exitCode'])
+        self.assertEqual(b'high-descriptor', bytes(output[0]))
+        self.assertFalse(any(truncated))
+
     def test_unit_cleanup_releases_a_forwarder_blocked_on_unconsumed_output(self):
         process = subprocess.Popen(
             [sys.executable, '-c', "import os; os.write(2,b'ready'); os.write(1,b'x'*16000000)"],
