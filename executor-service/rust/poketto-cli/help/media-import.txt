@@ -1,0 +1,17 @@
+usage: poketto media import [-h] --as LOGICAL_PATH [--type MEDIA_TYPE]
+                            --key KEY [--replace]
+                            file
+
+positional arguments:
+  file               Existing regular file, relative to the repository root;
+                     absolute and /tmp paths are not accepted
+
+options:
+  -h, --help         show this help message and exit
+  --as LOGICAL_PATH  Repository-relative logical path stored in the media
+                     index
+  --type MEDIA_TYPE
+  --key KEY          Stable 16-128 character idempotency key for these
+                     original bytes
+  --replace          Replace an existing logical index entry; originals remain
+                     immutable

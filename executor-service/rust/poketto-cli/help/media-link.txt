@@ -1,0 +1,13 @@
+usage: poketto media link [-h] --asset ASSET --revision REVISION [--replace]
+                          path
+
+positional arguments:
+  path                 Repository-relative logical path stored in the media
+                       index
+
+options:
+  -h, --help           show this help message and exit
+  --asset ASSET        Existing managed asset ID returned by upload
+  --revision REVISION  Exact immutable revision returned by upload
+  --replace            Replace an existing logical index entry; originals
+                       remain immutable

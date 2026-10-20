@@ -11,19 +11,23 @@ rejects the installed worker.
 
 ## Decision
 
-An execution-enabled existing installation delivers the worker sources carried
+An execution-enabled existing installation delivers the worker sources and static sandbox programs carried
 by the selected application image. The protected updater validates the bundle's
 revision, complete file set and checksums, and the installed Python dependencies,
 before changing either service. Host configuration, keys, tools, storage and
 resource limits remain operator-owned. Missing worker deployment configuration
 prevents an application update.
 
-Complete source generations live in a protected directory. Existing source
+Complete runtime generations live in a protected directory. Existing source
 entrances point through one atomically replaced selector, so an interrupted
 installation cannot expose half of two generations. Initial adoption keeps all
 entrances on the previous bytes until every link exists. The updater stops the
 supervisor before switching and starts it before replacing the application;
-unchanged sources do not require another worker restart.
+unchanged runtime files do not require another worker restart. Programs run from
+the selected launcher's adjacent read-only `bin/` directory. Its executable
+ownership, permissions and static x64 ELF format are checked with its checksums.
+Rollback retains the previous generation's own file set, even when a later
+generation replaces a source file with a binary.
 
 The deployment remains pending until both application images, installed worker
 sources, unchanged private configuration and the application's live worker
@@ -43,7 +47,7 @@ overwrite configuration and provisioned tools outside a source update's scope.
 
 ## Consequences
 
-The application image includes public Python sources. The privileged updater
+The application image includes public Python sources and static Rust programs. The privileged updater
 requires a one-time installation and explicit host worker configuration; initial
 sandbox provisioning and dependency upgrades remain separate operations. A
 source-changing worker restart ends leases and artifacts while retaining account

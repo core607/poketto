@@ -1,0 +1,13 @@
+usage: poketto media list [-h] [--prefix PREFIX] [--offset OFFSET]
+                          [--limit LIMIT] [--index-version INDEX_VERSION]
+                          [--commit COMMIT]
+
+options:
+  -h, --help            show this help message and exit
+  --prefix PREFIX       Literal logical-path prefix, such as private/music/
+  --offset OFFSET
+  --limit LIMIT
+  --index-version INDEX_VERSION
+                        Use the returned version when continuing a page;
+                        changed indexes fail explicitly
+  --commit COMMIT       Read a historical index in a full-read session

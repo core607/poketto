@@ -263,7 +263,7 @@ jobs:
         with:
           python-version: "3.12.14"
       - name: Application image identity and executor service
-        run: ./gradlew appImageIdentityCheck executorServiceTests --no-daemon
+        run: ./gradlew appImageIdentityCheck executorRustCheck executorServiceTests --no-daemon
       - name: Upload verification reports
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -331,7 +331,7 @@ jobs:
         with:
           gradle-home-cache-cleanup: true
       - name: Stage the acceptance runtime
-        run: ./gradlew stageAcceptanceRuntime --no-daemon
+        run: ./gradlew stageAcceptanceRuntime stageExecutorWorker --no-daemon
       - name: Prepare the sandbox host
         run: |
           # SRT's bubblewrap and seccomp helper need capability-bearing user namespaces.
@@ -351,7 +351,7 @@ jobs:
       - name: Small agent load on native sandboxes
         run: |
           mkdir -p build/load
-          sudo env PYTHONPATH=/var/lib/poketto-load/tools/python python3 acceptance/clients/native-load.py --runtime /var/lib/poketto-load/runtime --worker-source executor-service --tools /var/lib/poketto-load/tools --java "$JAVA_HOME/bin/java" --evidence build/load/native-load.json
+          sudo env PYTHONPATH=/var/lib/poketto-load/tools/python python3 acceptance/clients/native-load.py --runtime /var/lib/poketto-load/runtime --worker-source build/executor-service/worker --tools /var/lib/poketto-load/tools --java "$JAVA_HOME/bin/java" --evidence build/load/native-load.json
       - name: Upload the load receipt
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

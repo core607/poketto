@@ -1,0 +1,48 @@
+usage: poketto [-h]
+               {status,edit,create,recover,sync,move,export,artifact,media,save} ...
+
+Host operations use repository-relative paths, independent of the shell working directory. Shell state and /tmp persist within the live lease sandbox; repository files also survive sandbox resets. Use python3 for Python scripts.
+
+positional arguments:
+  {status,edit,create,recover,sync,move,export,artifact,media,save}
+    status              Read the working-copy ID, host-owned baseline and
+                        scope
+    edit                Replace one exact text match in a local file; does not
+                        save or publish
+    create              Create a local text file only when its path is absent;
+                        does not save or publish
+    recover             Resume a pending sync or recover a save or move using
+                        its retained commit and local completion receipt
+    sync                Merge the current remote workspace into local edits
+                        without saving or publishing
+    move                Atomically move saved content and repair references;
+                        unselected edits stay local
+    export              Export latest saved documents and media as ZIP;
+                        unsaved edits are excluded and publication is
+                        unchanged
+    artifact            Create or remove an expiring artifact for the current
+                        execution lease
+    media               Import or fetch indexed original media
+    save                Commit explicitly selected text files through the host
+
+options:
+  -h, --help            show this help message and exit
+
+Common workflow:
+  Text: poketto create private/article.md --stdin <<'MARKDOWN'
+        ... Markdown, quotes and final newlines are preserved ...
+        MARKDOWN
+  Edit: poketto edit PATH --old 'exact original' --new-stdin <<'REPLACEMENT'
+        ... replacement text ...
+        REPLACEMENT
+  Media here: poketto media import FILE --as private/PATH --type image/png --key KEY
+  Media elsewhere: use MCP put_asset with a download URL, or request its temporary
+        upload URL and PUT the file from the client that owns it. Do not transcribe Base64.
+  Link receipt: poketto media link private/PATH --asset ID --revision REV
+  Persist: poketto save private/article.md .poketto/assets.json
+  Confirm: poketto status; inspect saved text/media through the remote read path.
+  Remote changed: poketto sync preserves local edits; resolve reported conflicts.
+Uploads and local edits do not publish. Public paths require publication permission.
+stdin avoids shell quoting; it does not lift repo_exec's 16384-character command
+limit or the 512 KiB bridge frame limit. Use --text-file/--old-file/--new-file for
+UTF-8 files already in the execution environment, or split a long edit into exact matches.

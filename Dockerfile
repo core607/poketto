@@ -1,5 +1,10 @@
 # syntax=docker/dockerfile:1
 
+FROM rust:1.99.1-alpine@sha256:557a94c82b485a14b569120e00867267108c734efe33f10cc31ca0cd5dd1eca9 AS sandbox-programs
+WORKDIR /source
+COPY executor-service/rust/ ./
+RUN cargo build --locked --release --target x86_64-unknown-linux-musl
+
 # Build stage: the Gradle build runs on the same JDK the toolchain requires. Tests are not run
 # here; `check` verifies the commit before an image is published.
 FROM eclipse-temurin:26-jdk-noble@sha256:091b6640864939942cd9d7ddd16576f31112d5a56a595b566ce561d1c0e07c6b AS build
@@ -34,15 +39,16 @@ COPY --from=build /app/dependencies/ ./
 COPY --from=build /app/spring-boot-loader/ ./
 COPY --from=build /app/snapshot-dependencies/ ./
 COPY --from=build /app/application/ ./
-# The host updater extracts these public sources from this exact image; operator configuration stays on the host.
+# The host updater extracts this runtime from the exact image; operator configuration stays on the host.
 COPY executor-service/worker.py executor-service/launcher.py executor-service/command_channel.py \
      executor-service/shell_loop.py executor-service/disk_pool.py executor-service/resource_pool.py \
-     executor-service/bridge.py executor-service/cli.py executor-service/session_files.py \
+     executor-service/bridge.py executor-service/session_files.py \
      executor-service/binary_capture.py executor-service/materialize.py executor-service/artifacts.py \
      executor-service/requirements.txt /opt/poketto-worker/
+COPY --from=sandbox-programs /source/target/x86_64-unknown-linux-musl/release/poketto /opt/poketto-worker/bin/poketto
 RUN cd /opt/poketto-worker && sed -i 's/\r$//' *.py requirements.txt \
     && printf '%s\n' "$POKETTO_REVISION" > revision \
-    && sha256sum *.py requirements.txt > SHA256SUMS
+    && sha256sum *.py requirements.txt bin/poketto > SHA256SUMS
 USER poketto
 ENV POKETTO_DATA_DIR=/var/lib/poketto
 EXPOSE 8080

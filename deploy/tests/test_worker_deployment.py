@@ -2,20 +2,35 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from worker_release import DeploymentError, PAYLOAD, SOURCES, WorkerRelease, read_bundle, sha, validate_config
+from worker_release import BINARIES, DeploymentError, PAYLOAD, SOURCES, WorkerRelease, read_bundle, sha, validate_config
 
 
 REVISION = "a" * 40
+
+
+def program(directory, value):
+    (directory / "bin").mkdir(mode=0o755)
+    raw = bytearray(120)
+    raw[:7] = b"\x7fELF\x02\x01\x01"
+    struct.pack_into("<HH", raw, 16, 2, 62)
+    struct.pack_into("<Q", raw, 32, 64)
+    struct.pack_into("<HH", raw, 54, 56, 1)
+    struct.pack_into("<I", raw, 64, 1)
+    for name in BINARIES:
+        (directory / name).write_bytes(bytes(raw) + value.encode())
+        (directory / name).chmod(0o755)
 
 
 def bundle(directory, value="new"):
     directory.mkdir()
     for name in SOURCES:
         (directory / name).write_text("VALUE = " + repr(value) + "\n")
+    program(directory, value)
     (directory / "requirements.txt").write_text("example==1.0\n")
     (directory / "revision").write_text(REVISION + "\n")
     checksums(directory)
@@ -35,6 +50,7 @@ class WorkerDeploymentTests(unittest.TestCase):
         self.root.mkdir()
         for name in SOURCES:
             (self.root / name).write_text("VALUE = 'old'\n")
+        program(self.root, "old")
         self.configuration = self.root / "config.json"
         self.private = json.dumps({"launcher": str(self.root / "launcher.py"),
                                    "supervisorUnit": "example.service", "private": "operator-$secret"}).encode()
@@ -126,6 +142,46 @@ class WorkerDeploymentTests(unittest.TestCase):
         retry = self.worker.prepare("image", REVISION)
         self.worker.install(retry)
         self.worker.verify(retry)
+
+    def test_python_only_generation_rolls_back_without_requiring_the_new_binary(self):
+        old = {name: (self.root / name).read_bytes() for name in SOURCES}
+        old["cli.py"] = b"VALUE = 'previous Python CLI'\n"
+        old["requirements.txt"] = b"example==1.0\n"
+        previous = self.worker._stage(old)
+        self.worker._select(previous)
+        for name in self.worker._aliases(old):
+            target = self.root / name
+            target.unlink(missing_ok=True)
+            target.symlink_to("releases/current/" + name)
+        plan = self.worker.prepare("image", REVISION)
+        self.assertEqual(previous, plan["previousRelease"])
+        self.fail_start = True
+        with self.assertRaisesRegex(DeploymentError, "previous sources restored"):
+            self.worker.install(plan)
+        self.assertEqual(previous, self.worker._selected())
+        self.assertEqual(old["cli.py"], (self.root / "cli.py").read_bytes())
+        self.assertFalse((self.worker.store / previous / "bin").exists())
+        self.worker.install(plan)
+        self.worker.verify(plan)
+        selected = (self.root / "launcher.py").resolve().parent
+        self.assertEqual((self.image / "bin/poketto").read_bytes(), (selected / "bin/poketto").read_bytes())
+        self.assertFalse((selected / "cli.py").exists())
+        self.assertEqual(0o555, (selected / "bin/poketto").stat().st_mode & 0o777)
+
+    def test_program_integrity_and_execute_permissions_are_required(self):
+        binary = self.image / "bin/poketto"
+        original = binary.read_bytes()
+        for mode in (0o644, 0o777):
+            binary.chmod(mode)
+            with self.assertRaisesRegex(DeploymentError, "root-owned, executable"):
+                self.worker.prepare("image", REVISION)
+        binary.chmod(0o755)
+        for raw in (b"#!/bin/sh\nexit 0\n", original[:64], original[:64] + struct.pack("<I", 3) + original[68:]):
+            binary.write_bytes(raw)
+            checksums(self.image)
+            with self.assertRaises(DeploymentError):
+                self.worker.prepare("image", REVISION)
+        self.assertFalse(any(call[:2] == ("systemctl", "stop") for call in self.calls))
 
     def test_failed_start_restores_the_whole_previous_release_and_same_plan_retries(self):
         plan = self.worker.prepare("image", REVISION)

@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from bridge import LeaseBridge
-from cli import call, _send
+from testdata.cli_reference import call, _send
 from session_files import capture_text
 from binary_capture import BinaryCapture
 from artifacts import ArtifactStore
@@ -908,7 +908,7 @@ class ProtocolTests(unittest.TestCase):
 class SandboxPolicyTests(unittest.TestCase):
     def test_every_mode_hides_the_host_sysfs_that_a_denied_root_leaves_readable(self):
         backend = SystemdBackend.__new__(SystemdBackend)
-        backend.c = {'toolsRoot': '/opt/poketto/tools'}
+        backend.c = {'toolsRoot': '/opt/poketto/tools', 'launcher': str(Path(__file__).with_name('launcher.py'))}
         backend.sessions = Path('/run/poketto/sessions')
         session = Session(uid(), (), '', 115)
         for mode in ('initialize', 'shell', 'baseline'):

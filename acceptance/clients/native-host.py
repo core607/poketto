@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
 
 POSTGRES = 'postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0'
-MODULES = ('disk_pool.py', 'worker.py', 'command_channel.py', 'shell_loop.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'cli.py',
+MODULES = ('disk_pool.py', 'worker.py', 'command_channel.py', 'shell_loop.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'bin/poketto',
            'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py')
 
 
@@ -91,8 +91,9 @@ def main():
             path.mkdir(mode=0o700)
             os.chown(path, app_account.pw_uid, app_account.pw_gid)
         for name in MODULES:
+            (root / name).parent.mkdir(mode=0o755, parents=True, exist_ok=True)
             shutil.copyfile(source / name, root / name)
-            (root / name).chmod(0o644)
+            (root / name).chmod(0o555 if name.startswith('bin/') else 0o644)
         key = Ed25519PrivateKey.generate()
         private = root / 'private.pem'
         private.write_bytes(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))

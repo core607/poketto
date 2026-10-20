@@ -1,0 +1,11 @@
+usage: poketto export [-h] --output OUTPUT [--public] paths [paths ...]
+
+positional arguments:
+  paths            Selected files or folders; . selects the visible workspace
+
+options:
+  -h, --help       show this help message and exit
+  --output OUTPUT  Repository-relative ZIP destination; a different existing
+                   file is preserved
+  --public         Use approved public content only; public-read sessions
+                   always use this scope

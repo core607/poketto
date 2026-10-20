@@ -1,0 +1,10 @@
+usage: poketto artifact [-h] {create,remove} ...
+
+positional arguments:
+  {create,remove}
+    create         Capture a local file for get_artifact; does not save or
+                   publish
+    remove         Release a session artifact before it expires
+
+options:
+  -h, --help       show this help message and exit

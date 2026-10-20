@@ -1,0 +1,13 @@
+usage: poketto media [-h] {list,fetch,import,link} ...
+
+positional arguments:
+  {list,fetch,import,link}
+    list                List indexed media paths without fetching originals
+    fetch               Fetch an indexed original into the repository worktree
+    import              Store a local original and update its unsaved logical
+                        index entry
+    link                Link an existing workspace original into the unsaved
+                        media index; does not upload or save
+
+options:
+  -h, --help            show this help message and exit

@@ -31,7 +31,7 @@ from binary_capture import BinaryCapture
 from artifacts import ArtifactRejected, ArtifactStore, MAX_OUTPUT_BYTES, retain_output
 from disk_pool import DiskPool
 from command_channel import CommandChannel, CommandEnded
-from launcher import verify_tools
+from launcher import program_directory, verify_programs, verify_tools
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -1039,9 +1039,6 @@ class SystemdBackend:
             os.chown(path, self.user.pw_uid, self.user.pw_gid)
         s.bridge = LeaseBridge(target / 'bridge', self.user.pw_gid)
         s.artifacts = ArtifactStore(target)
-        cli = bootstrap / 'poketto'
-        cli.write_bytes(Path(self.c['launcher']).with_name('cli.py').read_bytes())
-        cli.chmod(0o555)
         shell = bootstrap / 'shell_loop.py'
         shell.write_bytes(Path(self.c['launcher']).with_name('shell_loop.py').read_bytes())
         shell.chmod(0o555)
@@ -1275,6 +1272,7 @@ class SystemdBackend:
         target = self.mount_path(s)
         read_paths = ['/usr', '/bin', '/lib', '/lib64', '/dev', '/proc',
                       '/etc/ld.so.cache', str(Path(self.c['toolsRoot'])), str(target / 'bootstrap'),
+                      str(program_directory(self.c['launcher'])),
                       str(target / 'bridge/lock'), str(target / 'bridge/state'), str(target / 'bridge/responses')]
         if payload['mode'] == 'initialize':
             read_paths.append(str(target / 'snapshot.bundle'))
@@ -1666,6 +1664,7 @@ def main():
     backend.pool = ResourcePool(config.get('resourceSlice'))
     backend.pool.verify()
     verify_tools(config['toolsRoot'])
+    verify_programs(program_directory(config['launcher']))
     key = load_pem_public_key(Path(config['publicKey']).read_bytes())
     if not isinstance(key, Ed25519PublicKey):
         raise SystemExit('Ed25519 public key required')

@@ -1,0 +1,9 @@
+usage: poketto media fetch [-h] [--commit COMMIT] [--output OUTPUT] path
+
+positional arguments:
+  path
+
+options:
+  -h, --help       show this help message and exit
+  --commit COMMIT
+  --output OUTPUT

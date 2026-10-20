@@ -52,6 +52,8 @@ The service must invoke `python sourceDirectory/worker.py --config configFile`;
 The worker configuration's `launcher` must be `sourceDirectory/launcher.py`.
 Initial host provisioning and pinned Python dependencies remain prerequisites.
 Enabled execution without this deployment object blocks an image update.
+Install this version of `worker_release.py` before the first release containing
+static programs; image transfer does not replace the privileged host updater.
 
 Replace the example copy ID with an existing copy reserved for deployment checks.
 Store its workspace API key in the root-owned `probeTokenFile` with mode 0600;
@@ -65,8 +67,10 @@ The updater verifies the bundle, stages complete generations in
 `sourceDirectory/releases/`, and converts the runtime source files to links
 through `releases/current`. It stops the service before atomically switching
 generations and starting it. Private configuration, keys, tools, quotas and copy
-storage are untouched. Unchanged sources keep the running worker. `--check`
-validates and stages sources without changing the selector or restarting services.
+storage are untouched. Static programs live in the selected generation's protected
+`bin/` directory, resolved beside its launcher; the updater verifies their checksums,
+x64 ELF format and executable permissions. Unchanged runtime files keep the running
+worker. `--check` validates and stages files without changing the selector or restarting services.
 
 A failed start restores the previous generation; a failed application update or
 health check remains pending. Retry the same images and configuration to finish
