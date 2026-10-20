@@ -11,7 +11,7 @@ import time
 import unittest
 import uuid
 
-from shell_loop import MAX_RETAINED_STREAMS
+from testdata.shell_loop_reference import MAX_RETAINED_STREAMS
 
 
 class ShellLoopTests(unittest.TestCase):
@@ -19,7 +19,7 @@ class ShellLoopTests(unittest.TestCase):
         self.root = tempfile.TemporaryDirectory()
         self.addCleanup(self.root.cleanup)
         self.process = subprocess.Popen(
-            [sys.executable, '-I', str(Path(__file__).with_name('shell_loop.py')), self.root.name],
+            [str(Path(__file__).with_name('bin') / 'poketto-shell'), self.root.name],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             start_new_session=True)
         self.addCleanup(self.close)
@@ -135,6 +135,20 @@ class ShellLoopTests(unittest.TestCase):
         self.process.stdin.flush()
         self.assertNotEqual(0, self.process.wait(timeout=3))
         self.assertIn(b'Invalid command source', self.process.stderr.read())
+
+    def test_shell_signal_exit_wakes_the_driver_even_with_an_inherited_reply_writer(self):
+        result, output = self.execute('sleep 30 & printf goodbye; kill -TERM $$')
+        self.assertEqual(143, result['exitCode'])
+        self.assertTrue(result['shellExited'])
+        self.assertEqual(b'goodbye', output['stdout'])
+
+    def test_noncanonical_execution_identity_ends_driver_before_evaluation(self):
+        self.process.stdin.write(json.dumps({
+            'executionId': '00000000-0000-0000-0000-00000000000A', 'command': 'touch must-not-exist'}).encode() + b'\n')
+        self.process.stdin.flush()
+        self.assertNotEqual(0, self.process.wait(timeout=3))
+        self.assertIn(b'Invalid command identity', self.process.stderr.read())
+        self.assertFalse((Path(self.root.name) / 'must-not-exist').exists())
 
 
 if __name__ == '__main__':

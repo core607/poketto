@@ -23,9 +23,10 @@ def program_directory(launcher):
 
 def verify_programs(directory):
     directory = Path(directory)
-    if directory.is_symlink() or set(path.name for path in directory.iterdir()) != {'poketto'}:
+    if directory.is_symlink() or set(path.name for path in directory.iterdir()) != {'poketto', 'poketto-shell'}:
         raise ValueError('Sandbox program directory must contain only the expected executables')
-    trusted_executable(directory / 'poketto')
+    for name in ('poketto', 'poketto-shell'):
+        trusted_executable(directory / name)
 
 
 def trusted_executable(path):
@@ -163,7 +164,7 @@ def main():
             'test -z "$(git -C "$1/work/repository" remote)"',
             'initialize', str(root), record['commit']]
     elif record['mode'] == 'shell':
-        command = ['/usr/bin/python3', '-I', str(root / 'bootstrap/shell_loop.py'), str(root / 'work/repository')]
+        command = [str(programs / 'poketto-shell'), str(root / 'work/repository')]
     elif record['mode'] == 'baseline':
         command = ['/usr/bin/python3', '-c', INSTALL_BASELINE, str(root), record['commit']]
     elif record['mode'] == 'game':
