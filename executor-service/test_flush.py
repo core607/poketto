@@ -20,6 +20,10 @@ class FilesystemFlushTests(unittest.TestCase):
         self.backend.mount_path = Mock(return_value=self.root)
         self.session = Mock()
         self.program = Path(__file__).with_name('bin') / 'poketto-syncfs'
+        # Ordinary Linux runners own their checkout; image/native acceptance checks real root ownership.
+        trusted = patch('worker.trusted_executable')
+        self.trusted = trusted.start()
+        self.addCleanup(trusted.stop)
 
     def test_flush_uses_the_selected_program_and_preserves_the_timeout(self):
         (self.root / 'acknowledged.txt').write_text('kept')
@@ -27,6 +31,7 @@ class FilesystemFlushTests(unittest.TestCase):
             self.backend.flush(self.session)
         execute.assert_called_once_with([str(self.program), str(self.root)], check=True,
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+        self.trusted.assert_called_once_with(self.program)
         self.assertEqual('kept', (self.root / 'acknowledged.txt').read_text())
 
     def test_helper_rejects_missing_extra_and_non_directory_arguments(self):
@@ -45,8 +50,8 @@ class FilesystemFlushTests(unittest.TestCase):
             self.backend.flush(self.session)
 
     def test_untrusted_program_prevents_a_flush_process(self):
-        with patch('worker.trusted_executable', side_effect=ValueError('Untrusted program')), \
-                patch('worker.checked') as execute:
+        self.trusted.side_effect = ValueError('Untrusted program')
+        with patch('worker.checked') as execute:
             with self.assertRaises(ValueError):
                 self.backend.flush(self.session)
         execute.assert_not_called()
