@@ -436,8 +436,8 @@ public final class RetainedProcessNativeProbe {
     }
 
     private String inspection(AccountCopyRecord before) {
-        String command = "set -eu; test \"$(git rev-parse HEAD)\" = "
-                + before.state().originalCommit()
+        String command = "set -eux; test \"$(git rev-parse HEAD)\" = "
+                + before.state().baseCommit()
                 + "; test \"$(cat private/draft.md)\" = '" + expectedDraft() + "'; "
                 + "test \"$(cat private/saved-before.md)\" = 'saved before loss'; "
                 + "python3 -c \"from pathlib import Path; assert Path('private/draft.bin').read_bytes() == bytes([0,255,9])\"; ";
@@ -466,6 +466,7 @@ public final class RetainedProcessNativeProbe {
         assertThat(after.writer().workerBootId()).isEqualTo(before.writer().workerBootId());
         assertThat(after.original()).isEqualTo(before.original());
         assertThat(encoded(after.state())).isEqualTo(encoded(selected));
+        assertThat(result.commit()).isEqualTo(selected.baseCommit());
         assertThat(result.retention().resumed()).isTrue();
         assertThat(result.retention().lastInterruptedCommand()).isEqualTo(before.executionId());
         assertThat(after.phase()).isEqualTo(AccountCopyRecord.Phase.READY);
