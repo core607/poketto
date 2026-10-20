@@ -25,7 +25,8 @@ def trusted_executable(path):
         info = current.lstat()
         expected = stat.S_ISREG(info.st_mode) if current == path else stat.S_ISDIR(info.st_mode)
         if not expected or info.st_uid != 0 or info.st_mode & 0o022:
-            raise ValueError('Sandbox tools and their parents must be root-owned and not writable by other accounts')
+            raise ValueError('Sandbox tools and their parents must be root-owned and not writable by other accounts: '
+                             + str(current))
     if not path.stat().st_mode & 0o111:
         raise ValueError('Sandbox tool is not executable')
 
