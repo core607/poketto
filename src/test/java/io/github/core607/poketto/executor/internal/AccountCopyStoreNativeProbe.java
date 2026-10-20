@@ -10,6 +10,7 @@ import io.github.core607.poketto.content.DocumentRevision;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositoryPatch;
 import io.github.core607.poketto.content.RepositoryTextChange;
+import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -143,6 +144,7 @@ record AccountCopyStoreNativeProbe(Path root) {
             assertThat(continued.expiresAt()).isGreaterThan(recovered.expiresAt());
             assertThatThrownBy(() -> lease.write(recovered)).isInstanceOf(IllegalArgumentException.class);
         }
+        assertReadyBinding(store);
         try (var foreign = store.acquire(new AccountCopyRecord.Owner(UUID.randomUUID(), WORKSPACE, true));
                 var restricted = store.acquire(new AccountCopyRecord.Owner(ACCOUNT, WORKSPACE, false))) {
             assertThat(foreign.record()).isEmpty();
@@ -160,6 +162,20 @@ record AccountCopyStoreNativeProbe(Path root) {
         }
         try (var removed = store.acquire(OWNER)) {
             assertThat(removed.record()).isEmpty();
+        }
+    }
+
+    private static void assertReadyBinding(AccountCopyStore store) throws Exception {
+        AccountCopyRecord before;
+        try (var held = new AccountCommand(store, OWNER, mock(ExecutionCancellation.class))) {
+            before = held.record();
+            held.bind(before.writer());
+            assertThat(held.record()).isEqualTo(before);
+            assertThat(held.view().lastInterruptedCommand()).isEqualTo(EXECUTION);
+        }
+        try (var reopened = store.acquire(OWNER)) {
+            assertThat(reopened.record()).contains(before);
+            assertOriginal(reopened);
         }
     }
 

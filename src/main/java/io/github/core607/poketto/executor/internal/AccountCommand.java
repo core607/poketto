@@ -150,6 +150,9 @@ final class AccountCommand implements AutoCloseable {
     void bind(AccountCopyRecord.Writer writer) {
         requireLive();
         var current = record();
+        if (current.phase() == AccountCopyRecord.Phase.READY && current.writer().equals(writer)) {
+            return;
+        }
         resumed |= !current.writer().equals(writer);
         boolean interrupted = current.phase() == AccountCopyRecord.Phase.RUNNING;
         UUID previous = interrupted ? current.executionId() : current.lastInterruptedCommand();
