@@ -5,16 +5,18 @@ Status: Implemented
 
 ## Problem
 
-The sandbox's `poketto` client starts a process for every host operation. Parsing a
-small command and exchanging bounded JSON through FIFOs do not need a Python
-interpreter, yet every invocation pays for its startup and imports. The
+The sandbox's `poketto` client starts a process for every host operation, and its
+resident shell driver waits between commands. Python adds startup and resident
+memory to both; a 50 ms shell-polling timeout also wakes every idle unit twenty
+times a second. The
 [direct launcher](2026-10-18-direct-sandbox-launch.md) removes SRT from unit startup
 but does not remove this per-command cost.
 
 ## Decision
 
-The CLI is a static x64 Rust program. `serde_json` owns JSON encoding and decoding;
-`rustix` supplies safe Unix flag and polling interfaces. The implementation forbids
+The CLI and shell driver are static x64 Rust programs. `serde_json` owns JSON;
+`rustix` supplies safe Unix, pipe and pidfd interfaces; `base64` encodes binary
+output frames without a custom codec. The implementations forbid
 unsafe Rust. The pinned toolchain, Cargo lockfile and image digest make dependency
 updates deliberate; every Cargo build uses `--locked`.
 
@@ -32,13 +34,22 @@ sandbox. Sharing one inode lets units share executable pages instead of each
 paying for a copied binary. The directory contains only the expected programs;
 supervisor startup and every launch verify ownership and permissions.
 
-The resident shell driver, launcher and supervisors remain Python. The
+The driver blocks on command input, shell replies, output FIFOs and a pidfd; it
+has no periodic idle timer. A sentinel holds each FIFO open until bash opens both
+writers. Completion drains only the bytes already present, so a background writer
+cannot delay it indefinitely. Finished-command output is discarded, and retaining
+at most 128 readers bounds descriptor use. The shell wrapper, execution identity,
+frame bounds and exit-status mapping remain part of the protocol.
+
+The launcher and supervisors remain Python. The
 [remaining proposal](../proposed/2026-10-20-rust-sandbox-programs.md) owns their
 separate evidence and acceptance conditions.
 
 ## Alternatives
 
 Python startup flags remove some imports but retain the interpreter cost.
+An event-driven Python driver removes idle polling but retains interpreter
+startup and resident memory. A native driver addresses both costs.
 Embedding the bridge client in the shell driver cannot replace the executable
 that arbitrary scripts and subprocesses invoke through `PATH`; it also mixes
 execution framing with host operations. Go brings a runtime and additional
@@ -62,3 +73,7 @@ The serial [CLI probe](../../executor-native/cli_probe.py) compares no-bridge
 `status` startup against the test oracle on one host and requires the native CPU
 median to be at most one tenth. This microbenchmark does not measure HTTP latency
 or establish concurrent capacity.
+The sandbox comparison measures each idle driver for 60 seconds and requires
+native CPU use to stay at most one tenth of the Python reference, while reporting
+memory and startup costs. `test_shell_loop.py` and `test_command_channel.py` drive
+the native binary; the Python driver remains only a measurement reference.

@@ -52,8 +52,8 @@ The service must invoke `python sourceDirectory/worker.py --config configFile`;
 The worker configuration's `launcher` must be `sourceDirectory/launcher.py`.
 Initial host provisioning and pinned Python dependencies remain prerequisites.
 Enabled execution without this deployment object blocks an image update.
-Install this version of `worker_release.py` before the first release containing
-static programs; image transfer does not replace the privileged host updater.
+Install the matching `worker_release.py` before a release changes its program
+file set; image transfer does not replace the privileged host updater.
 
 Replace the example copy ID with an existing copy reserved for deployment checks.
 Store its workspace API key in the root-owned `probeTokenFile` with mode 0600;

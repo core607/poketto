@@ -1029,7 +1029,7 @@ class SystemdBackend:
         return bootstrap
 
     def prepare_files(self, s, target):
-        bootstrap = self.prepare_bootstrap(target)
+        self.prepare_bootstrap(target)
         # The untrusted account can replace only children, never the root mountpoint or records.
         for name in ('work', 'home', 'tmp'):
             path = target / name
@@ -1039,9 +1039,6 @@ class SystemdBackend:
             os.chown(path, self.user.pw_uid, self.user.pw_gid)
         s.bridge = LeaseBridge(target / 'bridge', self.user.pw_gid)
         s.artifacts = ArtifactStore(target)
-        shell = bootstrap / 'shell_loop.py'
-        shell.write_bytes(Path(self.c['launcher']).with_name('shell_loop.py').read_bytes())
-        shell.chmod(0o555)
         return target
 
     def open(self, s, data):

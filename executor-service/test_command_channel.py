@@ -47,9 +47,8 @@ class CommandChannelTests(unittest.TestCase):
     def start_channel(self, greeting_delay=0):
         self.process = subprocess.Popen(
             [sys.executable, '-I', '-c',
-             'import runpy,sys,time; time.sleep(float(sys.argv[1])); sys.argv=sys.argv[2:]; '
-             'runpy.run_path(sys.argv[0],run_name="__main__")',
-             str(greeting_delay), str(Path(__file__).with_name('shell_loop.py')), self.root.name],
+             'import os,sys,time; time.sleep(float(sys.argv[1])); os.execv(sys.argv[2],sys.argv[2:])',
+             str(greeting_delay), str(Path(__file__).with_name('bin') / 'poketto-shell'), self.root.name],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             start_new_session=True)
         self.channel = CommandChannel(self.process)

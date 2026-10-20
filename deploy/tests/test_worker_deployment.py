@@ -183,6 +183,31 @@ class WorkerDeploymentTests(unittest.TestCase):
                 self.worker.prepare("image", REVISION)
         self.assertFalse(any(call[:2] == ("systemctl", "stop") for call in self.calls))
 
+    def test_python_driver_generation_retains_its_cli_and_driver_on_rollback(self):
+        old = {name: (self.root / name).read_bytes() for name in SOURCES}
+        old.update({"shell_loop.py": b"VALUE = 'previous Python driver'\n",
+                    "bin/poketto": (self.root / "bin/poketto").read_bytes(),
+                    "requirements.txt": b"example==1.0\n"})
+        previous = self.worker._stage(old)
+        self.worker._select(previous)
+        for name in self.worker._aliases(old):
+            target = self.root / name
+            target.unlink(missing_ok=True)
+            target.symlink_to("releases/current/" + name)
+        plan = self.worker.prepare("image", REVISION)
+        self.fail_start = True
+        with self.assertRaisesRegex(DeploymentError, "previous sources restored"):
+            self.worker.install(plan)
+        selected = (self.root / "launcher.py").resolve().parent
+        self.assertEqual(old["shell_loop.py"], (selected / "shell_loop.py").read_bytes())
+        self.assertEqual(old["bin/poketto"], (selected / "bin/poketto").read_bytes())
+        self.assertFalse((selected / "bin/poketto-shell").exists())
+        self.worker.install(plan)
+        self.worker.verify(plan)
+        selected = (self.root / "launcher.py").resolve().parent
+        self.assertFalse((selected / "shell_loop.py").exists())
+        self.assertEqual((self.image / "bin/poketto-shell").read_bytes(), (selected / "bin/poketto-shell").read_bytes())
+
     def test_failed_start_restores_the_whole_previous_release_and_same_plan_retries(self):
         plan = self.worker.prepare("image", REVISION)
         self.fail_start = True

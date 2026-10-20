@@ -19,11 +19,11 @@ class DeploymentError(RuntimeError):
 
 
 SOURCES = frozenset((
-    "worker.py", "launcher.py", "command_channel.py", "shell_loop.py", "disk_pool.py",
+    "worker.py", "launcher.py", "command_channel.py", "disk_pool.py",
     "resource_pool.py", "bridge.py", "session_files.py", "binary_capture.py",
     "materialize.py", "artifacts.py",
 ))
-BINARIES = frozenset(("bin/poketto",))
+BINARIES = frozenset(("bin/poketto", "bin/poketto-shell"))
 PAYLOAD = SOURCES | BINARIES | {"requirements.txt"}
 
 
@@ -91,7 +91,7 @@ def read_bundle(path, revision):
         raise DeploymentError("worker image bundle revision differs from the application")
     hashes = {}
     for line in data["SHA256SUMS"].decode("ascii").splitlines():
-        match = re.fullmatch(r"([0-9a-f]{64})  ([a-z_/]+(?:\.(?:py|txt))?)", line)
+        match = re.fullmatch(r"([0-9a-f]{64})  ([a-z_/-]+(?:\.(?:py|txt))?)", line)
         if not match or match[2] in hashes:
             raise DeploymentError("worker bundle checksums are invalid")
         hashes[match[2]] = match[1]

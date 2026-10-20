@@ -117,12 +117,18 @@ listener.
 
 [sandbox_probe.py](sandbox_probe.py) and [sandbox_snapshot.py](sandbox_snapshot.py) compare the
 current launcher with a supplied reference on one prepared x64 host, without application copies.
-Run as root with `--worker-source`, `--tools`, `--reference-launcher` and `--output`.
+Run as root with `--worker-source`, `--tools` and `--output`. An SRT comparison
+also takes `--reference-launcher` and its Python `--reference-driver`.
 Each path runs three serial fresh shells at 50% CPU and 192 MiB. The probe verifies live mounts,
 permissions, environment differences, seccomp, visible processes and tool tampering, records cgroup
 CPU/memory/tasks, and requires each direct/reference median resource ratio to be at most one third.
 Add `--toolkit` and [sandbox_toolkit.py](sandbox_toolkit.py) to verify installed image, PDF, Office,
 archive and Git operations. Require exit zero and `cleanup: PASS`; these figures do not establish HTTP capacity.
+
+For the native driver, use `--reference-worker-source` with the previous Python
+driver's complete staged tree and `--idle-seconds 60`. Both paths retain the same
+isolation and quotas. The idle CPU ratio must be at most one tenth; startup,
+memory and task ratios are reported without the SRT one-third threshold.
 
 ## Evidence
 

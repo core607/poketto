@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
 
 POSTGRES = 'postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0'
-MODULES = ('disk_pool.py', 'worker.py', 'command_channel.py', 'shell_loop.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'bin/poketto',
+MODULES = ('disk_pool.py', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'launcher.py', 'resource_pool.py', 'bridge.py', 'bin/poketto',
            'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py')
 
 
