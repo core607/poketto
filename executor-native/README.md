@@ -12,15 +12,13 @@ probes are in the [worker reference](../executor-service/README.md).
 Build the runtime with Java 26:
 
 ```sh
-./gradlew stageExecutorNativeTest
+./gradlew stageExecutorNativeTest stageExecutorWorker
 ```
 
 `build/executor-native/runtime` contains only compiled classes, resolved JARs and a SHA-256 manifest;
 the probe verifies every manifest entry and rejects unlisted files. Copy that directory, `probe.py`,
-`rejected_peer.py` and these worker sources to isolated host staging: `worker.py`, `launcher.py`,
-`command_channel.py`, `shell_loop.py`, `resource_pool.py`, `native_pool.py`, `bridge.py`, `cli.py`,
-`session_files.py`, `binary_capture.py`, `materialize.py`, `artifacts.py` and `disk_pool.py`. Never stage
-operator settings or credentials.
+`rejected_peer.py` and `build/executor-service/worker` to isolated host staging. Preserve the latter's
+`bin/` directory and executable permissions. Never stage operator settings or credentials.
 
 For `--scenario games`, also stage `game_fixture.py` beside `probe.py`. Run
 `./gradlew stageGameWorker` and add its `game_worker.py`, `game-entry.mjs`,

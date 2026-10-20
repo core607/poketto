@@ -1,0 +1,19 @@
+usage: poketto edit [-h] (--old OLD | --old-file OLD_FILE) (--new NEW |
+                    --new-file NEW_FILE | --new-stdin)
+                    path
+
+positional arguments:
+  path
+
+options:
+  -h, --help           show this help message and exit
+  --old OLD            Exact nonempty original text; ambiguous or stale
+                       matches fail
+  --old-file OLD_FILE  Read exact original text from a UTF-8 file in the
+                       current shell directory
+  --new NEW            Replacement text; an empty value deletes the matched
+                       text
+  --new-file NEW_FILE  Read replacement text from a UTF-8 file in the current
+                       shell directory
+  --new-stdin          Read replacement text from UTF-8 stdin, preserving
+                       final newlines

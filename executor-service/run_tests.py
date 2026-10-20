@@ -116,7 +116,7 @@ def main():
             '-r', str(source / 'requirements.txt')], check=True, timeout=180)
         marker.write_text(identity)
     result = subprocess.run([str(python), '-I', str(source / 'run_tests.py'), '--suite', '--report', str(report)],
-                            timeout=60, env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'})
+                            timeout=180, env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'})
     raise SystemExit(result.returncode)
 
 

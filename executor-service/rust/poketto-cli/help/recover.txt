@@ -1,0 +1,6 @@
+usage: poketto recover [-h] [--skip-local]
+
+options:
+  -h, --help    show this help message and exit
+  --skip-local  Keep local files untouched and release a pending sync or
+                confirmed move; completed local updates remain

@@ -111,7 +111,7 @@ def main():
         created_user = True
         account = pwd.getpwnam(user)
         backend = object.__new__(SystemdBackend)
-        backend.c = {'toolsRoot': str(tools)}
+        backend.c = {'toolsRoot': str(tools), 'launcher': str(source / 'launcher.py')}
         backend.sessions = root / 'sessions'
         backend.sessions.mkdir(mode=0o755)
         session = Session(str(uuid.uuid4()), (), '', time.time() + 600)

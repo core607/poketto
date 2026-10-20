@@ -12,7 +12,9 @@ from unittest.mock import patch
 import uuid
 
 from bridge import BridgeRejected, LeaseBridge, MAX_FRAME, MAX_REQUESTS
-from cli import BridgeUnavailable, _send, call
+from testdata.cli_reference import BridgeUnavailable, _send, call
+
+CLI = str(Path(__file__).with_name('bin') / 'poketto')
 
 
 class LeaseBridgeTests(unittest.TestCase):
@@ -61,7 +63,7 @@ class LeaseBridgeTests(unittest.TestCase):
                 (['edit', 'private/article.md', '--old-file', str(source), '--new-stdin'], 'edit',
                  {'path': 'private/article.md', 'oldText': text, 'newText': ''}, b'')):
             with self.subTest(command=command):
-                process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('cli.py')), *command],
+                process = subprocess.Popen([CLI, *command],
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                     env={**os.environ, 'POKETTO_BRIDGE': str(self.path)})
                 try:
@@ -81,7 +83,7 @@ class LeaseBridgeTests(unittest.TestCase):
                         process.wait(timeout=3)
 
     def test_oversized_stdin_fails_before_a_host_write(self):
-        process = subprocess.run([sys.executable, str(Path(__file__).with_name('cli.py')),
+        process = subprocess.run([CLI,
             'create', 'private/article.md', '--stdin'], input=b'x' * (MAX_FRAME + 1),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             env={**os.environ, 'POKETTO_BRIDGE': str(self.path)}, timeout=5)
@@ -129,7 +131,7 @@ class LeaseBridgeTests(unittest.TestCase):
         self.addCleanup(environment.stop)
 
     def test_real_cli_waits_for_exact_host_result_and_reply_is_read_only(self):
-        process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('cli.py')), 'status'],
+        process = subprocess.Popen([CLI, 'status'],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**os.environ, 'POKETTO_BRIDGE': str(self.path)})
         try:
             request = self.bridge.poll(timeout=2)
@@ -174,7 +176,7 @@ class LeaseBridgeTests(unittest.TestCase):
                  'artifact_create', {'path': 'result.bin', 'mediaType': 'application/pdf'}),
                 (['artifact', 'remove', identifier], 'artifact_remove', {'artifactId': identifier})):
             with self.subTest(operation=operation):
-                process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('cli.py')), *command],
+                process = subprocess.Popen([CLI, *command],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**os.environ, 'POKETTO_BRIDGE': str(self.path)})
                 try:
                     request = self.bridge.poll(timeout=2)
@@ -191,7 +193,7 @@ class LeaseBridgeTests(unittest.TestCase):
                         process.wait(timeout=3)
 
     def test_media_list_cli_passes_paging_and_version_through_the_actual_fifo(self):
-        process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('cli.py')),
+        process = subprocess.Popen([CLI,
             'media', 'list', '--prefix', 'private/music/', '--offset', '2', '--limit', '3',
             '--index-version', 'a' * 64, '--commit', 'b' * 40],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env={**os.environ, 'POKETTO_BRIDGE': str(self.path)})

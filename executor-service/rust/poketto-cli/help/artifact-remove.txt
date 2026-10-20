@@ -1,0 +1,7 @@
+usage: poketto artifact remove [-h] artifact_id
+
+positional arguments:
+  artifact_id
+
+options:
+  -h, --help   show this help message and exit

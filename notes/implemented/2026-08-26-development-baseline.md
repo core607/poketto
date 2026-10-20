@@ -12,6 +12,7 @@ The requirements named `write` as an application module, but that boundary also 
 ## Decision
 
 - Use the Gradle Wrapper pinned to Gradle 9.7.1, Kotlin build scripts, Java 26, Spring Boot 4.1.1, and Spring Modulith 2.1.0.
+- Sandbox programs use Rust 1.99.1 and a committed Cargo lockfile. The digest-pinned executor image builds static `x86_64-unknown-linux-musl` binaries; `executorRustCheck` runs formatting, Clippy and locked tests in that image on every contributor platform and in the `image` lane.
 - Build one Spring Boot artifact. Application modules are direct packages beneath `io.github.core607.poketto`, not Gradle subprojects. The browser frontend is a separate Next.js artifact: Spring's `web` module owns business HTTP contracts, and frontend components own pages and rendering ([blog and browser interface](2026-09-06-blog-browser-interface.md)).
 - Replace the planned `write` module with `content`. The application modules are `assets`, `auth`, `capture`, `community`, `content`, `executor`, `mcp`, `qa`, `spaces`, `web`, and `workspace`.
 - Keep public contracts at each module boundary and implementation details below `internal`. Add ports or mapping layers only at a real protocol, infrastructure, or trust boundary.

@@ -21,7 +21,7 @@ import tools.jackson.databind.JsonNode;
 /** Coordinates remote write receipts with local file and Git baseline installation. */
 final class SessionRepositoryCommands {
     private static final Logger log = LoggerFactory.getLogger(SessionRepositoryCommands.class);
-    /** How long the sandbox CLI waits for one bridge reply: {@code call} in executor-service/cli.py. */
+    /** How long the sandbox CLI waits for one bridge reply; pinned by {@code test_cli_parity.py}. */
     private static final Duration CLI_REPLY_WAIT = Duration.ofSeconds(55);
     /** Kept for the path already started, its journal entry and the reply once synchronization stops. */
     private static final Duration SYNC_RESERVE = Duration.ofSeconds(5);

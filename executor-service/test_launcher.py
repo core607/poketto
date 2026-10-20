@@ -17,7 +17,7 @@ from game_worker import GameBackend
 class SandboxLauncherTests(unittest.TestCase):
     def policy(self, mode='shell'):
         backend = object.__new__(GameBackend if mode == 'game' else SystemdBackend)
-        backend.c = {'toolsRoot': '/opt/poketto/tools'}
+        backend.c = {'toolsRoot': '/opt/poketto/tools', 'launcher': str(Path(__file__).with_name('launcher.py'))}
         backend.sessions = Path('/run/poketto/sessions')
         session = Session('00000000-0000-4000-8000-000000000001', (), '', 1)
         return backend.sandbox_policy(session, {'mode': mode})
@@ -128,6 +128,7 @@ class SandboxLauncherTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             backend = object.__new__(SystemdBackend)
             backend.c = json.loads(Path(__file__).with_name('config.example.json').read_text())
+            backend.c['launcher'] = str(Path(__file__).with_name('launcher.py'))
             backend.records, backend.sessions = Path(directory) / 'records', Path(directory) / 'sessions'
             backend.records.mkdir()
             backend.sessions.mkdir()

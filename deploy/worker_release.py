@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import struct
 import tempfile
 import urllib.request
 import uuid
@@ -19,10 +20,11 @@ class DeploymentError(RuntimeError):
 
 SOURCES = frozenset((
     "worker.py", "launcher.py", "command_channel.py", "shell_loop.py", "disk_pool.py",
-    "resource_pool.py", "bridge.py", "cli.py", "session_files.py", "binary_capture.py",
+    "resource_pool.py", "bridge.py", "session_files.py", "binary_capture.py",
     "materialize.py", "artifacts.py",
 ))
-PAYLOAD = SOURCES | {"requirements.txt"}
+BINARIES = frozenset(("bin/poketto",))
+PAYLOAD = SOURCES | BINARIES | {"requirements.txt"}
 
 
 def sha(data):
@@ -52,23 +54,44 @@ def protected(path, directory=False):
         raise DeploymentError("worker paths must be root-owned and not writable by other users")
 
 
+def static_program(data):
+    """Require a 64-bit x86 Linux ELF with no dynamic interpreter."""
+    if (len(data) < 64 or data[:7] != b"\x7fELF\x02\x01\x01"
+            or struct.unpack_from("<H", data, 18)[0] != 62):
+        raise DeploymentError("worker program must be a static x86-64 Linux executable")
+    offset = struct.unpack_from("<Q", data, 32)[0]
+    size, count = struct.unpack_from("<HH", data, 54)
+    if size != 56 or not 1 <= count <= 64 or offset + size * count > len(data):
+        raise DeploymentError("worker program has invalid ELF headers")
+    if any(struct.unpack_from("<I", data, offset + size * index)[0] == 3 for index in range(count)):
+        raise DeploymentError("worker program must not require a dynamic interpreter")
+
+
 def read_bundle(path, revision):
     expected = PAYLOAD | {"revision", "SHA256SUMS"}
-    if set(item.name for item in path.iterdir()) != expected:
+    if {item.relative_to(path).as_posix() for item in path.rglob("*")} != expected | {"bin"}:
         raise DeploymentError("worker image bundle must contain only the complete runtime sources")
+    if (path / "bin").is_symlink() or not (path / "bin").is_dir():
+        raise DeploymentError("worker image bundle contains an invalid program directory")
     data = {}
     for name in expected:
         file = path / name
         if file.is_symlink() or not file.is_file() or file.stat().st_size > 2 * 1024 * 1024:
             raise DeploymentError("worker image bundle contains an invalid file")
+        if name in BINARIES:
+            info = file.stat()
+            if info.st_uid != 0 or info.st_mode & 0o022 or info.st_mode & 0o111 != 0o111:
+                raise DeploymentError("worker programs must be root-owned, executable and not writable by other accounts")
         data[name] = file.read_bytes()
+        if name in BINARIES:
+            static_program(data[name])
     if sum(map(len, data.values())) > 8 * 1024 * 1024:
         raise DeploymentError("worker image bundle exceeds its size bound")
     if data["revision"].decode("ascii").strip() != revision:
         raise DeploymentError("worker image bundle revision differs from the application")
     hashes = {}
     for line in data["SHA256SUMS"].decode("ascii").splitlines():
-        match = re.fullmatch(r"([0-9a-f]{64})  ([a-z_]+\.(?:py|txt))", line)
+        match = re.fullmatch(r"([0-9a-f]{64})  ([a-z_/]+(?:\.(?:py|txt))?)", line)
         if not match or match[2] in hashes:
             raise DeploymentError("worker bundle checksums are invalid")
         hashes[match[2]] = match[1]
@@ -152,13 +175,46 @@ class WorkerRelease:
 
     def _sources(self, path):
         data = {}
-        for name in SOURCES:
+        # Rollback preserves the exact managed generation, including a program removed by
+        # a later release. None of those old files enters the new image's fixed payload.
+        names = SOURCES | BINARIES
+        if path != self.root:
+            names = set()
+            for file in path.iterdir():
+                if file.name == "__pycache__":
+                    protected(file, directory=True)
+                elif file.name == "bin":
+                    protected(file, directory=True)
+                    for binary in file.iterdir():
+                        name = "bin/" + binary.name
+                        if name not in BINARIES:
+                            raise DeploymentError("stored worker release contains an unexpected program")
+                        names.add(name)
+                elif re.fullmatch(r"[a-z_]+\.py", file.name) or file.name == "requirements.txt":
+                    names.add(file.name)
+                else:
+                    raise DeploymentError("stored worker release contains an unexpected file")
+            if "worker.py" not in names or "launcher.py" not in names:
+                raise DeploymentError("stored worker release is incomplete")
+        for name in names:
             file = path / name
             protected(file)
             if file.stat().st_size > 2 * 1024 * 1024:
                 raise DeploymentError("installed worker source exceeds its size bound")
             data[name] = file.read_bytes()
+            if name in BINARIES:
+                if file.stat().st_mode & 0o111 != 0o111:
+                    raise DeploymentError("installed worker program is not executable")
+                static_program(data[name])
+        if sum(map(len, data.values())) > 8 * 1024 * 1024:
+            raise DeploymentError("stored worker release exceeds its size bound")
         return data
+
+    @staticmethod
+    def _aliases(data):
+        # Programs are found beside the resolved launcher inside the selected generation.
+        # Only Python entry points/imports need aliases in the operator-owned installation.
+        return {name for name in data if name.endswith(".py")}
 
     @staticmethod
     def _identity(data):
@@ -179,24 +235,21 @@ class WorkerRelease:
                 incoming.mkdir(mode=0o755)
                 incoming.chmod(0o755)
                 for name, value in data.items():
+                    if name in BINARIES:
+                        (incoming / "bin").mkdir(mode=0o755, exist_ok=True)
+                        (incoming / "bin").chmod(0o755)
                     with (incoming / name).open("xb") as output:
                         output.write(value)
                         output.flush()
                         os.fsync(output.fileno())
-                    (incoming / name).chmod(0o644)
+                    (incoming / name).chmod(0o555 if name in BINARIES else 0o644)
+                if (incoming / "bin").exists():
+                    sync_directory(incoming / "bin")
                 sync_directory(incoming)
                 incoming.rename(target)
                 sync_directory(self.store)
         protected(target, directory=True)
-        actual = {}
-        for file in target.iterdir():
-            if file.name == "__pycache__":
-                protected(file, directory=True)
-                continue
-            protected(file)
-            if file.name not in PAYLOAD or file.stat().st_size > 2 * 1024 * 1024:
-                raise DeploymentError("stored worker release contains an unexpected file")
-            actual[file.name] = file.read_bytes()
+        actual = self._sources(target)
         if actual != data:
             raise DeploymentError("stored worker release does not match its content identity")
         return release
@@ -231,15 +284,24 @@ class WorkerRelease:
         if self.current.exists() or self.current.is_symlink():
             previous = self._selected()
             previous_data = self._sources(self.store / previous)
+            if self._identity(previous_data) != previous:
+                raise DeploymentError("previous worker release checksum mismatch")
         else:
             previous_data = self._sources(self.root)
             previous = self._stage(previous_data)
         self._check_links(previous_data)
+        for name in self._aliases(data) - self._aliases(previous_data):
+            file = self.root / name
+            if file.is_symlink():
+                if os.readlink(file) != "releases/current/" + name or file.lstat().st_uid != 0:
+                    raise DeploymentError("new worker program link is not managed by this updater")
+            elif file.exists():
+                raise DeploymentError("new worker runtime path is already occupied")
         return {"release": new_release, "previousRelease": previous, "configuration": self._config_hash(),
                 "installation": sha(json.dumps(self.config, sort_keys=True).encode())}
 
     def _check_links(self, previous_data, allow_regular=True):
-        for name in SOURCES:
+        for name in self._aliases(previous_data):
             file = self.root / name
             if file.is_symlink():
                 if os.readlink(file) != "releases/current/" + name or file.lstat().st_uid != 0:
@@ -287,7 +349,7 @@ class WorkerRelease:
             raise DeploymentError("another worker release must be reconciled first")
         self._check_links(self._sources(self.store / selected))
         if self.current.is_symlink() and selected == plan["release"]:
-            self._check_links({}, allow_regular=False)
+            self._check_links(self._sources(self.store / selected), allow_regular=False)
             self.command("systemctl", "start", self.config["service"])
             self.verify(plan)
             return
@@ -296,7 +358,7 @@ class WorkerRelease:
             self._select(previous)
             # During first adoption every regular file and every new link still names the old bytes.
             # Only after all links exist does one atomic selector replacement expose the new generation.
-            for name in SOURCES:
+            for name in self._aliases(self._sources(self.store / previous)) | self._aliases(self._sources(self.store / plan["release"])):
                 target = self.root / name
                 if not target.is_symlink():
                     temporary = self.root / (name + ".release-next")
@@ -318,9 +380,9 @@ class WorkerRelease:
         if (self._config_hash() != plan["configuration"] or self._selected() != plan["release"]
                 or sha(json.dumps(self.config, sort_keys=True).encode()) != plan["installation"]):
             raise DeploymentError("worker sources or private configuration differ from the pending deployment")
-        self._check_links({}, allow_regular=False)
         path = self.store / plan["release"]
         data = self._sources(path)
+        self._check_links(data, allow_regular=False)
         requirements = path / "requirements.txt"
         protected(requirements)
         data["requirements.txt"] = requirements.read_bytes()

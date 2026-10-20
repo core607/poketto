@@ -1,0 +1,14 @@
+usage: poketto create [-h] (--text TEXT | --text-file TEXT_FILE | --stdin)
+                      path
+
+positional arguments:
+  path
+
+options:
+  -h, --help            show this help message and exit
+  --text TEXT           Initial text as a command argument
+  --text-file TEXT_FILE
+                        Read initial text from a UTF-8 file in the current
+                        shell directory
+  --stdin               Read initial text from UTF-8 stdin; ideal for a quoted
+                        heredoc

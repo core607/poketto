@@ -4,6 +4,47 @@ val executorServiceSource = layout.projectDirectory.dir("executor-service")
 val executorServiceBuild = layout.buildDirectory.dir("executor-service")
 val executorServiceReports = layout.buildDirectory.dir("test-results/executorServiceTests")
 val executorServiceWindows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+val executorRustInputs = fileTree(executorServiceSource) {
+    include("rust/**", "Dockerfile.tests", ".dockerignore")
+    exclude("rust/target/**")
+}
+val executorBinaries = executorServiceBuild.map { it.dir("bin") }
+
+val buildExecutorRust = tasks.register<Exec>("buildExecutorRust") {
+    group = "build"
+    description = "Build the pinned static Linux sandbox programs through the executor test image."
+    inputs.files(executorRustInputs)
+    outputs.dir(executorBinaries)
+    timeout.set(Duration.ofMinutes(10))
+    doFirst {
+        commandLine("docker", "build", "--target", "binaries",
+            "--file", executorServiceSource.file("Dockerfile.tests").asFile.absolutePath,
+            "--output", "type=local,dest=${executorBinaries.get().asFile.absolutePath}",
+            executorServiceSource.asFile.absolutePath)
+    }
+}
+
+tasks.register<Exec>("executorRustCheck") {
+    group = "verification"
+    description = "Check formatting, Clippy and tests with the pinned Rust toolchain and lockfile."
+    inputs.files(executorRustInputs)
+    timeout.set(Duration.ofMinutes(10))
+    commandLine("docker", "build", "--target", "rust-check",
+        "--file", executorServiceSource.file("Dockerfile.tests").asFile.absolutePath,
+        executorServiceSource.asFile.absolutePath)
+}
+
+tasks.register<Sync>("stageExecutorWorker") {
+    group = "build"
+    description = "Stage the worker sources and shared static programs for native acceptance."
+    dependsOn(buildExecutorRust)
+    from(executorServiceSource) {
+        include("*.py", "requirements.txt")
+        exclude("test_*.py", "run_tests.py")
+    }
+    from(executorBinaries) { into("bin") }
+    into(executorServiceBuild.map { it.dir("worker") })
+}
 
 tasks.register<Sync>("stageGameWorker") {
     group = "build"
@@ -18,9 +59,12 @@ tasks.register<Sync>("stageGameWorker") {
 }
 
 val stageExecutorServiceTests = tasks.register<Sync>("stageExecutorServiceTests") {
+    dependsOn(buildExecutorRust)
     from(executorServiceSource) {
-        include("worker.py", "game_worker.py", "launcher.py", "command_channel.py", "shell_loop.py", "disk_pool.py", "resource_pool.py", "session_files.py", "binary_capture.py", "materialize.py", "artifacts.py", "bridge.py", "cli.py", "test_*.py", "run_tests.py", "requirements.txt", "Dockerfile.tests", "java-frames.json", "config.example.json", "README.md")
+        include("worker.py", "game_worker.py", "launcher.py", "command_channel.py", "shell_loop.py", "disk_pool.py", "resource_pool.py", "session_files.py", "binary_capture.py", "materialize.py", "artifacts.py", "bridge.py", "test_*.py", "testdata/**", "rust/**", "run_tests.py", "requirements.txt", "Dockerfile.tests", ".dockerignore", "java-frames.json", "config.example.json", "README.md")
+        exclude("rust/target/**", "**/__pycache__/**")
     }
+    from(executorBinaries) { into("bin") }
     into(executorServiceBuild.map { it.dir("source") })
 }
 
@@ -73,4 +117,4 @@ tasks.register<Exec>("executorServiceTests") {
     }
 }
 
-tasks.named("check") { dependsOn("executorServiceTests") }
+tasks.named("check") { dependsOn("executorServiceTests", "executorRustCheck") }

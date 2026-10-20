@@ -1,0 +1,8 @@
+usage: poketto move [-h] source destination
+
+positional arguments:
+  source
+  destination
+
+options:
+  -h, --help   show this help message and exit

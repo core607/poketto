@@ -16,6 +16,18 @@ SECCOMP_SHA256 = '64fa7514fa7199584b836159885e59b9ce3684fb8fef7e13de49965b23f54f
 MIN_BWRAP_VERSION = (0, 6, 1)
 
 
+def program_directory(launcher):
+    """Resolve the selected release once; only its shared programs enter the sandbox."""
+    return Path(launcher).resolve(strict=True).parent / 'bin'
+
+
+def verify_programs(directory):
+    directory = Path(directory)
+    if directory.is_symlink() or set(path.name for path in directory.iterdir()) != {'poketto'}:
+        raise ValueError('Sandbox program directory must contain only the expected executables')
+    trusted_executable(directory / 'poketto')
+
+
 def trusted_executable(path):
     """Reject writable ancestors as well as writable binaries before executing host tools."""
     path = Path(path)
@@ -124,6 +136,9 @@ def main():
     root = Path(record['root'])
     tools = Path(record['tools'])
     bwrap, seccomp = verify_tools(tools)
+    programs = program_directory(__file__) if record['mode'] != 'game' else None
+    if programs is not None:
+        verify_programs(programs)
     policy = json.loads(Path(record['settings']).read_bytes())
     # Startup never inspects a command-mutated working directory.
     root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -135,6 +150,8 @@ def main():
            'PATH': f'{root}/bootstrap:{tools}:{tools}/extracted/usr/bin:/usr/bin:/bin',
            'POKETTO_BRIDGE': str(root / 'bridge'), 'NODE_COMPILE_CACHE': str(tools / 'compile-cache'),
            'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null', 'SANDBOX_RUNTIME': '1'}
+    if programs is not None:
+        env['PATH'] = str(programs) + ':' + env['PATH']
     if record['mode'] == 'initialize':
         # Parameters originate in verified server leases, and are passed as positional arguments.
         command = ['/bin/bash', '-c',

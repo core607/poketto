@@ -40,7 +40,7 @@ done
 client=(run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true
     --memory 64m --cpus 0.5 --pids-limit 32 --mount "type=volume,source=$volume,target=/run/poketto-executor,readonly")
 MSYS_NO_PATHCONV=1 "$DOCKER" "${client[@]}" --entrypoint sh "$image" -c \
-    'cd /opt/poketto-worker && test "$(cat revision)" = "$1" && sha256sum --check --status SHA256SUMS && test "$(find . -type f | wc -l)" -eq 15' \
+    'cd /opt/poketto-worker && test "$(cat revision)" = "$1" && sha256sum --check --status SHA256SUMS && test "$(find . -type f | wc -l)" -eq 15 && test ! -e cli.py && test "$(stat -c %u bin/poketto)" = 0 && test "$(stat -c %a bin/poketto)" = 755 && bin/poketto --help >/dev/null' \
     sh "$revision" || { echo 'image worker bundle is missing or does not match its revision/checksums' >&2; exit 1; }
 identity="$(MSYS_NO_PATHCONV=1 "$DOCKER" "${client[@]}" --entrypoint id "$image")"
 if ! peer="$(MSYS_NO_PATHCONV=1 "$DOCKER" "${client[@]}" --entrypoint curl "$image" \

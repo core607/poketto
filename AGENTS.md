@@ -23,7 +23,7 @@ Before 1.0 there is no compatibility promise; a 0.x release names a commit and d
 
 ## Commands
 
-Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Java 26 is required. `integrationTest` and `check` also require a working Docker-compatible daemon. The frontend and `check` additionally require Node.js 24.19.0 and npm 12.0.2. `check` requires Python 3.10+ and OpenSSL 3+ on PATH; Linux executor tests additionally require venv and pip support.
+Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Java 26 is required. `integrationTest`, executor checks and `check` require a working Docker-compatible daemon; the executor image supplies the pinned Rust 1.99.1 toolchain. The frontend and `check` additionally require Node.js 24.19.0 and npm 12.0.2. `check` requires Python 3.10+ and OpenSSL 3+ on PATH; Linux executor tests additionally require venv and pip support.
 
 | Command | Purpose |
 |---|---|
@@ -32,6 +32,7 @@ Use the Gradle Wrapper; on Windows replace `./gradlew` with `.\gradlew.bat`. Jav
 | `./gradlew integrationTest` | Run database integration tests against pinned official PostgreSQL 17 |
 | `./gradlew frontendCheck` | Run pinned frontend formatting, type checks, tests, and production build |
 | `./gradlew repoCheck` | Validate repository documents, skills, and credential-ignore rules |
+| `./gradlew executorRustCheck` | Check sandbox program formatting, Clippy and locked Rust tests |
 | `./gradlew syncClaudeSkills` | Regenerate the Claude Code skill stubs in .claude/skills |
 | `./gradlew check` | Run the complete local and CI verification suite |
 
