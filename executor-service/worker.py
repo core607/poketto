@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local signed execution service. User payloads run only in low-privilege SRT units."""
+"""Local signed execution service. User payloads run only in low-privilege sandbox units."""
 
 import argparse
 import base64
@@ -31,6 +31,7 @@ from binary_capture import BinaryCapture
 from artifacts import ArtifactRejected, ArtifactStore, MAX_OUTPUT_BYTES, retain_output
 from disk_pool import DiskPool
 from command_channel import CommandChannel, CommandEnded
+from launcher import verify_tools
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -46,9 +47,8 @@ MAX_OUTPUT = MAX_OUTPUT_BYTES
 # making room for its unit may spend two of them, so a late start is refused instead of run unseen.
 ROOM_SECONDS = 2
 IDENTITY = ('principalId', 'accountId', 'workspaceId', 'serverSessionHash')
-# SRT 0.0.75 leaves /proc, /dev and /sys out when it expands a denied '/'. /proc and /dev are
-# mounted fresh, but /sys would stay the host's: other leases' units, the slice's memory and the
-# host's interfaces. Naming it covers it with an empty tmpfs private to the sandbox.
+# The launcher starts from an empty root; /proc and /dev are fresh, and host sysfs is absent.
+# Keep the explicit sysfs denial in the shared policy so both worker modes retain the boundary.
 DENY_READ = ('/', '/sys')
 
 
@@ -1026,17 +1026,6 @@ class SystemdBackend:
         bootstrap = target / 'bootstrap'
         bootstrap.mkdir(mode=0o555)
         bootstrap.chmod(0o555)
-        # SRT 0.0.75 binds deny markers at these paths. Supply inert root-owned targets
-        # so bwrap never needs to write its own startup directory.
-        for name in ('.gitconfig', '.gitmodules', '.bashrc', '.bash_profile', '.zshrc',
-                     '.zprofile', '.profile', '.ripgreprc', '.mcp.json'):
-            marker = bootstrap / name
-            marker.touch(mode=0o444)
-            marker.chmod(0o444)
-        for name in ('.vscode', '.idea', '.claude', '.claude/commands', '.claude/agents'):
-            directory = bootstrap / name
-            directory.mkdir(mode=0o555)
-            directory.chmod(0o555)
         return bootstrap
 
     def prepare_files(self, s, target):
@@ -1302,7 +1291,7 @@ class SystemdBackend:
         target = self.mount_path(s)
         operation = str(uuid.uuid4())
         record = self.records / (operation + '.json')
-        settings = self.records / (operation + '.srt.json')
+        settings = self.records / (operation + '.sandbox.json')
         settings.write_text(json.dumps(self.sandbox_policy(s, payload)))
         record.write_text(json.dumps({**payload, 'root': str(target), 'tools': self.c['toolsRoot'], 'settings': str(settings)}))
         for file in (record, settings):
@@ -1437,7 +1426,7 @@ class SystemdBackend:
             identifier(target.name)
             self.close(Session(target.name, (), '', 0))
         for record in self.records.iterdir():
-            if not re.fullmatch(r'[0-9a-f-]{36}(\.srt)?\.json', record.name) or record.is_symlink() or not record.is_file():
+            if not re.fullmatch(r'[0-9a-f-]{36}(\.sandbox)?\.json', record.name) or record.is_symlink() or not record.is_file():
                 raise RuntimeError('Unexpected executor record')
             record.unlink()
 
@@ -1676,6 +1665,7 @@ def main():
     # Cleanup precedes pool validation, so a broken installation cannot strand old trees.
     backend.pool = ResourcePool(config.get('resourceSlice'))
     backend.pool.verify()
+    verify_tools(config['toolsRoot'])
     key = load_pem_public_key(Path(config['publicKey']).read_bytes())
     if not isinstance(key, Ed25519PublicKey):
         raise SystemExit('Ed25519 public key required')

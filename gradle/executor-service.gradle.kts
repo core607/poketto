@@ -19,7 +19,7 @@ tasks.register<Sync>("stageGameWorker") {
 
 val stageExecutorServiceTests = tasks.register<Sync>("stageExecutorServiceTests") {
     from(executorServiceSource) {
-        include("worker.py", "game_worker.py", "command_channel.py", "shell_loop.py", "disk_pool.py", "resource_pool.py", "session_files.py", "binary_capture.py", "materialize.py", "artifacts.py", "bridge.py", "cli.py", "test_*.py", "run_tests.py", "requirements.txt", "Dockerfile.tests", "java-frames.json", "config.example.json", "README.md")
+        include("worker.py", "game_worker.py", "launcher.py", "command_channel.py", "shell_loop.py", "disk_pool.py", "resource_pool.py", "session_files.py", "binary_capture.py", "materialize.py", "artifacts.py", "bridge.py", "cli.py", "test_*.py", "run_tests.py", "requirements.txt", "Dockerfile.tests", "java-frames.json", "config.example.json", "README.md")
     }
     into(executorServiceBuild.map { it.dir("source") })
 }

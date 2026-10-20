@@ -53,4 +53,4 @@ copies. Source generations remain available for deliberate recovery.
 interrupted adoption, startup recovery and pending-state reconciliation.
 `WorkerSocketTests` pins the live protocol health check without creating copies;
 `appImageIdentityCheck` verifies the image's source bundle. The native probe's
-`--source-layout managed` checks generation links through systemd, SRT and the CLI.
+`--source-layout managed` checks generation links through systemd, the sandbox and the CLI.

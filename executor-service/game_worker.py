@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from resource_pool import ResourcePool
 from worker import (DENY_READ, Service, Session, SystemdBackend, Handler, Server, Rejected,
-                    checked, integer, json_read)
+                    checked, integer, json_read, verify_tools)
 
 MAX_INPUT = 512 * 1024
 MAX_BUNDLE = 384 * 1024
@@ -214,7 +214,7 @@ def load_game_config(path):
                  'maxRequests', 'maxConnections'):
         integer(config[name], 1, 2**40)
     integer(config['maxSessions'], 1, 16)
-    # SRT and Node count their own threads against this limit before any rule runs.
+    # Node's game runtime and the isolation helpers count against this limit before a rule runs.
     integer(config['tasksMax'], 48, 256)
     integer(config['maxTimeoutMillis'], 100, 5000)
     integer(config['leaseSeconds'], 6, 30)
@@ -235,6 +235,7 @@ def main():
         return
     backend.pool = ResourcePool(config['resourceSlice'])
     backend.pool.verify()
+    verify_tools(config['toolsRoot'])
     key = load_pem_public_key(Path(config['publicKey']).read_bytes())
     if not isinstance(key, Ed25519PublicKey):
         raise SystemExit('Ed25519 public key required')
