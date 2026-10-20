@@ -547,6 +547,7 @@ def main():
             'workerSha256': hashlib.sha256((root / 'worker.py').read_bytes()).hexdigest(),
             'commandChannelSha256': hashlib.sha256((root / 'command_channel.py').read_bytes()).hexdigest(),
             'shellLoopSha256': hashlib.sha256((root / 'bin/poketto-shell').read_bytes()).hexdigest(),
+            'syncProgramSha256': hashlib.sha256((root / 'bin/poketto-syncfs').read_bytes()).hexdigest(),
             'probeSha256': hashlib.sha256((root / 'native_probe.py').read_bytes()).hexdigest(),
             'launcherSha256': hashlib.sha256((root / 'launcher.py').read_bytes()).hexdigest()}), flush=True)
     finally:

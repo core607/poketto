@@ -47,9 +47,10 @@ COPY executor-service/worker.py executor-service/launcher.py executor-service/co
      executor-service/requirements.txt /opt/poketto-worker/
 COPY --from=sandbox-programs /source/target/x86_64-unknown-linux-musl/release/poketto /opt/poketto-worker/bin/poketto
 COPY --from=sandbox-programs /source/target/x86_64-unknown-linux-musl/release/poketto-shell /opt/poketto-worker/bin/poketto-shell
+COPY --from=sandbox-programs /source/target/x86_64-unknown-linux-musl/release/poketto-syncfs /opt/poketto-worker/bin/poketto-syncfs
 RUN cd /opt/poketto-worker && sed -i 's/\r$//' *.py requirements.txt \
     && printf '%s\n' "$POKETTO_REVISION" > revision \
-    && sha256sum *.py requirements.txt bin/poketto bin/poketto-shell > SHA256SUMS
+    && sha256sum *.py requirements.txt bin/poketto bin/poketto-shell bin/poketto-syncfs > SHA256SUMS
 USER poketto
 ENV POKETTO_DATA_DIR=/var/lib/poketto
 EXPOSE 8080

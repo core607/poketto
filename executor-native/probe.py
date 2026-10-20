@@ -70,7 +70,7 @@ def main():
     disk_pool = root / 'copy-pool'
     game_fixture = None
     evidence = []
-    for name in ('worker.py', 'command_channel.py', 'bin/poketto-shell', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'bin/poketto', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
+    for name in ('worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'bin/poketto', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
         (root / name).parent.mkdir(mode=0o755, parents=True, exist_ok=True)
         shutil.copy2(worker_source / name, root / name)
         os.chmod(root / name, 0o555 if name.startswith('bin/') else 0o644)
@@ -379,6 +379,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'nativePoolSha256': digest(worker_source / 'native_pool.py'),
             'workerSha256': digest(root / 'worker.py'), 'launcherSha256': digest(root / 'launcher.py'),
             'commandChannelSha256': digest(root / 'command_channel.py'), 'shellLoopSha256': digest(root / 'bin/poketto-shell'),
+            'syncProgramSha256': digest(root / 'bin/poketto-syncfs'),
             'bridgeSha256': digest(root / 'bridge.py'), 'cliSha256': digest(root / 'bin/poketto'),
             'sessionFilesSha256': digest(root / 'session_files.py'),
             'materializeSha256': digest(root / 'materialize.py'),

@@ -23,9 +23,10 @@ def program_directory(launcher):
 
 def verify_programs(directory):
     directory = Path(directory)
-    if directory.is_symlink() or set(path.name for path in directory.iterdir()) != {'poketto', 'poketto-shell'}:
+    programs = ('poketto', 'poketto-shell', 'poketto-syncfs')
+    if directory.is_symlink() or set(path.name for path in directory.iterdir()) != set(programs):
         raise ValueError('Sandbox program directory must contain only the expected executables')
-    for name in ('poketto', 'poketto-shell'):
+    for name in programs:
         trusted_executable(directory / name)
 
 
