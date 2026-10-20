@@ -16,7 +16,8 @@ import java.util.UUID;
 /**
  * Acknowledged file versions of one account journal, stored beside it under their payload digest.
  * The journal names the current file, so a journal write that keeps the same versions keeps the same
- * file. Callers hold the store's index lock; files are immutable, which makes the cache safe.
+ * file. Callers hold the owner's lock through publication, reads and removal. Files are immutable;
+ * cache access is synchronized because independent owners can publish concurrently.
  */
 final class AccountFileBaselines {
     private static final String MARKER = ".acknowledged-";
@@ -42,7 +43,7 @@ final class AccountFileBaselines {
     /** Durably stores {@code versions} before any journal can reference the returned digest. */
     String publish(String key, UUID copyId, Map<String, RetainedFileBaseline> versions) throws IOException {
         var stored = new Stored(copyId, versions);
-        Path temporary = root.resolve(".pending-" + UUID.randomUUID());
+        Path temporary = root.resolve(key + ".pending");
         try {
             String digest = files.write(temporary, stored, maximum);
             directory.checkFile(temporary);

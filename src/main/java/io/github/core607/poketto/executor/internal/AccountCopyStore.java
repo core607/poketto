@@ -215,12 +215,17 @@ final class AccountCopyStore {
         Path lock = root.resolve(key(owner) + ".lock");
         try (var index = index()) {
             index.requireValid();
-            cleanPending();
-            if (!Files.exists(lock, NOFOLLOW_LINKS) && countOwners() >= limits.copies()) {
+            boolean newOwner = !Files.exists(lock, NOFOLLOW_LINKS);
+            if (newOwner && countOwners() >= limits.copies()) {
                 throw new RetainedCopyException(RetainedCopyException.Reason.LIMIT);
             }
             var held = RetainedFileLocks.acquire(lock, () -> directory.openLock(lock));
             try {
+                if (newOwner) {
+                    // Recovery must be able to find and lock the owner of any unpublished file.
+                    RetainedDirectory.sync(root);
+                }
+                cleanPending(key(owner));
                 var stored = stored(owner);
                 if (stored == null) {
                     // A removal deletes its journal before the versions it referenced.
@@ -285,6 +290,8 @@ final class AccountCopyStore {
         }
         try (var unused = RetainedFileLocks.acquire(path, () -> directory.openLock(path))) {
             unused.requireValid();
+            cleanPending(name.substring(0, 64));
+            baselines.retainOnly(name.substring(0, 64), null);
             Files.delete(path);
             RetainedDirectory.sync(root);
             return true;
@@ -296,13 +303,12 @@ final class AccountCopyStore {
         }
     }
 
-    private void cleanPending() throws IOException {
-        try (var entries = Files.newDirectoryStream(root, ".pending-*")) {
-            for (Path path : entries) {
-                ProtocolValues.uuid(path.getFileName().toString().substring(9), "pending record identity");
-                directory.checkFile(path);
-                Files.delete(path);
-            }
+    /** Only the owner lock permits deleting this owner's unpublished journal or baseline. */
+    private void cleanPending(String ownerKey) throws IOException {
+        Path path = root.resolve(ownerKey + ".pending");
+        if (Files.exists(path, NOFOLLOW_LINKS)) {
+            directory.checkFile(path);
+            Files.delete(path);
         }
     }
 
@@ -455,9 +461,13 @@ final class AccountCopyStore {
         void write(AccountCopyRecord next) {
             requireUsable();
             requireNext(next);
-            Path temporary = root.resolve(".pending-" + UUID.randomUUID());
-            try (var index = index()) {
-                index.requireValid();
+            Path temporary = root.resolve(key(owner) + ".pending");
+            // Only first publication changes inventory membership. Atomic replacement keeps the
+            // owner and copy ID; inventory readers lock and reread before acting on mutable state.
+            try (var admission = current == null ? index() : null) {
+                if (admission != null) {
+                    admission.requireValid();
+                }
                 try {
                     String versions = baselinesFor(next);
                     files.write(temporary, StoredAccountCopy.of(next, versions), limits.recordBytes());
@@ -537,6 +547,8 @@ final class AccountCopyStore {
                     try (var index = index()) {
                         index.requireValid();
                         if (!Files.exists(recordPath(owner), NOFOLLOW_LINKS)) {
+                            cleanPending(key(owner));
+                            baselines.retainOnly(key(owner), null);
                             Files.deleteIfExists(root.resolve(key(owner) + ".lock"));
                             RetainedDirectory.sync(root);
                         }

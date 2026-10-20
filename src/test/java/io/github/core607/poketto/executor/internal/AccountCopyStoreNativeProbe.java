@@ -32,6 +32,7 @@ record AccountCopyStoreNativeProbe(Path root) {
     private static final Instant START = Instant.parse("2026-09-14T00:00:00Z");
 
     void produce() throws Exception {
+        new AccountJournalConcurrencyProbe(root).verify();
         assertForkCandidates();
         AccountCopyStore store = store(0);
         var state = new SelectedFileSaves.State("a".repeat(40));
