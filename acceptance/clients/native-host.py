@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 import uuid
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -180,8 +181,19 @@ def main():
                 break
             assert time.monotonic() < deadline, 'disposable application did not become ready'
             time.sleep(.5)
-        with urllib.request.urlopen(endpoint + '/actuator/health', timeout=5) as response:
-            assert response.status == 200
+        try:
+            with urllib.request.urlopen(endpoint + '/actuator/health', timeout=5) as response:
+                assert response.status == 200
+        except urllib.error.HTTPError as error:
+            health = json.loads(error.read(65536))
+            print(json.dumps({'nativeHealth': {'status': health.get('status'),
+                'components': {name: component.get('status')
+                               for name, component in health.get('components', {}).items()}}}), flush=True)
+            # The fixture is removed below, so preserve its worker startup failure before cleanup.
+            # App and database environments contain temporary credentials and are never dumped.
+            print(json.dumps({'nativeWorkerStartup': run([
+                'journalctl', '-u', worker_unit, '--no-pager', '-n', '40', '-o', 'cat'])}), flush=True)
+            raise
         receipt = root / 'client.json'
         receipt.write_text(json.dumps({'endpoint': endpoint, 'password': password, 'root': str(root)}))
         receipt.chmod(0o600)
