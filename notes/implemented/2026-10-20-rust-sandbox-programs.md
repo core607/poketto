@@ -14,11 +14,17 @@ but does not remove this per-command cost.
 
 ## Decision
 
-The CLI and shell driver are static x64 Rust programs. `serde_json` owns JSON;
+The CLI, shell driver and filesystem-sync helper are static x64 Rust programs. `serde_json` owns JSON;
 `rustix` supplies safe Unix, pipe and pidfd interfaces; `base64` encodes binary
 output frames without a custom codec. The implementations forbid
 unsafe Rust. The pinned toolchain, Cargo lockfile and image digest make dependency
 updates deliberate; every Cargo build uses `--locked`.
+
+Filesystem synchronization uses `poketto-syncfs` under the supervisor's existing
+15-second subprocess timeout. An in-process call would remove that timeout;
+the system `sync` utility retains its startup cost. The helper opens one
+directory without following a symlink and reports synchronization errors before
+acknowledgement.
 
 The client keeps the host bridge's authority boundary: current execution identity,
 exclusive writer lock, bounded length-prefixed frames, protected response-file

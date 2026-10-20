@@ -257,7 +257,7 @@ def main():
                            for key in ('startupCpuUsec', 'memoryBytes', 'idleTasks', 'readyMs')} for label, _ in launchers}
         result = {'measurements': measurements, 'medians': medians, 'snapshots': snapshots,
                   'sourceHashes': {label: digest(path) for label, path in launchers},
-                  'programHashes': {name: digest(source / 'bin' / name) for name in ('poketto', 'poketto-shell')},
+                  'programHashes': {name: digest(source / 'bin' / name) for name in ('poketto', 'poketto-shell', 'poketto-syncfs')},
                   'referenceDriverSha256': digest(reference_driver) if reference_driver else None,
                   'probeSha256': digest(Path(__file__)), 'snapshotSha256': digest(Path(__file__).with_name('sandbox_snapshot.py')),
                   'scope': 'Serial fresh shell true and idle cgroup charges; 50 percent CPU quota; not HTTP capacity.'}

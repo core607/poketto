@@ -3,7 +3,6 @@
 
 import argparse
 import base64
-import ctypes
 import fcntl
 import hashlib
 import json
@@ -33,7 +32,7 @@ from binary_capture import BinaryCapture
 from artifacts import ArtifactRejected, ArtifactStore, MAX_OUTPUT_BYTES, retain_output
 from disk_pool import DiskPool
 from command_channel import CommandChannel, CommandEnded
-from launcher import program_directory, verify_programs, verify_tools
+from launcher import program_directory, trusted_executable, verify_programs, verify_tools
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -52,9 +51,6 @@ IDENTITY = ('principalId', 'accountId', 'workspaceId', 'serverSessionHash')
 # The launcher starts from an empty root; /proc and /dev are fresh, and host sysfs is absent.
 # Keep the explicit sysfs denial in the shared policy so both worker modes retain the boundary.
 DENY_READ = ('/', '/sys')
-_syncfs = ctypes.CDLL(None, use_errno=True).syncfs
-_syncfs.argtypes = [ctypes.c_int]
-_syncfs.restype = ctypes.c_int
 
 
 class Rejected(Exception):
@@ -1527,14 +1523,10 @@ class DiskSystemdBackend(SystemdBackend):
                 pass
 
     def flush(self, s):
-        # Keep the filesystem-wide durability boundary without starting another process.
-        fd = os.open(self.mount_path(s), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
-        try:
-            if _syncfs(fd) != 0:
-                error = ctypes.get_errno()
-                raise OSError(error, os.strerror(error))
-        finally:
-            os.close(fd)
+        # Filesystem synchronization retains checked()'s subprocess timeout and failure handling.
+        helper = program_directory(self.c['launcher']) / 'poketto-syncfs'
+        trusted_executable(helper)
+        checked([str(helper), str(self.mount_path(s))])
 
     def execute(self, s, data, on_start, on_ready):
         result = super().execute(s, data, on_start, on_ready)

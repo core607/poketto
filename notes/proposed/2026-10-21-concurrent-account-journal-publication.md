@@ -43,15 +43,14 @@ exclusion and active staging survive. Run `linuxStorageTest`,
 `AccountCopyStoreNativeProbe` and every `retained-process` case in the
 [native probe](../../executor-native/README.md), including publication interruption
 and acknowledged-work recovery. Compare protected HTTP/MCP load with the same
-resource limits; report lock wait, publication time, CPU, success rate and tail
-latency. An aborted ramp does not establish steady capacity.
+resource limits, reporting lock wait, publication time, CPU, success and tail
+latency. Aborted ramps do not establish steady capacity.
 
 ## Alternatives
 
-Keep the global publication lock: simpler recovery, but unrelated copies retain
-the serialization. Drop or defer synchronization: rejected because successful
-responses would lose their durability boundary. Change supervisor language:
-does not change the Java journal's locking or synchronization.
+Global locking simplifies recovery but serializes independent copies. Deferred
+synchronization loses durability; changing supervisor language leaves the Java
+journal's locking and synchronization unchanged.
 
 ## Consequences
 
@@ -60,6 +59,5 @@ Parallel writes may increase instantaneous I/O and executor demand; lower lock
 wait alone does not prove higher sustainable capacity.
 
 [Account working copies](../implemented/2026-09-14-account-working-copies.md) remains
-the owner of identity and retention; the synchronization record retains its
-bounded-wait and lock-order rules. This proposal changes their publication
-mechanism without replacing those contracts.
+the owner of identity and retention; the synchronization record owns bounded
+waiting and lock ordering.

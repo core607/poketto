@@ -23,7 +23,7 @@ SOURCES = frozenset((
     "resource_pool.py", "bridge.py", "session_files.py", "binary_capture.py",
     "materialize.py", "artifacts.py",
 ))
-BINARIES = frozenset(("bin/poketto", "bin/poketto-shell"))
+BINARIES = frozenset(("bin/poketto", "bin/poketto-shell", "bin/poketto-syncfs"))
 PAYLOAD = SOURCES | BINARIES | {"requirements.txt"}
 
 
