@@ -8,6 +8,7 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -76,6 +77,15 @@ final class JGitRepositoryBaselineReader {
                     emit(JGitRepositoryFileReader.managed(workspace, commit, path, policy.permitsPath(path)));
                 }
             }
+        }
+        checkDeadline();
+    }
+
+    void replay(List<RepositoryFile> files) {
+        checkDeadline();
+        for (var file : files) {
+            reserve(file.path());
+            emit(file);
         }
         checkDeadline();
     }

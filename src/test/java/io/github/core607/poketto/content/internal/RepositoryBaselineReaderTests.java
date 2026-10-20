@@ -62,6 +62,54 @@ class RepositoryBaselineReaderTests {
             new RepositoryBaselineLimits(100, 4 * 1024 * 1024, Duration.ofSeconds(30));
 
     @Test
+    void aRepeatedBaselineReusesDecodedFilesButStillResolvesTheAuthoritativeCommit() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var first = fixture.commitRemote(workspace, Map.of("note.md", bytes("---\ntitle: One\n---\nfirst")));
+        var reads = new AtomicInteger();
+        var authority = observedAuthority(fixture.authority(), reads);
+        var reader = new JGitRepositoryContentReader(authority);
+        var original = new ArrayList<RepositoryFile>();
+        reader.visitBaseline(workspace, first.name(), LIMITS, original::add);
+        int firstReads = reads.get();
+        assertThat(firstReads).isPositive();
+        var repeated = new ArrayList<RepositoryFile>();
+        reader.visitBaseline(workspace, first.name(), LIMITS, repeated::add);
+        assertThat(repeated).isEqualTo(original);
+        assertThat(reads).hasValue(firstReads);
+
+        var next = fixture.commitRemote(workspace, Map.of("note.md", bytes("---\ntitle: Two\n---\nsecond")));
+        repeated.clear();
+        reader.visitBaseline(workspace, next.name(), LIMITS, repeated::add);
+        assertThat(reads.get()).isGreaterThan(firstReads);
+        assertThat(repeated)
+                .extracting(file -> file.source().orElseThrow())
+                .containsExactly("---\ntitle: Two\n---\nsecond");
+
+        var denied = new ContentRepositoryException("synthetic source unavailable");
+        doThrow(denied).when(authority).readObjects(eq(workspace), any());
+        assertThatThrownBy(() -> reader.visitBaseline(workspace, next.name(), LIMITS, file -> {}))
+                .isSameAs(denied);
+    }
+
+    @Test
+    void aFailedSinkDoesNotPublishAPartialBaseline() throws Exception {
+        var fixture = new RemoteRepositoryFixture(directory);
+        var commit = fixture.commitRemote(workspace, Map.of("a.md", bytes("one"), "b.md", bytes("two")));
+        var reads = new AtomicInteger();
+        var reader = new JGitRepositoryContentReader(observedAuthority(fixture.authority(), reads));
+        var failure = new IllegalStateException("synthetic sink failure");
+        assertThatThrownBy(() -> reader.visitBaseline(workspace, commit.name(), LIMITS, file -> {
+                    throw failure;
+                }))
+                .isSameAs(failure);
+        int failedReads = reads.get();
+        var complete = new ArrayList<RepositoryFile>();
+        reader.visitBaseline(workspace, commit.name(), LIMITS, complete::add);
+        assertThat(complete).extracting(RepositoryFile::path).containsExactly("a.md", "b.md");
+        assertThat(reads.get()).isGreaterThan(failedReads);
+    }
+
+    @Test
     void streamingManyFilesDoesNotReloadTheRootTreeForEveryEntry() throws Exception {
         var fixture = new RemoteRepositoryFixture(directory);
         var files = new LinkedHashMap<String, byte[]>();
@@ -288,7 +336,9 @@ class RepositoryBaselineReaderTests {
         var fixture = new RemoteRepositoryFixture(directory);
         var commit = fixture.commitRemote(workspace, Map.of("one.md", bytes("private text")));
         var current = mock(AuthService.class);
-        var authorized = new AuthorizedRepositoryReader(current, new JGitRepositoryContentReader(fixture.authority()));
+        var reader = new JGitRepositoryContentReader(fixture.authority());
+        reader.visitBaseline(workspace, commit.name(), LIMITS, file -> {});
+        var authorized = new AuthorizedRepositoryReader(current, reader);
         var staged = new ArrayList<RepositoryFile>();
         assertThatThrownBy(() -> authorized.visitBaseline(actor, workspace, commit.name(), LIMITS, file -> {
                     staged.add(file);
@@ -299,6 +349,28 @@ class RepositoryBaselineReaderTests {
                 .isSameAs(denied);
         assertThat(staged).hasSize(1);
         verify(current).authorize(actor, workspace, Capability.READ_PRIVATE);
+    }
+
+    private RepositoryAuthority observedAuthority(RepositoryAuthority original, AtomicInteger reads) {
+        var observed = mock(RepositoryAuthority.class, delegatesTo(original));
+        doAnswer(invocation -> {
+                    RepositoryAuthority.ObjectReaderAction<Object> action = invocation.getArgument(1);
+                    return original.readImmutableObjects(workspace, objects -> {
+                        var counted = mock(ObjectReader.class, delegatesTo(objects));
+                        doAnswer(open -> {
+                                    reads.incrementAndGet();
+                                    AnyObjectId object = open.getArgument(0);
+                                    int type = open.getArgument(1);
+                                    return objects.open(object, type);
+                                })
+                                .when(counted)
+                                .open(any(AnyObjectId.class), eq(Constants.OBJ_BLOB));
+                        return action.read(counted);
+                    });
+                })
+                .when(observed)
+                .readImmutableObjects(eq(workspace), any());
+        return observed;
     }
 
     @Test
