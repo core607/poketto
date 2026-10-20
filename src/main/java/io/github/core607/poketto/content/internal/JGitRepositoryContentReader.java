@@ -45,6 +45,7 @@ import org.eclipse.jgit.treewalk.TreeWalk;
 final class JGitRepositoryContentReader implements RepositoryContentReader {
     private final RepositoryAuthority authority;
     private final RepositoryDocumentScanner scanner = new RepositoryDocumentScanner();
+    private final RepositoryBaselineCache baselines = new RepositoryBaselineCache();
 
     JGitRepositoryContentReader(RepositoryAuthority authority) {
         this.authority = Objects.requireNonNull(authority);
@@ -480,7 +481,20 @@ final class JGitRepositoryContentReader implements RepositoryContentReader {
         String selected = resolve(workspace, Optional.of(commit), (repository, pinned) -> pinned.orElseThrow());
         // The sink can compress and persist a whole baseline. Keep the cache pinned without holding its ref lock.
         authority.readImmutableObjects(workspace, objects -> {
-            new JGitRepositoryBaselineReader(objects, workspace, selected, limits, deadline, sink).visit();
+            var cached = baselines.find(workspace, selected);
+            if (cached.isPresent()) {
+                new JGitRepositoryBaselineReader(objects, workspace, selected, limits, deadline, sink)
+                        .replay(cached.orElseThrow());
+            } else {
+                try (var capture = baselines.capture()) {
+                    new JGitRepositoryBaselineReader(objects, workspace, selected, limits, deadline, file -> {
+                                sink.accept(file);
+                                capture.accept(file);
+                            })
+                            .visit();
+                    baselines.remember(workspace, selected, capture);
+                }
+            }
             return null;
         });
     }
