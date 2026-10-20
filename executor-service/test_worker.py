@@ -876,6 +876,24 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual('EXECUTION_CAPACITY', refused['code'])
         self.assertNotIn('reason', refused)
 
+    def test_execution_ids_and_capacity_belong_to_each_lease(self):
+        self.service.config['maxExecutionsPerSession'] = 1
+        self.opened()
+        first_identity = self.identity
+        command = self.execution()['data']
+        self.assertTrue(self.send(self.payload('EXEC', command))['ok'])
+        self.assertEqual('EXECUTION_ALREADY_STARTED', self.send(self.payload('EXEC', command))['code'])
+
+        self.identity = {**self.identity, 'leaseId': uid(), 'serverSessionHash': 'b' * 64}
+        self.opened()
+        self.assertTrue(self.send(self.payload('EXEC', command))['ok'])
+        self.assertEqual('EXECUTION_CAPACITY', self.send(self.execution())['code'])
+
+        self.identity = first_identity
+        self.service.sweep()
+        self.assertEqual('EXECUTION_ALREADY_STARTED', self.send(self.payload('EXEC', command))['code'])
+        self.assertEqual('EXECUTION_CAPACITY', self.send(self.execution())['code'])
+
     def test_a_seeded_open_needs_an_exact_seed_and_names_no_export(self):
         seeded = {'commit': 'c' * 40, 'copyId': str(uuid.uuid4()), 'scope': 'full', 'seed': True}
         self.assertEqual('SEED_ABSENT', self.send(self.payload('OPEN', seeded))['code'])

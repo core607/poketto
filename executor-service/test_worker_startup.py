@@ -101,6 +101,7 @@ class WorkerStartupTests(unittest.TestCase):
 
     def test_full_startup_budget_preserves_warm_units_and_allows_their_commands(self):
         self.service.config['maxLiveUnits'] = 2
+        self.service.config['maxExecutionsPerSession'] = 1
         warm, warm_session = self.opened('a')
         warm_session.channel, warm_session.unit = object(), 'warm-unit'
         first, starting = self.opened('b')
@@ -113,7 +114,7 @@ class WorkerStartupTests(unittest.TestCase):
             self.assertEqual('EXECUTION_CAPACITY', refused['code'])
             self.assertEqual('STARTUP_LIMIT', refused.get('reason'))
             self.assertEqual('READY', waiting.state)
-            self.assertNotIn((waiting.id, retry['data']['executionId']), self.service.executions)
+            self.assertNotIn(retry['data']['executionId'], waiting.execution_ids)
             self.assertFalse(self.backend.stopped)
             self.assertTrue(pool.submit(self.harness.send, self.execution(warm)).result(2)['ok'])
             self.assertTrue(pool.submit(self.harness.send, self.request(first, 'RENEW')).result(2)['ok'])

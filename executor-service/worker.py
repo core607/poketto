@@ -3,6 +3,7 @@
 
 import argparse
 import base64
+import ctypes
 import fcntl
 import hashlib
 import json
@@ -51,6 +52,9 @@ IDENTITY = ('principalId', 'accountId', 'workspaceId', 'serverSessionHash')
 # The launcher starts from an empty root; /proc and /dev are fresh, and host sysfs is absent.
 # Keep the explicit sysfs denial in the shared policy so both worker modes retain the boundary.
 DENY_READ = ('/', '/sys')
+_syncfs = ctypes.CDLL(None, use_errno=True).syncfs
+_syncfs.argtypes = [ctypes.c_int]
+_syncfs.restype = ctypes.c_int
 
 
 class Rejected(Exception):
@@ -133,6 +137,7 @@ class Session:
     unit: str = ''
     bridge: object = None
     execution_id: str = ''
+    execution_ids: set = field(default_factory=set)
     files_lock: threading.Lock = field(default_factory=threading.Lock)
     capture: object = None
     incoming: object = None
@@ -171,7 +176,6 @@ class Service:
         self.boot = str(uuid.uuid4())
         self.sessions = {}
         self.requests = {}
-        self.executions = set()
         self.startups = set()
         self.revoked_keys = {}
         self.revoked_accounts = {}
@@ -383,7 +387,7 @@ class Service:
         except StartRefused as refused:
             with self.lock:
                 self.startups.discard(execution_key)
-                self.executions.discard(execution_key)
+                s.execution_ids.discard(execution_key[1])
                 s.starting = False
                 if not s.cancelled.is_set():
                     s.state = 'READY'
@@ -441,7 +445,7 @@ class Service:
             raise Rejected('INVALID_REQUEST')
         identifier(data['executionId'])
         key = (s.id, data['executionId'])
-        if key in self.executions:
+        if data['executionId'] in s.execution_ids:
             raise Rejected('EXECUTION_ALREADY_STARTED')
         if data['commit'] != s.commit:
             raise Rejected('SESSION_COMMIT_MISMATCH')
@@ -450,9 +454,9 @@ class Service:
         integer(data['timeoutMillis'], 1, self.config['maxTimeoutMillis'])
         if s.state != 'READY':
             raise Rejected('SESSION_BUSY')
-        if sum(existing[0] == s.id for existing in self.executions) >= self.config['maxExecutionsPerSession']:
+        if len(s.execution_ids) >= self.config['maxExecutionsPerSession']:
             raise Rejected('EXECUTION_CAPACITY')
-        self.executions.add(key)
+        s.execution_ids.add(data['executionId'])
         s.state = 'RUNNING'
         s.execution_id = data['executionId']
         return key
@@ -860,7 +864,6 @@ class Service:
             # Expired signatures cannot execute again, so their replay entries can leave memory.
             self.requests = {k: v for k, v in self.requests.items() if v[1] is None or v[2] + 2 > now}
             self.sessions = {k: s for k, s in self.sessions.items() if s.state != 'CLOSED' or s.deadline + 2 > now}
-            self.executions = {key for key in self.executions if key[0] in self.sessions}
             for table in (self.revoked_keys, self.revoked_accounts, self.closed_leases):
                 for key in [k for k, deadline in table.items() if deadline <= now]:
                     del table[key]
@@ -1524,7 +1527,14 @@ class DiskSystemdBackend(SystemdBackend):
                 pass
 
     def flush(self, s):
-        checked(['sync', '-f', str(self.mount_path(s))])
+        # Keep the filesystem-wide durability boundary without starting another process.
+        fd = os.open(self.mount_path(s), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            if _syncfs(fd) != 0:
+                error = ctypes.get_errno()
+                raise OSError(error, os.strerror(error))
+        finally:
+            os.close(fd)
 
     def execute(self, s, data, on_start, on_ready):
         result = super().execute(s, data, on_start, on_ready)
