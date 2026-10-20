@@ -1,5 +1,6 @@
 """Per-lease FIFO requests and protected replies; no socket creation inside SRT."""
 import json
+import math
 import os
 from pathlib import Path
 import select
@@ -132,6 +133,9 @@ class LeaseBridge:
         if not self.reader.acquire(timeout=wait):
             return None
         try:
+            poller = select.poll()
+            poller.register(self.input, select.POLLIN)
+            poller.register(self.wake, select.POLLIN)
             while True:
                 if self.closed:
                     raise BridgeRejected('Session closed')
@@ -158,7 +162,7 @@ class LeaseBridge:
                 remaining = deadline - now
                 if remaining <= 0:
                     return None
-                ready, _, _ = select.select([self.input, self.wake], [], [], min(remaining, 0.05))
+                ready = {fd for fd, _ in poller.poll(math.ceil(min(remaining, 0.05) * 1000))}
                 if self.input in ready:
                     if self.frame_started is None:
                         self.frame_started = time.monotonic()

@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import pwd
 import re
+import resource
 import shutil
 import selectors
 import socket
@@ -1645,6 +1646,14 @@ def load_config(path):
     return c
 
 
+def prepare_descriptor_limit():
+    # All supervisor waits support high descriptors. Use the operator's existing
+    # hard allowance; cgroup memory and configured capacities still bound resources.
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if soft != hard:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True)
@@ -1657,11 +1666,12 @@ def main():
         SystemdBackend(config)
         return
     backend = DiskSystemdBackend(config)
-    # Cleanup precedes pool validation, so a broken installation cannot strand old trees.
+    # Cleanup precedes capacity validation, so a broken installation cannot strand old trees.
     backend.pool = ResourcePool(config.get('resourceSlice'))
     backend.pool.verify()
     verify_tools(config['toolsRoot'])
     verify_programs(program_directory(config['launcher']))
+    prepare_descriptor_limit()
     key = load_pem_public_key(Path(config['publicKey']).read_bytes())
     if not isinstance(key, Ed25519PublicKey):
         raise SystemExit('Ed25519 public key required')

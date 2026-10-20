@@ -1,7 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
+import fcntl
 import json
 import os
 from pathlib import Path
+import resource
 import struct
 import subprocess
 import sys
@@ -18,6 +20,28 @@ CLI = str(Path(__file__).with_name('bin') / 'poketto')
 
 
 class LeaseBridgeTests(unittest.TestCase):
+    def test_high_numbered_fifo_and_wake_descriptors_deliver_requests_and_allow_reset(self):
+        limits = resource.getrlimit(resource.RLIMIT_NOFILE)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (max(2048, limits[0]), limits[1]))
+        self.addCleanup(resource.setrlimit, resource.RLIMIT_NOFILE, limits)
+        for name in ('input', 'wake'):
+            previous = getattr(self.bridge, name)
+            descriptor = fcntl.fcntl(previous, fcntl.F_DUPFD_CLOEXEC, 1024)
+            os.close(previous)
+            setattr(self.bridge, name, descriptor)
+            self.assertGreaterEqual(descriptor, 1024)
+        request = {'requestId': str(uuid.uuid4()), 'executionId': self.execution_id,
+                   'operation': 'status', 'arguments': {}}
+        _send(self.path, request, time.monotonic() + 2)
+        self.assertEqual(request, self.bridge.poll(timeout=1))
+        with ThreadPoolExecutor() as pool:
+            waiting = pool.submit(self.bridge.poll, 2)
+            time.sleep(0.1)
+            started = time.monotonic()
+            self.bridge.reset_command()
+            self.assertIsNone(waiting.result(timeout=1))
+            self.assertLess(time.monotonic() - started, 0.5)
+
     def test_background_requests_from_a_finished_execution_cannot_enter_the_next_command(self):
         previous = self.execution_id
         self.execution_id = str(uuid.uuid4())
