@@ -1,7 +1,7 @@
 # Java and sandbox execution acceptance
 
-This probe runs the production Java executor adapter, Unix peer checks, Ed25519 requests, the Python
-worker and sandbox against a real Linux systemd host, so a failure here names the isolation layer.
+This probe runs the production Java executor adapter, Unix peer checks, Ed25519 requests, the Rust
+repository supervisor and sandbox against a real Linux systemd host, so a failure here names the isolation layer.
 Authentication and the Git authority are synthetic fixtures on purpose. The probe does not replace
 PostgreSQL integration tests, the HTTP MCP entrance, or [client acceptance](../acceptance/clients/README.md)
 with real login, issued API keys and actual Codex and Claude Code clients. The worker's own contract and
@@ -18,7 +18,7 @@ Build the runtime with Java 26:
 `build/executor-native/runtime` contains only compiled classes, resolved JARs and a SHA-256 manifest;
 the probe verifies every manifest entry and rejects unlisted files. Copy that directory, `probe.py`,
 `rejected_peer.py` and `build/executor-service/worker` to isolated host staging. Preserve the latter's
-`bin/` directory and executable permissions. Never stage operator settings or credentials.
+root-level `poketto-supervisor`, `bin/` directory and executable permissions. Never stage operator settings or credentials.
 
 For `--scenario games`, also stage `game_fixture.py` beside `probe.py`. Run
 `./gradlew stageGameWorker` and add its `game_worker.py`, `game-entry.mjs`,

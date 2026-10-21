@@ -1,4 +1,4 @@
-//! Full native warm execution path; the fixture supplies an immutable sandbox launch description.
+//! Native command execution under a fixed supervisor-owned sandbox launch description.
 use crate::{
     command::{Channel, EndReason},
     mailbox::Mailbox,

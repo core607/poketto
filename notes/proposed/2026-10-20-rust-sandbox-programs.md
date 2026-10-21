@@ -23,7 +23,11 @@ It also keeps policy validation and translation, the descriptor-based entry into
 
 ### Out of scope
 
-The supervisor (`worker.py` and its modules), the game worker and the host end of the bridge stay in Python. They are long-lived processes that pay for each request, not for each start, and they hold the privileged lifecycle logic. Rewriting them requires a profile, taken after phase 2, that shows supervisor CPU limiting capacity. Python stays available inside sandboxes for commands and the [toolkit](../implemented/2026-09-05-local-execution-supervisor.md#sandbox-toolkit).
+The [repository supervisor](../implemented/2026-10-21-rust-repository-supervisor.md)
+has a separate implementation decision based on its request-processing profile;
+it does not authorize this launcher phase. The game worker remains Python.
+Python stays available inside sandboxes for commands and the
+[toolkit](../implemented/2026-09-05-local-execution-supervisor.md#sandbox-toolkit).
 
 ## Acceptance criteria
 
@@ -36,7 +40,7 @@ The supervisor (`worker.py` and its modules), the game worker and the host end o
 
 ## Alternatives
 
-Keep the Python launcher while fresh starts do not limit measured capacity. That avoids another implementation of privileged-boundary validation. Interpreter flags alone reduce imports but retain startup cost. Rewriting the long-lived supervisors is outside this proposal and requires the separate profile described above.
+Keep the Python launcher while fresh starts do not limit measured capacity. That avoids another implementation of privileged-boundary validation. Interpreter flags alone reduce imports but retain startup cost. Long-lived supervisors are outside this proposal.
 
 ## Consequences
 

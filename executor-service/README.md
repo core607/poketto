@@ -13,7 +13,9 @@ The host needs x64 Linux with cgroup v2, systemd, capability-bearing unprivilege
 
 Supervisor startup and every launch verify both isolation tools. Binaries and every parent directory must be root-owned, nonsymlink and unwritable by other accounts; `apply-seccomp` must match the source pin. Invalid tools prevent startup or execution, including during automatic deployment. Cleanup remains available. [Direct sandbox launch](../notes/implemented/2026-10-18-direct-sandbox-launch.md) owns the isolation and upgrade contract.
 
-Install [requirements.txt](requirements.txt) into the root-owned `/opt/poketto-executor/venv` expected by [poketto-executor.service](poketto-executor.service). `./gradlew stageExecutorWorker` stages Python sources and static x64 programs under `build/executor-service/worker`; preserve its `bin/` layout. Code, programs, tools, configuration and public key must be root-owned and unwritable by application and execution accounts. The worker receives only the PEM public key; the application holds the Ed25519 private key. Never put signing keys or real operator configuration in this repository.
+The static Rust `poketto-supervisor` runs from [poketto-executor.service](poketto-executor.service). `./gradlew stageExecutorWorker` stages runtime and test/game dependencies under `build/executor-service/worker`. Install it beside `launcher.py` and `resource_pool.py`; sandbox `bin/` contains only `poketto`, `poketto-shell` and `poketto-syncfs`. Code, tools, configuration and public key are root-owned and unwritable by either unprivileged account. Only the application holds the Ed25519 private key. Never commit keys or operator configuration.
+
+Launcher and baseline installer use standard-library Python; [requirements.txt](requirements.txt) is for games and test clients. The supervisor embeds no interpreter ([decision](../notes/implemented/2026-10-21-rust-repository-supervisor.md)).
 
 Package Python sources with LF endings; CRLF breaks executable shebangs. Gradle builds the [pinned Rust workspace](rust/Cargo.toml) through Docker. The updater delivers sources and programs together. Each repository sandbox mounts the selected release's executable-only `bin/` read-only, sharing file pages. Record revision and hashes, verify installed files and run `poketto --help` through the deployed connector after restart.
 
@@ -225,7 +227,7 @@ The root-only probes below use synthetic, disposable fixtures, and each needs `c
 
 `python3 executor-service/disk_pool_probe.py` kills allocation on a disposable 512 MiB XFS mount before identity publication, after identity fsync and after publication, and checks recovery and an existing copy. Every phase must report `PASS`.
 
-The [native probe](native_probe.py) drives the signed socket entry point against a temporary account, transient units and a 512 MiB XFS pool with per-copy quotas, under `/run` with the production `UMask=0077` ([why](../notes/implemented/2026-09-05-local-execution-supervisor.md#supervisor-and-worker)). Prepare a new disposable directory on disk with `native_probe.py`, `native_pool.py`, the worker sources listed under [runtime](#runtime) and a `tools` directory created by `prepare-tools.sh NEW_TOOLS_DIRECTORY`, with the pinned Python dependencies in `tools/python`.
+The [native probe](native_probe.py) drives the signed socket entry point against a temporary account, transient units and a 512 MiB XFS pool with per-copy quotas, under `/run` with the production `UMask=0077` ([why](../notes/implemented/2026-09-05-local-execution-supervisor.md#supervisor-and-worker)). Copy `stageExecutorWorker`'s complete output into a new disposable disk directory, preserving `bin/`, executable modes and test-client Python modules. Add `tools` from `prepare-tools.sh NEW_TOOLS_DIRECTORY`, with pinned test dependencies in `tools/python`.
 
 ```sh
 sudo env PYTHONPATH=/temporary/probe/tools/python python3 /temporary/probe/native_probe.py --root /temporary/probe

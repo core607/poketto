@@ -70,13 +70,14 @@ def main():
     disk_pool = root / 'copy-pool'
     game_fixture = None
     evidence = []
-    for name in ('worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'bin/poketto', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
+    for name in ('poketto-supervisor', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'bin/poketto', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
         (root / name).parent.mkdir(mode=0o755, parents=True, exist_ok=True)
         shutil.copy2(worker_source / name, root / name)
-        os.chmod(root / name, 0o555 if name.startswith('bin/') else 0o644)
+        os.chmod(root / name, 0o555 if name.startswith('bin/') or name == 'poketto-supervisor' else 0o644)
+    (root / 'bin').chmod(0o755)
     if args.source_layout == 'managed':
         # Exercise the deployment selector through real systemd/SRT mounts and CLI subprocesses.
-        sources = sorted(root.glob('*.py'))
+        sources = sorted([*root.glob('*.py'), root / 'poketto-supervisor'])
         payload = {p.relative_to(root).as_posix(): digest(p) for p in [*sources, *(root / 'bin').iterdir()]}
         release = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         generations = root / 'releases'
@@ -90,21 +91,6 @@ def main():
         (root / 'bin').rename(selected / 'bin')
         (root / 'bin').symlink_to('releases/current/bin', target_is_directory=True)
         (generations / 'current').symlink_to(release, target_is_directory=True)
-    (root / 'worker_entry.py').write_text('''import json,os
-from pathlib import Path
-import worker
-original=worker.SystemdBackend.run
-def observed(self,session,payload,timeout):
- result=original(self,session,payload,timeout)
- if payload.get('mode')=='initialize' and result['exitCode']!=0:
-  path=Path(__file__).with_name('initialization.json')
-  path.write_text(json.dumps(result))
-  os.chmod(path,0o600)
- return result
-worker.SystemdBackend.run=observed
-worker.main()
-''')
-
     def passed(name, **values):
         record = {'test': name, 'result': 'PASS', **values}
         evidence.append(record)
@@ -113,10 +99,9 @@ worker.main()
     def start_worker():
         run(['systemd-run', '--quiet', '--unit', supervisor, '--slice', resource_pool.name,
              '-p', 'User=root',
-             '-p', 'Environment=PYTHONPATH=' + str(tools / 'python'),
-             '-p', 'UMask=0077',
-             '-p', f'ExecStopPost=/usr/bin/python3 {root}/worker.py --config {config_path} --cleanup',
-             '/usr/bin/python3', str(root / 'worker_entry.py'), '--config', str(config_path)])
+             '-p', 'UMask=0077', '-p', 'TimeoutStopSec=15',
+             '-p', f'ExecStopPost={root}/poketto-supervisor --config {config_path} --cleanup',
+             str(root / 'poketto-supervisor'), '--config', str(config_path)])
         deadline = time.monotonic() + 10
         hello = '''import json,socket,struct,sys
 with socket.socket(socket.AF_UNIX) as connection:
@@ -325,6 +310,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         worker_config.update(copyRoot=str(disk_pool), poolBytes=512*1024*1024)
         run(['install', '-d', '-m', '700', '-o', app_user, '-g', app_user, str(disk_pool / 'metadata')])
         config_path.write_text(json.dumps(worker_config))
+        config_path.chmod(0o600)
         start_worker()
         fake_source = root / 'fake-peer.py'
         shutil.copyfile(Path(__file__).with_name('rejected_peer.py'), fake_source)
@@ -377,14 +363,10 @@ with socket.socket(socket.AF_UNIX) as connection:
         print(json.dumps({'nativeCombined': 'PASS', 'sourceLayout': args.source_layout, 'runtimeManifestSha256': digest(runtime / 'manifest.sha256'),
             'resourcePoolSha256': digest(root / 'resource_pool.py'),
             'nativePoolSha256': digest(worker_source / 'native_pool.py'),
-            'workerSha256': digest(root / 'worker.py'), 'launcherSha256': digest(root / 'launcher.py'),
-            'commandChannelSha256': digest(root / 'command_channel.py'), 'shellLoopSha256': digest(root / 'bin/poketto-shell'),
+            'supervisorKind': 'rust', 'workerSha256': digest(root / 'poketto-supervisor'),
+            'launcherSha256': digest(root / 'launcher.py'), 'shellLoopSha256': digest(root / 'bin/poketto-shell'),
             'syncProgramSha256': digest(root / 'bin/poketto-syncfs'),
-            'bridgeSha256': digest(root / 'bridge.py'), 'cliSha256': digest(root / 'bin/poketto'),
-            'sessionFilesSha256': digest(root / 'session_files.py'),
-            'materializeSha256': digest(root / 'materialize.py'),
-            'binaryCaptureSha256': digest(root / 'binary_capture.py'),
-            'artifactsSha256': digest(root / 'artifacts.py'),
+            'cliSha256': digest(root / 'bin/poketto'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
             'games': None if game_fixture is None else {
                 'workerSha256': digest(root / 'game_worker.py'),
@@ -395,11 +377,6 @@ with socket.socket(socket.AF_UNIX) as connection:
             'source': 'synthetic-only', 'scenario': args.scenario, 'processCase': args.process_case}), flush=True)
     finally:
         try:
-            diagnostic = root / 'initialization.json'
-            if diagnostic.exists():
-                result = json.loads(diagnostic.read_text())
-                print(json.dumps({'syntheticInitializationDiagnostic': {'exitCode': result['exitCode'],
-                    'reason': result['terminationReason'], 'stderr': result['stderr'][:4000]}}), flush=True)
             if process is not None and process.poll() is None:
                 process.kill()
                 process.wait(timeout=10)
@@ -409,7 +386,8 @@ with socket.socket(socket.AF_UNIX) as connection:
                 subprocess.run(['systemctl', 'stop', unit], capture_output=True, timeout=25)
                 subprocess.run(['systemctl', 'reset-failed', unit], capture_output=True, timeout=10)
             if worker_config is not None:
-                cleanup = subprocess.run([sys.executable, str(root / 'worker.py'), '--config', str(config_path), '--cleanup'], capture_output=True, timeout=30)
+                subprocess.run([str(root / 'poketto-supervisor'), '--config', str(config_path), '--cleanup'],
+                               check=True, capture_output=True, timeout=30)
                 sessions = root / 'runtime/sessions'
                 assert not sessions.exists() or not list(sessions.iterdir())
                 if disk_mounted:

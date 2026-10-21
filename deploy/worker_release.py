@@ -18,13 +18,10 @@ class DeploymentError(RuntimeError):
         self.missing = missing
 
 
-SOURCES = frozenset((
-    "worker.py", "launcher.py", "command_channel.py", "disk_pool.py",
-    "resource_pool.py", "bridge.py", "session_files.py", "binary_capture.py",
-    "materialize.py", "artifacts.py",
-))
-BINARIES = frozenset(("bin/poketto", "bin/poketto-shell", "bin/poketto-syncfs"))
-PAYLOAD = SOURCES | BINARIES | {"requirements.txt"}
+SOURCES = frozenset(("launcher.py", "resource_pool.py"))
+SUPERVISOR = "poketto-supervisor"
+BINARIES = frozenset(("bin/poketto", "bin/poketto-shell", "bin/poketto-syncfs", SUPERVISOR))
+PAYLOAD = SOURCES | BINARIES
 
 
 def sha(data):
@@ -109,9 +106,9 @@ def read_bundle(path, revision):
 
 def validate_config(config):
     if not isinstance(config, dict) or set(config) != {
-            "sourceDirectory", "configFile", "python", "service", "healthUrl", "probeTokenFile", "probeCopyId"}:
-        raise DeploymentError("executor deployment requires sourceDirectory, configFile, python, service, healthUrl, probeTokenFile and probeCopyId")
-    for key in ("sourceDirectory", "configFile", "python", "probeTokenFile"):
+            "sourceDirectory", "configFile", "service", "healthUrl", "probeTokenFile", "probeCopyId"}:
+        raise DeploymentError("executor deployment requires sourceDirectory, configFile, service, healthUrl, probeTokenFile and probeCopyId")
+    for key in ("sourceDirectory", "configFile", "probeTokenFile"):
         if not isinstance(config[key], str) or not re.fullmatch(r"/[A-Za-z0-9_./-]+", config[key]):
             raise DeploymentError("executor deployment paths must be absolute")
         path = Path(config[key])
@@ -190,11 +187,11 @@ class WorkerRelease:
                         if name not in BINARIES:
                             raise DeploymentError("stored worker release contains an unexpected program")
                         names.add(name)
-                elif re.fullmatch(r"[a-z_]+\.py", file.name) or file.name == "requirements.txt":
+                elif re.fullmatch(r"[a-z_]+\.py", file.name) or file.name in ("requirements.txt", SUPERVISOR):
                     names.add(file.name)
                 else:
                     raise DeploymentError("stored worker release contains an unexpected file")
-            if "worker.py" not in names or "launcher.py" not in names:
+            if SUPERVISOR not in names or "launcher.py" not in names:
                 raise DeploymentError("stored worker release is incomplete")
         for name in names:
             file = path / name
@@ -212,9 +209,9 @@ class WorkerRelease:
 
     @staticmethod
     def _aliases(data):
-        # Programs are found beside the resolved launcher inside the selected generation.
-        # Only Python entry points/imports need aliases in the operator-owned installation.
-        return {name for name in data if name.endswith(".py")}
+        # Sandbox programs follow the resolved launcher inside the selected generation.
+        # The installed service entry and helper scripts use aliases in the protected root.
+        return {name for name in data if name.endswith(".py") or name == SUPERVISOR}
 
     @staticmethod
     def _identity(data):
@@ -266,20 +263,6 @@ class WorkerRelease:
                 data = read_bundle(Path(temporary), revision)
             finally:
                 self.command("docker", "rm", "--volumes", container)
-        requirements = {}
-        for line in data["requirements.txt"].decode("ascii").splitlines():
-            match = re.fullmatch(r"([A-Za-z0-9_-]+)==([A-Za-z0-9_.+-]+)", line)
-            if not match or match[1] in requirements:
-                raise DeploymentError("worker requirements must contain distinct pinned Python packages")
-            requirements[match[1]] = match[2]
-        # No installer or code from the image runs during extraction; dependencies stay operator-owned.
-        try:
-            self.command(self.config["python"], "-I", "-c",
-                         "import importlib.metadata,json,sys; r=json.loads(sys.argv[1]); "
-                         "sys.exit(0 if all(importlib.metadata.version(k)==v for k,v in r.items()) else 1)",
-                         json.dumps(requirements, sort_keys=True))
-        except DeploymentError:
-            raise DeploymentError("worker Python dependencies are unavailable or differ from the image's pinned requirements") from None
         new_release = self._stage(data)
         if self.current.exists() or self.current.is_symlink():
             previous = self._selected()
@@ -323,12 +306,12 @@ class WorkerRelease:
         sync_directory(self.store)
 
     def _service_contract(self):
-        expected = [self.config["python"], str(self.root / "worker.py"), "--config", str(self.configuration)]
+        expected = [str(self.root / SUPERVISOR), "--config", str(self.configuration)]
         for name, suffix in (("ExecStart", []), ("ExecStopPost", ["--cleanup"])):
             definition = self.command("systemctl", "show", "--property=" + name, "--value", self.config["service"])
             commands = re.findall(r"argv\[\]=([^;]*);", definition)
             if len(commands) != 1 or commands[0].split() != expected + suffix:
-                raise DeploymentError("executor service commands must use the configured Python, worker and configuration")
+                raise DeploymentError("executor service commands must use the installed supervisor and configuration")
 
     def _active(self):
         self.command("systemctl", "is-active", "--quiet", self.config["service"])
@@ -336,7 +319,7 @@ class WorkerRelease:
         if not re.fullmatch(r"[1-9][0-9]*", pid):
             raise DeploymentError("executor service has no running main process")
         arguments = (Path("/proc") / pid / "cmdline").read_bytes().split(b"\0")
-        expected = [os.fsencode(self.config["python"]), os.fsencode(self.root / "worker.py"), b"--config", os.fsencode(self.configuration)]
+        expected = [os.fsencode(self.root / SUPERVISOR), b"--config", os.fsencode(self.configuration)]
         if arguments != expected + [b""]:
             raise DeploymentError("executor service is not running the configured worker sources")
 
@@ -383,9 +366,6 @@ class WorkerRelease:
         path = self.store / plan["release"]
         data = self._sources(path)
         self._check_links(data, allow_regular=False)
-        requirements = path / "requirements.txt"
-        protected(requirements)
-        data["requirements.txt"] = requirements.read_bytes()
         if self._identity(data) != plan["release"]:
             raise DeploymentError("installed worker release checksum mismatch")
         self._active()

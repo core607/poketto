@@ -31,7 +31,6 @@ def bundle(directory, value="new"):
     for name in SOURCES:
         (directory / name).write_text("VALUE = " + repr(value) + "\n")
     program(directory, value)
-    (directory / "requirements.txt").write_text("example==1.0\n")
     (directory / "revision").write_text(REVISION + "\n")
     checksums(directory)
 
@@ -65,12 +64,11 @@ class WorkerDeploymentTests(unittest.TestCase):
         self.image = self.base / "image"
         bundle(self.image)
         self.config = {"sourceDirectory": str(self.root), "configFile": str(self.configuration),
-                       "python": "/usr/bin/python3", "service": "example.service",
+                       "service": "example.service",
                        "healthUrl": "http://127.0.0.1:8080/actuator/health/executor",
                        "probeTokenFile": str(self.token), "probeCopyId": "00000000-0000-4000-8000-000000000001"}
         self.calls = []
         self.active = True
-        self.fail_dependencies = False
         self.fail_start = False
         self.fail_contract = False
         self.worker = WorkerRelease(self.config, self.base, self.command)
@@ -88,9 +86,6 @@ class WorkerDeploymentTests(unittest.TestCase):
             shutil.copytree(self.image, args[-1], dirs_exist_ok=True)
         elif args[:2] == ("docker", "rm"):
             pass
-        elif args[0] == "/usr/bin/python3":
-            if self.fail_dependencies:
-                raise DeploymentError("dependency mismatch")
         elif args[:2] == ("systemctl", "stop"):
             self.active = False
         elif args[:2] == ("systemctl", "start"):
@@ -101,7 +96,7 @@ class WorkerDeploymentTests(unittest.TestCase):
         elif args[:2] == ("systemctl", "show"):
             if self.fail_contract:
                 return "{ argv[]=/unrelated/program ; }"
-            arguments = [self.config["python"], str(self.root / "worker.py"), "--config", str(self.configuration)]
+            arguments = [str(self.root / "poketto-supervisor"), "--config", str(self.configuration)]
             if "--property=ExecStopPost" in args:
                 arguments.append("--cleanup")
             return "{ argv[]=" + " ".join(arguments) + " ; }"
@@ -143,8 +138,8 @@ class WorkerDeploymentTests(unittest.TestCase):
         self.worker.install(retry)
         self.worker.verify(retry)
 
-    def test_python_only_generation_rolls_back_without_requiring_the_new_binary(self):
-        old = {name: (self.root / name).read_bytes() for name in SOURCES}
+    def test_native_generation_retains_obsolete_helpers_on_rollback(self):
+        old = {name: (self.root / name).read_bytes() for name in SOURCES | BINARIES}
         old["cli.py"] = b"VALUE = 'previous Python CLI'\n"
         old["requirements.txt"] = b"example==1.0\n"
         previous = self.worker._stage(old)
@@ -160,7 +155,7 @@ class WorkerDeploymentTests(unittest.TestCase):
             self.worker.install(plan)
         self.assertEqual(previous, self.worker._selected())
         self.assertEqual(old["cli.py"], (self.root / "cli.py").read_bytes())
-        self.assertFalse((self.worker.store / previous / "bin").exists())
+        self.assertTrue((self.worker.store / previous / "poketto-supervisor").is_file())
         self.worker.install(plan)
         self.worker.verify(plan)
         selected = (self.root / "launcher.py").resolve().parent
@@ -169,7 +164,7 @@ class WorkerDeploymentTests(unittest.TestCase):
         self.assertEqual(0o555, (selected / "bin/poketto").stat().st_mode & 0o777)
 
     def test_program_integrity_and_execute_permissions_are_required(self):
-        binary = self.image / "bin/poketto"
+        binary = self.image / "poketto-supervisor"
         original = binary.read_bytes()
         for mode in (0o644, 0o777):
             binary.chmod(mode)
@@ -183,8 +178,8 @@ class WorkerDeploymentTests(unittest.TestCase):
                 self.worker.prepare("image", REVISION)
         self.assertFalse(any(call[:2] == ("systemctl", "stop") for call in self.calls))
 
-    def test_python_driver_generation_retains_its_cli_and_driver_on_rollback(self):
-        old = {name: (self.root / name).read_bytes() for name in SOURCES}
+    def test_native_generation_rollback_preserves_removed_helper_files(self):
+        old = {name: (self.root / name).read_bytes() for name in SOURCES | BINARIES}
         old.update({"shell_loop.py": b"VALUE = 'previous Python driver'\n",
                     "bin/poketto": (self.root / "bin/poketto").read_bytes(),
                     "requirements.txt": b"example==1.0\n"})
@@ -201,7 +196,7 @@ class WorkerDeploymentTests(unittest.TestCase):
         selected = (self.root / "launcher.py").resolve().parent
         self.assertEqual(old["shell_loop.py"], (selected / "shell_loop.py").read_bytes())
         self.assertEqual(old["bin/poketto"], (selected / "bin/poketto").read_bytes())
-        self.assertFalse((selected / "bin/poketto-shell").exists())
+        self.assertEqual(old["bin/poketto-shell"], (selected / "bin/poketto-shell").read_bytes())
         self.worker.install(plan)
         self.worker.verify(plan)
         selected = (self.root / "launcher.py").resolve().parent
@@ -264,20 +259,16 @@ class WorkerDeploymentTests(unittest.TestCase):
         with self.assertRaisesRegex(DeploymentError, "configuration changed"):
             self.worker.install(plan)
         self.configuration.write_bytes(self.private)
-        (self.root / "worker.py").write_text("VALUE = 'drift'\n")
+        (self.root / "launcher.py").write_text("VALUE = 'drift'\n")
         with self.assertRaisesRegex(DeploymentError, "source changed"):
             self.worker.install(plan)
         self.assertFalse(any(call[:2] in (("systemctl", "start"), ("systemctl", "stop")) for call in self.calls))
 
-    def test_bad_bundle_and_dependency_mismatch_never_stop_the_worker(self):
-        (self.image / "worker.py").write_text("tampered\n")
+    def test_bad_bundle_never_stops_the_worker(self):
+        (self.image / "launcher.py").write_text("tampered\n")
         with self.assertRaisesRegex(DeploymentError, "checksum mismatch"):
             self.worker.prepare("image", REVISION)
         self.assertEqual(self.calls[-1][:2], ("docker", "rm"))
-        checksums(self.image)
-        self.fail_dependencies = True
-        with self.assertRaisesRegex(DeploymentError, "pinned requirements"):
-            self.worker.prepare("image", REVISION)
         self.assertFalse(any(call[:2] in (("systemctl", "start"), ("systemctl", "stop")) for call in self.calls))
 
     def test_bundle_refuses_private_config_extra_paths_links_and_different_revisions(self):
@@ -288,15 +279,15 @@ class WorkerDeploymentTests(unittest.TestCase):
         with self.assertRaisesRegex(DeploymentError, "only the complete runtime"):
             read_bundle(self.image, REVISION)
         extra.unlink()
-        (self.image / "worker.py").unlink()
-        (self.image / "worker.py").symlink_to(self.configuration)
+        (self.image / "launcher.py").unlink()
+        (self.image / "launcher.py").symlink_to(self.configuration)
         with self.assertRaisesRegex(DeploymentError, "invalid file"):
             read_bundle(self.image, REVISION)
 
     def test_tampered_release_and_unmanaged_links_are_never_accepted(self):
         plan = self.worker.prepare("image", REVISION)
         self.worker.install(plan)
-        (self.worker.store / plan["release"] / "worker.py").write_text("VALUE='drift'\n")
+        (self.worker.store / plan["release"] / "launcher.py").write_text("VALUE='drift'\n")
         with self.assertRaisesRegex(DeploymentError, "checksum mismatch"):
             self.worker.verify(plan)
         (self.root / "launcher.py").unlink()
@@ -311,7 +302,7 @@ class WorkerDeploymentTests(unittest.TestCase):
         with patch.object(Path, "read_bytes", return_value=b"python\0/unrelated.py\0"):
             with self.assertRaisesRegex(DeploymentError, "configured worker sources"):
                 WorkerRelease._active(self.worker)
-        arguments = os.fsencode(self.config["python"]) + b"\0" + os.fsencode(self.root / "worker.py") + b"\0--config\0" + os.fsencode(self.configuration) + b"\0"
+        arguments = os.fsencode(self.root / "poketto-supervisor") + b"\0--config\0" + os.fsencode(self.configuration) + b"\0"
         with patch.object(Path, "read_bytes", return_value=arguments):
             WorkerRelease._active(self.worker)
 

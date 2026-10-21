@@ -47,9 +47,10 @@ cannot delay it indefinitely. Finished-command output is discarded, and retainin
 at most 128 readers bounds descriptor use. The shell wrapper, execution identity,
 frame bounds and exit-status mapping remain part of the protocol.
 
-The launcher and supervisors remain Python. The
-[remaining proposal](../proposed/2026-10-20-rust-sandbox-programs.md) owns their
-separate evidence and acceptance conditions.
+The launcher and game supervisor remain Python. The
+[remaining launcher proposal](../proposed/2026-10-20-rust-sandbox-programs.md) owns
+its separate evidence and acceptance conditions; the
+[repository supervisor decision](2026-10-21-rust-repository-supervisor.md) owns its host runtime.
 
 ## Alternatives
 
@@ -66,9 +67,9 @@ toolchain across the small programs while retaining memory safety.
 ## Consequences
 
 The build gains a compiled toolchain, provided by Docker on contributor machines.
-The host bridge and client use different languages, so wire changes update both
-and their parity fixture. Python remains available to sandbox commands and
-retains privileged supervision. No unsupported isolation configuration gains an
+The host bridge and client share Rust while the game service retains Python.
+Wire changes update their parity fixtures. Python remains available to sandbox
+commands. No unsupported isolation configuration gains an
 unsandboxed fallback.
 
 `executorRustCheck`, `executorServiceTests`, `existingDeploymentTests` and
