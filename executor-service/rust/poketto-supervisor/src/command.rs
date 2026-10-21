@@ -212,6 +212,12 @@ impl Channel {
                     Some(&Timespec::try_from(Duration::from_millis(50)).unwrap()),
                 )
                 .map_err(|_| EndReason::SandboxFailed)?;
+                if pollers[0]
+                    .revents()
+                    .intersects(PollFlags::ERR | PollFlags::HUP | PollFlags::NVAL)
+                {
+                    return Err(EndReason::SandboxFailed);
+                }
                 if !pollers[0].revents().contains(PollFlags::OUT) {
                     continue;
                 }
@@ -365,6 +371,23 @@ mod tests {
             || {},
         );
         assert_eq!(result.reason, Some(EndReason::SandboxFailed));
+    }
+    #[test]
+    fn a_closed_shell_input_does_not_wait_for_the_command_timeout() {
+        let mut channel =
+            helper(r#"printf '%s\n' '{"kind":"ready"}'; sleep 0.05; exec 0<&-; sleep 2"#);
+        // Escaping keeps the command within 64 KiB while its frame fills the Linux pipe.
+        let command = "\n".repeat(65536);
+        let started = Instant::now();
+        let result = channel.execute(
+            EXEC,
+            &command,
+            Duration::from_millis(800),
+            &AtomicBool::new(false),
+            || {},
+        );
+        assert_eq!(result.reason, Some(EndReason::SandboxFailed));
+        assert!(started.elapsed() < Duration::from_millis(500));
     }
     #[test]
     fn cancellation_and_timeout_interrupt_a_wait() {
