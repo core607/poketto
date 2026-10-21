@@ -54,7 +54,7 @@ tasks.register<Sync>("stageExecutorWorker") {
     description = "Stage the worker sources and shared static programs for native acceptance."
     dependsOn(buildExecutorRust)
     from(executorServiceSource) {
-        include("*.py", "requirements.txt")
+        include("*.py", "requirements.txt", "poketto-executor.service")
         exclude("test_*.py", "run_tests.py")
     }
     from(executorBinaries) {

@@ -6,11 +6,9 @@ Implemented: 2026-09-15
 ## Problem
 
 [Phase one](2026-09-05-phase-one-daily-use.md) requires authenticated repository
-execution with independent process, filesystem, network, and resource limits.
-A native feasibility probe, since replaced by the worker's
-[native probe](../../executor-service/native_probe.py), established SRT
-isolation, but its temporary root test harness supplied no production lease,
-revocation, or restart contract.
+execution with independent process, filesystem, network and resource limits.
+A sandbox feasibility probe alone cannot establish production lease, revocation
+or restart guarantees.
 
 ## Decision
 
@@ -62,6 +60,11 @@ drop-in is insufficient because an omitted installation step could place command
 outside the pool. Cleanup and revocation remain available when resource validation
 fails. The [worker reference](../../executor-service/README.md) owns installation
 and the isolated retained-memory probe; examples do not replace real corpus sizing.
+
+`OOMScoreAdjust=-900` biases kernel selection away from supervision and inherited
+relays without absolute immunity. Its memory bound and `OOMPolicy=stop` retain
+fail-closed cleanup after local OOM; the native probe verifies containment and copy
+recovery separately from parent-pool OOM.
 
 Cancellation and revocation stop the entire systemd unit. Short signed renewal
 leases also expire when Spring fails or communication stops. Revocation and

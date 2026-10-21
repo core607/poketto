@@ -3,12 +3,14 @@
 import argparse
 import base64
 import concurrent.futures
+from configparser import ConfigParser
 import hashlib
 import json
 import os
 from pathlib import Path
 import pwd
 import shlex
+import signal
 import socket
 import stat
 import struct
@@ -39,7 +41,9 @@ def main():
     parser.add_argument('--tools', type=Path)
     parser.add_argument('--baseline-only', action='store_true')
     parser.add_argument('--lease-sandbox-only', action='store_true')
+    parser.add_argument('--oom-only', action='store_true')
     args = parser.parse_args()
+    assert sum((args.baseline_only, args.lease_sandbox_only, args.oom_only)) <= 1
     assert os.geteuid() == 0
     root = args.root.resolve(strict=True)
     token = uuid.uuid4().hex[:8]
@@ -48,7 +52,7 @@ def main():
     user = 'pkt-exec-' + token
     supervisor = 'poketto-probe-' + token
     unit_prefix = 'poketto-exec-' + token + '-'
-    resource_pool = NativePool(token)
+    resource_pool = NativePool(token, '384M', cpu=50) if args.oom_only else NativePool(token)
     key = Ed25519PrivateKey.generate()
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     heartbeat_stops = []
@@ -77,11 +81,23 @@ def main():
     (root / 'config.json').write_text(json.dumps(config))
     (root / 'config.json').chmod(0o600)
     config_path = str(root / 'config.json')
-    def start():
+    if args.oom_only:
+        config.update(memoryBytes=256 * 1024**2, maxConnections=64)
+        (root / 'config.json').write_text(json.dumps(config))
+        unit_settings = ConfigParser(interpolation=None)
+        unit_settings.read(root / 'poketto-executor.service')
+        oom_adjustment = unit_settings.getint('Service', 'OOMScoreAdjust')
+        oom_policy = unit_settings.get('Service', 'OOMPolicy')
+        assert oom_adjustment == -900 and oom_policy == 'stop'
+
+    def start(memory='96M'):
+        oom_properties = ['-p', 'OOMScoreAdjust=' + str(oom_adjustment), '-p', 'OOMPolicy=' + oom_policy,
+                          '-p', 'MemoryMax=' + memory, '-p', 'MemorySwapMax=0',
+                          '-p', 'TasksMax=128'] if args.oom_only else []
         run(['systemd-run', '--quiet', '--unit', supervisor, '--slice', resource_pool.name,
              '-p', 'User=root', '-p', 'UMask=0077', '-p', 'TimeoutStopSec=15',
              '-p', f'ExecStopPost={root}/poketto-supervisor --config {config_path} --cleanup',
-             str(root / 'poketto-supervisor'), '--config', config_path])
+             *oom_properties, str(root / 'poketto-supervisor'), '--config', config_path])
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             try:
@@ -299,6 +315,185 @@ def main():
         assert not (runtime / 'sessions' / identity['leaseId']).exists()
         passed('close-contains-idle-sandbox-and-releases-mount')
 
+    def oom_checks(first, first_stop):
+        nonlocal boot
+        began = int(time.time())
+        group = Path('/sys/fs/cgroup') / properties(resource_pool.name)['ControlGroup'].lstrip('/')
+        recovered_stops = []
+
+        def stop_worker():
+            for stop in recovered_stops:
+                stop.set()
+            recovered_stops.clear()
+            for operation in ('stop', 'reset-failed'):
+                result = subprocess.run(['systemctl', operation, supervisor], capture_output=True, timeout=20)
+                assert result.returncode == 0 or run([
+                    'systemctl', 'show', supervisor, '--property=LoadState', '--value']) == 'not-found'
+
+        def events(local=False):
+            return {k: int(v) for k, v in (line.split() for line in
+                    (group / ('memory.events.local' if local else 'memory.events')).read_text().splitlines())}
+
+        def wait_until(predicate, description, seconds=20):
+            deadline = time.monotonic() + seconds
+            while time.monotonic() < deadline:
+                if predicate():
+                    return
+                time.sleep(.05)
+            raise AssertionError(description)
+
+        def journal_scope(path):
+            journal = run(['journalctl', '-k', '--since', '@' + str(began), '--no-pager', '-o', 'cat'])
+            assert not any('oom-kill:' in line and 'CONSTRAINT_NONE' in line for line in journal.splitlines())
+            lines = [line for line in journal.splitlines()
+                     if 'oom-kill:' in line and ('oom_memcg=' + str(path) + ',') in line]
+            assert lines and all('CONSTRAINT_MEMCG' in line for line in lines), journal[-5000:]
+            return lines
+
+        def preserve(identity):
+            result = execute(identity, python('from pathlib import Path; '
+                'Path("oom-draft").write_text("retained draft"); '
+                'Path("oom-binary").write_bytes(bytes(range(256)))'))
+            assert result['exitCode'] == 0, result
+
+        def recover(identity):
+            recovered = attach(identity)
+            result = execute(recovered, python('from pathlib import Path; '
+                'assert Path("oom-draft").read_text()=="retained draft"; '
+                'assert Path("oom-binary").read_bytes()==bytes(range(256))') + ' && git rev-parse HEAD')
+            assert result['exitCode'] == 0 and commit in result['stdout'], result
+            stop = threading.Event()
+            recovered_stops.append(stop)
+            heartbeat_stops.append(stop)
+            def renew():
+                while not stop.wait(2):
+                    try:
+                        send(recovered, 'RENEW')
+                    except OSError:
+                        return
+            threading.Thread(target=renew, daemon=True).start()
+            return recovered
+
+        second, second_stop = new_session()
+        for identity in (first, second):
+            preserve(identity)
+        main_pid = int(properties(supervisor + '.service')['MainPID'])
+        service_group = Path('/sys/fs/cgroup') / properties(supervisor + '.service')['ControlGroup'].lstrip('/')
+        assert (group / 'memory.oom.group').read_text().strip() == '0'
+        assert (service_group / 'memory.oom.group').read_text().strip() == '0'
+        members = [int(p) for p in (service_group / 'cgroup.procs').read_text().split()]
+        relays = [p for p in members if Path(os.readlink(f'/proc/{p}/exe')).name == 'systemd-run']
+        assert len(relays) == 2, members
+        for pid in [main_pid, *relays]:
+            assert Path(f'/proc/{pid}/oom_score_adj').read_text().strip() == '-900'
+        sandbox_pids = []
+        for row in run(['systemctl', 'list-units', '--state=running', '--plain', '--no-legend', unit_prefix + '*']).splitlines():
+            path = Path('/sys/fs/cgroup') / properties(row.split()[0])['ControlGroup'].lstrip('/')
+            sandbox_pids.extend(int(p) for p in (path / 'cgroup.procs').read_text().split())
+        assert sandbox_pids
+        for pid in sandbox_pids:
+            assert Path(f'/proc/{pid}/oom_score_adj').read_text().strip() == '0'
+        passed('oom-score-inheritance-keeps-independent-sandboxes-unprotected', relays=len(relays),
+               supervisorAdjustment=-900, sandboxAdjustment=0)
+
+        before = events()
+        before_local = events(local=True)
+        allocator = python('import time\nfrom pathlib import Path\n'
+            'x=bytearray(210*1024*1024)\n'
+            'for n in range(0,len(x),4096): x[n]=1\n'
+            'Path("oom-ready").write_text("ready")\ntime.sleep(45)') + ' </dev/null >/dev/null 2>&1 &'
+        assert execute(first, allocator)['exitCode'] == 0
+        ready = runtime / 'sessions' / first['leaseId'] / 'work/repository/oom-ready'
+        wait_until(ready.exists, 'First bounded allocator did not become ready')
+        assert execute(second, allocator)['exitCode'] == 0
+        wait_until(lambda: events()['oom_kill'] > before['oom_kill'], 'Parent pool OOM was not observed')
+        assert events(local=True)['oom'] > before_local['oom']
+        assert int(properties(supervisor + '.service')['MainPID']) == main_pid
+        assert rpc({'version': 1, 'operation': 'HELLO'})['workerBootId'] == boot
+        parent_lines = journal_scope('/' + group.relative_to('/sys/fs/cgroup').as_posix())
+        for stop in (first_stop, second_stop):
+            stop.set()
+        first, second = recover(first), recover(second)
+        passed('parent-pool-oom-preserves-supervisor-and-both-disk-copies',
+               poolMemoryBytes=384 * 1024**2, perSandboxMemoryBytes=256 * 1024**2,
+               events=events(), parentLocalEvents=events(local=True), kernelOom=parent_lines)
+
+        stop_worker()
+        old_boot = boot
+        boot = start('32M')['workerBootId']
+        assert boot != old_boot
+        first, second = recover(first), recover(second)
+        service_group = Path('/sys/fs/cgroup') / properties(supervisor + '.service')['ControlGroup'].lstrip('/')
+        connections = []
+        try:
+            for _ in range(config['maxConnections']):
+                client = socket.socket(socket.AF_UNIX)
+                client.settimeout(2)
+                connections.append(client)
+                try:
+                    client.connect(config['socketPath'])
+                    client.sendall(struct.pack('!I', 1048576))
+                    # Hold real native frame buffers before parsing, within the frame ceiling.
+                    for _ in range(15):
+                        client.sendall(b'x' * 65536)
+                    client.sendall(b'x' * 65535)
+                except OSError:
+                    break
+            wait_until(lambda: properties(supervisor + '.service').get('MainPID') == '0',
+                       'Supervisor-local OOM did not end the worker')
+        finally:
+            for client in connections:
+                client.close()
+        result = run(['systemctl', 'show', supervisor, '--property=Result', '--value'])
+        assert result == 'oom-kill', result
+        wait_until(lambda: not list((runtime / 'sessions').iterdir()), 'OOM cleanup left session mounts')
+        wait_until(lambda: subprocess.run(['pgrep', '-u', str(pwd.getpwnam(user).pw_uid)],
+                   capture_output=True).returncode == 1, 'OOM cleanup left sandbox descendants')
+        local_lines = journal_scope('/' + service_group.relative_to('/sys/fs/cgroup').as_posix())
+        stop_worker()
+        old_boot = boot
+        boot = start('32M')['workerBootId']
+        assert boot != old_boot
+        first, second = recover(first), recover(second)
+        passed('supervisor-local-oom-fails-closed-and-recovers-both-copies',
+               serviceMemoryBytes=32 * 1024**2, oomPolicy='stop', serviceResult=result, kernelOom=local_lines)
+
+        main_pid = int(properties(supervisor + '.service')['MainPID'])
+        service_group = Path('/sys/fs/cgroup') / properties(supervisor + '.service')['ControlGroup'].lstrip('/')
+        # Select a same-service helper victim to distinguish OOMPolicy from main-process death.
+        helper_code = ('import os,time\nfrom pathlib import Path\n'
+            'Path("/proc/self/oom_score_adj").write_text("0")\n'
+            f'Path({str(service_group / "cgroup.procs")!r}).write_text(str(os.getpid()))\n'
+            'x=bytearray(64*1024*1024)\n'
+            'for n in range(0,len(x),4096): x[n]=1\n'
+            'time.sleep(10)')
+        with subprocess.Popen(['/usr/bin/python3', '-c', helper_code],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as helper:
+            assert helper.wait(timeout=20) == -signal.SIGKILL
+        wait_until(lambda: properties(supervisor + '.service').get('MainPID') == '0',
+                   'A same-service helper OOM did not stop supervision')
+        result = run(['systemctl', 'show', supervisor, '--property=Result', '--value'])
+        assert result == 'oom-kill', result
+        wait_until(lambda: not list((runtime / 'sessions').iterdir()), 'Helper OOM left session mounts')
+        wait_until(lambda: subprocess.run(['pgrep', '-u', str(pwd.getpwnam(user).pw_uid)],
+                   capture_output=True).returncode == 1, 'Helper OOM left sandbox descendants')
+        lines = journal_scope('/' + service_group.relative_to('/sys/fs/cgroup').as_posix())
+        assert not any(',pid=' + str(main_pid) + ',' in line for line in lines)
+        helper_lines = [line for line in lines if ',pid=' + str(helper.pid) + ',' in line]
+        assert helper_lines
+        stop_worker()
+        old_boot = boot
+        boot = start()['workerBootId']
+        assert boot != old_boot
+        first, second = recover(first), recover(second)
+        for identity in (first, second):
+            assert send(identity, 'CLOSE').get('ok')
+            assert send(identity, 'DISCARD', {'copyId': copy_ids[identity['leaseId']],
+                        'scope': 'full', 'commit': commit}).get('ok')
+        passed('same-service-helper-oom-stops-worker-and-recovers-both-copies',
+               injectedHelperAdjustment=0, supervisorAdjustment=-900,
+               oomPolicy='stop', serviceResult=result, kernelOom=helper_lines)
+
     try:
         assert run(['findmnt', '-n', '-o', 'FSTYPE', '-T', str(root)]) != 'tmpfs'
         disk_pool.mkdir()
@@ -328,6 +523,12 @@ def main():
         assert supervisor_umask == '0077'
         started = time.monotonic()
         first, first_stop = new_session()
+        if args.oom_only:
+            oom_checks(first, first_stop)
+            print(json.dumps({'summary': 'PASS', 'tests': len(evidence), 'scenario': 'oom-only',
+                'source': 'synthetic-only', 'supervisorKind': 'rust',
+                'supervisorSha256': hashlib.sha256((root / 'poketto-supervisor').read_bytes()).hexdigest()}), flush=True)
+            return
         if args.lease_sandbox_only:
             lease_sandbox_checks(first)
             print(json.dumps({'summary': 'PASS', 'tests': len(evidence), 'scenario': 'lease-sandbox-only', 'source': 'synthetic-only'}), flush=True)

@@ -348,6 +348,12 @@ jobs:
           sudo cp "$RUNNER_TEMP/manifest.sha256" /var/lib/poketto-load/runtime/manifest.sha256
           sudo chown -R root:root /var/lib/poketto-load
           sudo chmod -R a+rX,go-w /var/lib/poketto-load
+      - name: Isolated supervisor and enclosing-pool OOM recovery
+        run: |
+          sudo mkdir /var/lib/poketto-oom
+          sudo cp -R build/executor-service/worker/. /var/lib/poketto-oom/
+          sudo env PYTHONPATH=/var/lib/poketto-load/tools/python python3 /var/lib/poketto-oom/native_probe.py --root /var/lib/poketto-oom --tools /var/lib/poketto-load/tools --oom-only
+          sudo rm -r -- /var/lib/poketto-oom
       - name: Small agent load on native sandboxes
         run: |
           mkdir -p build/load

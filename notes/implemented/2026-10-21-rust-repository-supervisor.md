@@ -4,9 +4,8 @@ Date: 2026-10-21
 
 ## Problem
 
-Profiles after synchronization and Java journal changes still show material CPU
-cost in the long-lived repository supervisor. The native sandbox programs do not
-remove signed-request, renewal or bridge processing in that process.
+Signed-request, renewal and bridge processing remain material supervisor CPU costs
+after synchronization, Java journal and native sandbox-program changes.
 
 ## Decision
 
@@ -22,9 +21,9 @@ features and bounds nesting. Library-version differences may reject malformed
 encodings earlier than the oracle; neither implementation admits them.
 
 [Atomic delivery](2026-10-19-coordinated-worker-delivery.md) keeps the supervisor
-outside the sandbox's three-program allowlist. Native-service adoption preserves
-operator configuration and the previous unit/runtime for recovery; it is separate
-from generation updates.
+outside the sandbox's three-program allowlist. Native-service adoption verifies
+the service/process contract separately from generation updates; obsolete
+production runtimes are removed after acceptance.
 
 ## Alternatives
 
