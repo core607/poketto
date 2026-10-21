@@ -9,6 +9,7 @@ val executorRustInputs = fileTree(executorServiceSource) {
     exclude("rust/target/**")
 }
 val executorBinaries = executorServiceBuild.map { it.dir("bin") }
+val executorSupervisorFixture = executorServiceBuild.map { it.dir("supervisor-fixture") }
 
 val buildExecutorRust = tasks.register<Exec>("buildExecutorRust") {
     group = "build"
@@ -34,6 +35,20 @@ tasks.register<Exec>("executorRustCheck") {
         executorServiceSource.asFile.absolutePath)
 }
 
+val buildExecutorSupervisorFixture = tasks.register<Exec>("buildExecutorSupervisorFixture") {
+    group = "verification"
+    description = "Build the separate protocol fixture; it is absent from installed worker bundles."
+    inputs.files(executorRustInputs)
+    outputs.file(executorSupervisorFixture.map { it.file("poketto-supervisor-fixture") })
+    timeout.set(Duration.ofMinutes(10))
+    doFirst {
+        commandLine("docker", "build", "--target", "fixture-binary",
+            "--file", executorServiceSource.file("Dockerfile.tests").asFile.absolutePath,
+            "--output", "type=local,dest=${executorSupervisorFixture.get().asFile.absolutePath}",
+            executorServiceSource.asFile.absolutePath)
+    }
+}
+
 tasks.register<Sync>("stageExecutorWorker") {
     group = "build"
     description = "Stage the worker sources and shared static programs for native acceptance."
@@ -42,7 +57,11 @@ tasks.register<Sync>("stageExecutorWorker") {
         include("*.py", "requirements.txt")
         exclude("test_*.py", "run_tests.py")
     }
-    from(executorBinaries) { into("bin") }
+    from(executorBinaries) {
+        exclude("poketto-supervisor")
+        into("bin")
+    }
+    from(executorBinaries.map { it.file("poketto-supervisor") })
     into(executorServiceBuild.map { it.dir("worker") })
 }
 
@@ -59,12 +78,17 @@ tasks.register<Sync>("stageGameWorker") {
 }
 
 val stageExecutorServiceTests = tasks.register<Sync>("stageExecutorServiceTests") {
-    dependsOn(buildExecutorRust)
+    dependsOn(buildExecutorRust, buildExecutorSupervisorFixture)
     from(executorServiceSource) {
         include("worker.py", "game_worker.py", "launcher.py", "command_channel.py", "disk_pool.py", "resource_pool.py", "session_files.py", "binary_capture.py", "materialize.py", "artifacts.py", "bridge.py", "test_*.py", "testdata/**", "rust/**", "run_tests.py", "requirements.txt", "Dockerfile.tests", ".dockerignore", "java-frames.json", "config.example.json", "README.md")
         exclude("rust/target/**", "**/__pycache__/**")
     }
-    from(executorBinaries) { into("bin") }
+    from(executorBinaries) {
+        exclude("poketto-supervisor")
+        into("bin")
+    }
+    from(executorBinaries.map { it.file("poketto-supervisor") })
+    from(executorSupervisorFixture)
     into(executorServiceBuild.map { it.dir("source") })
 }
 
