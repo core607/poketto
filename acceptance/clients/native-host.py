@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
 
 POSTGRES = 'postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0'
-MODULES = ('disk_pool.py', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'launcher.py', 'resource_pool.py', 'bridge.py', 'bin/poketto',
+MODULES = ('poketto-supervisor', 'disk_pool.py', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'launcher.py', 'resource_pool.py', 'bridge.py', 'bin/poketto',
            'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py')
 
 
@@ -93,7 +93,8 @@ def main():
         for name in MODULES:
             (root / name).parent.mkdir(mode=0o755, parents=True, exist_ok=True)
             shutil.copyfile(source / name, root / name)
-            (root / name).chmod(0o555 if name.startswith('bin/') else 0o644)
+            (root / name).chmod(0o555 if name.startswith('bin/') or name == 'poketto-supervisor' else 0o644)
+        (root / 'bin').chmod(0o755)
         key = Ed25519PrivateKey.generate()
         private = root / 'private.pem'
         private.write_bytes(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
@@ -115,11 +116,11 @@ def main():
             'idleUnitSeconds': 1800, 'maxTimeoutMillis': 60000, 'initTimeoutMillis': 15000}
         worker_settings.update(copyRoot=str(disk_pool), poolBytes=512 * 1024 * 1024)
         worker_config.write_text(json.dumps(worker_settings))
+        worker_config.chmod(0o600)
         run(['systemd-run', '--quiet', '--unit', worker_unit, '--slice', pool.name,
-             '-p', 'User=root', '-p', 'UMask=0077',
-             '-p', 'Environment=PYTHONPATH=' + str(tools / 'python'),
-             '-p', f'ExecStopPost=/usr/bin/python3 {root}/worker.py --config {worker_config} --cleanup',
-             '/usr/bin/python3', str(root / 'worker.py'), '--config', str(worker_config)])
+             '-p', 'User=root', '-p', 'UMask=0077', '-p', 'TimeoutStopSec=15',
+             '-p', f'ExecStopPost={root}/poketto-supervisor --config {worker_config} --cleanup',
+             str(root / 'poketto-supervisor'), '--config', str(worker_config)])
         password = secrets.token_urlsafe(32)
         environment = root / 'database.env'
         environment.write_text('POSTGRES_USER=acceptance\nPOSTGRES_DB=acceptance\nPOSTGRES_PASSWORD=' + password + '\n')
@@ -199,7 +200,7 @@ def main():
         receipt.write_text(json.dumps({'endpoint': endpoint, 'password': password, 'root': str(root)}))
         receipt.chmod(0o600)
         print(json.dumps({'ready': True, 'root': str(root), 'endpoint': endpoint,
-                          'accountDiskCopies': True, 'controllerSha256': sha(Path(__file__)),
+                          'accountDiskCopies': True, 'supervisorKind': 'rust', 'controllerSha256': sha(Path(__file__)),
                           'runtimeManifestSha256': sha(runtime / 'manifest.sha256'),
                           'workerSources': {name: sha(root / name) for name in MODULES}}), flush=True)
         deadline = time.monotonic() + args.lifetime_seconds
@@ -221,7 +222,7 @@ def main():
                 ['systemctl', 'reset-failed', unit], capture_output=True, timeout=10))
         if worker_config is not None:
             attempt('worker cleanup', lambda: run([
-                sys.executable, str(root / 'worker.py'), '--config', str(worker_config), '--cleanup']))
+                str(root / 'poketto-supervisor'), '--config', str(worker_config), '--cleanup']))
         if game_fixture is not None:
             attempt('game worker cleanup', game_fixture.close)
         # Stop the owned slice even when another component failed. Never remove a

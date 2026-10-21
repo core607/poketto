@@ -39,7 +39,6 @@ in the selected application image. In the protected
 {
   "sourceDirectory": "/opt/poketto-executor",
   "configFile": "/etc/poketto-executor/config.json",
-  "python": "/opt/poketto-executor/venv/bin/python",
   "service": "poketto-executor.service",
   "healthUrl": "http://127.0.0.1:8080/actuator/health/executor",
   "probeTokenFile": "/etc/poketto-executor/deployment-token",
@@ -47,13 +46,16 @@ in the selected application image. In the protected
 }
 ```
 
-The service must invoke `python sourceDirectory/worker.py --config configFile`;
-`ExecStopPost` must use the same command with `--cleanup` appended.
+The service must invoke `sourceDirectory/poketto-supervisor --config configFile`;
+`ExecStopPost` uses the same command with `--cleanup` appended.
 The worker configuration's `launcher` must be `sourceDirectory/launcher.py`.
-Initial host provisioning and pinned Python dependencies remain prerequisites.
-Enabled execution without this deployment object blocks an image update.
-Install the matching `worker_release.py` before a release changes its program
-file set; image transfer does not replace the privileged host updater.
+Provision the native service before enabling automatic updates. Adopting it from a
+Python service is a separate operator action: preserve the old unit, runtime and
+protected configuration for recovery, install the native bundle and matching unit,
+then verify startup and execution. The updater rejects the Python service contract;
+it never rewrites a unit or private configuration. Install the matching protected
+updater before changing the bundle's file set. Missing executor configuration blocks
+an execution-enabled deployment.
 
 Replace the example copy ID with an existing copy reserved for deployment checks.
 Store its workspace API key in the root-owned `probeTokenFile` with mode 0600;
@@ -67,7 +69,7 @@ The updater verifies the bundle, stages complete generations in
 `sourceDirectory/releases/`, and converts the runtime source files to links
 through `releases/current`. It stops the service before atomically switching
 generations and starting it. Private configuration, keys, tools, quotas and copy
-storage are untouched. Static programs live in the selected generation's protected
+storage are untouched. The supervisor lives beside the launcher; sandbox programs live in its protected
 `bin/` directory, resolved beside its launcher; the updater verifies their checksums,
 x64 ELF format and executable permissions. Unchanged runtime files keep the running
 worker. `--check` validates and stages files without changing the selector or restarting services.

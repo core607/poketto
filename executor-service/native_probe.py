@@ -75,13 +75,13 @@ def main():
         'tasksMax': 48, 'cpuQuotaPercent': 50, 'idleUnitSeconds': 2 if args.lease_sandbox_only else 1800, 'maxTimeoutMillis': 30000,
         'initTimeoutMillis': 15000, 'copyRoot': str(disk_pool), 'poolBytes': 512 * 1024 * 1024}
     (root / 'config.json').write_text(json.dumps(config))
+    (root / 'config.json').chmod(0o600)
     config_path = str(root / 'config.json')
     def start():
         run(['systemd-run', '--quiet', '--unit', supervisor, '--slice', resource_pool.name,
-             '-p', 'User=root', '-p', 'UMask=0077',
-             '-p', 'Environment=PYTHONPATH=' + str(Path(config['toolsRoot']) / 'python'),
-             '-p', f'ExecStopPost=/usr/bin/python3 {root}/worker.py --config {config_path} --cleanup',
-             '/usr/bin/python3', str(root / 'worker.py'), '--config', config_path])
+             '-p', 'User=root', '-p', 'UMask=0077', '-p', 'TimeoutStopSec=15',
+             '-p', f'ExecStopPost={root}/poketto-supervisor --config {config_path} --cleanup',
+             str(root / 'poketto-supervisor'), '--config', config_path])
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             try:
@@ -544,8 +544,8 @@ def main():
             'runtimeParent': '/run', 'supervisorUmask': supervisor_umask,
             'resourcePoolSha256': hashlib.sha256((root / 'resource_pool.py').read_bytes()).hexdigest(),
             'nativePoolSha256': hashlib.sha256((root / 'native_pool.py').read_bytes()).hexdigest(),
-            'workerSha256': hashlib.sha256((root / 'worker.py').read_bytes()).hexdigest(),
-            'commandChannelSha256': hashlib.sha256((root / 'command_channel.py').read_bytes()).hexdigest(),
+            'supervisorKind': 'rust',
+            'workerSha256': hashlib.sha256((root / 'poketto-supervisor').read_bytes()).hexdigest(),
             'shellLoopSha256': hashlib.sha256((root / 'bin/poketto-shell').read_bytes()).hexdigest(),
             'syncProgramSha256': hashlib.sha256((root / 'bin/poketto-syncfs').read_bytes()).hexdigest(),
             'probeSha256': hashlib.sha256((root / 'native_probe.py').read_bytes()).hexdigest(),
@@ -556,7 +556,7 @@ def main():
                 stop.set()
             subprocess.run(['systemctl', 'stop', supervisor], capture_output=True, timeout=20)
             subprocess.run(['systemctl', 'reset-failed', supervisor], capture_output=True, timeout=10)
-            subprocess.run([sys.executable, str(root / 'worker.py'), '--config', config_path, '--cleanup'], check=True, timeout=30)
+            subprocess.run([str(root / 'poketto-supervisor'), '--config', config_path, '--cleanup'], check=True, timeout=30)
             pool.shutdown(wait=True, cancel_futures=True)
             assert not list((runtime / 'sessions').iterdir())
             if disk_mounted:
