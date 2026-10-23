@@ -13,7 +13,9 @@ type Account = {
   displayName: string;
   group: SiteGroup;
   ownedSpaces: number;
+  createdAt: string;
 };
+type Order = "NAME" | "NEWEST";
 type Change = {
   id: string;
   actorId: string;
@@ -23,8 +25,16 @@ type Change = {
   changedAt: string;
 };
 
-export function SiteAccounts() {
+export function SiteAccounts({
+  initialGroup = null,
+  initialOrder = "NAME",
+}: {
+  initialGroup?: SiteGroup | null;
+  initialOrder?: Order;
+}) {
   const [query, setQuery] = useState("");
+  const [group, setGroup] = useState<SiteGroup | null>(initialGroup);
+  const [order, setOrder] = useState<Order>(initialOrder);
   return (
     <section className="sub-panel" aria-labelledby="site-accounts">
       <div className="panel-heading">
@@ -46,14 +56,56 @@ export function SiteAccounts() {
         </label>
         <button>搜索</button>
       </form>
-      <Accounts key={query} query={query} />
+      <div className="filter-bar">
+        <div className="filter-chips" role="group" aria-label="按策略组筛选">
+          {([null, ...Object.keys(siteGroups)] as (SiteGroup | null)[]).map(
+            (key) => (
+              <button
+                key={key ?? "all"}
+                type="button"
+                aria-pressed={group === key}
+                onClick={() => setGroup(key)}
+              >
+                {key ? siteGroups[key] : "全部"}
+              </button>
+            ),
+          )}
+        </div>
+        <label className="inline-select">
+          排序
+          <select
+            value={order}
+            onChange={(event) => setOrder(event.target.value as Order)}
+          >
+            <option value="NAME">按账号名</option>
+            <option value="NEWEST">最新注册</option>
+          </select>
+        </label>
+      </div>
+      <Accounts
+        key={[query, group, order].join("\n")}
+        query={query}
+        group={group}
+        order={order}
+      />
     </section>
   );
 }
 
-function Accounts({ query }: { query: string }) {
+function Accounts({
+  query,
+  group,
+  order,
+}: {
+  query: string;
+  group: SiteGroup | null;
+  order: Order;
+}) {
   const page = useAdminPage<Account>(
-    "/api/auth/site/accounts?query=" + encodeURIComponent(query),
+    "/api/auth/site/accounts?query=" +
+      encodeURIComponent(query) +
+      (group ? "&group=" + group : "") +
+      (order === "NAME" ? "" : "&order=" + order),
   );
   const [selected, setSelected] = useState<{
     account: Account;
@@ -73,6 +125,7 @@ function Accounts({ query }: { query: string }) {
               <th>账号</th>
               <th>策略组</th>
               <th>拥有的空间</th>
+              <th>注册时间</th>
               <th>
                 <span className="sr-only">操作</span>
               </th>
@@ -93,6 +146,7 @@ function Accounts({ query }: { query: string }) {
                     </span>
                   </td>
                   <td data-label="拥有的空间">{account.ownedSpaces}</td>
+                  <td data-label="注册时间">{date(account.createdAt)}</td>
                   <td data-label="操作">
                     <button
                       type="button"

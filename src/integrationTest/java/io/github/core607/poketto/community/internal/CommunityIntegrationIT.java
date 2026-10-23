@@ -190,6 +190,8 @@ class CommunityIntegrationIT {
         community.report(viewer, root, new ReportInput("Repeated report"));
         assertThat(community.reports(owner, 0).items()).hasSize(1);
         assertThatThrownBy(() -> community.reports(member, 0)).isInstanceOf(CommunityException.class);
+        assertThat(community.openReports(owner)).isOne();
+        assertThatThrownBy(() -> community.openReports(member)).isInstanceOf(CommunityException.class);
         assertThatThrownBy(() -> community.deleteComment(viewer, root)).isInstanceOf(CommunityException.class);
         community.resolveReport(
                 owner, community.reports(owner, 0).items().getFirst().position(), true);
@@ -198,6 +200,7 @@ class CommunityIntegrationIT {
                 .isInstanceOf(CommunityException.class);
         assertThat(community.notifications(owner, 0).items()).isEmpty();
         assertThat(community.reports(owner, 0).items()).isEmpty();
+        assertThat(community.openReports(owner)).isZero();
     }
 
     @Test

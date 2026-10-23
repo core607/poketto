@@ -2,8 +2,10 @@ package io.github.core607.poketto.auth;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.time.Instant;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -88,31 +90,112 @@ public final class SitePolicyService {
     }
 
     public AuthService.Page<AccountSummary> list(AuthPrincipal actor, String query, int offset, int limit) {
+        return list(actor, query, null, AccountOrder.NAME, offset, limit);
+    }
+
+    /** Searches accounts by login, display name or email, optionally within one group. */
+    public AuthService.Page<AccountSummary> list(
+            AuthPrincipal actor, String query, SiteGroup group, AccountOrder order, int offset, int limit) {
         requireAdministrator(actor);
         requirePage(offset, limit);
-        if (query == null || query.length() > 254) {
+        if (query == null || query.length() > 254 || order == null) {
             throw new AuthException(AuthException.Code.INVALID_INPUT);
         }
         String search = query.strip().toLowerCase(Locale.ROOT);
+        String groupName = group == null ? null : group.name();
+        String where = "where position(? in lower(login_name||' '||display_name||' '||coalesce(verified_email,'')))>0 "
+                + "and (?::text is null or site_group=?::text) ";
         List<AccountSummary> items = jdbc.query(
                 "select account_id,login_name,display_name,site_group,(select count(*) from auth_memberships m "
-                        + "where m.account_id=auth_accounts.account_id and m.role='OWNER') as owned_spaces from auth_accounts "
-                        + "where position(? in lower(login_name||' '||display_name||' '||coalesce(verified_email,'')))>0 "
-                        + "order by login_name,account_id limit ? offset ?",
+                        + "where m.account_id=auth_accounts.account_id and m.role='OWNER') as owned_spaces,created_at "
+                        + "from auth_accounts "
+                        + where
+                        + (order == AccountOrder.NEWEST
+                                ? "order by created_at desc,account_id "
+                                : "order by login_name,account_id ")
+                        + "limit ? offset ?",
                 (row, number) -> new AccountSummary(
                         row.getObject(1, UUID.class),
                         row.getString(2),
                         row.getString(3),
                         SiteGroup.valueOf(row.getString(4)),
-                        row.getLong(5)),
+                        row.getLong(5),
+                        row.getTimestamp(6).toInstant()),
                 search,
+                groupName,
+                groupName,
                 limit,
                 offset);
         Long total = jdbc.queryForObject(
-                "select count(*) from auth_accounts where position(? in lower(login_name||' '||display_name||' '||coalesce(verified_email,'')))>0",
-                Long.class,
-                search);
+                "select count(*) from auth_accounts " + where, Long.class, search, groupName, groupName);
         return new AuthService.Page<>(items, total, offset, limit);
+    }
+
+    /** Every space on the site with its owners and website state, for moderation. */
+    public AuthService.Page<SiteSpace> spaces(
+            AuthPrincipal actor, String query, SpaceState state, int offset, int limit) {
+        requirePage(offset, limit);
+        if (query == null || query.length() > 254 || state == null) {
+            throw new AuthException(AuthException.Code.INVALID_INPUT);
+        }
+        String search = query.strip().toLowerCase(Locale.ROOT);
+        String where = "from workspaces w join website_owner_eligibility e using(workspace_id) "
+                + "where position(? in lower(w.display_name||' '||coalesce(w.public_slug,'')))>0 and "
+                + switch (state) {
+                    case ALL -> "true ";
+                    case PUBLIC -> "w.public_delivery and e.eligible ";
+                    case RESTRICTED -> "not e.eligible ";
+                    case CLOSED -> "not w.public_delivery and e.eligible ";
+                };
+        return withAdministrator(actor, () -> {
+            List<SiteSpace> items = jdbc.query(
+                    "select w.workspace_id,w.public_slug,w.display_name,w.public_delivery,e.eligible,w.created_at,"
+                            + "array(select a.display_name from auth_memberships m join auth_accounts a using(account_id) "
+                            + "where m.workspace_id=w.workspace_id and m.role='OWNER' order by a.display_name,a.account_id limit 3),"
+                            + "(select count(*) from auth_memberships m where m.workspace_id=w.workspace_id and m.role='OWNER') "
+                            + where
+                            + "order by w.created_at desc,w.workspace_id limit ? offset ?",
+                    (row, number) -> new SiteSpace(
+                            row.getObject(1, UUID.class),
+                            row.getString(2),
+                            row.getString(3),
+                            row.getBoolean(4),
+                            row.getBoolean(5),
+                            row.getTimestamp(6).toInstant(),
+                            List.of((String[]) row.getArray(7).getArray()),
+                            row.getLong(8)),
+                    search,
+                    limit,
+                    offset);
+            Long total = jdbc.queryForObject("select count(*) " + where, Long.class, search);
+            return new AuthService.Page<>(items, total, offset, limit);
+        });
+    }
+
+    /** Site-wide counts for the administration overview. */
+    public Overview overview(AuthPrincipal actor, Instant since) {
+        if (since == null) {
+            throw new AuthException(AuthException.Code.INVALID_INPUT);
+        }
+        return withAdministrator(actor, () -> {
+            Map<SiteGroup, Long> groups = new EnumMap<>(SiteGroup.class);
+            for (SiteGroup group : SiteGroup.values()) {
+                groups.put(group, 0L);
+            }
+            jdbc.query("select site_group,count(*) from auth_accounts group by site_group", row -> {
+                groups.put(SiteGroup.valueOf(row.getString(1)), row.getLong(2));
+            });
+            Long recent = jdbc.queryForObject(
+                    "select count(*) from auth_accounts where created_at>=?",
+                    Long.class,
+                    java.sql.Timestamp.from(since));
+            return jdbc.queryForObject(
+                    "select count(*),count(*) filter (where w.public_delivery and e.eligible),"
+                            + "count(*) filter (where not e.eligible) "
+                            + "from workspaces w join website_owner_eligibility e using(workspace_id)",
+                    (row, number) -> new Overview(
+                            groups, recent == null ? 0 : recent, row.getLong(1), row.getLong(2), row.getLong(3)));
+        });
     }
 
     public AccountIdentity change(AuthPrincipal actor, UUID target, SiteGroup group, String reason) {
@@ -200,7 +283,38 @@ public final class SitePolicyService {
             UUID id, UUID actorId, SiteGroup previousGroup, SiteGroup nextGroup, String reason, Instant changedAt) {}
 
     public record AccountSummary(
-            UUID accountId, String loginName, String displayName, SiteGroup group, long ownedSpaces) {}
+            UUID accountId,
+            String loginName,
+            String displayName,
+            SiteGroup group,
+            long ownedSpaces,
+            Instant createdAt) {}
+
+    public enum AccountOrder {
+        NAME,
+        NEWEST
+    }
+
+    /** Website states as moderation filters them; RESTRICTED means an owner lacks creator eligibility. */
+    public enum SpaceState {
+        ALL,
+        PUBLIC,
+        RESTRICTED,
+        CLOSED
+    }
+
+    public record SiteSpace(
+            UUID workspaceId,
+            String slug,
+            String displayName,
+            boolean enabled,
+            boolean eligible,
+            Instant createdAt,
+            List<String> owners,
+            long ownerCount) {}
+
+    public record Overview(
+            Map<SiteGroup, Long> accounts, long newAccounts, long spaces, long publicSpaces, long restrictedSpaces) {}
 
     public record OwnedSpace(UUID workspaceId, String slug, String displayName, boolean enabled, boolean eligible) {}
 

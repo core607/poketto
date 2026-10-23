@@ -145,9 +145,10 @@ cannot be removed. An unconfigured provider shows no login button.
 
 New accounts are **viewers**. Administrators assign one group: viewer, community
 member, creator or site administrator. Creators and administrators can connect
-repositories and publish websites. Site administrators search accounts, change
-groups with a reason, see the change history and owned spaces, and review
-repository-public articles and media without private access. The last administrator
+repositories and publish websites. Site administrators see site-wide counts,
+filter accounts by group or registration order, list every space by website state,
+change groups with a reason, see the change history, and review repository-public articles and media
+without private access. The last administrator
 cannot be demoted. A space's website is public only while every owner is a creator or
 administrator: demoting an owner hides its public routes, discovery, search, feeds and
 media until eligibility returns, while editing and member and MCP permissions
