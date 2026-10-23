@@ -127,7 +127,7 @@ class GitHubConnectionsHttpIntegrationIT {
     @Test
     void browserConsentFeedsTheDurableCreationServiceWithoutExportingTokens() throws Exception {
         MockHttpSession session = login("owner");
-        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=account&github=connected"));
+        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=spaces&github=connected"));
         when(provider.repositories.create(anyLong(), anyString(), any(), anyString(), any()))
                 .thenAnswer(call -> {
                     ((Runnable) call.getArgument(4)).run();
@@ -228,7 +228,7 @@ class GitHubConnectionsHttpIntegrationIT {
     @Test
     void disconnectionBeforeTheCreationCheckpointPreventsTheProviderMutation() throws Exception {
         MockHttpSession session = login("owner");
-        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=account&github=connected"));
+        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=spaces&github=connected"));
         var mutations = new AtomicInteger();
         when(provider.repositories.create(anyLong(), anyString(), any(), anyString(), any()))
                 .thenAnswer(call -> {
@@ -253,10 +253,10 @@ class GitHubConnectionsHttpIntegrationIT {
         mvc.perform(post(ROOT + "/start").session(session)).andExpect(status().isForbidden());
         String state = start(session);
         callback(new MockHttpSession(), state)
-                .andExpect(header().string("Location", "/admin?tab=account&github=failed"));
-        callback(session, "wrong-state").andExpect(header().string("Location", "/admin?tab=account&github=failed"));
+                .andExpect(header().string("Location", "/admin?tab=spaces&github=failed"));
+        callback(session, "wrong-state").andExpect(header().string("Location", "/admin?tab=spaces&github=failed"));
         assertThat(provider.exchanges).isZero();
-        callback(session, state).andExpect(header().string("Location", "/admin?tab=account&github=connected"));
+        callback(session, state).andExpect(header().string("Location", "/admin?tab=spaces&github=connected"));
         String response = mvc.perform(get(ROOT).session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.state").value("CONNECTED"))
@@ -266,7 +266,7 @@ class GitHubConnectionsHttpIntegrationIT {
                 .getResponse()
                 .getContentAsString();
         assertThat(response).doesNotContain("ghu_", "ghr_", "verifier", "password");
-        callback(session, state).andExpect(header().string("Location", "/admin?tab=account&github=failed"));
+        callback(session, state).andExpect(header().string("Location", "/admin?tab=spaces&github=failed"));
         assertThat(provider.exchanges).isOne();
         assertThat(jdbc.queryForObject("select count(*) from auth_external_identities", Integer.class))
                 .isZero();
@@ -281,8 +281,8 @@ class GitHubConnectionsHttpIntegrationIT {
         MockHttpSession session = login("owner");
         String oldState = start(session);
         String newState = start(session);
-        callback(session, oldState).andExpect(header().string("Location", "/admin?tab=account&github=failed"));
-        callback(session, newState).andExpect(header().string("Location", "/admin?tab=account&github=connected"));
+        callback(session, oldState).andExpect(header().string("Location", "/admin?tab=spaces&github=failed"));
+        callback(session, newState).andExpect(header().string("Location", "/admin?tab=spaces&github=connected"));
         assertThat(provider.exchanges).isOne();
     }
 
@@ -293,7 +293,7 @@ class GitHubConnectionsHttpIntegrationIT {
         provider.duringExchange = () -> jdbc.update(
                 "update auth_accounts set credential_version=credential_version+1 where account_id=?",
                 owner.accountId());
-        callback(session, state).andExpect(header().string("Location", "/admin?tab=account&github=failed"));
+        callback(session, state).andExpect(header().string("Location", "/admin?tab=spaces&github=failed"));
         assertThat(provider.exchanges).isOne();
         assertThat(jdbc.queryForObject("select count(*) from content_github_grants", Integer.class))
                 .isZero();
@@ -306,9 +306,9 @@ class GitHubConnectionsHttpIntegrationIT {
         MockHttpSession reader = login("reader");
         mvc.perform(csrf(reader, post(ROOT + "/start"))).andExpect(status().isForbidden());
         MockHttpSession session = login("owner");
-        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=account&github=connected"));
+        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=spaces&github=connected"));
         jdbc.update("update auth_accounts set site_group='VIEWER' where account_id=?", owner.accountId());
-        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=account&github=connected"));
+        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=spaces&github=connected"));
         mvc.perform(get(ROOT).session(session))
                 .andExpect(jsonPath("$.version").value(2))
                 .andExpect(jsonPath("$.eligibleToCreate").value(false));
@@ -325,7 +325,7 @@ class GitHubConnectionsHttpIntegrationIT {
                         .param("username", "other")
                         .param("password", PASSWORD))
                 .andExpect(status().isNoContent());
-        callback(session, state).andExpect(header().string("Location", "/admin?tab=account&github=failed"));
+        callback(session, state).andExpect(header().string("Location", "/admin?tab=spaces&github=failed"));
         assertThat(provider.exchanges).isZero();
         assertThat(jdbc.queryForObject("select count(*) from content_github_grants", Integer.class))
                 .isZero();
@@ -337,7 +337,7 @@ class GitHubConnectionsHttpIntegrationIT {
         String state = start(session);
         provider.duringExchange =
                 () -> jdbc.update("update auth_accounts set site_group='VIEWER' where account_id=?", owner.accountId());
-        callback(session, state).andExpect(header().string("Location", "/admin?tab=account&github=failed"));
+        callback(session, state).andExpect(header().string("Location", "/admin?tab=spaces&github=failed"));
         assertThat(provider.exchanges).isOne();
         assertThat(jdbc.queryForObject("select count(*) from content_github_grants", Integer.class))
                 .isZero();
@@ -348,7 +348,7 @@ class GitHubConnectionsHttpIntegrationIT {
         MockHttpSession session = login("owner");
         String state = start(session);
         provider.duringExchange = session::invalidate;
-        callback(session, state).andExpect(header().string("Location", "/admin?tab=account&github=failed"));
+        callback(session, state).andExpect(header().string("Location", "/admin?tab=spaces&github=failed"));
         assertThat(provider.exchanges).isOne();
         assertThat(jdbc.queryForObject("select count(*) from content_github_grants", Integer.class))
                 .isZero();
@@ -363,10 +363,10 @@ class GitHubConnectionsHttpIntegrationIT {
                         .param("state", state)
                         .param("error", "access_denied"))
                 .andExpect(status().isSeeOther())
-                .andExpect(header().string("Location", "/admin?tab=account&github=cancelled"));
-        callback(session, state).andExpect(header().string("Location", "/admin?tab=account&github=failed"));
+                .andExpect(header().string("Location", "/admin?tab=spaces&github=cancelled"));
+        callback(session, state).andExpect(header().string("Location", "/admin?tab=spaces&github=failed"));
         provider.flowTime = ProviderFixture.NOW.minusSeconds(600);
-        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=account&github=failed"));
+        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=spaces&github=failed"));
         assertThat(provider.exchanges).isZero();
     }
 
@@ -384,7 +384,7 @@ class GitHubConnectionsHttpIntegrationIT {
                 throw new AssertionError("Concurrent disconnect failed", failure);
             }
         };
-        callback(session, state).andExpect(header().string("Location", "/admin?tab=account&github=failed"));
+        callback(session, state).andExpect(header().string("Location", "/admin?tab=spaces&github=failed"));
         assertThat(provider.exchanges).isOne();
         assertThat(jdbc.queryForObject("select count(*) from content_github_grants", Integer.class))
                 .isZero();
@@ -412,7 +412,7 @@ class GitHubConnectionsHttpIntegrationIT {
     @Test
     void verifiedInstallationBindsTheSpaceAndInitializesTheRealGitAuthority() throws Exception {
         MockHttpSession session = login("owner");
-        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=account&github=connected"));
+        callback(session, start(session)).andExpect(header().string("Location", "/admin?tab=spaces&github=connected"));
         var repository = new GitHubAppRepositories.Repository(
                 91,
                 "notes",

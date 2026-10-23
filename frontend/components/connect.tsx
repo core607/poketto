@@ -185,7 +185,7 @@ export function Connect() {
             {!workspace && (
               <p>
                 先
-                <a href="/admin?tab=account" target="_blank" rel="noreferrer">
+                <a href="/admin?tab=spaces" target="_blank" rel="noreferrer">
                   创建或加入空间
                 </a>
                 ，再回来继续授权。

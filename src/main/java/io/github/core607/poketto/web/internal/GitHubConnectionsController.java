@@ -240,7 +240,7 @@ class GitHubConnectionsController {
 
     private static void redirect(HttpServletResponse response, String result) {
         response.setStatus(303);
-        response.setHeader("Location", "/admin?tab=account&github=" + result);
+        response.setHeader("Location", "/admin?tab=spaces&github=" + result);
     }
 
     @ExceptionHandler(GitHubConnectionException.class)

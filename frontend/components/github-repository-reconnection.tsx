@@ -95,7 +95,7 @@ export function GitHubRepositoryReconnection({
             <p>GitHub 已撤销仓库访问，恢复授权后需要重新连接。</p>
           )}
           <p>
-            先到<a href="/admin?tab=account">账号设置</a>恢复原 GitHub
+            先到<a href="/admin?tab=spaces">新建或加入空间</a>恢复原 GitHub
             账号授权，并在仓库授权范围中选中这个仓库。
           </p>
           <p>
