@@ -1280,3 +1280,27 @@ details.sub-panel[open] > summary::before {
   color: var(--muted);
   font-size: var(--text-xs);
 }
+.application-item {
+  display: grid;
+  gap: 0.6rem;
+  width: 100%;
+}
+.application-statement {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.admin-list.applications li {
+  display: block;
+  padding: 1rem 0;
+}
+.creator-application {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.creator-application .notice p + p {
+  margin-top: 0.35rem;
+}
+td .state-chip {
+  margin-left: 0.4rem;
+}

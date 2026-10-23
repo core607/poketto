@@ -14,6 +14,7 @@ type Account = {
   group: SiteGroup;
   ownedSpaces: number;
   createdAt: string;
+  suspended: boolean;
 };
 type Order = "NAME" | "NEWEST";
 type Change = {
@@ -24,16 +25,27 @@ type Change = {
   reason: string;
   changedAt: string;
 };
+type SuspensionChange = {
+  id: string;
+  suspended: boolean;
+  reason: string;
+  changedAt: string;
+};
 
 export function SiteAccounts({
   initialGroup = null,
   initialOrder = "NAME",
+  initialSuspended = false,
+  currentAccountId = "",
 }: {
   initialGroup?: SiteGroup | null;
   initialOrder?: Order;
+  initialSuspended?: boolean;
+  currentAccountId?: string;
 }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<SiteGroup | null>(initialGroup);
+  const [suspended, setSuspended] = useState(initialSuspended);
   const [order, setOrder] = useState<Order>(initialOrder);
   return (
     <section className="sub-panel" aria-labelledby="site-accounts">
@@ -70,6 +82,13 @@ export function SiteAccounts({
               </button>
             ),
           )}
+          <button
+            type="button"
+            aria-pressed={suspended}
+            onClick={() => setSuspended(!suspended)}
+          >
+            只看已停用
+          </button>
         </div>
         <label className="inline-select">
           排序
@@ -83,10 +102,12 @@ export function SiteAccounts({
         </label>
       </div>
       <Accounts
-        key={[query, group, order].join("\n")}
+        key={[query, group, suspended, order].join("\n")}
         query={query}
         group={group}
+        suspended={suspended}
         order={order}
+        currentAccountId={currentAccountId}
       />
     </section>
   );
@@ -95,16 +116,21 @@ export function SiteAccounts({
 function Accounts({
   query,
   group,
+  suspended,
   order,
+  currentAccountId,
 }: {
   query: string;
   group: SiteGroup | null;
+  suspended: boolean;
   order: Order;
+  currentAccountId: string;
 }) {
   const page = useAdminPage<Account>(
     "/api/auth/site/accounts?query=" +
       encodeURIComponent(query) +
       (group ? "&group=" + group : "") +
+      (suspended ? "&suspended=true" : "") +
       (order === "NAME" ? "" : "&order=" + order),
   );
   const [selected, setSelected] = useState<{
@@ -144,6 +170,9 @@ function Accounts({
                     <span className="group-badge">
                       {siteGroups[account.group]}
                     </span>
+                    {account.suspended && (
+                      <span className="state-chip warn">已停用</span>
+                    )}
                   </td>
                   <td data-label="拥有的空间">{account.ownedSpaces}</td>
                   <td data-label="注册时间">{date(account.createdAt)}</td>
@@ -172,6 +201,10 @@ function Accounts({
         <AccountDialog
           key={selected.account.accountId}
           account={selected.account}
+          protectedAccount={
+            selected.account.group === "ADMINISTRATOR" ||
+            selected.account.accountId === currentAccountId
+          }
           returnFocus={selected.trigger}
           onChanged={() => {
             page.reload();
@@ -187,11 +220,13 @@ function Accounts({
 /** One account's group, owned spaces and group history, shown over the account list. */
 function AccountDialog({
   account,
+  protectedAccount,
   returnFocus,
   onChanged,
   onClose,
 }: {
   account: Account;
+  protectedAccount: boolean;
   returnFocus: HTMLElement | null;
   onChanged: () => void;
   onClose: () => void;
@@ -301,6 +336,11 @@ function AccountDialog({
           </p>
         )}
       </section>
+      <Suspension
+        account={account}
+        protectedAccount={protectedAccount}
+        onChanged={onChanged}
+      />
       <SiteAccountSpaces accountId={account.accountId} />
       <section aria-label="策略组变更记录" className="admin-block">
         <h3>变更记录</h3>
@@ -335,5 +375,94 @@ function AccountDialog({
         />
       </section>
     </dialog>
+  );
+}
+
+/** Suspending ends the account's sessions and keys and withdraws websites it owns; restoring undoes the block. */
+function Suspension({
+  account,
+  protectedAccount,
+  onChanged,
+}: {
+  account: Account;
+  protectedAccount: boolean;
+  onChanged: () => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const history = useAdminPage<SuspensionChange>(
+    `/api/auth/site/accounts/${account.accountId}/suspension-history`,
+  );
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const reason = String(
+      new FormData(event.currentTarget).get("reason") ?? "",
+    );
+    setPending(true);
+    setError("");
+    try {
+      await api(`/api/auth/site/accounts/${account.accountId}/suspension`, {
+        method: "PUT",
+        body: { suspended: !account.suspended, reason },
+      });
+      onChanged();
+    } catch (failure) {
+      setError(message(failure));
+    } finally {
+      setPending(false);
+    }
+  }
+  const latest = history.items[0];
+  return (
+    <section
+      aria-label={`${account.displayName} 的账号状态`}
+      className="admin-block"
+    >
+      <h3>账号状态</h3>
+      {account.suspended ? (
+        <p>
+          <span className="state-chip warn">已停用</span>{" "}
+          {latest?.suspended && `${date(latest.changedAt)}：${latest.reason}`}
+        </p>
+      ) : (
+        <p className="muted">正常。</p>
+      )}
+      {protectedAccount ? (
+        <p className="form-help">
+          不能停用自己或站点管理员；如需停用，请先调整对方的策略组。
+        </p>
+      ) : (
+        <form onSubmit={save} className="stack-form">
+          <p className="form-help">
+            {account.suspended
+              ? "恢复后对方需要重新登录；之前的访问密钥和 AI 连接已失效，需要重新创建。"
+              : "停用会立即退出对方的所有登录、撤销访问密钥和 AI 连接，并暂停其拥有的网站。空间、成员关系和内容都会保留。"}
+          </p>
+          <label>
+            {account.suspended ? "恢复原因" : "停用原因"}
+            <textarea
+              name="reason"
+              required
+              maxLength={500}
+              rows={2}
+              disabled={pending}
+            />
+          </label>
+          <div className="button-row">
+            <button
+              className={account.suspended ? undefined : "button-danger"}
+              disabled={pending}
+            >
+              {account.suspended ? "恢复账号" : "停用账号"}
+            </button>
+          </div>
+        </form>
+      )}
+      {error && (
+        <p role="alert" className="notice danger">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }

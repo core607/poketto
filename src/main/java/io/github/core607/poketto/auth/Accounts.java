@@ -35,7 +35,8 @@ public final class Accounts {
             throw new AuthException(DENIED);
         }
         var identities = jdbc.query(
-                "select account_id, login_name, display_name, site_group from auth_accounts where account_id=? and credential_version=?"
+                "select account_id, login_name, display_name, site_group from auth_accounts "
+                        + "where account_id=? and credential_version=? and suspended_at is null"
                         + (lock ? " for update" : ""),
                 (row, number) -> new AccountIdentity(
                         row.getObject(1, UUID.class),

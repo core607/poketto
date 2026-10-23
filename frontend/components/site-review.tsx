@@ -217,9 +217,11 @@ function ReviewDocument({ base, route }: { base: string; route: string }) {
 }
 
 export function PublicationRestrictions({ base }: { base: string }) {
-  const page = useAdminPage<{ ownerName: string; reason: string | null }>(
-    `${base}/restrictions`,
-  );
+  const page = useAdminPage<{
+    ownerName: string;
+    reason: string | null;
+    suspended?: boolean;
+  }>(`${base}/restrictions`);
   return (
     <div aria-label="公开展示限制原因">
       {page.error && <p role="alert">{page.error}</p>}
@@ -227,7 +229,10 @@ export function PublicationRestrictions({ base }: { base: string }) {
         !page.error &&
         page.items.map((item, index) => (
           <p key={index}>
-            {item.ownerName}：{item.reason || "尚未获得创作者资格。"}
+            {item.ownerName}：
+            {item.suspended
+              ? "账号已被站点管理员停用。"
+              : item.reason || "尚未获得创作者资格。"}
           </p>
         ))}
       <AdminPagination label="受限所有者" page={page} />

@@ -32,10 +32,11 @@ class SitePolicyController {
             @AuthenticationPrincipal AuthPrincipal actor,
             @RequestParam(defaultValue = "") String query,
             @RequestParam(required = false) SiteGroup group,
+            @RequestParam(defaultValue = "false") boolean suspended,
             @RequestParam(defaultValue = "NAME") SitePolicyService.AccountOrder order,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
-        return policies.list(actor, query, group, order, offset, limit);
+        return policies.list(actor, query, group, suspended, order, offset, limit);
     }
 
     @PutMapping("/{accountId}/group")
@@ -63,6 +64,27 @@ class SitePolicyController {
             @RequestParam(defaultValue = "30") int limit) {
         return policies.ownedSpaces(actor, accountId, offset, limit);
     }
+
+    @PutMapping("/{accountId}/suspension")
+    Suspension suspend(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable UUID accountId,
+            @RequestBody SuspensionChange request) {
+        return new Suspension(policies.suspend(actor, accountId, request.suspended(), request.reason()));
+    }
+
+    @GetMapping("/{accountId}/suspension-history")
+    AuthService.Page<SitePolicyService.SuspensionChange> suspensionHistory(
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable UUID accountId,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "30") int limit) {
+        return policies.suspensionHistory(actor, accountId, offset, limit);
+    }
+
+    record SuspensionChange(boolean suspended, String reason) {}
+
+    record Suspension(boolean suspended) {}
 
     record GroupChange(SiteGroup group, String reason) {
         GroupChange {

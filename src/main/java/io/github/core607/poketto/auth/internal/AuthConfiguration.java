@@ -3,6 +3,7 @@ package io.github.core607.poketto.auth.internal;
 import io.github.core607.poketto.auth.Accounts;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.CommunityAccounts;
+import io.github.core607.poketto.auth.CreatorApplications;
 import io.github.core607.poketto.auth.MachineAccounts;
 import io.github.core607.poketto.auth.SitePolicyService;
 import java.time.Clock;
@@ -34,6 +35,12 @@ class AuthConfiguration {
     SitePolicyService sitePolicyService(
             JdbcTemplate jdbc, Accounts accounts, AuthService auth, PlatformTransactionManager transactions) {
         return new SitePolicyService(jdbc, accounts, auth, transactions);
+    }
+
+    @Bean
+    CreatorApplications creatorApplications(
+            JdbcTemplate jdbc, Accounts accounts, SitePolicyService policies, PlatformTransactionManager transactions) {
+        return new CreatorApplications(jdbc, accounts, policies, transactions, Clock.systemUTC());
     }
 
     @Bean

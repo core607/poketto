@@ -15,8 +15,12 @@ class AuthProblemResponses {
         HttpStatus status =
                 switch (exception.code()) {
                     case INVALID_CREDENTIALS -> HttpStatus.UNAUTHORIZED;
-                    case DENIED -> HttpStatus.FORBIDDEN;
+                    case DENIED, ACCOUNT_SUSPENDED -> HttpStatus.FORBIDDEN;
                     case LAST_OWNER,
+                            PROTECTED_ACCOUNT,
+                            APPLICATION_OPEN,
+                            APPLICATION_COOLDOWN,
+                            ALREADY_CREATOR,
                             LAST_ADMINISTRATOR,
                             ALREADY_INITIALIZED,
                             EMAIL_IN_USE,

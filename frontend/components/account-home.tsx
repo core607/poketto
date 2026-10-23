@@ -8,6 +8,7 @@ import {
 } from "../lib/site-groups";
 import type { AccountProfile } from "../lib/types";
 import { AccountSecurity } from "./account-security";
+import { CreatorApplication } from "./creator-application";
 import { Login } from "./login";
 import { Avatar, Icon } from "./ui/icons";
 
@@ -96,9 +97,12 @@ export function AccountHome() {
         </div>
         <p>{siteGroupAbilities[group]}</p>
         {!creator && (
-          <p className="muted">
-            想新建自己的空间并公开成网站，需要站点管理员授予创作者资格。已加入的空间不受账号类型影响。
-          </p>
+          <>
+            <p className="muted">
+              想新建自己的空间并公开成网站，需要站点管理员授予创作者资格。已加入的空间不受账号类型影响。
+            </p>
+            <CreatorApplication />
+          </>
         )}
       </section>
       <AccountSecurity onDisplayName={setDisplayName} />

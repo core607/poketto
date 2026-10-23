@@ -19,6 +19,7 @@ public final class SitePolicyService {
     private final Accounts accounts;
     private final AuthService auth;
     private final TransactionTemplate transactions;
+    private final CredentialRevocations revocations;
 
     public SitePolicyService(
             JdbcTemplate jdbc, Accounts accounts, AuthService auth, PlatformTransactionManager manager) {
@@ -26,6 +27,7 @@ public final class SitePolicyService {
         this.accounts = accounts;
         this.auth = auth;
         this.transactions = new TransactionTemplate(manager);
+        this.revocations = new CredentialRevocations(jdbc, auth);
     }
 
     public void requireAdministrator(AuthPrincipal actor) {
@@ -74,13 +76,19 @@ public final class SitePolicyService {
                 throw new AuthException(AuthException.Code.DENIED);
             }
             String owners = "from auth_memberships m join auth_accounts a using(account_id) "
-                    + "where m.workspace_id=? and m.role='OWNER' and a.site_group in ('VIEWER','COMMUNITY')";
+                    + "where m.workspace_id=? and m.role='OWNER' "
+                    + "and (a.site_group in ('VIEWER','COMMUNITY') or a.suspended_at is not null)";
             List<Restriction> items = jdbc.query(
                     "select a.display_name,a.site_group,(select c.reason from auth_group_changes c "
-                            + "where c.account_id=a.account_id order by c.changed_at desc,c.change_id desc limit 1) "
+                            + "where c.account_id=a.account_id order by c.changed_at desc,c.change_id desc limit 1),"
+                            + "a.suspended_at is not null "
                             + owners + " order by a.account_id limit ? offset ?",
-                    (row, number) ->
-                            new Restriction(row.getString(1), SiteGroup.valueOf(row.getString(2)), row.getString(3)),
+                    (row, number) -> new Restriction(
+                            row.getString(1),
+                            SiteGroup.valueOf(row.getString(2)),
+                            // A suspension reason is between the account and the site; co-owners see only the fact.
+                            row.getBoolean(4) ? null : row.getString(3),
+                            row.getBoolean(4)),
                     workspace.value(),
                     limit,
                     offset);
@@ -90,12 +98,18 @@ public final class SitePolicyService {
     }
 
     public AuthService.Page<AccountSummary> list(AuthPrincipal actor, String query, int offset, int limit) {
-        return list(actor, query, null, AccountOrder.NAME, offset, limit);
+        return list(actor, query, null, false, AccountOrder.NAME, offset, limit);
     }
 
-    /** Searches accounts by login, display name or email, optionally within one group. */
+    /** Searches accounts by login, display name or email, optionally within one group or only suspended ones. */
     public AuthService.Page<AccountSummary> list(
-            AuthPrincipal actor, String query, SiteGroup group, AccountOrder order, int offset, int limit) {
+            AuthPrincipal actor,
+            String query,
+            SiteGroup group,
+            boolean suspendedOnly,
+            AccountOrder order,
+            int offset,
+            int limit) {
         requireAdministrator(actor);
         requirePage(offset, limit);
         if (query == null || query.length() > 254 || order == null) {
@@ -104,10 +118,12 @@ public final class SitePolicyService {
         String search = query.strip().toLowerCase(Locale.ROOT);
         String groupName = group == null ? null : group.name();
         String where = "where position(? in lower(login_name||' '||display_name||' '||coalesce(verified_email,'')))>0 "
-                + "and (?::text is null or site_group=?::text) ";
+                + "and (?::text is null or site_group=?::text) "
+                + (suspendedOnly ? "and suspended_at is not null " : "");
         List<AccountSummary> items = jdbc.query(
                 "select account_id,login_name,display_name,site_group,(select count(*) from auth_memberships m "
-                        + "where m.account_id=auth_accounts.account_id and m.role='OWNER') as owned_spaces,created_at "
+                        + "where m.account_id=auth_accounts.account_id and m.role='OWNER') as owned_spaces,created_at,"
+                        + "suspended_at is not null "
                         + "from auth_accounts "
                         + where
                         + (order == AccountOrder.NEWEST
@@ -120,7 +136,8 @@ public final class SitePolicyService {
                         row.getString(3),
                         SiteGroup.valueOf(row.getString(4)),
                         row.getLong(5),
-                        row.getTimestamp(6).toInstant()),
+                        row.getTimestamp(6).toInstant(),
+                        row.getBoolean(7)),
                 search,
                 groupName,
                 groupName,
@@ -185,6 +202,8 @@ public final class SitePolicyService {
             jdbc.query("select site_group,count(*) from auth_accounts group by site_group", row -> {
                 groups.put(SiteGroup.valueOf(row.getString(1)), row.getLong(2));
             });
+            Long suspended = jdbc.queryForObject(
+                    "select count(*) from auth_accounts where suspended_at is not null", Long.class);
             Long recent = jdbc.queryForObject(
                     "select count(*) from auth_accounts where created_at>=?",
                     Long.class,
@@ -194,7 +213,12 @@ public final class SitePolicyService {
                             + "count(*) filter (where not e.eligible) "
                             + "from workspaces w join website_owner_eligibility e using(workspace_id)",
                     (row, number) -> new Overview(
-                            groups, recent == null ? 0 : recent, row.getLong(1), row.getLong(2), row.getLong(3)));
+                            groups,
+                            recent == null ? 0 : recent,
+                            suspended == null ? 0 : suspended,
+                            row.getLong(1),
+                            row.getLong(2),
+                            row.getLong(3)));
         });
     }
 
@@ -228,6 +252,76 @@ public final class SitePolicyService {
                     normalized);
             return new AccountIdentity(target, previous.loginName(), previous.displayName(), group);
         });
+    }
+
+    /**
+     * Suspends or restores an account. Suspension ends its sessions and machine credentials and withdraws
+     * websites it owns; memberships, group and content stay, so restoring needs only a new login and keys.
+     */
+    public boolean suspend(AuthPrincipal actor, UUID target, boolean suspended, String reason) {
+        if (target == null || reason == null) {
+            throw new AuthException(AuthException.Code.INVALID_INPUT);
+        }
+        String normalized = reason.strip();
+        if (normalized.isEmpty() || normalized.length() > 500) {
+            throw new AuthException(AuthException.Code.INVALID_INPUT);
+        }
+        return transactions.execute(status -> {
+            jdbc.queryForObject(
+                    "select singleton from auth_initialization where singleton=true for update", Boolean.class);
+            requireAdministrator(actor);
+            AccountIdentity account = lockAccount(target);
+            // Administrators are demoted first, which keeps the last-administrator rule in one place.
+            if (account.accountId().equals(actor.accountId()) || account.siteAdministrator()) {
+                throw new AuthException(AuthException.Code.PROTECTED_ACCOUNT);
+            }
+            Boolean current = jdbc.queryForObject(
+                    "select suspended_at is not null from auth_accounts where account_id=?", Boolean.class, target);
+            if (Boolean.valueOf(suspended).equals(current)) {
+                return suspended;
+            }
+            if (suspended) {
+                jdbc.update(
+                        "update auth_accounts set suspended_at=?,suspension_reason=?,"
+                                + "credential_version=credential_version+1 where account_id=?",
+                        auth.timestamp(),
+                        normalized,
+                        target);
+                revocations.revoke(target);
+            } else {
+                jdbc.update(
+                        "update auth_accounts set suspended_at=null,suspension_reason=null where account_id=?", target);
+            }
+            jdbc.update(
+                    "insert into auth_suspension_changes(change_id,actor_id,account_id,suspended,reason) values (?,?,?,?,?)",
+                    UUID.randomUUID(),
+                    actor.accountId(),
+                    target,
+                    suspended,
+                    normalized);
+            return suspended;
+        });
+    }
+
+    public AuthService.Page<SuspensionChange> suspensionHistory(
+            AuthPrincipal actor, UUID target, int offset, int limit) {
+        requireAdministrator(actor);
+        requirePage(offset, limit);
+        List<SuspensionChange> items = jdbc.query(
+                "select change_id,actor_id,suspended,reason,changed_at from auth_suspension_changes "
+                        + "where account_id=? order by changed_at desc,change_id limit ? offset ?",
+                (row, number) -> new SuspensionChange(
+                        row.getObject(1, UUID.class),
+                        row.getObject(2, UUID.class),
+                        row.getBoolean(3),
+                        row.getString(4),
+                        row.getTimestamp(5).toInstant()),
+                target,
+                limit,
+                offset);
+        Long total = jdbc.queryForObject(
+                "select count(*) from auth_suspension_changes where account_id=?", Long.class, target);
+        return new AuthService.Page<>(items, total, offset, limit);
     }
 
     private AccountIdentity lockAccount(UUID target) {
@@ -288,14 +382,18 @@ public final class SitePolicyService {
             String displayName,
             SiteGroup group,
             long ownedSpaces,
-            Instant createdAt) {}
+            Instant createdAt,
+            boolean suspended) {}
 
     public enum AccountOrder {
         NAME,
         NEWEST
     }
 
-    /** Website states as moderation filters them; RESTRICTED means an owner lacks creator eligibility. */
+    /**
+     * Website states as moderation filters them. RESTRICTED means the owner-eligibility view refuses the
+     * space: an owner lacks creator eligibility or is suspended, or the space has no owner.
+     */
     public enum SpaceState {
         ALL,
         PUBLIC,
@@ -314,9 +412,16 @@ public final class SitePolicyService {
             long ownerCount) {}
 
     public record Overview(
-            Map<SiteGroup, Long> accounts, long newAccounts, long spaces, long publicSpaces, long restrictedSpaces) {}
+            Map<SiteGroup, Long> accounts,
+            long newAccounts,
+            long suspendedAccounts,
+            long spaces,
+            long publicSpaces,
+            long restrictedSpaces) {}
+
+    public record SuspensionChange(UUID id, UUID actorId, boolean suspended, String reason, Instant changedAt) {}
 
     public record OwnedSpace(UUID workspaceId, String slug, String displayName, boolean enabled, boolean eligible) {}
 
-    public record Restriction(String ownerName, SiteGroup group, String reason) {}
+    public record Restriction(String ownerName, SiteGroup group, String reason, boolean suspended) {}
 }

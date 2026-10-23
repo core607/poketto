@@ -105,7 +105,11 @@ class GoogleIdentityController {
             redirect(response, pending.returnTo(), null);
         } catch (AuthException rejected) {
             String reason =
-                    rejected.code() == AuthException.Code.EMAIL_IN_USE ? "google_email_in_use" : "google_failed";
+                    switch (rejected.code()) {
+                        case EMAIL_IN_USE -> "google_email_in_use";
+                        case ACCOUNT_SUSPENDED -> "google_account_suspended";
+                        default -> "google_failed";
+                    };
             redirect(response, pending.returnTo(), reason);
         }
     }

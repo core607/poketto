@@ -152,7 +152,10 @@ without private access. The last administrator
 cannot be demoted. A space's website is public only while every owner is a creator or
 administrator: demoting an owner hides its public routes, discovery, search, feeds and
 media until eligibility returns, while editing and member and MCP permissions
-continue.
+continue. Viewers and community members apply for creator eligibility on `/account`;
+a decline carries a note and a seven-day wait. Administrators can suspend any
+non-administrator account: it is signed out, its keys and AI connections are revoked
+and its websites withdrawn until restored.
 
 On Linux, the data directory must support file and directory synchronization;
 without it, publication-affecting writes and image uploads are refused and public

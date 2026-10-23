@@ -49,6 +49,13 @@ final class AccountPasswords {
             throw failure(INVALID_CREDENTIALS);
         }
         AccountCredential account = accounts.getFirst();
+        if (Boolean.TRUE.equals(jdbc.queryForObject(
+                "select suspended_at is not null from auth_accounts where account_id=?",
+                Boolean.class,
+                account.id()))) {
+            AuditRecords.refused("password.authentication", AuthException.Code.ACCOUNT_SUSPENDED.name());
+            throw failure(AuthException.Code.ACCOUNT_SUSPENDED);
+        }
         if (passwords.upgradeEncoding(encoded)) {
             jdbc.update(
                     "update auth_accounts set password_hash = ? where account_id = ? and password_hash = ?",
@@ -68,7 +75,7 @@ final class AccountPasswords {
             throw failure(INVALID_CREDENTIALS);
         }
         Boolean valid = jdbc.queryForObject(
-                "select exists(select 1 from auth_accounts where account_id=? and credential_version=?)",
+                "select exists(select 1 from auth_accounts where account_id=? and credential_version=? and suspended_at is null)",
                 Boolean.class,
                 actor.accountId(),
                 actor.credentialVersion());

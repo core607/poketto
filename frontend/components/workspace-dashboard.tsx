@@ -618,8 +618,8 @@ function Welcome({
           <h2 id="become-creator">想拥有自己的空间？</h2>
         </div>
         <p className="muted">
-          新建空间并公开成网站需要创作者资格。
-          <a href="/account#creator">查看如何成为创作者</a>
+          新建空间并公开成网站需要创作者资格，可以在账号页向站点管理员申请。
+          <a href="/account#creator">申请成为创作者</a>
         </p>
       </section>
       <p>

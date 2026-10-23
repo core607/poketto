@@ -2,6 +2,7 @@ package io.github.core607.poketto.web.internal;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.CreatorApplications;
 import io.github.core607.poketto.auth.SiteGroup;
 import io.github.core607.poketto.auth.SitePolicyService;
 import io.github.core607.poketto.community.Community;
@@ -24,11 +25,13 @@ class SiteOverviewController {
 
     private final SitePolicyService policies;
     private final Community community;
+    private final CreatorApplications applications;
     private final Clock clock;
 
-    SiteOverviewController(SitePolicyService policies, Community community) {
+    SiteOverviewController(SitePolicyService policies, Community community, CreatorApplications applications) {
         this.policies = policies;
         this.community = community;
+        this.applications = applications;
         this.clock = Clock.systemUTC();
     }
 
@@ -39,10 +42,12 @@ class SiteOverviewController {
         return new Overview(
                 counts.accounts(),
                 counts.newAccounts(),
+                counts.suspendedAccounts(),
                 counts.spaces(),
                 counts.publicSpaces(),
                 counts.restrictedSpaces(),
-                community.openReports(actor));
+                community.openReports(actor),
+                applications.open(actor));
     }
 
     @GetMapping("/workspaces")
@@ -58,8 +63,10 @@ class SiteOverviewController {
     record Overview(
             Map<SiteGroup, Long> accounts,
             long newAccounts,
+            long suspendedAccounts,
             long spaces,
             long publicSpaces,
             long restrictedSpaces,
-            long openReports) {}
+            long openReports,
+            long openApplications) {}
 }

@@ -6,15 +6,23 @@ import { siteGroups, type SiteGroup } from "../lib/site-groups";
 type Overview = {
   accounts: Record<SiteGroup, number>;
   newAccounts: number;
+  suspendedAccounts: number;
   spaces: number;
   publicSpaces: number;
   restrictedSpaces: number;
   openReports: number;
+  openApplications: number;
 };
 export type OverviewTarget =
-  | { section: "accounts"; group?: SiteGroup; order?: "NEWEST" }
+  | {
+      section: "accounts";
+      group?: SiteGroup;
+      order?: "NEWEST";
+      suspended?: boolean;
+    }
   | { section: "spaces"; state?: "PUBLIC" | "RESTRICTED" }
-  | { section: "reports" };
+  | { section: "reports" }
+  | { section: "applications" };
 
 /** Site-wide counts; each tile opens the list it counts. */
 export function SiteOverview({
@@ -74,12 +82,15 @@ export function SiteOverview({
           <h2 id="overview-attention">待处理</h2>
         </div>
         <div className="stat-row">
+          {tile("待审核的创作者申请", overview.openApplications, {
+            section: "applications",
+          })}
           {tile("未处理举报", overview.openReports, { section: "reports" })}
           {tile(
             "展示受限的空间",
             overview.restrictedSpaces,
             { section: "spaces", state: "RESTRICTED" },
-            "有所有者不具备创作者资格",
+            "所有者缺少创作者资格、已被停用，或空间没有所有者",
           )}
           {tile(
             "近 7 天新注册",
@@ -101,6 +112,10 @@ export function SiteOverview({
               group,
             }),
           )}
+          {tile("已停用", overview.suspendedAccounts, {
+            section: "accounts",
+            suspended: true,
+          })}
         </div>
       </section>
       <section className="sub-panel" aria-labelledby="overview-spaces">

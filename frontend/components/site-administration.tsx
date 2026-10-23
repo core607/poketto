@@ -3,12 +3,14 @@ import { useState } from "react";
 import type { AccountProfile } from "../lib/types";
 import { ReportQueue } from "./community-dashboard";
 import { SiteAccounts } from "./site-accounts";
+import { SiteApplications } from "./site-applications";
 import { SiteOverview, type OverviewTarget } from "./site-overview";
 import { SiteSpaces } from "./site-spaces";
 
 const sections = {
   overview: "概览",
   accounts: "账号",
+  applications: "申请",
   spaces: "空间",
   reports: "举报",
 };
@@ -44,8 +46,11 @@ export function SiteAdministration({ account }: { account: AccountProfile }) {
           key={opening}
           initialGroup={view.group ?? null}
           initialOrder={view.order ?? "NAME"}
+          initialSuspended={view.suspended ?? false}
+          currentAccountId={account.account.accountId}
         />
       )}
+      {view.section === "applications" && <SiteApplications />}
       {view.section === "spaces" && (
         <SiteSpaces key={opening} initialState={view.state ?? "ALL"} />
       )}

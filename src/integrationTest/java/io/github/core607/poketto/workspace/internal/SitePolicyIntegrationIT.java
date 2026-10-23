@@ -9,6 +9,7 @@ import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
+import io.github.core607.poketto.auth.CreatorApplications;
 import io.github.core607.poketto.auth.MembershipRole;
 import io.github.core607.poketto.auth.SiteGroup;
 import io.github.core607.poketto.auth.SitePolicyService;
@@ -166,12 +167,13 @@ class SitePolicyIntegrationIT {
                 "update auth_accounts set created_at=created_at-interval '30 days' where account_id=?",
                 administrator.accountId());
 
-        var creators = policies.list(administrator, "", SiteGroup.CREATOR, SitePolicyService.AccountOrder.NAME, 0, 30);
+        var creators =
+                policies.list(administrator, "", SiteGroup.CREATOR, false, SitePolicyService.AccountOrder.NAME, 0, 30);
         assertThat(creators.items())
                 .extracting(SitePolicyService.AccountSummary::loginName)
                 .containsExactly("creator");
         assertThat(creators.total()).isOne();
-        var newest = policies.list(administrator, "", null, SitePolicyService.AccountOrder.NEWEST, 0, 30);
+        var newest = policies.list(administrator, "", null, false, SitePolicyService.AccountOrder.NEWEST, 0, 30);
         assertThat(newest.items().getLast().accountId()).isEqualTo(administrator.accountId());
         assertThat(newest.total()).isEqualTo(3);
 
@@ -202,8 +204,130 @@ class SitePolicyIntegrationIT {
         assertCode(
                 () -> policies.spaces(reader, "", SitePolicyService.SpaceState.ALL, 0, 30), AuthException.Code.DENIED);
         assertCode(
-                () -> policies.list(administrator, "", null, SitePolicyService.AccountOrder.NAME, 0, 101),
+                () -> policies.list(administrator, "", null, false, SitePolicyService.AccountOrder.NAME, 0, 101),
                 AuthException.Code.INVALID_INPUT);
+    }
+
+    @Test
+    void suspensionEndsAccessAndWithdrawsWebsitesUntilRestored() {
+        String password = UUID.randomUUID().toString();
+        AuthPrincipal creator = AccountFixtures.create(auth, "suspended-creator", password);
+        policies.change(administrator, creator.accountId(), SiteGroup.CREATOR, "Creator approved");
+        auth.acceptInvitation(
+                creator,
+                auth.createInvitation(administrator, workspace, Set.of()).token());
+        auth.changeMembership(administrator, workspace, creator.accountId(), MembershipRole.OWNER, true, Set.of());
+        var key = auth.createApiKey(creator, workspace, creator.accountId(), AuthService.DEFAULT_AI_CAPABILITIES);
+        WorkspaceId second = ownedSpace(creator);
+        publications.requireEnabled(second);
+
+        assertCode(
+                () -> policies.suspend(administrator, administrator.accountId(), true, "Self"),
+                AuthException.Code.PROTECTED_ACCOUNT);
+        assertCode(
+                () -> policies.suspend(creator, administrator.accountId(), true, "Revenge"), AuthException.Code.DENIED);
+        assertThat(policies.suspend(administrator, creator.accountId(), true, "Spam reports"))
+                .isTrue();
+
+        assertCode(
+                () -> auth.authenticatePassword("suspended-creator", password), AuthException.Code.ACCOUNT_SUSPENDED);
+        assertCode(() -> accounts.account(creator), AuthException.Code.DENIED);
+        assertCode(() -> auth.authenticateApiKey(key.token()), AuthException.Code.INVALID_CREDENTIALS);
+        assertThat(publications.settings(second).eligible()).isFalse();
+        assertThatThrownBy(() -> publications.requireEnabled(second))
+                .isInstanceOf(PublicationUnavailableException.class);
+        assertThat(policies.restrictions(administrator, workspace, 0, 30).items())
+                .singleElement()
+                .satisfies(restriction -> {
+                    assertThat(restriction.suspended()).isTrue();
+                    assertThat(restriction.reason()).isNull();
+                });
+        assertThat(policies.list(administrator, "", null, true, SitePolicyService.AccountOrder.NAME, 0, 30)
+                        .items())
+                .singleElement()
+                .satisfies(summary -> {
+                    assertThat(summary.accountId()).isEqualTo(creator.accountId());
+                    assertThat(summary.suspended()).isTrue();
+                });
+
+        assertThat(policies.suspend(administrator, creator.accountId(), false, "Appeal accepted"))
+                .isFalse();
+        AuthPrincipal restored = auth.authenticatePassword("suspended-creator", password);
+        assertThat(accounts.account(restored).group()).isEqualTo(SiteGroup.CREATOR);
+        auth.authorize(restored, workspace, Capability.WRITE_PRIVATE);
+        publications.requireEnabled(second);
+        assertCode(() -> auth.authenticateApiKey(key.token()), AuthException.Code.INVALID_CREDENTIALS);
+        assertThat(policies.suspensionHistory(administrator, creator.accountId(), 0, 30)
+                        .items())
+                .extracting(SitePolicyService.SuspensionChange::suspended)
+                .containsExactly(false, true);
+    }
+
+    @Test
+    void creatorApplicationsAreDecidedOnlyByAdministratorsWithACooldownAfterDecline() {
+        var now = new java.util.concurrent.atomic.AtomicReference<>(java.time.Instant.parse("2026-10-01T00:00:00Z"));
+        Clock clock = new Clock() {
+            @Override
+            public java.time.ZoneId getZone() {
+                return java.time.ZoneOffset.UTC;
+            }
+
+            @Override
+            public Clock withZone(java.time.ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public java.time.Instant instant() {
+                return now.get();
+            }
+        };
+        var applications = new CreatorApplications(
+                jdbc, accounts, policies, new DataSourceTransactionManager(jdbc.getDataSource()), clock);
+        AuthPrincipal reader = account("applicant");
+
+        assertThat(applications.standing(reader).latest()).isNull();
+        assertCode(() -> applications.apply(reader, "  "), AuthException.Code.INVALID_INPUT);
+        var first = applications.apply(reader, "I write travel notes");
+        assertThat(first.status()).isEqualTo(CreatorApplications.Status.OPEN);
+        assertCode(() -> applications.apply(reader, "Again"), AuthException.Code.APPLICATION_OPEN);
+        assertCode(() -> applications.list(reader, CreatorApplications.Status.OPEN, 0, 30), AuthException.Code.DENIED);
+        assertCode(() -> applications.decide(reader, first.id(), true, ""), AuthException.Code.DENIED);
+        assertThat(applications.open(administrator)).isOne();
+
+        assertCode(() -> applications.decide(administrator, first.id(), false, " "), AuthException.Code.INVALID_INPUT);
+        var declined = applications.decide(administrator, first.id(), false, "Please publish a sample first");
+        assertThat(declined.status()).isEqualTo(CreatorApplications.Status.DECLINED);
+        assertThat(applications.standing(reader).availableAt())
+                .isEqualTo(java.time.Instant.parse("2026-10-08T00:00:00Z"));
+        assertCode(() -> applications.apply(reader, "Sample published"), AuthException.Code.APPLICATION_COOLDOWN);
+        assertCode(() -> applications.decide(administrator, first.id(), true, ""), AuthException.Code.INVALID_INPUT);
+
+        now.set(java.time.Instant.parse("2026-10-08T00:00:01Z"));
+        var second = applications.apply(reader, "Sample published");
+        assertThat(applications
+                        .list(administrator, CreatorApplications.Status.OPEN, 0, 30)
+                        .items())
+                .singleElement()
+                .satisfies(queued -> {
+                    assertThat(queued.accountId()).isEqualTo(reader.accountId());
+                    assertThat(queued.application().statement()).isEqualTo("Sample published");
+                });
+        var approved = applications.decide(administrator, second.id(), true, "Welcome");
+        assertThat(approved.status()).isEqualTo(CreatorApplications.Status.APPROVED);
+        assertThat(accounts.account(reader).group()).isEqualTo(SiteGroup.CREATOR);
+        assertThat(policies.history(administrator, reader.accountId(), 0, 30).items())
+                .singleElement()
+                .satisfies(change -> assertThat(change.reason()).isEqualTo("Creator application approved: Welcome"));
+        assertCode(() -> applications.apply(reader, "More"), AuthException.Code.ALREADY_CREATOR);
+        assertThat(applications.standing(reader).availableAt()).isNull();
+
+        // An administrator who applied earlier is never demoted by an approval.
+        AuthPrincipal operator = account("operator-applicant");
+        var pending = applications.apply(operator, "Operating the site");
+        policies.change(administrator, operator.accountId(), SiteGroup.ADMINISTRATOR, "Operator added");
+        applications.decide(administrator, pending.id(), true, "");
+        assertThat(accounts.account(operator).group()).isEqualTo(SiteGroup.ADMINISTRATOR);
     }
 
     private AuthPrincipal account(String login) {
