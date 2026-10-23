@@ -4,6 +4,11 @@ import { api, message } from "../lib/browser-api";
 import { safeImage } from "../lib/format";
 import { AdminPagination, useAdminPage } from "./admin-pagination";
 import { Markdown } from "./markdown";
+import {
+  navigateSite,
+  pageOffset,
+  useSiteLocation,
+} from "../lib/site-location";
 
 type Space = {
   workspaceId: string;
@@ -25,16 +30,22 @@ type Review = {
 };
 
 export function SiteAccountSpaces({ accountId }: { accountId: string }) {
+  const location = useSiteLocation();
   const spaces = useAdminPage<Space>(
     `/api/auth/site/accounts/${accountId}/workspaces`,
+    {
+      offset: pageOffset(location, "ownedOffset"),
+      setOffset: (offset) =>
+        navigateSite({ ownedOffset: offset, workspace: null, article: null }),
+    },
   );
-  const [selected, setSelected] = useState<Space | null>(null);
+  const selected = location.get("workspace");
   if (selected)
     return (
-      <SiteReview
-        key={selected.workspaceId}
-        space={selected}
-        onClose={() => setSelected(null)}
+      <SiteReviewById
+        key={selected}
+        workspaceId={selected}
+        onClose={() => navigateSite({ workspace: null, article: null })}
       />
     );
   return (
@@ -60,7 +71,13 @@ export function SiteAccountSpaces({ accountId }: { accountId: string }) {
               <button
                 type="button"
                 className="button-secondary"
-                onClick={() => setSelected(space)}
+                onClick={() =>
+                  navigateSite({
+                    workspace: space.workspaceId,
+                    article: null,
+                    articleOffset: 0,
+                  })
+                }
               >
                 审阅 {space.displayName}
               </button>
@@ -94,8 +111,13 @@ export function SiteReview({
   onClose: () => void;
 }) {
   const base = `/api/auth/site/workspaces/${space.workspaceId}/review`;
-  const articles = useAdminPage<Article>(base);
-  const [selected, setSelected] = useState<Article | null>(null);
+  const location = useSiteLocation();
+  const articles = useAdminPage<Article>(base, {
+    offset: pageOffset(location, "articleOffset"),
+    setOffset: (offset) =>
+      navigateSite({ articleOffset: offset, article: null }),
+  });
+  const selected = location.get("article");
   return (
     <section
       className="admin-block"
@@ -105,18 +127,14 @@ export function SiteReview({
         <button
           type="button"
           className="text-button hover-underline"
-          onClick={selected ? () => setSelected(null) : onClose}
+          onClick={selected ? () => navigateSite({ article: null }) : onClose}
         >
           ← {selected ? "返回文章列表" : "关闭审阅"}
         </button>
         <h3>审阅 {space.displayName}</h3>
       </div>
       {selected ? (
-        <ReviewDocument
-          key={selected.route}
-          base={base}
-          route={selected.route}
-        />
+        <ReviewDocument key={selected} base={base} route={selected} />
       ) : (
         <>
           <p className="muted">
@@ -141,7 +159,7 @@ export function SiteReview({
                     <button
                       type="button"
                       className="text-button hover-underline"
-                      onClick={() => setSelected(article)}
+                      onClick={() => navigateSite({ article: article.route })}
                     >
                       {article.title}
                     </button>
@@ -155,6 +173,37 @@ export function SiteReview({
       )}
     </section>
   );
+}
+
+export function SiteReviewById({
+  workspaceId,
+  onClose,
+}: {
+  workspaceId: string;
+  onClose: () => void;
+}) {
+  const [space, setSpace] = useState<Space | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    api<Space>("/api/auth/site/workspaces/" + encodeURIComponent(workspaceId))
+      .then((value) => {
+        if (active) setSpace(value);
+      })
+      .catch((failure) => {
+        if (active) setError(message(failure));
+      });
+    return () => {
+      active = false;
+    };
+  }, [workspaceId]);
+  if (!space)
+    return (
+      <p role={error ? "alert" : "status"}>
+        {error || "正在读取空间…"} <button onClick={onClose}>关闭审阅</button>
+      </p>
+    );
+  return <SiteReview space={space} onClose={onClose} />;
 }
 
 function ReviewDocument({ base, route }: { base: string; route: string }) {

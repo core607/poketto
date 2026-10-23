@@ -12,12 +12,12 @@ import {
   noticeAction,
   type CommunityNotification,
   type BlockedAccount,
-  type CommunityReport,
 } from "../lib/community";
 import { Login } from "./login";
 import type { CommunityTab } from "../lib/community";
 import type { AccountProfile } from "../lib/types";
 import { Avatar, Icon, type IconName } from "./ui/icons";
+import { CreatorDecisionNotice } from "./creator-application";
 
 type Tab = CommunityTab;
 type Results = {
@@ -27,7 +27,6 @@ type Results = {
   notifications?: CommunityPage<CommunityNotification>;
   following?: FollowedSpace[];
   blocks?: CommunityPage<BlockedAccount>;
-  reports?: CommunityPage<CommunityReport>;
 };
 const labels: Record<Tab, string> = {
   feed: "关注动态",
@@ -36,7 +35,6 @@ const labels: Record<Tab, string> = {
   notifications: "通知",
   following: "关注的空间",
   blocks: "屏蔽名单",
-  reports: "举报处理",
 };
 const icons: Record<Tab, IconName> = {
   feed: "compass",
@@ -45,7 +43,6 @@ const icons: Record<Tab, IconName> = {
   notifications: "bell",
   following: "users",
   blocks: "block",
-  reports: "flag",
 };
 /** Personal lists; the report queue belongs to site administration. */
 const personal: Tab[] = [
@@ -131,25 +128,16 @@ export function CommunityDashboard({
   );
 }
 
-/** The site-wide report queue, shown to site administrators. */
-export function ReportQueue({ account }: { account: AccountProfile }) {
-  return <CommunityLists account={account} initialTab="reports" fixed />;
-}
-
 function CommunityLists({
   account,
   initialTab,
   feedOnly = false,
-  fixed = false,
 }: {
   account: AccountProfile;
   initialTab: Tab;
   feedOnly?: boolean;
-  fixed?: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>(
-    initialTab === "reports" && !fixed ? "notifications" : initialTab,
-  );
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [before, setBefore] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null);
   const [results, setResults] = useState<Results>({});
@@ -157,7 +145,6 @@ function CommunityLists({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [version, setVersion] = useState(0);
-  const [removeReport, setRemoveReport] = useState<number | null>(null);
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -199,15 +186,14 @@ function CommunityLists({
     results.bookmarks ??
     results.likes ??
     results.notifications ??
-    results.blocks ??
-    results.reports;
+    results.blocks;
   const count =
     results.feed?.items.length ??
     results.following?.length ??
     page?.items.length;
   return (
     <>
-      {!feedOnly && !fixed && (
+      {!feedOnly && (
         <nav className="personal-tabs" aria-label="我的社区栏目">
           {personal.map((item) => (
             <button
@@ -218,7 +204,6 @@ function CommunityLists({
                 setTab(item);
                 setBefore(0);
                 setCursor(null);
-                setRemoveReport(null);
               }}
             >
               <Icon name={icons[item]} />
@@ -227,11 +212,12 @@ function CommunityLists({
           ))}
         </nav>
       )}
-      {account.account.group === "VIEWER" && !fixed && (
+      {account.account.group === "VIEWER" && (
         <p className="notice">
-          当前账号可管理已有记录。社区成员及以上可新增收藏、关注和评论。
+          你可以收藏和关注空间。点赞和评论需要社区成员资格。
         </p>
       )}
+      {tab === "notifications" && <CreatorDecisionNotice />}
       {error && (
         <p role="alert" className="notice danger">
           {error}
@@ -247,7 +233,11 @@ function CommunityLists({
           <span className="empty-mark">
             <Icon name={icons[tab]} />
           </span>
-          <h3>这一页没有可显示的记录。</h3>
+          <h3>
+            {tab === "notifications"
+              ? "没有文章互动通知。"
+              : "这一页没有可显示的记录。"}
+          </h3>
           <p>
             {page?.nextBefore !== null && page?.nextBefore !== undefined
               ? "可以继续查看更早记录。"
@@ -378,74 +368,6 @@ function CommunityLists({
               >
                 取消屏蔽
               </button>
-            )}
-          </div>
-        ))}
-        {results.reports?.items.map((item) => (
-          <div className="report-item" key={item.position}>
-            <div className="community-comment-meta">
-              <strong>
-                举报人：{item.reporter?.displayName || "账号用户"}
-              </strong>
-              <time dateTime={item.createdAt}>{date(item.createdAt)}</time>
-            </div>
-            <p>原因：{item.reason}</p>
-            <blockquote className="community-comment-body">
-              {item.author?.displayName || "账号用户"}：
-              {item.commentBody || "评论已删除"}
-            </blockquote>
-            <div className="community-actions">
-              <button
-                className="btn btn-danger btn-sm"
-                disabled={busy}
-                onClick={() => setRemoveReport(item.position)}
-              >
-                移除评论
-              </button>
-              <button
-                className="btn btn-secondary btn-sm"
-                disabled={busy}
-                onClick={() =>
-                  void act(() =>
-                    api(`${communityRoot}/reports/${item.position}/resolve`, {
-                      method: "POST",
-                      body: { remove: false },
-                    }),
-                  )
-                }
-              >
-                无需处理
-              </button>
-            </div>
-            {removeReport === item.position && (
-              <div className="notice danger">
-                <p>确认移除这条评论及其回复？操作后将不再公开显示。</p>
-                <div className="community-actions">
-                  <button
-                    className="btn btn-danger btn-sm"
-                    disabled={busy}
-                    onClick={() =>
-                      void act(() =>
-                        api(
-                          `${communityRoot}/reports/${item.position}/resolve`,
-                          {
-                            method: "POST",
-                            body: { remove: true },
-                          },
-                        ),
-                      )
-                    }
-                  >
-                    确认移除
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() => setRemoveReport(null)}
-                  >
-                    取消
-                  </button>
-                </div>
-              </div>
             )}
           </div>
         ))}

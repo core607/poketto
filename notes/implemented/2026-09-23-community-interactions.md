@@ -5,8 +5,9 @@ Date: 2026-09-23
 ## Problem and scope
 
 The [consumer identity policy](2026-09-20-consumer-identity-and-site-policy.md)
-assigns community participation to the community group and above. Reading remains anonymous; participation
-requires a current browser account in COMMUNITY, CREATOR, or ADMINISTRATOR. Space
+assigns public participation to COMMUNITY, CREATOR and ADMINISTRATOR. Reading remains
+anonymous; [private reading activity](2026-10-23-private-reading-activity.md) permits
+bookmarks and follows for any active browser account. Space
 membership alone never grants community participation. The ordinary browser API
 rejects machine credentials. The [plaza entrance](2026-10-09-plaza-foundation.md)
 partially supersedes the exclusion of machine comments: a current creator's
@@ -48,7 +49,7 @@ owner ineligibility hide comments, interaction entrances, and distribution cards
 Stored history survives. Re-publication resolves current content rather than reviving an
 old snapshot. Do not acquire a repository mutation lock from a snapshot callback.
 
-Downgrade prevents new likes, bookmarks, follows, comments, and replies. An account can
+Downgrade prevents new likes, comments and replies; private bookmarks and follows remain available. An account can
 still remove its own records, read available private history, mark notifications read,
 report abuse, and manage its block list. Previous comments on someone else's published
 article remain until independently removed. Authors' freely supplied article bylines are
@@ -70,7 +71,10 @@ replies and cannot receive new replies. Workspace owners and site administrators
 moderate published comments, without gaining private repository access.
 
 Reporting records a bounded reason for administrator review; it does not automatically
-remove a comment. Blocking hides the blocked account's comments and notifications for
+remove a comment. Resolutions retain their reviewer, time and reason, including other
+reports closed by the same removal. Replaying the same decision is idempotent; a
+conflicting decision cannot overwrite it. Moderation history includes stored comment
+context, while article cards still require current public eligibility. Blocking hides the blocked account's comments and notifications for
 the blocker and prevents new replies between the pair. It does not promise that public
 content becomes inaccessible to an anonymous reader. Moderation can hide an entire
 thread; hidden records are not returned through reply or notification endpoints.

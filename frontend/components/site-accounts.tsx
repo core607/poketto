@@ -1,11 +1,17 @@
 "use client";
-import { FormEvent, useId, useState } from "react";
+import { FormEvent, useEffect, useId, useRef, useState } from "react";
 import { api, message } from "../lib/browser-api";
 import { date } from "../lib/format";
 import { siteGroups, type SiteGroup } from "../lib/site-groups";
 import { AdminPagination, useAdminPage } from "./admin-pagination";
 import { SiteAccountSpaces } from "./site-review";
 import { useModal } from "./use-modal";
+import {
+  navigateSite,
+  pageOffset,
+  siteChoice,
+  useSiteLocation,
+} from "../lib/site-location";
 
 type Account = {
   accountId: string;
@@ -33,38 +39,60 @@ type SuspensionChange = {
 };
 
 export function SiteAccounts({
-  initialGroup = null,
-  initialOrder = "NAME",
-  initialSuspended = false,
   currentAccountId = "",
 }: {
-  initialGroup?: SiteGroup | null;
-  initialOrder?: Order;
-  initialSuspended?: boolean;
   currentAccountId?: string;
 }) {
-  const [query, setQuery] = useState("");
-  const [group, setGroup] = useState<SiteGroup | null>(initialGroup);
-  const [suspended, setSuspended] = useState(initialSuspended);
-  const [order, setOrder] = useState<Order>(initialOrder);
+  const location = useSiteLocation();
+  const query = (location.get("accountQuery") ?? "").slice(0, 254);
+  const group =
+    siteChoice(
+      location,
+      "accountGroup",
+      ["", ...Object.keys(siteGroups)] as ("" | SiteGroup)[],
+      "",
+    ) || null;
+  const suspended = location.get("suspended") === "1";
+  const order = siteChoice<Order>(
+    location,
+    "accountOrder",
+    ["NAME", "NEWEST"],
+    "NAME",
+  );
+  const filter = (values: Record<string, string | null>) =>
+    navigateSite({
+      ...values,
+      accountOffset: 0,
+      account: null,
+      workspace: null,
+      article: null,
+    });
   return (
     <section className="sub-panel" aria-labelledby="site-accounts">
       <div className="panel-heading">
         <h2 id="site-accounts">站点账号</h2>
       </div>
       <form
+        key={query}
         className="inline-form"
         role="search"
         onSubmit={(event) => {
           event.preventDefault();
-          setQuery(
-            String(new FormData(event.currentTarget).get("query") ?? "").trim(),
-          );
+          filter({
+            accountQuery: String(
+              new FormData(event.currentTarget).get("query") ?? "",
+            ).trim(),
+          });
         }}
       >
         <label>
           搜索账号、昵称或邮箱
-          <input name="query" maxLength={254} type="search" />
+          <input
+            name="query"
+            maxLength={254}
+            type="search"
+            defaultValue={query}
+          />
         </label>
         <button>搜索</button>
       </form>
@@ -76,7 +104,7 @@ export function SiteAccounts({
                 key={key ?? "all"}
                 type="button"
                 aria-pressed={group === key}
-                onClick={() => setGroup(key)}
+                onClick={() => filter({ accountGroup: key })}
               >
                 {key ? siteGroups[key] : "全部"}
               </button>
@@ -85,7 +113,7 @@ export function SiteAccounts({
           <button
             type="button"
             aria-pressed={suspended}
-            onClick={() => setSuspended(!suspended)}
+            onClick={() => filter({ suspended: suspended ? null : "1" })}
           >
             只看已停用
           </button>
@@ -94,7 +122,7 @@ export function SiteAccounts({
           排序
           <select
             value={order}
-            onChange={(event) => setOrder(event.target.value as Order)}
+            onChange={(event) => filter({ accountOrder: event.target.value })}
           >
             <option value="NAME">按账号名</option>
             <option value="NEWEST">最新注册</option>
@@ -126,17 +154,21 @@ function Accounts({
   order: Order;
   currentAccountId: string;
 }) {
+  const location = useSiteLocation();
+  const trigger = useRef<HTMLElement | null>(null);
+  const selected = location.get("account");
   const page = useAdminPage<Account>(
     "/api/auth/site/accounts?query=" +
       encodeURIComponent(query) +
       (group ? "&group=" + group : "") +
       (suspended ? "&suspended=true" : "") +
       (order === "NAME" ? "" : "&order=" + order),
+    {
+      offset: pageOffset(location, "accountOffset"),
+      setOffset: (offset) =>
+        navigateSite({ accountOffset: offset, account: null }),
+    },
   );
-  const [selected, setSelected] = useState<{
-    account: Account;
-    trigger: HTMLElement | null;
-  } | null>(null);
   return (
     <>
       {page.error && (
@@ -180,9 +212,16 @@ function Accounts({
                     <button
                       type="button"
                       className="button-secondary"
-                      onClick={(event) =>
-                        setSelected({ account, trigger: event.currentTarget })
-                      }
+                      onClick={(event) => {
+                        trigger.current = event.currentTarget;
+                        navigateSite({
+                          account: account.accountId,
+                          historyOffset: 0,
+                          ownedOffset: 0,
+                          workspace: null,
+                          article: null,
+                        });
+                      }}
                     >
                       管理
                       <span className="sr-only"> {account.displayName}</span>
@@ -198,22 +237,69 @@ function Accounts({
       )}
       <AdminPagination label="站点账号" page={page} />
       {selected && (
-        <AccountDialog
-          key={selected.account.accountId}
-          account={selected.account}
-          protectedAccount={
-            selected.account.group === "ADMINISTRATOR" ||
-            selected.account.accountId === currentAccountId
-          }
-          returnFocus={selected.trigger}
+        <SelectedAccount
+          key={selected}
+          accountId={selected}
+          currentAccountId={currentAccountId}
+          returnFocus={trigger.current}
           onChanged={() => {
             page.reload();
-            setSelected(null);
+            navigateSite({ account: null, workspace: null, article: null });
           }}
-          onClose={() => setSelected(null)}
+          onClose={() =>
+            navigateSite({ account: null, workspace: null, article: null })
+          }
         />
       )}
     </>
+  );
+}
+
+function SelectedAccount({
+  accountId,
+  currentAccountId,
+  returnFocus,
+  onChanged,
+  onClose,
+}: {
+  accountId: string;
+  currentAccountId: string;
+  returnFocus: HTMLElement | null;
+  onChanged: () => void;
+  onClose: () => void;
+}) {
+  const [account, setAccount] = useState<Account | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    api<Account>("/api/auth/site/accounts/" + encodeURIComponent(accountId))
+      .then((value) => {
+        if (active) setAccount(value);
+      })
+      .catch((failure) => {
+        if (active) setError(message(failure));
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountId]);
+  if (!account)
+    return (
+      <p role={error ? "alert" : "status"}>
+        {error || "正在读取账号…"} <button onClick={onClose}>关闭</button>
+      </p>
+    );
+  return (
+    <AccountDialog
+      account={account}
+      protectedAccount={
+        account.group === "ADMINISTRATOR" ||
+        account.accountId === currentAccountId
+      }
+      returnFocus={returnFocus}
+      onChanged={onChanged}
+      onClose={onClose}
+    />
   );
 }
 
@@ -236,8 +322,13 @@ function AccountDialog({
   const [group, setGroup] = useState<SiteGroup>(account.group);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const location = useSiteLocation();
   const history = useAdminPage<Change>(
     `/api/auth/site/accounts/${account.accountId}/group-history`,
+    {
+      offset: pageOffset(location, "historyOffset"),
+      setOffset: (offset) => navigateSite({ historyOffset: offset }),
+    },
   );
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

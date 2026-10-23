@@ -9,6 +9,7 @@ import { canCreateSpaces } from "../lib/site-groups";
 import type { AccountProfile } from "../lib/types";
 import { Avatar, BrandMark, Icon } from "./ui/icons";
 import { ThemeSwitch } from "./theme-switch";
+import { CreatorDecisionNotice } from "./creator-application";
 
 export function SiteBar() {
   const pathname = usePathname();
@@ -163,6 +164,7 @@ export function AccountEntrance() {
             <Icon name="bell" />
             通知
           </a>
+          <CreatorDecisionNotice key={account.accountId} compact />
           <a href="/community?tab=bookmarks">
             <Icon name="bookmark" />
             收藏
@@ -181,7 +183,7 @@ export function AccountEntrance() {
             <ThemeSwitch compact />
           </div>
           {account.siteAdministrator && (
-            <a href="/admin?tab=site">
+            <a href="/site">
               <Icon name="shield" />
               站务
             </a>

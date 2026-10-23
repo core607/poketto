@@ -99,7 +99,7 @@ export function Login({
           {mode === "login"
             ? "欢迎回来"
             : mode === "signup"
-              ? "开始记录与收藏"
+              ? "收藏喜欢的内容，关注新的文章"
               : "找回账号"}
         </p>
         <h1>

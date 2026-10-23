@@ -19,7 +19,6 @@ import { Connections } from "./connections";
 import { RepositoryConnection } from "./repository-connection";
 import { SpacePublication } from "./space-publication";
 import type { ContentLocation } from "../lib/repository-navigation";
-import { SiteAdministration } from "./site-administration";
 import { SpaceSwitcher } from "./space-switcher";
 import { CorrectionReview } from "./correction-review";
 import { Avatar, Icon, type IconName } from "./ui/icons";
@@ -38,7 +37,6 @@ const tabs = {
   repository: "存储位置",
   publication: "网站",
   corrections: "读者勘误",
-  site: "站务",
 };
 /** One plain sentence per section: what it is for, without repository vocabulary. */
 const descriptions: Record<keyof typeof tabs, string> = {
@@ -53,7 +51,6 @@ const descriptions: Record<keyof typeof tabs, string> = {
     "决定这个空间要不要公开成网站，以及网站上显示的名字、简介和署名。",
   corrections:
     "读者在公开文章上提的修改建议。看过对比再决定，采纳后才会改动正文。",
-  site: "站点管理员专用：调整账号的站点权限、审阅公开内容、处理举报。",
 };
 type Tab = keyof typeof tabs;
 const icons: Record<Tab, IconName> = {
@@ -64,7 +61,6 @@ const icons: Record<Tab, IconName> = {
   repository: "branch",
   publication: "globe",
   corrections: "pen",
-  site: "shield",
 };
 const spaceSections: Tab[] = [
   "content",
@@ -280,23 +276,16 @@ export function WorkspaceDashboard({
     };
   }, [dirty]);
   const administrator = account.account.siteAdministrator;
-  const activeTab: Tab =
-    tab === "site" && administrator
-      ? "site"
-      : !identity
-        ? "spaces"
-        : identity.role !== "OWNER" &&
-            !["content", "spaces", "connections"].includes(tab) &&
-            !(
-              tab === "corrections" && identity.capabilities.includes("PUBLISH")
-            )
-          ? "content"
-          : tab;
+  const activeTab: Tab = !identity
+    ? "spaces"
+    : identity.role !== "OWNER" &&
+        !["content", "spaces", "connections"].includes(tab) &&
+        !(tab === "corrections" && identity.capabilities.includes("PUBLISH"))
+      ? "content"
+      : tab;
   const available = (key: Tab) =>
     key === "spaces" ||
-    (key === "site" && administrator) ||
     (identity !== null &&
-      key !== "site" &&
       (key === "content" ||
         key === "connections" ||
         (key === "corrections" && identity.capabilities.includes("PUBLISH")) ||
@@ -409,9 +398,6 @@ export function WorkspaceDashboard({
           }}
         />
       )}
-      {activeTab === "site" && administrator && (
-        <SiteAdministration account={account} />
-      )}
     </>
   );
   return (
@@ -442,7 +428,19 @@ export function WorkspaceDashboard({
           <p className="studio-nav-label">空间</p>
           {navItem("spaces")}
           {administrator && <p className="studio-nav-label">站点</p>}
-          {navItem("site")}
+          {administrator && (
+            <a
+              className="studio-nav-item"
+              href="/site"
+              onClick={async (event) => {
+                event.preventDefault();
+                if (await discard()) window.location.assign("/site");
+              }}
+            >
+              <Icon name="shield" />
+              站点管理
+            </a>
+          )}
         </nav>
         <div className="studio-side-foot">
           <a

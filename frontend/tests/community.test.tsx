@@ -112,7 +112,7 @@ test("an uncertain comment submission retains its draft and retries the same req
   assert.equal(textarea.value, "");
 });
 
-test("viewer comments remain plain text and existing bookmarks can be removed", async (t) => {
+test("viewers can add and remove private reading records while public participation stays disabled", async (t) => {
   const actions: { path: string; enabled: boolean }[] = [];
   const thread: ArticleThread = {
     likes: 1,
@@ -121,6 +121,8 @@ test("viewer comments remain plain text and existing bookmarks can be removed", 
     following: false,
     accountId: "viewer",
     mayParticipate: false,
+    mayBookmark: true,
+    mayFollow: true,
     mayModerate: false,
     comments: {
       nextBefore: null,
@@ -151,10 +153,13 @@ test("viewer comments remain plain text and existing bookmarks can be removed", 
       if (path === "/api/auth/csrf")
         return Response.json({ headerName: "X-CSRF", token: "fixture" });
       if (options?.method === "PUT") {
+        const enabled = JSON.parse(String(options.body)).enabled;
         actions.push({
           path,
-          enabled: JSON.parse(String(options.body)).enabled,
+          enabled,
         });
+        if (path.endsWith("/BOOKMARK")) thread.bookmarked = enabled;
+        if (path.endsWith("/following")) thread.following = enabled;
         return new Response(null, { status: 204 });
       }
       return Response.json(thread);
@@ -178,10 +183,24 @@ test("viewer comments remain plain text and existing bookmarks can be removed", 
   assert.ok(bookmark);
   assert.equal(bookmark.disabled, false);
   await ui.act(async () => bookmark.click());
+  assert.equal(bookmark.textContent, "收藏");
+  await ui.act(async () => bookmark.click());
+  const follow = buttons.find((button) => button.textContent === "关注空间");
+  assert.ok(follow);
+  assert.equal(follow.disabled, false);
+  await ui.act(async () => follow.click());
   assert.deepEqual(actions, [
     {
       path: "/api/auth/community/spaces/space/articles/article/relations/BOOKMARK",
       enabled: false,
+    },
+    {
+      path: "/api/auth/community/spaces/space/articles/article/relations/BOOKMARK",
+      enabled: true,
+    },
+    {
+      path: "/api/auth/community/spaces/space/following",
+      enabled: true,
     },
   ]);
 });

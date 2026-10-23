@@ -8,9 +8,14 @@ export type AdminPage<T> = {
   offset: number;
   limit: number;
 };
-export function useAdminPage<T>(path: string) {
+export function useAdminPage<T>(
+  path: string,
+  navigation?: { offset: number; setOffset: (offset: number) => void },
+) {
   const api = useWorkspaceApi();
-  const [offset, setOffset] = useState(0);
+  const [localOffset, setLocalOffset] = useState(0);
+  const offset = navigation?.offset ?? localOffset;
+  const setOffset = navigation?.setOffset ?? setLocalOffset;
   const [version, setVersion] = useState(0);
   const [page, setPage] = useState<AdminPage<T>>({
     items: [],

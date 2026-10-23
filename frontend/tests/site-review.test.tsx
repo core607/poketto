@@ -73,6 +73,13 @@ test("site account review selects an owned space and reads its bounded public do
     paths.push(path);
     const page = (items: unknown[]) =>
       Response.json({ items, total: items.length, offset: 0, limit: 30 });
+    if (path === "/api/auth/site/workspaces/" + workspace)
+      return Response.json({
+        workspaceId: workspace,
+        displayName: "受限空间",
+        enabled: true,
+        eligible: false,
+      });
     if (path.startsWith("/api/auth/site/accounts/author/workspaces?"))
       return page([
         {

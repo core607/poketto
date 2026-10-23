@@ -73,7 +73,7 @@ class CommunityConfiguration {
         var comments = new CommunityComments(jdbc, communityAccounts, scope, targets, activity);
         var feeds = new CommunityFeeds(jdbc, scope, targets, json);
         var inbox = new CommunityInbox(jdbc, scope, targets, comments, corrections, communityAccounts, activity);
-        var moderation = new CommunityModeration(jdbc, scope, communityAccounts, comments, activity);
+        var moderation = new CommunityModeration(jdbc, scope, communityAccounts, comments, activity, targets);
         return new JdbcCommunity(accounts, targets, relations, comments, feeds, inbox, moderation);
     }
 

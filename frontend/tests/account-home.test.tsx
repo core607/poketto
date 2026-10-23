@@ -69,6 +69,13 @@ test("the account menu offers the studio only to creators or members of a space"
       const path = String(input);
       requests.push(path);
       if (path === "/api/auth/account") return Response.json(profile(group));
+      if (path === "/api/auth/creator-application")
+        return Response.json({
+          group,
+          latest: null,
+          availableAt: null,
+          unread: null,
+        });
       assert.equal(path, "/api/auth/workspaces?offset=0&limit=1");
       return spaces(total);
     };
@@ -80,7 +87,12 @@ test("the account menu offers the studio only to creators or members of a space"
     assert.ok(links.includes("/account"), group);
     assert.ok(!links.some((link) => link?.includes("tab=account")), group);
     // Creators always qualify, so their group alone answers the question.
-    assert.equal(requests.length, group === "CREATOR" ? 1 : 2, group);
+    assert.equal(
+      requests.filter((path) => path !== "/api/auth/creator-application")
+        .length,
+      group === "CREATOR" ? 1 : 2,
+      group,
+    );
   }
 });
 
@@ -115,6 +127,7 @@ test("the account page states what the group allows and keeps security settings"
         group: "VIEWER",
         latest: null,
         availableAt: null,
+        unread: null,
       });
     assert.fail("Unexpected request " + path);
   };
@@ -144,6 +157,7 @@ test("a declined applicant sees the note and waits; an open application blocks a
     group: "VIEWER",
     latest: declined,
     availableAt: later,
+    unread: declined,
   };
   globalThis.fetch = async (input, options) => {
     const path = String(input);
@@ -152,14 +166,21 @@ test("a declined applicant sees the note and waits; an open application blocks a
     assert.equal(path, "/api/auth/creator-application");
     if (options?.method === "POST") {
       posts.push(JSON.parse(String(options.body)));
-      return Response.json({
+      const latest = {
         ...declined,
         id: "a2",
         status: "OPEN",
         decidedAt: null,
         decisionNote: null,
         createdAt: "2026-10-23T00:00:00Z",
-      });
+      };
+      standing = {
+        group: "VIEWER",
+        latest,
+        availableAt: null,
+        unread: declined,
+      };
+      return Response.json(latest);
     }
     return Response.json(standing);
   };
@@ -168,7 +189,12 @@ test("a declined applicant sees the note and waits; an open application blocks a
   assert.match(f.container.textContent, /之后可以再次申请/);
   assert.equal(f.container.querySelector("textarea"), null);
 
-  standing = { group: "VIEWER", latest: declined, availableAt: null };
+  standing = {
+    group: "VIEWER",
+    latest: declined,
+    availableAt: null,
+    unread: declined,
+  };
   await f.act(async () => f.root.render(<CreatorApplication key="again" />));
   const field = f.container.querySelector("textarea")!;
   field.value = "Sample published";
@@ -182,4 +208,70 @@ test("a declined applicant sees the note and waits; an open application blocks a
   assert.deepEqual(posts, [{ statement: "Sample published" }]);
   assert.match(f.container.textContent, /正在等待站点管理员审核/);
   assert.equal(f.container.querySelector("textarea"), null);
+});
+
+test("an applicant returning to the page sees approval and acknowledges only a confirmed decision", async (t) => {
+  const f = await fixture(t, "https://site.example/account");
+  const { CreatorApplication, CreatorDecisionNotice } =
+    await import("../components/creator-application");
+  let approved = false;
+  let read = false;
+  let failRead = true;
+  let group = "";
+  globalThis.fetch = async (input, options) => {
+    const path = String(input);
+    if (path === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    if (path.endsWith("/read")) {
+      assert.equal(path, "/api/auth/creator-application/a1/read");
+      assert.equal(options?.method, "POST");
+      if (failRead) return new Response(null, { status: 503 });
+      read = true;
+      return new Response(null, { status: 204 });
+    }
+    assert.equal(path, "/api/auth/creator-application");
+    const latest = {
+      id: "a1",
+      statement: "Notes",
+      status: approved ? "APPROVED" : "OPEN",
+      createdAt: "2026-10-23T00:00:00Z",
+      decidedAt: approved ? "2026-10-23T01:00:00Z" : null,
+      decisionNote: approved ? "Welcome" : null,
+      read,
+    };
+    return Response.json({
+      group: approved ? "CREATOR" : "VIEWER",
+      latest,
+      unread: approved && !read ? latest : null,
+      availableAt: null,
+    });
+  };
+  await f.act(async () =>
+    f.root.render(
+      <>
+        <CreatorApplication
+          onGroup={(value) => {
+            group = value;
+          }}
+        />
+        <CreatorDecisionNotice compact />
+      </>,
+    ),
+  );
+  assert.match(f.container.textContent, /正在等待/);
+  approved = true;
+  await f.act(async () => f.window.dispatchEvent(new f.window.Event("focus")));
+  assert.equal(group, "CREATOR");
+  assert.ok(f.container.querySelector('a[href="/admin?tab=spaces"]'));
+  assert.ok(f.container.querySelector('a[href="/account#creator"]'));
+  const acknowledge = () =>
+    [...f.container.querySelectorAll("button")].find(
+      (button) => button.textContent === "知道了",
+    );
+  await f.act(async () => acknowledge()!.click());
+  assert.ok(f.container.querySelector('a[href="/account#creator"]'));
+  failRead = false;
+  await f.act(async () => acknowledge()!.click());
+  assert.equal(f.container.querySelector('a[href="/account#creator"]'), null);
+  assert.ok(f.container.querySelector('a[href="/admin?tab=spaces"]'));
 });

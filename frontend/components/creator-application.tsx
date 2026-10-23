@@ -2,40 +2,29 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api, message } from "../lib/browser-api";
 import { date } from "../lib/format";
-import type { SiteGroup } from "../lib/site-groups";
+import { canCreateSpaces, type SiteGroup } from "../lib/site-groups";
+import {
+  applicationChanged,
+  useCreatorStanding,
+  type CreatorApplicationRecord,
+} from "../lib/creator-application";
 
-type Application = {
-  id: string;
-  statement: string;
-  status: "OPEN" | "APPROVED" | "DECLINED";
-  createdAt: string;
-  decidedAt: string | null;
-  decisionNote: string | null;
-};
-type Standing = {
-  group: SiteGroup;
-  latest: Application | null;
-  availableAt: string | null;
-};
-
-/** A viewer or community member asks a site administrator for creator eligibility. */
-export function CreatorApplication() {
-  const [standing, setStanding] = useState<Standing | null>(null);
+export function CreatorApplication({
+  onGroup,
+}: {
+  onGroup?: (group: SiteGroup) => void;
+}) {
+  const {
+    standing,
+    setStanding,
+    error: readError,
+    refresh,
+  } = useCreatorStanding();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
-    let active = true;
-    api<Standing>("/api/auth/creator-application")
-      .then((value) => {
-        if (active) setStanding(value);
-      })
-      .catch((failure) => {
-        if (active) setError(message(failure));
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+    if (standing) onGroup?.(standing.group);
+  }, [standing?.group, onGroup]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const statement = String(
@@ -44,11 +33,14 @@ export function CreatorApplication() {
     setPending(true);
     setError("");
     try {
-      const latest = await api<Application>("/api/auth/creator-application", {
-        method: "POST",
-        body: { statement },
-      });
-      setStanding((value) => value && { ...value, latest, availableAt: null });
+      const latest = await api<CreatorApplicationRecord>(
+        "/api/auth/creator-application",
+        { method: "POST", body: { statement } },
+      );
+      setStanding(
+        (current) => current && { ...current, latest, availableAt: null },
+      );
+      applicationChanged();
     } catch (failure) {
       setError(message(failure));
     } finally {
@@ -56,36 +48,45 @@ export function CreatorApplication() {
     }
   }
   if (!standing)
-    return error ? (
-      <p role="alert" className="notice danger">
-        {error}
-      </p>
-    ) : (
-      <p role="status" className="muted">
-        正在读取申请状态…
+    return (
+      <p role={readError ? "alert" : "status"} className="muted">
+        {readError || "正在读取申请状态…"}
+        {readError && (
+          <button className="text-button" onClick={refresh}>
+            重试
+          </button>
+        )}
       </p>
     );
-  const { latest, availableAt } = standing;
+  const { latest, unread, availableAt, group } = standing;
+  const creator = canCreateSpaces(group);
   const waiting = availableAt && new Date(availableAt).getTime() > Date.now();
-  const canApply = latest?.status !== "OPEN" && !waiting;
   return (
     <div className="creator-application">
-      {latest?.status === "OPEN" && (
-        <p className="notice" role="status">
-          你在 {date(latest.createdAt)}{" "}
-          提交的申请正在等待站点管理员审核。审核通过后，你就可以新建自己的空间。
-        </p>
+      {latest && latest.status !== "OPEN" && (
+        <Decision application={latest} creator={creator} />
       )}
-      {latest?.status === "DECLINED" && (
-        <div className="notice">
-          <p>
-            你在 {date(latest.createdAt)} 提交的申请未通过
-            {latest.decisionNote ? `：${latest.decisionNote}` : "。"}
-          </p>
-          {waiting && <p>{date(availableAt)} 之后可以再次申请。</p>}
+      {unread && unread.id !== latest?.id && (
+        <div>
+          <p className="muted">之前的申请还有一条未读结果。</p>
+          <Decision application={unread} creator={false} />
         </div>
       )}
-      {canApply && (
+      {creator && (!latest || latest.status !== "APPROVED") && (
+        <p>
+          你已具备创作者资格。<a href="/admin?tab=spaces">创建自己的空间</a>
+        </p>
+      )}
+      {latest?.status === "OPEN" && (
+        <p className="notice" role="status">
+          你在 {date(latest.createdAt)} 提交的申请正在等待站点管理员审核。
+          <button type="button" className="text-button" onClick={refresh}>
+            刷新申请状态
+          </button>
+        </p>
+      )}
+      {!creator && waiting && <p>{date(availableAt)} 之后可以再次申请。</p>}
+      {!creator && latest?.status !== "OPEN" && !waiting && (
         <form onSubmit={submit} className="stack-form">
           <label>
             说说你想用空间做什么
@@ -105,11 +106,90 @@ export function CreatorApplication() {
           </div>
         </form>
       )}
-      {error && (
+      {(error || readError) && (
         <p role="alert" className="notice danger">
-          {error}
+          {error || readError}
         </p>
       )}
     </div>
+  );
+}
+
+function Decision({
+  application,
+  creator,
+}: {
+  application: CreatorApplicationRecord;
+  creator: boolean;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  async function acknowledge() {
+    setPending(true);
+    setError("");
+    try {
+      await api(`/api/auth/creator-application/${application.id}/read`, {
+        method: "POST",
+      });
+      applicationChanged();
+    } catch (failure) {
+      setError(message(failure));
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <div className="notice" role="status">
+      <p>
+        {application.status === "APPROVED"
+          ? "创作者申请已通过"
+          : "创作者申请未通过"}
+        {application.decisionNote ? `：${application.decisionNote}` : "。"}
+      </p>
+      {application.decidedAt && (
+        <p className="muted">{date(application.decidedAt)}</p>
+      )}
+      <div className="button-row">
+        {creator && (
+          <a className="btn btn-primary" href="/admin?tab=spaces">
+            创建自己的空间
+          </a>
+        )}
+        {!application.read && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={pending}
+            onClick={() => void acknowledge()}
+          >
+            {pending ? "正在标记…" : "知道了"}
+          </button>
+        )}
+      </div>
+      {error && <p role="alert">{error}</p>}
+    </div>
+  );
+}
+
+/** Decisions stay in the account's own durable application record, separate from article notifications. */
+export function CreatorDecisionNotice({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
+  const { standing } = useCreatorStanding();
+  const latest = standing?.unread;
+  if (!standing || !latest || latest.status === "OPEN" || latest.read)
+    return null;
+  if (compact)
+    return (
+      <a href="/account#creator">
+        {latest.status === "APPROVED"
+          ? "创作者申请已通过"
+          : "创作者申请有新结果"}
+      </a>
+    );
+  return (
+    <Decision application={latest} creator={canCreateSpaces(standing.group)} />
   );
 }

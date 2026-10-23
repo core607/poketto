@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, message } from "../lib/browser-api";
 import {
   canCreateSpaces,
   siteGroupAbilities,
   siteGroups,
+  type SiteGroup,
 } from "../lib/site-groups";
 import type { AccountProfile } from "../lib/types";
 import { AccountSecurity } from "./account-security";
@@ -21,6 +22,23 @@ export function AccountHome() {
   const [displayName, setDisplayName] = useState("");
   const [spaces, setSpaces] = useState(0);
   const [error, setError] = useState("");
+  const groupChanged = useCallback(
+    (group: SiteGroup) => {
+      if (profile?.account.group === group) return;
+      setProfile(
+        (current) =>
+          current && {
+            account: {
+              ...current.account,
+              group,
+              siteAdministrator: group === "ADMINISTRATOR",
+            },
+          },
+      );
+      window.dispatchEvent(new Event("poketto:session"));
+    },
+    [profile?.account.group],
+  );
   async function load() {
     setError("");
     try {
@@ -85,7 +103,7 @@ export function AccountHome() {
           </a>
         )}
         {profile.account.siteAdministrator && (
-          <a href="/admin?tab=site">
+          <a href="/site">
             <Icon name="shield" />
             站务
           </a>
@@ -101,9 +119,9 @@ export function AccountHome() {
             <p className="muted">
               想新建自己的空间并公开成网站，需要站点管理员授予创作者资格。已加入的空间不受账号类型影响。
             </p>
-            <CreatorApplication />
           </>
         )}
+        <CreatorApplication onGroup={groupChanged} />
       </section>
       <AccountSecurity onDisplayName={setDisplayName} />
     </div>

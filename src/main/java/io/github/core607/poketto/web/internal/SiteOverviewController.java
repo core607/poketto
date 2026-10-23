@@ -9,9 +9,12 @@ import io.github.core607.poketto.community.Community;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -58,6 +61,12 @@ class SiteOverviewController {
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
         return policies.spaces(actor, query, state, offset, limit);
+    }
+
+    @GetMapping("/workspaces/{workspaceId}")
+    ResponseEntity<SitePolicyService.OwnedSpace> workspace(
+            @AuthenticationPrincipal AuthPrincipal actor, @PathVariable UUID workspaceId) {
+        return ResponseEntity.of(policies.space(actor, workspaceId));
     }
 
     record Overview(

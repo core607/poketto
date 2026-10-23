@@ -21,7 +21,7 @@ final class CommunityRelations {
 
     void relate(AuthPrincipal actor, String space, UUID articleId, Relation relation, boolean enabled) {
         WorkspaceId workspace = targets.workspace(space);
-        scope.published(actor, workspace, enabled, (identity, snapshot) -> {
+        scope.published(actor, workspace, enabled && relation == Relation.LIKE, (identity, snapshot) -> {
             CommunityTargets.article(snapshot, articleId);
             boolean exists = has(identity.accountId(), workspace, articleId, relation);
             if (exists == enabled) {
@@ -56,7 +56,7 @@ final class CommunityRelations {
 
     void follow(AuthPrincipal actor, String space, boolean enabled) {
         WorkspaceId workspace = targets.workspace(space);
-        scope.published(actor, workspace, enabled, (identity, snapshot) -> {
+        scope.published(actor, workspace, false, (identity, snapshot) -> {
             if (following(identity.accountId(), workspace) == enabled) {
                 return null;
             }

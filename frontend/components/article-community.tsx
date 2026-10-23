@@ -48,12 +48,10 @@ export function SpaceFollow({ space }: { space: string }) {
     <div className="follow">
       <button
         className="btn btn-secondary"
-        disabled={busy || (!state.mayParticipate && !state.following)}
+        disabled={busy || (!state.mayFollow && !state.following)}
         aria-pressed={state.following}
         title={
-          !state.mayParticipate && !state.following
-            ? "社区成员及以上可关注空间"
-            : undefined
+          !state.mayFollow && !state.following ? "请登录后关注空间" : undefined
         }
         onClick={async () => {
           setBusy(true);
@@ -74,9 +72,6 @@ export function SpaceFollow({ space }: { space: string }) {
         <Icon name={state.following ? "check" : "plus"} />
         {state.following ? "已关注" : "关注"}
       </button>
-      {!state.mayParticipate && !state.following && (
-        <small>社区成员及以上可关注</small>
-      )}
       {error && (
         <span role="alert" className="muted">
           {error}
@@ -202,7 +197,7 @@ function ArticleDiscussion({
             <button
               className="btn btn-secondary"
               aria-pressed={thread.bookmarked}
-              disabled={busy || (!thread.mayParticipate && !thread.bookmarked)}
+              disabled={busy || (!thread.mayBookmark && !thread.bookmarked)}
               title="收藏仅自己可见"
               onClick={() => void relation("BOOKMARK", !thread.bookmarked)}
             >
@@ -212,7 +207,7 @@ function ArticleDiscussion({
             <button
               className="btn btn-secondary"
               aria-pressed={thread.following}
-              disabled={busy || (!thread.mayParticipate && !thread.following)}
+              disabled={busy || (!thread.mayFollow && !thread.following)}
               onClick={() =>
                 void act(() =>
                   api(
@@ -228,13 +223,15 @@ function ArticleDiscussion({
           </div>
           {!thread.accountId ? (
             <div className="join-prompt">
-              <span>登录后，社区成员及以上可以点赞、收藏和参与讨论。</span>
+              <span>
+                登录后即可收藏和关注；社区成员及以上可以点赞和参与讨论。
+              </span>
               <LoginDialog onLogin={async () => refresh()} />
             </div>
           ) : (
             !thread.mayParticipate && (
               <p className="muted">
-                当前账号可阅读和管理已有记录；社区成员及以上可新增互动。
+                你可以收藏和关注；点赞和评论需要社区成员资格。
               </p>
             )
           )}

@@ -1,9 +1,15 @@
 "use client";
-import { useState } from "react";
+import { useRef } from "react";
 import { date } from "../lib/format";
 import { AdminPagination, useAdminPage } from "./admin-pagination";
-import { SiteReview, SpaceState } from "./site-review";
+import { SiteReviewById, SpaceState } from "./site-review";
 import { useModal } from "./use-modal";
+import {
+  navigateSite,
+  pageOffset,
+  siteChoice,
+  useSiteLocation,
+} from "../lib/site-location";
 
 export type SpaceFilter = "ALL" | "PUBLIC" | "RESTRICTED" | "CLOSED";
 const filters: Record<SpaceFilter, string> = {
@@ -24,31 +30,49 @@ type Space = {
 };
 
 /** Every space on the site, filtered by website state, with public-content review. */
-export function SiteSpaces({
-  initialState = "ALL",
-}: {
-  initialState?: SpaceFilter;
-}) {
-  const [state, setState] = useState<SpaceFilter>(initialState);
-  const [query, setQuery] = useState("");
+export function SiteSpaces() {
+  const location = useSiteLocation();
+  const state = siteChoice(
+    location,
+    "spaceState",
+    Object.keys(filters) as SpaceFilter[],
+    "ALL",
+  );
+  const query = (location.get("spaceQuery") ?? "").slice(0, 254);
+  const filter = (values: Record<string, string | null>) =>
+    navigateSite({
+      ...values,
+      spaceOffset: 0,
+      workspace: null,
+      article: null,
+      articleOffset: 0,
+    });
   return (
     <section className="sub-panel" aria-labelledby="site-spaces">
       <div className="panel-heading">
         <h2 id="site-spaces">全部空间</h2>
       </div>
       <form
+        key={query}
         className="inline-form"
         role="search"
         onSubmit={(event) => {
           event.preventDefault();
-          setQuery(
-            String(new FormData(event.currentTarget).get("query") ?? "").trim(),
-          );
+          filter({
+            spaceQuery: String(
+              new FormData(event.currentTarget).get("query") ?? "",
+            ).trim(),
+          });
         }}
       >
         <label>
           搜索空间名称或地址
-          <input name="query" maxLength={254} type="search" />
+          <input
+            name="query"
+            maxLength={254}
+            type="search"
+            defaultValue={query}
+          />
         </label>
         <button>搜索</button>
       </form>
@@ -58,7 +82,7 @@ export function SiteSpaces({
             key={key}
             type="button"
             aria-pressed={state === key}
-            onClick={() => setState(key)}
+            onClick={() => filter({ spaceState: key })}
           >
             {filters[key]}
           </button>
@@ -70,13 +94,17 @@ export function SiteSpaces({
 }
 
 function Spaces({ state, query }: { state: SpaceFilter; query: string }) {
+  const location = useSiteLocation();
+  const selected = location.get("workspace");
+  const trigger = useRef<HTMLElement | null>(null);
   const page = useAdminPage<Space>(
     `/api/auth/site/workspaces?state=${state}&query=${encodeURIComponent(query)}`,
+    {
+      offset: pageOffset(location, "spaceOffset"),
+      setOffset: (offset) =>
+        navigateSite({ spaceOffset: offset, workspace: null, article: null }),
+    },
   );
-  const [selected, setSelected] = useState<{
-    space: Space;
-    trigger: HTMLElement | null;
-  } | null>(null);
   return (
     <>
       {page.error && (
@@ -106,9 +134,14 @@ function Spaces({ state, query }: { state: SpaceFilter; query: string }) {
               <button
                 type="button"
                 className="button-secondary"
-                onClick={(event) =>
-                  setSelected({ space, trigger: event.currentTarget })
-                }
+                onClick={(event) => {
+                  trigger.current = event.currentTarget;
+                  navigateSite({
+                    workspace: space.workspaceId,
+                    article: null,
+                    articleOffset: 0,
+                  });
+                }}
               >
                 审阅<span className="sr-only"> {space.displayName}</span>
               </button>
@@ -118,10 +151,10 @@ function Spaces({ state, query }: { state: SpaceFilter; query: string }) {
       <AdminPagination label="全部空间" page={page} />
       {selected && (
         <ReviewDialog
-          key={selected.space.workspaceId}
-          space={selected.space}
-          returnFocus={selected.trigger}
-          onClose={() => setSelected(null)}
+          key={selected}
+          workspaceId={selected}
+          returnFocus={trigger.current}
+          onClose={() => navigateSite({ workspace: null, article: null })}
         />
       )}
     </>
@@ -129,11 +162,11 @@ function Spaces({ state, query }: { state: SpaceFilter; query: string }) {
 }
 
 function ReviewDialog({
-  space,
+  workspaceId,
   returnFocus,
   onClose,
 }: {
-  space: Space;
+  workspaceId: string;
   returnFocus: HTMLElement | null;
   onClose: () => void;
 }) {
@@ -142,13 +175,13 @@ function ReviewDialog({
     <dialog
       ref={dialog}
       className="side-dialog"
-      aria-label={`审阅 ${space.displayName}`}
+      aria-label="审阅空间"
       onCancel={(event) => {
         event.preventDefault();
         onClose();
       }}
     >
-      <SiteReview space={space} onClose={onClose} />
+      <SiteReviewById workspaceId={workspaceId} onClose={onClose} />
     </dialog>
   );
 }

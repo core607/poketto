@@ -133,6 +133,31 @@ class CommunityIntegrationIT {
     }
 
     @Test
+    void viewersKeepPrivateReadingRecordsWithoutPublicParticipation() {
+        for (int i = 0; i < 2; i++) {
+            community.relate(viewer, "community-test", articleId, Relation.BOOKMARK, true);
+            community.follow(viewer, "community-test", true);
+        }
+        assertThat(community.bookmarks(viewer, 0).items()).hasSize(1);
+        assertThat(community.following(viewer)).hasSize(1);
+        assertThat(community.bookmarks(other, 0).items()).isEmpty();
+        assertThat(community.following(other)).isEmpty();
+        assertThat(community.notifications(owner, 0).items()).isEmpty();
+        assertThat(thread(viewer).mayBookmark()).isTrue();
+        assertThat(thread(viewer).mayFollow()).isTrue();
+        assertThat(thread(viewer).mayParticipate()).isFalse();
+        assertThat(thread(null).mayBookmark()).isFalse();
+        assertThat(community.space(null, "community-test").mayFollow()).isFalse();
+        assertThatThrownBy(() -> community.relate(viewer, "community-test", articleId, Relation.LIKE, true))
+                .isInstanceOf(CommunityException.class);
+        assertThatThrownBy(() -> post(viewer, null, "not allowed")).isInstanceOf(CommunityException.class);
+        community.relate(viewer, "community-test", articleId, Relation.BOOKMARK, false);
+        community.follow(viewer, "community-test", false);
+        assertThat(community.bookmarks(viewer, 0).items()).isEmpty();
+        assertThat(community.following(viewer)).isEmpty();
+    }
+
+    @Test
     void relationsAndCommentRetriesArePrivateIdempotentAndRespectGroupChanges() {
         UUID root = post(member, null, "hello");
         UUID request = UUID.randomUUID();
@@ -188,19 +213,63 @@ class CommunityIntegrationIT {
         assertThatThrownBy(() -> post(other, root, "blocked reply")).isInstanceOf(CommunityException.class);
         community.report(viewer, root, new ReportInput("Please review this root"));
         community.report(viewer, root, new ReportInput("Repeated report"));
-        assertThat(community.reports(owner, 0).items()).hasSize(1);
-        assertThatThrownBy(() -> community.reports(member, 0)).isInstanceOf(CommunityException.class);
+        assertThat(community.reports(owner, Community.ReportStatus.OPEN, 0).items())
+                .hasSize(1);
+        assertThatThrownBy(() -> community.reports(member, Community.ReportStatus.OPEN, 0))
+                .isInstanceOf(CommunityException.class);
         assertThat(community.openReports(owner)).isOne();
         assertThatThrownBy(() -> community.openReports(member)).isInstanceOf(CommunityException.class);
         assertThatThrownBy(() -> community.deleteComment(viewer, root)).isInstanceOf(CommunityException.class);
         community.resolveReport(
-                owner, community.reports(owner, 0).items().getFirst().position(), true);
+                owner,
+                community
+                        .reports(owner, Community.ReportStatus.OPEN, 0)
+                        .items()
+                        .getFirst()
+                        .position(),
+                new Community.ReportDecision(true, "Removed after review"));
         assertThat(thread(null).comments().items()).isEmpty();
         assertThatThrownBy(() -> community.article(null, "community-test", articleId, root, 0))
                 .isInstanceOf(CommunityException.class);
         assertThat(community.notifications(owner, 0).items()).isEmpty();
-        assertThat(community.reports(owner, 0).items()).isEmpty();
+        assertThat(community.reports(owner, Community.ReportStatus.OPEN, 0).items())
+                .isEmpty();
         assertThat(community.openReports(owner)).isZero();
+    }
+
+    @Test
+    void reportHistoryRetainsTheDecisionAndReplyContextWithoutRepublishingWithdrawnArticles() {
+        UUID root = post(member, null, "Root context");
+        UUID reply = post(other, root, "Reported reply");
+        community.report(viewer, reply, new ReportInput("Please review"));
+        community.report(member, reply, new ReportInput("Another report"));
+        var open = community.reports(owner, Community.ReportStatus.OPEN, 0);
+        assertThat(open.items()).hasSize(2);
+        var selected = open.items().getFirst();
+        assertThat(selected.parentBody()).isEqualTo("Root context");
+        assertThat(selected.parentAuthor().accountId()).isEqualTo(member.accountId());
+        assertThat(selected.article()).isNotNull();
+        assertThat(selected.workspaceId()).isEqualTo(workspace.value());
+        var decision = new Community.ReportDecision(true, "Harassment in this thread");
+        community.resolveReport(owner, selected.position(), decision);
+        community.resolveReport(owner, selected.position(), decision);
+        assertThatThrownBy(() -> community.resolveReport(
+                        owner, selected.position(), new Community.ReportDecision(false, "Different decision")))
+                .isInstanceOf(CommunityException.class);
+        assertThat(community.reports(owner, Community.ReportStatus.OPEN, 0).items())
+                .isEmpty();
+        assertThat(community.reports(owner, Community.ReportStatus.REMOVED, 0).items())
+                .hasSize(2)
+                .allSatisfy(report -> {
+                    assertThat(report.reviewer().accountId()).isEqualTo(owner.accountId());
+                    assertThat(report.reviewNote()).isEqualTo(decision.note());
+                    assertThat(report.reviewedAt()).isNotNull();
+                });
+        jdbc.update("update workspaces set public_delivery=false where workspace_id=?", workspace.value());
+        assertThat(community.reports(owner, Community.ReportStatus.REMOVED, 0).items())
+                .allSatisfy(report -> assertThat(report.article()).isNull());
+        assertThatThrownBy(() -> community.reports(viewer, Community.ReportStatus.REMOVED, 0))
+                .isInstanceOf(CommunityException.class);
     }
 
     @Test

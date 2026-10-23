@@ -50,6 +50,8 @@ final class JdbcCommunity implements Community {
                     relations.following(account, workspace),
                     account,
                     identity != null && identity.group() != SiteGroup.VIEWER,
+                    identity != null,
+                    identity != null,
                     moderator,
                     comments.page(account, workspace, articleId, parentId, before, moderator));
         });
@@ -65,7 +67,8 @@ final class JdbcCommunity implements Community {
                 snapshot -> new SpaceState(
                         relations.following(account, workspace),
                         account,
-                        identity != null && identity.group() != SiteGroup.VIEWER));
+                        identity != null && identity.group() != SiteGroup.VIEWER,
+                        identity != null));
     }
 
     @Override
@@ -171,9 +174,9 @@ final class JdbcCommunity implements Community {
     }
 
     @Override
-    public Page<Report> reports(AuthPrincipal actor, long before) {
+    public Page<Report> reports(AuthPrincipal actor, ReportStatus status, long before) {
         accounts.account(actor);
-        return moderation.reports(actor, before);
+        return moderation.reports(actor, status, before);
     }
 
     @Override
@@ -183,8 +186,8 @@ final class JdbcCommunity implements Community {
     }
 
     @Override
-    public void resolveReport(AuthPrincipal actor, long position, boolean remove) {
+    public void resolveReport(AuthPrincipal actor, long position, ReportDecision decision) {
         accounts.account(actor);
-        moderation.resolve(actor, position, remove);
+        moderation.resolve(actor, position, decision);
     }
 }

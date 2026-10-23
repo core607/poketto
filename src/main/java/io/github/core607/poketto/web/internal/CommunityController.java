@@ -190,15 +190,19 @@ class CommunityController {
 
     @GetMapping(PRIVATE + "/reports")
     Community.Page<Community.Report> reports(
-            @AuthenticationPrincipal AuthPrincipal actor, @RequestParam(defaultValue = "0") long before) {
-        return community.reports(actor, before);
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @RequestParam(defaultValue = "OPEN") Community.ReportStatus status,
+            @RequestParam(defaultValue = "0") long before) {
+        return community.reports(actor, status, before);
     }
 
     @PostMapping(PRIVATE + "/reports/{position}/resolve")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void resolve(
-            @AuthenticationPrincipal AuthPrincipal actor, @PathVariable long position, @RequestBody Resolution input) {
-        community.resolveReport(actor, position, input.remove());
+            @AuthenticationPrincipal AuthPrincipal actor,
+            @PathVariable long position,
+            @RequestBody Community.ReportDecision input) {
+        community.resolveReport(actor, position, input);
     }
 
     @ExceptionHandler(CommunityException.class)
@@ -212,7 +216,7 @@ class CommunityController {
                     case UNAVAILABLE -> HttpStatus.NOT_FOUND;
                     case PARTICIPATION_REQUIRED, PERSONAL_KEY_REQUIRED, DENIED -> HttpStatus.FORBIDDEN;
                     case LIMIT_REACHED -> HttpStatus.TOO_MANY_REQUESTS;
-                    case REQUEST_CONFLICT, REPLY_UNAVAILABLE, BASE_CHANGED -> HttpStatus.CONFLICT;
+                    case REQUEST_CONFLICT, REPORT_RESOLVED, REPLY_UNAVAILABLE, BASE_CHANGED -> HttpStatus.CONFLICT;
                 };
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, "Community operation could not be completed");
         problem.setProperty("code", "COMMUNITY_" + failure.code());
@@ -230,14 +234,6 @@ class CommunityController {
         Toggle {
             if (enabled == null) {
                 throw new IllegalArgumentException("enabled is required");
-            }
-        }
-    }
-
-    record Resolution(Boolean remove) {
-        Resolution {
-            if (remove == null) {
-                throw new IllegalArgumentException("remove is required");
             }
         }
     }
