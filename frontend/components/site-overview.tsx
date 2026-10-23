@@ -85,7 +85,7 @@ export function SiteOverview({
             "近 7 天新注册",
             overview.newAccounts,
             { section: "accounts", order: "NEWEST" },
-            "新账号默认是浏览者",
+            "点开后按注册时间从新到旧列出全部账号",
           )}
         </div>
       </section>
