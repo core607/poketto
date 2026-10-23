@@ -35,7 +35,7 @@ export function PolicyPage({
       </section>
       <p className="muted">
         <a href="/privacy">隐私政策</a> · <a href="/terms">服务条款</a> ·{" "}
-        <a href="/admin?tab=account">账号管理</a>
+        <a href="/account">账号与安全</a>
       </p>
     </article>
   );

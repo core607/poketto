@@ -4,7 +4,9 @@ import { usePathname } from "next/navigation";
 import { api, ApiError } from "../lib/browser-api";
 import { spaceHref } from "../lib/format";
 import { clearAccountDrafts, withDraftStorage } from "../lib/local-drafts";
-import type { AccountProfile } from "./account-panel";
+import { signInHref } from "../lib/return-path";
+import { canCreateSpaces } from "../lib/site-groups";
+import type { AccountProfile } from "../lib/types";
 import { Avatar, BrandMark, Icon } from "./ui/icons";
 import { ThemeSwitch } from "./theme-switch";
 
@@ -40,9 +42,10 @@ export function SiteBar() {
 type Session =
   | { state: "checking" }
   | { state: "anonymous" }
-  | { state: "signed-in"; profile: AccountProfile };
+  | { state: "signed-in"; profile: AccountProfile; studio: boolean };
 
-function AccountEntrance() {
+export function AccountEntrance() {
+  const pathname = usePathname() ?? "/";
   const [session, setSession] = useState<Session>({ state: "checking" });
   const [failed, setFailed] = useState(false);
   const menu = useRef<HTMLDetailsElement>(null);
@@ -50,9 +53,17 @@ function AccountEntrance() {
     let active = true;
     const load = () =>
       void api<AccountProfile>("/api/auth/account")
-        .then((profile) => {
+        .then(async (profile) => {
+          // The studio is offered to accounts that can create spaces or already have one.
+          const studio =
+            canCreateSpaces(profile.account.group) ||
+            (await api<{ total: number }>(
+              "/api/auth/workspaces?offset=0&limit=1",
+            )
+              .then((page) => page.total > 0)
+              .catch(() => true));
           if (!active) return;
-          setSession({ state: "signed-in", profile });
+          setSession({ state: "signed-in", profile, studio });
           setFailed(false);
         })
         .catch((error) => {
@@ -111,7 +122,13 @@ function AccountEntrance() {
             账号状态暂时不可用
           </span>
         )}
-        <a className="btn btn-primary" href="/admin">
+        <a
+          className="btn btn-primary"
+          href={signInHref(
+            pathname +
+              (typeof window === "undefined" ? "" : window.location.search),
+          )}
+        >
           登录
         </a>
       </div>
@@ -120,10 +137,12 @@ function AccountEntrance() {
   const name = account.displayName || account.loginName;
   return (
     <div className="bar-actions">
-      <a className="btn btn-secondary hide-narrow" href="/admin">
-        <Icon name="pen" />
-        工作台
-      </a>
+      {session.studio && (
+        <a className="btn btn-secondary hide-narrow" href="/admin">
+          <Icon name="pen" />
+          工作台
+        </a>
+      )}
       <details className="menu" ref={menu}>
         <summary className="account-trigger" aria-label="账号菜单">
           <Avatar name={name} />
@@ -134,10 +153,12 @@ function AccountEntrance() {
             <strong>{name}</strong>
             <span>{account.loginName}</span>
           </div>
-          <a href="/admin">
-            <Icon name="pen" />
-            工作台
-          </a>
+          {session.studio && (
+            <a href="/admin">
+              <Icon name="pen" />
+              工作台
+            </a>
+          )}
           <a href="/community?tab=notifications">
             <Icon name="bell" />
             通知
@@ -151,7 +172,7 @@ function AccountEntrance() {
             关注的空间
           </a>
           <hr />
-          <a href="/admin?tab=account">
+          <a href="/account">
             <Icon name="settings" />
             账号与安全
           </a>

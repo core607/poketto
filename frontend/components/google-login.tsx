@@ -72,7 +72,6 @@ export function GoogleLogin({
     try {
       const returnTo = new URL(window.location.href);
       returnTo.searchParams.delete("loginError");
-      if (link) returnTo.searchParams.set("security", "1");
       const result = await api<{ url: string }>(
         "/api/auth/identity/google/start",
         {

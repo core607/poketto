@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, message } from "../lib/browser-api";
 import { Login } from "./login";
-import type { AccountProfile } from "./account-panel";
+import type { AccountProfile } from "../lib/types";
 import type { SpaceSummary } from "./workspace-dashboard";
 import { permissionLabels } from "../lib/permissions";
 
@@ -185,7 +185,7 @@ export function Connect() {
             {!workspace && (
               <p>
                 先
-                <a href="/admin?tab=account" target="_blank" rel="noreferrer">
+                <a href="/admin?tab=spaces" target="_blank" rel="noreferrer">
                   创建或加入空间
                 </a>
                 ，再回来继续授权。

@@ -37,7 +37,7 @@ function receipt(stage: GitHubResult["stage"]): GitHubResult {
   };
 }
 async function fixture(t: TestContext) {
-  const window = new Window({ url: "https://site.example/admin?tab=account" });
+  const window = new Window({ url: "https://site.example/admin?tab=spaces" });
   const globals = {
     window,
     document: window.document,
@@ -431,4 +431,25 @@ test("creating another space after entering a ready space submits a new request"
   assert.notEqual(sent[0].requestId, request.requestId);
   assert.equal(sent[0].repositoryName, "second-notes");
   assert.match(f.container.textContent, /确认仓库是否已创建/);
+});
+
+test("an account that may not create and never used GitHub sees only the creator requirement", async (t) => {
+  const f = await fixture(t);
+  globalThis.fetch = async (input) => {
+    const response = f.initial(String(input), {
+      ...connected,
+      eligibleToCreate: false,
+      state: "NOT_CONNECTED",
+      githubUserId: null,
+      login: null,
+      version: 0,
+    });
+    assert.ok(response, "Unexpected request " + String(input));
+    return response;
+  };
+  await f.render();
+  assert.match(f.container.textContent, /创建自己的空间需要创作者资格/);
+  assert.doesNotMatch(f.container.textContent, /授权|仓库/);
+  assert.equal(f.container.querySelectorAll("button").length, 0);
+  assert.ok(f.container.querySelector('a[href="/account#creator"]'));
 });

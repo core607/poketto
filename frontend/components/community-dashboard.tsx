@@ -16,7 +16,7 @@ import {
 } from "../lib/community";
 import { Login } from "./login";
 import type { CommunityTab } from "../lib/community";
-import type { AccountProfile } from "./account-panel";
+import type { AccountProfile } from "../lib/types";
 import { Avatar, Icon, type IconName } from "./ui/icons";
 
 type Tab = CommunityTab;

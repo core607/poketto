@@ -2,10 +2,11 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, message } from "../lib/browser-api";
 import { ConfirmationProvider } from "./confirmation";
-import { type AccountProfile } from "./account-panel";
+import type { AccountProfile } from "../lib/types";
 import { WorkspaceDashboard } from "./workspace-dashboard";
 import { Login } from "./login";
 import { clearAccountDrafts, withDraftStorage } from "../lib/local-drafts";
+import { returnPath } from "../lib/return-path";
 
 export function Admin() {
   return (
@@ -18,11 +19,22 @@ function AdminContent() {
   const [account, setAccount] = useState<AccountProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [returning, setReturning] = useState(false);
   async function refresh() {
     setLoading(true);
     setError("");
     try {
-      setAccount(await api<AccountProfile>("/api/auth/account"));
+      const profile = await api<AccountProfile>("/api/auth/account");
+      // A reader who signed in from another page goes back to it.
+      const next = returnPath(
+        new URLSearchParams(window.location.search).get("next"),
+      );
+      if (next) {
+        setReturning(true);
+        window.location.assign(next);
+        return;
+      }
+      setAccount(profile);
     } catch (error) {
       setAccount(null);
       if (!(error instanceof ApiError && error.status === 401))
@@ -59,10 +71,10 @@ function AdminContent() {
       setError(message(error));
     }
   }
-  if (loading)
+  if (loading || returning)
     return (
       <p role="status" className="page muted">
-        正在确认会话…
+        {returning ? "已登录，正在返回原来的页面…" : "正在确认会话…"}
       </p>
     );
   const alert = error && (
