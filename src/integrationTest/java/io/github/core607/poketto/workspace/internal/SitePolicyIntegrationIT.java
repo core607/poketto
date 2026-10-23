@@ -156,6 +156,56 @@ class SitePolicyIntegrationIT {
                 .isOne();
     }
 
+    @Test
+    void administratorsFilterAccountsAndSpacesAndReadSiteCounts() {
+        AuthPrincipal creator = account("creator");
+        AuthPrincipal reader = account("reader");
+        policies.change(administrator, creator.accountId(), SiteGroup.CREATOR, "Creator approved");
+        WorkspaceId second = ownedSpace(creator);
+        jdbc.update(
+                "update auth_accounts set created_at=created_at-interval '30 days' where account_id=?",
+                administrator.accountId());
+
+        var creators = policies.list(administrator, "", SiteGroup.CREATOR, SitePolicyService.AccountOrder.NAME, 0, 30);
+        assertThat(creators.items())
+                .extracting(SitePolicyService.AccountSummary::loginName)
+                .containsExactly("creator");
+        assertThat(creators.total()).isOne();
+        var newest = policies.list(administrator, "", null, SitePolicyService.AccountOrder.NEWEST, 0, 30);
+        assertThat(newest.items().getLast().accountId()).isEqualTo(administrator.accountId());
+        assertThat(newest.total()).isEqualTo(3);
+
+        var all = policies.spaces(administrator, "", SitePolicyService.SpaceState.ALL, 0, 30);
+        assertThat(all.total()).isEqualTo(2);
+        var publicSpaces = policies.spaces(administrator, "seco", SitePolicyService.SpaceState.PUBLIC, 0, 30);
+        assertThat(publicSpaces.items()).singleElement().satisfies(space -> {
+            assertThat(space.workspaceId()).isEqualTo(second.value());
+            assertThat(space.owners()).containsExactly("creator");
+            assertThat(space.ownerCount()).isOne();
+        });
+        policies.change(administrator, creator.accountId(), SiteGroup.VIEWER, "Needs revision");
+        assertThat(policies.spaces(administrator, "", SitePolicyService.SpaceState.RESTRICTED, 0, 30)
+                        .items())
+                .extracting(SitePolicyService.SiteSpace::workspaceId)
+                .containsExactly(second.value());
+
+        var overview = policies.overview(administrator, java.time.Instant.now().minus(java.time.Duration.ofDays(7)));
+        assertThat(overview.accounts())
+                .containsEntry(SiteGroup.ADMINISTRATOR, 1L)
+                .containsEntry(SiteGroup.VIEWER, 2L)
+                .containsEntry(SiteGroup.COMMUNITY, 0L);
+        assertThat(overview.newAccounts()).isEqualTo(2);
+        assertThat(overview.spaces()).isEqualTo(2);
+        assertThat(overview.restrictedSpaces()).isOne();
+
+        assertCode(() -> policies.overview(reader, java.time.Instant.now()), AuthException.Code.DENIED);
+        assertCode(
+                () -> policies.spaces(reader, "", SitePolicyService.SpaceState.ALL, 0, 30), AuthException.Code.DENIED);
+        assertCode(
+                () -> policies.list(administrator, "", null, SitePolicyService.AccountOrder.NAME, 0, 101),
+                AuthException.Code.INVALID_INPUT);
+    }
+
     private AuthPrincipal account(String login) {
         return AccountFixtures.create(auth, login, UUID.randomUUID().toString());
     }

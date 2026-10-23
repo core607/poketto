@@ -177,6 +177,12 @@ final class JdbcCommunity implements Community {
     }
 
     @Override
+    public long openReports(AuthPrincipal actor) {
+        accounts.account(actor);
+        return moderation.openReports(actor);
+    }
+
+    @Override
     public void resolveReport(AuthPrincipal actor, long position, boolean remove) {
         accounts.account(actor);
         moderation.resolve(actor, position, remove);

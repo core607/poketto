@@ -51,6 +51,9 @@ public interface Community {
 
     Page<Report> reports(AuthPrincipal actor, long before);
 
+    /** Counts reports still awaiting a site administrator. */
+    long openReports(AuthPrincipal actor);
+
     void resolveReport(AuthPrincipal actor, long position, boolean remove);
 
     enum Relation {

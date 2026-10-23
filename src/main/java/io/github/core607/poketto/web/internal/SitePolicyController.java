@@ -31,9 +31,11 @@ class SitePolicyController {
     AuthService.Page<SitePolicyService.AccountSummary> accounts(
             @AuthenticationPrincipal AuthPrincipal actor,
             @RequestParam(defaultValue = "") String query,
+            @RequestParam(required = false) SiteGroup group,
+            @RequestParam(defaultValue = "NAME") SitePolicyService.AccountOrder order,
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
-        return policies.list(actor, query, offset, limit);
+        return policies.list(actor, query, group, order, offset, limit);
     }
 
     @PutMapping("/{accountId}/group")

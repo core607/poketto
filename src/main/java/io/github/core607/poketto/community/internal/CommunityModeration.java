@@ -149,6 +149,16 @@ final class CommunityModeration {
         });
     }
 
+    long openReports(AuthPrincipal actor) {
+        return scope.personal(actor, identity -> {
+            if (!identity.siteAdministrator()) {
+                throw new CommunityException(CommunityException.Code.DENIED);
+            }
+            Long count = jdbc.queryForObject("select count(*) from community_reports where status='OPEN'", Long.class);
+            return count == null ? 0 : count;
+        });
+    }
+
     void resolve(AuthPrincipal actor, long position, boolean remove) {
         scope.personal(actor, identity -> {
             if (!identity.siteAdministrator()) {
