@@ -298,6 +298,7 @@ class SitePolicyIntegrationIT {
         assertCode(() -> applications.decide(administrator, first.id(), false, " "), AuthException.Code.INVALID_INPUT);
         var declined = applications.decide(administrator, first.id(), false, "Please publish a sample first");
         assertThat(declined.status()).isEqualTo(CreatorApplications.Status.DECLINED);
+        assertThat(applications.standing(reader).unread().id()).isEqualTo(first.id());
         assertThat(applications.standing(reader).availableAt())
                 .isEqualTo(java.time.Instant.parse("2026-10-08T00:00:00Z"));
         assertCode(() -> applications.apply(reader, "Sample published"), AuthException.Code.APPLICATION_COOLDOWN);
@@ -305,6 +306,7 @@ class SitePolicyIntegrationIT {
 
         now.set(java.time.Instant.parse("2026-10-08T00:00:01Z"));
         var second = applications.apply(reader, "Sample published");
+        assertThat(applications.standing(reader).unread().id()).isEqualTo(first.id());
         assertThat(applications
                         .list(administrator, CreatorApplications.Status.OPEN, 0, 30)
                         .items())
@@ -315,6 +317,10 @@ class SitePolicyIntegrationIT {
                 });
         var approved = applications.decide(administrator, second.id(), true, "Welcome");
         assertThat(approved.status()).isEqualTo(CreatorApplications.Status.APPROVED);
+        applications.markRead(reader, second.id());
+        assertThat(applications.standing(reader).unread().id()).isEqualTo(first.id());
+        applications.markRead(reader, first.id());
+        assertThat(applications.standing(reader).unread()).isNull();
         assertThat(accounts.account(reader).group()).isEqualTo(SiteGroup.CREATOR);
         assertThat(policies.history(administrator, reader.accountId(), 0, 30).items())
                 .singleElement()
@@ -328,6 +334,39 @@ class SitePolicyIntegrationIT {
         policies.change(administrator, operator.accountId(), SiteGroup.ADMINISTRATOR, "Operator added");
         applications.decide(administrator, pending.id(), true, "");
         assertThat(accounts.account(operator).group()).isEqualTo(SiteGroup.ADMINISTRATOR);
+    }
+
+    @Test
+    void decisionAcknowledgementsBelongToTheApplicantAndDoNotConsumeLaterDecisions() {
+        var applications = new CreatorApplications(
+                jdbc, accounts, policies, new DataSourceTransactionManager(jdbc.getDataSource()), Clock.systemUTC());
+        AuthPrincipal reader = account("decision-reader");
+        AuthPrincipal stranger = account("decision-stranger");
+        var first = applications.apply(reader, "Reading notes");
+        assertCode(() -> applications.markRead(reader, first.id()), AuthException.Code.INVALID_INPUT);
+        applications.decide(administrator, first.id(), true, "Welcome");
+        assertThat(applications.standing(reader).latest().read()).isFalse();
+        assertCode(() -> applications.markRead(stranger, first.id()), AuthException.Code.INVALID_INPUT);
+        applications.markRead(reader, first.id());
+        applications.markRead(reader, first.id());
+        assertThat(applications.standing(reader).latest().read()).isTrue();
+        policies.change(administrator, reader.accountId(), SiteGroup.VIEWER, "Review eligibility");
+        var second = applications.apply(reader, "Updated writing sample");
+        applications.decide(administrator, second.id(), false, "Please add a source");
+        applications.markRead(reader, first.id());
+        assertThat(applications.standing(reader).latest().read()).isFalse();
+    }
+
+    @Test
+    void directSiteDetailsRequireAdministratorAuthorityWithoutWorkspaceMembership() {
+        AuthPrincipal reader = account("detail-reader");
+        WorkspaceId space = ownedSpace(reader);
+        assertThat(policies.account(administrator, reader.accountId())).isPresent();
+        assertThat(policies.space(administrator, space.value())).isPresent();
+        assertThat(policies.account(administrator, UUID.randomUUID())).isEmpty();
+        assertThat(policies.space(administrator, UUID.randomUUID())).isEmpty();
+        assertCode(() -> policies.account(reader, reader.accountId()), AuthException.Code.DENIED);
+        assertCode(() -> policies.space(reader, space.value()), AuthException.Code.DENIED);
     }
 
     private AuthPrincipal account(String login) {

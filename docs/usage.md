@@ -6,11 +6,12 @@ Runtime requirements, content configuration, MCP access and deployment for Poket
 
 ## Community
 
-The **Community** page at `/community` shows updates from followed spaces, private
-bookmarks, your likes, notifications, followed spaces and blocked accounts.
-COMMUNITY, CREATOR and ADMINISTRATOR accounts can like, bookmark, follow, comment and
-reply through a browser session. VIEWER accounts can read public discussion, remove
-their own records, mark notifications read, report comments and manage blocks.
+`/community` provides following updates, private bookmarks, your likes,
+notifications, followed spaces and blocked accounts.
+Signed-in accounts can bookmark and follow in the browser.
+COMMUNITY, CREATOR and ADMINISTRATOR accounts can also like, comment and reply.
+VIEWER accounts can read public discussion, manage their own records, mark
+notifications read, report comments and manage blocks.
 Workspace membership and API keys do not grant these interactions.
 
 An article accepts interactions only when its frontmatter `id` is a unique lowercase
@@ -43,8 +44,10 @@ Comments are plain text of up to 4,000 Unicode code points, with one level of
 replies. Deleting your comment cannot be undone; a root with replies becomes a
 tombstone that accepts no new replies. Space owners and site administrators can
 remove comments, and removing a root hides its replies. Administrators handle reports
-in the studio's **Site administration** section, which grants no access to private
-Git content. A report reason holds at most 1,000 code points.
+at `/site`, without private Git access. Open, dismissed and removed queues show
+available public articles and comment context. Decisions retain reviewer, time and
+reason (1–500 code points), refusing conflicting retries. Report reasons allow
+1,000 code points.
 
 Blocking an account hides its comments and notifications from you and prevents
 replies between you; it does not hide public articles. A root comment notifies up to
@@ -52,7 +55,7 @@ replies between you; it does not hide public articles. A root comment notifies u
 1,000 notifications. Bookmarks and follows are private and do not notify the owner.
 There are no direct messages or email alerts. When an article is withdrawn,
 restricted or removed, its public discussion and cards are hidden but the records
-remain. A downgraded account cannot add interactions; its existing comments stay.
+remain. Downgrade prevents new likes and comments; private bookmarks and follows remain available.
 
 Each account keeps at most 1,000 likes, 1,000 bookmarks, 100 followed spaces and 500
 blocks. Per minute and per UTC day, an account can post 10 and 300 comments, make 60
@@ -143,19 +146,19 @@ local development), and request only `openid`, `email` and `profile`. A matching
 does not merge accounts: sign in and link Google explicitly. The last login method
 cannot be removed. An unconfigured provider shows no login button.
 
-New accounts are **viewers**. Administrators assign one group: viewer, community
-member, creator or site administrator. Creators and administrators can connect
-repositories and publish websites. Site administrators see site-wide counts,
-filter accounts by group or registration order, list every space by website state,
-change groups with a reason, see the change history, and review repository-public articles and media
-without private access. The last administrator
-cannot be demoted. A space's website is public only while every owner is a creator or
-administrator: demoting an owner hides its public routes, discovery, search, feeds and
-media until eligibility returns, while editing and member and MCP permissions
-continue. Viewers and community members apply for creator eligibility on `/account`;
-a decline carries a note and a seven-day wait. Administrators can suspend any
-non-administrator account: it is signed out, its keys and AI connections are revoked
-and its websites withdrawn until restored.
+New accounts are **viewers**. Administrators assign viewer, community member,
+creator or administrator eligibility; creators and administrators may connect
+repositories and publish websites. At `/site`, administrators inspect counts,
+filter accounts by group or registration order and spaces by website state,
+change groups with reasons and history, and review repository-public content
+without private access. The last administrator cannot be demoted.
+Every owner must be creator-eligible: downgrading one withdraws the space's public
+routes, discovery, search, feeds and media until eligibility returns, preserving
+editing, membership and MCP permissions. Viewers and community members apply at
+`/account`; rejection includes a reason and a seven-day wait. Account and notification
+pages show decisions; the account menu flags unread results until acknowledged.
+Approval links to space creation. Suspending a non-administrator signs them out,
+revokes keys and AI connections, and withdraws their websites until restored.
 
 On Linux, the data directory must support file and directory synchronization;
 without it, publication-affecting writes and image uploads are refused and public

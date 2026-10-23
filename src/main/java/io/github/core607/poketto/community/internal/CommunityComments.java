@@ -206,7 +206,7 @@ final class CommunityComments {
         scope.published(actor, existing.workspace(), false, (identity, snapshot) -> {
             CommunityTargets.article(snapshot, existing.articleId());
             requireModerator(identity, existing.workspace());
-            hide(id);
+            hide(id, identity.accountId(), "Comment removed by a moderator");
             return null;
         });
     }
@@ -221,11 +221,13 @@ final class CommunityComments {
         }
     }
 
-    void hide(UUID id) {
+    void hide(UUID id, UUID reviewer, String note) {
         jdbc.update(
                 "update community_comments set hidden_at=coalesce(hidden_at,current_timestamp) where comment_id=?", id);
         jdbc.update(
-                "update community_reports set status='REMOVED',reviewed_at=current_timestamp where comment_id=? and status='OPEN'",
+                "update community_reports set status='REMOVED',reviewed_by=?,reviewed_at=current_timestamp,review_note=? where comment_id=? and status='OPEN'",
+                reviewer,
+                note,
                 id);
     }
 

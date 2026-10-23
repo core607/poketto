@@ -39,12 +39,19 @@ export function EditorPublicPage({
 
   return (
     <div className="editor-public-state" aria-label="公开页面状态">
-      <span>{file.publicScope ? "公开范围" : "私有内容"}</span>
-      {page.state === "WEBSITE_DISABLED" && <span>网站未开启</span>}
-      {page.state === "WEBSITE_RESTRICTED" && (
-        <span>公开展示已受限，仍可编辑整改。</span>
-      )}
-      {page.state === "UNAVAILABLE" && <span>公开页面暂不可用</span>}
+      <strong role="status">
+        {
+          {
+            UNSAVED: "尚未保存",
+            PRIVATE: "私有内容",
+            WEBSITE_DISABLED: "尚未公开 · 网站未开启",
+            WEBSITE_RESTRICTED: "公开展示已受限 · 仍可编辑整改",
+            UNAVAILABLE: "公开页面暂不可用",
+            SCHEDULED: "等待定时公开",
+            AVAILABLE: "已公开",
+          }[page.state]
+        }
+      </strong>
       {page.state === "SCHEDULED" && page.publishAt && (
         <span>定时发布：{scheduledTime(page.publishAt)}</span>
       )}

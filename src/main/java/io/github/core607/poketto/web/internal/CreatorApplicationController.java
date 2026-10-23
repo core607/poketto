@@ -5,12 +5,14 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.CreatorApplications;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** An account asks for creator eligibility; site administrators decide. */
@@ -41,6 +43,12 @@ class CreatorApplicationController {
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
         return applications.list(actor, CreatorApplications.Status.parse(status), offset, limit);
+    }
+
+    @PostMapping("/api/auth/creator-application/{applicationId}/read")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void markRead(@AuthenticationPrincipal AuthPrincipal actor, @PathVariable UUID applicationId) {
+        applications.markRead(actor, applicationId);
     }
 
     @PostMapping("/api/auth/site/creator-applications/{applicationId}/decision")

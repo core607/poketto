@@ -39,16 +39,19 @@ public final class CreatorApplications {
 
     /** The applicant's latest application and whether a new one may be submitted now. */
     public Standing standing(AuthPrincipal actor) {
-        AccountIdentity account = accounts.account(actor);
-        Application latest = latest(account.accountId());
-        return new Standing(account.group(), latest, availableAt(account, latest));
+        return accounts.withAccount(actor, () -> {
+            AccountIdentity account = accounts.account(actor);
+            Application latest = latest(account.accountId(), false);
+            return new Standing(
+                    account.group(), latest, availableAt(account, latest), latest(account.accountId(), true));
+        });
     }
 
     public Application apply(AuthPrincipal actor, String statement) {
         String text = text(statement, 1000, false);
         return accounts.withAccount(actor, () -> {
             AccountIdentity account = accounts.account(actor);
-            Application latest = latest(account.accountId());
+            Application latest = latest(account.accountId(), false);
             if (account.group().mayCreateSpace()) {
                 throw new AuthException(AuthException.Code.ALREADY_CREATOR);
             }
@@ -66,7 +69,7 @@ public final class CreatorApplications {
                     account.accountId(),
                     text,
                     java.sql.Timestamp.from(clock.instant()));
-            return latest(account.accountId());
+            return latest(account.accountId(), false);
         });
     }
 
@@ -77,6 +80,7 @@ public final class CreatorApplications {
         return policies.withAdministrator(actor, () -> {
             List<Queued> items = jdbc.query(
                     "select c.application_id,c.statement,c.status,c.created_at,c.decided_at,c.decision_note,"
+                            + "c.decision_read_at is not null,"
                             + "a.account_id,a.login_name,a.display_name,a.site_group "
                             + "from creator_applications c join auth_accounts a using(account_id) where c.status=? "
                             + "order by c.created_at " + (status == Status.OPEN ? "asc" : "desc")
@@ -90,11 +94,12 @@ public final class CreatorApplications {
                                     row.getTimestamp(5) == null
                                             ? null
                                             : row.getTimestamp(5).toInstant(),
-                                    row.getString(6)),
-                            row.getObject(7, UUID.class),
-                            row.getString(8),
+                                    row.getString(6),
+                                    row.getBoolean(7)),
+                            row.getObject(8, UUID.class),
                             row.getString(9),
-                            SiteGroup.valueOf(row.getString(10))),
+                            row.getString(10),
+                            SiteGroup.valueOf(row.getString(11))),
                     status.name(),
                     limit,
                     offset);
@@ -153,7 +158,7 @@ public final class CreatorApplications {
                     java.sql.Timestamp.from(clock.instant()),
                     text.isEmpty() ? null : text,
                     id);
-            return latest(applicant);
+            return latest(applicant, false);
         });
     }
 
@@ -167,11 +172,27 @@ public final class CreatorApplications {
         return null;
     }
 
-    private Application latest(UUID account) {
+    /** Acknowledges only this account's exact decision; a later application stays unread. */
+    public void markRead(AuthPrincipal actor, UUID id) {
+        accounts.withAccount(actor, () -> {
+            int changed = jdbc.update(
+                    "update creator_applications set decision_read_at=coalesce(decision_read_at,current_timestamp) "
+                            + "where application_id=? and account_id=? and status<>'OPEN'",
+                    id,
+                    actor.accountId());
+            if (changed == 0) {
+                throw new AuthException(AuthException.Code.INVALID_INPUT);
+            }
+            return null;
+        });
+    }
+
+    private Application latest(UUID account, boolean unreadOnly) {
         return jdbc
                 .query(
-                        "select application_id,statement,status,created_at,decided_at,decision_note "
+                        "select application_id,statement,status,created_at,decided_at,decision_note,decision_read_at is not null "
                                 + "from creator_applications where account_id=? "
+                                + (unreadOnly ? "and status<>'OPEN' and decision_read_at is null " : "")
                                 + "order by created_at desc,application_id limit 1",
                         (row, number) -> new Application(
                                 row.getObject(1, UUID.class),
@@ -181,7 +202,8 @@ public final class CreatorApplications {
                                 row.getTimestamp(5) == null
                                         ? null
                                         : row.getTimestamp(5).toInstant(),
-                                row.getString(6)),
+                                row.getString(6),
+                                row.getBoolean(7)),
                         account)
                 .stream()
                 .findFirst()
@@ -211,10 +233,16 @@ public final class CreatorApplications {
     }
 
     public record Application(
-            UUID id, String statement, Status status, Instant createdAt, Instant decidedAt, String decisionNote) {}
+            UUID id,
+            String statement,
+            Status status,
+            Instant createdAt,
+            Instant decidedAt,
+            String decisionNote,
+            boolean read) {}
 
     /** The applicant's view. availableAt is when a declined applicant may ask again, or null. */
-    public record Standing(SiteGroup group, Application latest, Instant availableAt) {}
+    public record Standing(SiteGroup group, Application latest, Instant availableAt, Application unread) {}
 
     public record Queued(
             Application application, UUID accountId, String loginName, String displayName, SiteGroup group) {}

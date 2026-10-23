@@ -990,17 +990,6 @@ export function Editor({
                     移动…
                   </button>
                 )}
-                {contentRoot(path) && (
-                  <span
-                    className="visibility-badge"
-                    data-root={contentRoot(path)}
-                  >
-                    <Icon
-                      name={contentRoot(path) === "public" ? "globe" : "lock"}
-                    />
-                    {contentRoot(path) === "public" ? "已发布" : "草稿"}
-                  </span>
-                )}
                 <span
                   className="save-state"
                   data-state={

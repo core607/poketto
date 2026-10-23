@@ -89,7 +89,7 @@ custom policy editor, multiple-group union or automatic promotion.
 
 | Group | Site operations | Existing workspace operations |
 |---|---|---|
-| VIEWER | Public reading and own-account management | Existing membership and machine grants remain effective |
+| VIEWER | Public reading, private bookmarks and follows, own-account management | Existing membership and machine grants remain effective |
 | COMMUNITY | Viewer operations and community interactions | Same membership boundary; no space creation or website eligibility |
 | CREATOR | Community operations, repository connection and website eligibility | Still requires the owning workspace grants |
 | ADMINISTRATOR | Site account and group administration, plus creator eligibility | No implicit private-file or original-history access |
@@ -156,7 +156,9 @@ A viewer or community member may hold one open creator application. Approval by 
 site administrator performs the ordinary audited change to CREATOR, so applications
 add a request queue, not a second promotion path; an applicant who has meanwhile
 become creator or administrator keeps that group. A decline carries a note for the
-applicant and a seven-day cooldown, which bounds queue flooding without a rate table.
+applicant and a seven-day cooldown, which bounds queue flooding without a rate table. Decisions remain in their application record as private
+notifications until the applicant acknowledges that exact application; an old
+acknowledgement cannot consume a newer result.
 
 Suspension is separate from groups. A group decides what an account may do on the
 site; suspension decides whether it may act at all, for abuse a downgrade does not

@@ -18,6 +18,7 @@ public final class CommunityException extends RuntimeException {
         PERSONAL_KEY_REQUIRED,
         LIMIT_REACHED,
         REQUEST_CONFLICT,
+        REPORT_RESOLVED,
         REPLY_UNAVAILABLE,
         DENIED,
         /** The article's body changed after the reader started the correction. */

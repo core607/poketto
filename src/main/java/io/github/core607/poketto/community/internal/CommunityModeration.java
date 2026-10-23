@@ -6,8 +6,13 @@ import io.github.core607.poketto.auth.CommunityAccounts.Profile;
 import io.github.core607.poketto.community.Community.BlockedAccount;
 import io.github.core607.poketto.community.Community.Page;
 import io.github.core607.poketto.community.Community.Report;
+import io.github.core607.poketto.community.Community.ReportDecision;
 import io.github.core607.poketto.community.Community.ReportInput;
+import io.github.core607.poketto.community.Community.ReportStatus;
 import io.github.core607.poketto.community.CommunityException;
+import io.github.core607.poketto.workspace.WorkspaceId;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
@@ -22,18 +27,21 @@ final class CommunityModeration {
     private final CommunityAccounts accounts;
     private final CommunityComments comments;
     private final CommunityActivity activity;
+    private final CommunityTargets targets;
 
     CommunityModeration(
             JdbcTemplate jdbc,
             CommunityScope scope,
             CommunityAccounts accounts,
             CommunityComments comments,
-            CommunityActivity activity) {
+            CommunityActivity activity,
+            CommunityTargets targets) {
         this.jdbc = jdbc;
         this.scope = scope;
         this.accounts = accounts;
         this.comments = comments;
         this.activity = activity;
+        this.targets = targets;
     }
 
     void report(AuthPrincipal actor, UUID id, ReportInput input) {
@@ -110,43 +118,85 @@ final class CommunityModeration {
         });
     }
 
-    Page<Report> reports(AuthPrincipal actor, long before) {
-        return scope.personal(actor, identity -> {
+    Page<Report> reports(AuthPrincipal actor, ReportStatus status, long before) {
+        if (status == null) {
+            throw new IllegalArgumentException("report status is required");
+        }
+        Page<ReportRow> page = scope.personal(actor, identity -> {
             if (!identity.siteAdministrator()) {
                 throw new CommunityException(CommunityException.Code.DENIED);
             }
             List<ReportRow> rows = jdbc.query(
-                    "select r.position,r.comment_id,r.reporter_id,c.author_id,r.reason,c.body,r.created_at,r.status from community_reports r join community_comments c using(comment_id) where r.status='OPEN' and r.position<? order by r.position desc limit 21",
-                    (row, number) -> new ReportRow(
-                            row.getLong(1),
-                            row.getObject(2, UUID.class),
-                            row.getObject(3, UUID.class),
-                            row.getObject(4, UUID.class),
-                            row.getString(5),
-                            row.getString(6),
-                            row.getTimestamp(7).toInstant(),
-                            row.getString(8)),
+                    "select r.position,r.comment_id,r.reporter_id,c.author_id,r.reason,c.body,r.created_at,r.status,"
+                            + "c.workspace_id,c.article_id,p.body,p.author_id,r.reviewed_by,r.reviewed_at,r.review_note "
+                            + "from community_reports r join community_comments c using(comment_id) "
+                            + "left join community_comments p on p.comment_id=c.parent_id "
+                            + "where r.status=? and r.position<? order by r.position desc limit 21",
+                    this::reportRow,
+                    status.name(),
                     CommunityActivity.before(before));
-            return CommunityActivity.page(rows, ReportRow::position, selected -> {
-                Set<UUID> ids = new HashSet<>();
-                selected.forEach(row -> {
-                    ids.add(row.reporter());
-                    ids.add(row.author());
-                });
-                Map<UUID, Profile> profiles = accounts.profiles(ids);
-                return selected.stream()
-                        .map(row -> new Report(
-                                row.position(),
-                                row.comment(),
-                                profiles.get(row.reporter()),
-                                profiles.get(row.author()),
-                                row.reason(),
-                                row.body(),
-                                row.createdAt(),
-                                row.status()))
-                        .toList();
-            });
+            return CommunityActivity.page(rows, ReportRow::position, List::copyOf);
         });
+        List<Report> items = reportDetails(page.items());
+        return scope.personal(actor, identity -> {
+            if (!identity.siteAdministrator()) {
+                throw new CommunityException(CommunityException.Code.DENIED);
+            }
+            return new Page<>(items, page.nextBefore());
+        });
+    }
+
+    private ReportRow reportRow(ResultSet row, int number) throws SQLException {
+        return new ReportRow(
+                row.getLong(1),
+                row.getObject(2, UUID.class),
+                row.getObject(3, UUID.class),
+                row.getObject(4, UUID.class),
+                row.getString(5),
+                row.getString(6),
+                row.getTimestamp(7).toInstant(),
+                row.getString(8),
+                row.getObject(9, UUID.class),
+                row.getObject(10, UUID.class),
+                row.getString(11),
+                row.getObject(12, UUID.class),
+                row.getObject(13, UUID.class),
+                row.getTimestamp(14) == null ? null : row.getTimestamp(14).toInstant(),
+                row.getString(15));
+    }
+
+    private List<Report> reportDetails(List<ReportRow> rows) {
+        Set<UUID> ids = new HashSet<>();
+        rows.forEach(row -> {
+            ids.add(row.reporter());
+            ids.add(row.author());
+            if (row.parentAuthor() != null) {
+                ids.add(row.parentAuthor());
+            }
+            if (row.reviewer() != null) {
+                ids.add(row.reviewer());
+            }
+        });
+        Map<UUID, Profile> profiles = accounts.profiles(ids);
+        return rows.stream()
+                .map(row -> new Report(
+                        row.position(),
+                        row.comment(),
+                        profiles.get(row.reporter()),
+                        profiles.get(row.author()),
+                        row.reason(),
+                        row.body(),
+                        row.createdAt(),
+                        row.status(),
+                        row.workspace(),
+                        targets.card(new WorkspaceId(row.workspace()), row.article())
+                                .orElse(null),
+                        row.parentBody(),
+                        row.parentAuthor() == null ? null : profiles.get(row.parentAuthor()),
+                        row.reviewer() == null ? null : profiles.get(row.reviewer()),
+                        row.reviewedAt(),
+                        row.reviewNote()))
+                .toList();
     }
 
     long openReports(AuthPrincipal actor) {
@@ -159,7 +209,7 @@ final class CommunityModeration {
         });
     }
 
-    void resolve(AuthPrincipal actor, long position, boolean remove) {
+    void resolve(AuthPrincipal actor, long position, ReportDecision decision) {
         scope.personal(actor, identity -> {
             if (!identity.siteAdministrator()) {
                 throw new CommunityException(CommunityException.Code.DENIED);
@@ -175,18 +225,35 @@ final class CommunityModeration {
             UUID id = ids.getFirst();
             comments.get(id, true);
             int changed = jdbc.update(
-                    "update community_reports set status=?,reviewed_by=?,reviewed_at=current_timestamp where position=? and status='OPEN'",
-                    remove ? "REMOVED" : "DISMISSED",
+                    "update community_reports set status=?,reviewed_by=?,reviewed_at=current_timestamp,review_note=? where position=? and status='OPEN'",
+                    decision.remove() ? "REMOVED" : "DISMISSED",
                     identity.accountId(),
+                    decision.note(),
                     position);
-            if (changed == 1 && remove) {
-                comments.hide(id);
+            if (changed == 0) {
+                requireRepeatedDecision(actor, position, decision);
+            }
+            if (changed == 1 && decision.remove()) {
+                comments.hide(id, identity.accountId(), decision.note());
             }
             return null;
         });
     }
 
     private record BlockRow(long position, UUID account) {}
+
+    private void requireRepeatedDecision(AuthPrincipal actor, long position, ReportDecision decision) {
+        Boolean repeated = jdbc.queryForObject(
+                "select exists(select 1 from community_reports where position=? and status=? and reviewed_by=? and review_note=?)",
+                Boolean.class,
+                position,
+                decision.remove() ? "REMOVED" : "DISMISSED",
+                actor.accountId(),
+                decision.note());
+        if (!Boolean.TRUE.equals(repeated)) {
+            throw new CommunityException(CommunityException.Code.REPORT_RESOLVED);
+        }
+    }
 
     private record ReportRow(
             long position,
@@ -196,5 +263,12 @@ final class CommunityModeration {
             String reason,
             String body,
             Instant createdAt,
-            String status) {}
+            String status,
+            UUID workspace,
+            UUID article,
+            String parentBody,
+            UUID parentAuthor,
+            UUID reviewer,
+            Instant reviewedAt,
+            String reviewNote) {}
 }

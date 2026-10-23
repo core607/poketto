@@ -11,7 +11,7 @@ import java.util.UUID;
 public interface Community {
     SpaceState space(AuthPrincipal actor, String space);
 
-    record SpaceState(boolean following, UUID accountId, boolean mayParticipate) {}
+    record SpaceState(boolean following, UUID accountId, boolean mayParticipate, boolean mayFollow) {}
 
     Thread article(AuthPrincipal actor, String space, UUID articleId, UUID parentId, long before);
 
@@ -49,12 +49,25 @@ public interface Community {
 
     Page<BlockedAccount> blocks(AuthPrincipal actor, long before);
 
-    Page<Report> reports(AuthPrincipal actor, long before);
+    Page<Report> reports(AuthPrincipal actor, ReportStatus status, long before);
 
     /** Counts reports still awaiting a site administrator. */
     long openReports(AuthPrincipal actor);
 
-    void resolveReport(AuthPrincipal actor, long position, boolean remove);
+    void resolveReport(AuthPrincipal actor, long position, ReportDecision decision);
+
+    enum ReportStatus {
+        OPEN,
+        DISMISSED,
+        REMOVED
+    }
+
+    record ReportDecision(Boolean remove, String note) {
+        public ReportDecision {
+            Objects.requireNonNull(remove, "report decision is required");
+            note = text(note, 500, "review note");
+        }
+    }
 
     enum Relation {
         LIKE,
@@ -98,6 +111,8 @@ public interface Community {
             boolean following,
             UUID accountId,
             boolean mayParticipate,
+            boolean mayBookmark,
+            boolean mayFollow,
             boolean mayModerate,
             Page<Comment> comments) {}
 
@@ -157,5 +172,12 @@ public interface Community {
             String reason,
             String commentBody,
             Instant createdAt,
-            String status) {}
+            String status,
+            UUID workspaceId,
+            ArticleCard article,
+            String parentBody,
+            Profile parentAuthor,
+            Profile reviewer,
+            Instant reviewedAt,
+            String reviewNote) {}
 }

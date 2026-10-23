@@ -242,6 +242,7 @@ body:has(.studio) .site-footer {
    specificity, so any component class rule overrides them. */
 :where(
   .studio-main,
+  .site-console,
   .oauth-shell,
   .confirmation-dialog,
   .export-dialog,
@@ -433,7 +434,7 @@ body:has(.studio) .site-footer {
   font-size: var(--text-xs);
   font-weight: 400;
 }
-.studio-main .pagination {
+:is(.studio-main, .site-console) .pagination {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -725,7 +726,7 @@ label.oauth-permission {
   gap: 0.6rem;
 }
 
-:where(.studio-main) .text-button {
+:where(.studio-main, .site-console) .text-button {
   justify-self: start;
   text-align: left;
 }
@@ -785,20 +786,20 @@ details.sub-panel > summary::before {
 details.sub-panel[open] > summary::before {
   content: "− ";
 }
-:where(.studio-main) a:not([class]) {
+:where(.studio-main, .site-console) a:not([class]) {
   color: var(--accent-ink);
   font-weight: 600;
 }
-:where(.studio-main) a:not([class]):hover {
+:where(.studio-main, .site-console) a:not([class]):hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-:where(.studio-main) :is(ul, ol):not([class]) {
+:where(.studio-main, .site-console) :is(ul, ol):not([class]) {
   margin: 0;
   padding-left: 1.3em;
   list-style: disc;
 }
-:where(.studio-main) code {
+:where(.studio-main, .site-console) code {
   font-family: var(--font-mono);
   font-size: 0.88em;
 }
@@ -1128,6 +1129,14 @@ details.sub-panel[open] > summary::before {
 .side-dialog-head p {
   font-size: var(--text-sm);
 }
+.side-dialog-head > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.side-dialog-head > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 .admin-block {
   display: grid;
   gap: 0.75rem;
@@ -1242,7 +1251,7 @@ details.sub-panel[open] > summary::before {
   align-items: center;
   gap: 0.5rem;
 }
-:where(.studio-main) .inline-select select {
+:where(.studio-main, .site-console) .inline-select select {
   width: auto;
 }
 .stat-row {

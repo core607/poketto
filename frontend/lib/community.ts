@@ -9,7 +9,6 @@ export const communityTabs = [
   "notifications",
   "following",
   "blocks",
-  "reports",
 ] as const;
 export type CommunityTab = (typeof communityTabs)[number];
 export type CommunityProfile = { accountId: string; displayName: string };
@@ -30,11 +29,13 @@ export type SpaceParticipation = {
   following: boolean;
   accountId: string | null;
   mayParticipate: boolean;
+  mayFollow: boolean;
 };
 export type ArticleThread = SpaceParticipation & {
   likes: number;
   liked: boolean;
   bookmarked: boolean;
+  mayBookmark: boolean;
   mayModerate: boolean;
   comments: CommunityPage<CommunityComment>;
 };
@@ -92,7 +93,14 @@ export type CommunityReport = {
   reason: string;
   commentBody: string;
   createdAt: string;
-  status: string;
+  status: "OPEN" | "DISMISSED" | "REMOVED";
+  workspaceId: string;
+  article: CommunityArticle | null;
+  parentBody: string | null;
+  parentAuthor: CommunityProfile | null;
+  reviewer: CommunityProfile | null;
+  reviewedAt: string | null;
+  reviewNote: string | null;
 };
 export type BlockedAccount = {
   position: number;
@@ -107,6 +115,8 @@ export function communityMessage(error: unknown): string {
       "已达到操作频率或保存数量限制，请稍后重试，或先整理已有记录。",
     COMMUNITY_REQUEST_CONFLICT:
       "这次提交的内容与原请求不同，请刷新后核对评论。草稿已保留。",
+    COMMUNITY_REPORT_RESOLVED:
+      "这条举报已经处理，请刷新查看结果。你的说明仍保留在表单中。",
     COMMUNITY_REPLY_UNAVAILABLE:
       "这条评论目前无法回复，请刷新后再试。草稿已保留。",
     COMMUNITY_UNAVAILABLE: "这篇文章或评论目前不可用。",

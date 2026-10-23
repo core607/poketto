@@ -1,11 +1,14 @@
 package io.github.core607.poketto.auth;
 
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -15,6 +18,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /** Account groups govern the site; changes deliberately preserve memberships and machine grants. */
 public final class SitePolicyService {
+    private static final String ACCOUNT_SELECT =
+            "select account_id,login_name,display_name,site_group,(select count(*) from auth_memberships m "
+                    + "where m.account_id=auth_accounts.account_id and m.role='OWNER') as owned_spaces,created_at,"
+                    + "suspended_at is not null from auth_accounts ";
     private final JdbcTemplate jdbc;
     private final Accounts accounts;
     private final AuthService auth;
@@ -101,6 +108,42 @@ public final class SitePolicyService {
         return list(actor, query, null, false, AccountOrder.NAME, offset, limit);
     }
 
+    public Optional<AccountSummary> account(AuthPrincipal actor, UUID id) {
+        return withAdministrator(
+                actor,
+                () -> jdbc.query(ACCOUNT_SELECT + "where account_id=?", this::accountRow, id).stream()
+                        .findFirst());
+    }
+
+    public Optional<OwnedSpace> space(AuthPrincipal actor, UUID id) {
+        return withAdministrator(
+                actor,
+                () -> jdbc
+                        .query(
+                                "select w.workspace_id,w.public_slug,w.display_name,w.public_delivery,e.eligible "
+                                        + "from workspaces w join website_owner_eligibility e using(workspace_id) where w.workspace_id=?",
+                                (row, number) -> new OwnedSpace(
+                                        row.getObject(1, UUID.class),
+                                        row.getString(2),
+                                        row.getString(3),
+                                        row.getBoolean(4),
+                                        row.getBoolean(5)),
+                                id)
+                        .stream()
+                        .findFirst());
+    }
+
+    private AccountSummary accountRow(ResultSet row, int number) throws SQLException {
+        return new AccountSummary(
+                row.getObject(1, UUID.class),
+                row.getString(2),
+                row.getString(3),
+                SiteGroup.valueOf(row.getString(4)),
+                row.getLong(5),
+                row.getTimestamp(6).toInstant(),
+                row.getBoolean(7));
+    }
+
     /** Searches accounts by login, display name or email, optionally within one group or only suspended ones. */
     public AuthService.Page<AccountSummary> list(
             AuthPrincipal actor,
@@ -121,23 +164,13 @@ public final class SitePolicyService {
                 + "and (?::text is null or site_group=?::text) "
                 + (suspendedOnly ? "and suspended_at is not null " : "");
         List<AccountSummary> items = jdbc.query(
-                "select account_id,login_name,display_name,site_group,(select count(*) from auth_memberships m "
-                        + "where m.account_id=auth_accounts.account_id and m.role='OWNER') as owned_spaces,created_at,"
-                        + "suspended_at is not null "
-                        + "from auth_accounts "
+                ACCOUNT_SELECT
                         + where
                         + (order == AccountOrder.NEWEST
                                 ? "order by created_at desc,account_id "
                                 : "order by login_name,account_id ")
                         + "limit ? offset ?",
-                (row, number) -> new AccountSummary(
-                        row.getObject(1, UUID.class),
-                        row.getString(2),
-                        row.getString(3),
-                        SiteGroup.valueOf(row.getString(4)),
-                        row.getLong(5),
-                        row.getTimestamp(6).toInstant(),
-                        row.getBoolean(7)),
+                this::accountRow,
                 search,
                 groupName,
                 groupName,

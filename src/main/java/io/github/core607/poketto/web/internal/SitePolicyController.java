@@ -7,6 +7,7 @@ import io.github.core607.poketto.auth.SiteGroup;
 import io.github.core607.poketto.auth.SitePolicyService;
 import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -37,6 +38,12 @@ class SitePolicyController {
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "30") int limit) {
         return policies.list(actor, query, group, suspended, order, offset, limit);
+    }
+
+    @GetMapping("/{accountId}")
+    ResponseEntity<SitePolicyService.AccountSummary> account(
+            @AuthenticationPrincipal AuthPrincipal actor, @PathVariable UUID accountId) {
+        return ResponseEntity.of(policies.account(actor, accountId));
     }
 
     @PutMapping("/{accountId}/group")

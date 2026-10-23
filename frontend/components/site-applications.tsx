@@ -4,6 +4,12 @@ import { api, message } from "../lib/browser-api";
 import { date } from "../lib/format";
 import { siteGroups, type SiteGroup } from "../lib/site-groups";
 import { AdminPagination, useAdminPage } from "./admin-pagination";
+import {
+  navigateSite,
+  pageOffset,
+  siteChoice,
+  useSiteLocation,
+} from "../lib/site-location";
 
 type Status = "OPEN" | "APPROVED" | "DECLINED";
 const statuses: Record<Status, string> = {
@@ -28,7 +34,13 @@ type Queued = {
 
 /** Creator applications; approving grants the creator group through the audited group change. */
 export function SiteApplications() {
-  const [status, setStatus] = useState<Status>("OPEN");
+  const location = useSiteLocation();
+  const status = siteChoice(
+    location,
+    "applicationStatus",
+    Object.keys(statuses) as Status[],
+    "OPEN",
+  );
   return (
     <section className="sub-panel" aria-labelledby="site-applications">
       <div className="panel-heading">
@@ -44,7 +56,9 @@ export function SiteApplications() {
             key={key}
             type="button"
             aria-pressed={status === key}
-            onClick={() => setStatus(key)}
+            onClick={() =>
+              navigateSite({ applicationStatus: key, applicationOffset: 0 })
+            }
           >
             {statuses[key]}
           </button>
@@ -56,8 +70,13 @@ export function SiteApplications() {
 }
 
 function Applications({ status }: { status: Status }) {
+  const location = useSiteLocation();
   const page = useAdminPage<Queued>(
     "/api/auth/site/creator-applications?status=" + status,
+    {
+      offset: pageOffset(location, "applicationOffset"),
+      setOffset: (offset) => navigateSite({ applicationOffset: offset }),
+    },
   );
   return (
     <>
