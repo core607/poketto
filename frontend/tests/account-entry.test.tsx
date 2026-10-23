@@ -468,7 +468,7 @@ test("workspace connection retries reuse the request and never persist the provi
   );
 });
 
-test("a no-space account stays signed in and joins explicitly from account management", async (t) => {
+test("a no-space viewer gets a welcome instead of repository tools and joins with an invitation", async (t) => {
   const f = await fixture(t);
   let joined = false;
   const writes: string[] = [];
@@ -524,7 +524,10 @@ test("a no-space account stays signed in and joins explicitly from account manag
     assert.fail("Unexpected request: " + path);
   };
   await f.act(async () => f.root.render(<f.Admin />));
-  assert.match(f.container.textContent, /你已登录，还没有可访问的空间/);
+  assert.match(f.container.textContent, /欢迎，fixture-member/);
+  assert.match(f.container.textContent, /账号类型是浏览者/);
+  assert.doesNotMatch(f.container.textContent, /GitHub|手动连接已有仓库/);
+  assert.ok(f.container.querySelector('a[href="/account#creator"]'));
   assert.ok(f.button("退出登录"));
   assert.equal(
     [...f.container.querySelectorAll("button")].some(
@@ -537,7 +540,80 @@ test("a no-space account stays signed in and joins explicitly from account manag
   await f.submit();
   assert.deepEqual(writes, ["/api/auth/invitations/accept"]);
   assert.ok(f.button("内容"));
-  assert.doesNotMatch(f.container.textContent, /还没有可访问的空间/);
+  assert.doesNotMatch(f.container.textContent, /欢迎，/);
+  assert.match(f.container.textContent, /已加入空间/);
+});
+
+test("a no-space creator opens the studio's space creation section", async (t) => {
+  const f = await fixture(t);
+  globalThis.fetch = async (input) => {
+    const path = new URL(String(input), "https://site.example").pathname;
+    if (path === "/api/auth/account")
+      return Response.json({
+        account: { ...account.account, group: "CREATOR" },
+      });
+    if (path === "/api/auth/workspaces") return Response.json(page);
+    if (path === "/api/auth/workspaces/creation-policy")
+      return Response.json({ available: true, eligible: true });
+    if (path === "/api/auth/workspaces/github")
+      return Response.json({
+        available: false,
+        eligibleToCreate: true,
+        state: "DISABLED",
+        githubUserId: null,
+        login: null,
+        version: 0,
+      });
+    if (path === "/api/auth/workspaces/github/creations")
+      return Response.json({ items: [], nextOffset: null });
+    assert.fail("Unexpected request: " + path);
+  };
+  await f.act(async () => f.root.render(<f.Admin />));
+  assert.doesNotMatch(f.container.textContent, /欢迎，/);
+  assert.match(f.container.textContent, /你还没有空间。新建一个/);
+  assert.match(f.container.textContent, /手动连接已有仓库/);
+  assert.equal(
+    new URL(f.window.location.href).searchParams.get("tab"),
+    "spaces",
+  );
+});
+
+test("signing in from another page returns there, and unsafe destinations are ignored", async (t) => {
+  const f = await fixture(
+    t,
+    "https://site.example/admin?next=%2Fs%2Fnotes%2Fread%2Fpage%3Fq%3D1",
+  );
+  globalThis.fetch = async (input) => {
+    const path = new URL(String(input), "https://site.example").pathname;
+    assert.equal(path, "/api/auth/account");
+    return Response.json(account);
+  };
+  await f.act(async () => f.root.render(<f.Admin />));
+  assert.equal(f.window.location.pathname, "/s/notes/read/page");
+  assert.equal(f.window.location.search, "?q=1");
+  const { returnPath, signInHref } = await import("../lib/return-path");
+  for (const unsafe of [
+    "//evil.example/x",
+    "https://evil.example/",
+    "/\\evil.example",
+    "/api/auth/logout",
+    "/mcp",
+    "/admin?tab=site",
+    "/s/a/../../api",
+    "/s/%2e%2e/api",
+    "/s/a#fragment",
+    "relative",
+  ])
+    assert.equal(returnPath(unsafe), null, unsafe);
+  assert.equal(
+    returnPath("/community?tab=bookmarks"),
+    "/community?tab=bookmarks",
+  );
+  assert.equal(signInHref("/"), "/admin");
+  assert.equal(
+    signInHref("/s/notes"),
+    "/admin?next=" + encodeURIComponent("/s/notes"),
+  );
 });
 
 test("an unavailable workspace does not turn a verified account into a login form", async (t) => {

@@ -29,72 +29,129 @@ export function SiteAccountSpaces({ accountId }: { accountId: string }) {
     `/api/auth/site/accounts/${accountId}/workspaces`,
   );
   const [selected, setSelected] = useState<Space | null>(null);
+  if (selected)
+    return (
+      <SiteReview
+        key={selected.workspaceId}
+        space={selected}
+        onClose={() => setSelected(null)}
+      />
+    );
   return (
-    <section aria-label="拥有的空间">
-      <h4>拥有的空间</h4>
-      {spaces.error && <p role="alert">{spaces.error}</p>}
-      {!spaces.loading &&
-        !spaces.error &&
-        spaces.items.map((space) => (
-          <p key={space.workspaceId}>
-            {space.displayName} ·{" "}
-            {!space.eligible
-              ? "展示受限"
-              : space.enabled
-                ? "网站已开启"
-                : "网站已关闭"}{" "}
-            <button onClick={() => setSelected(space)}>
-              审阅 {space.displayName}
-            </button>
-          </p>
-        ))}
-      <AdminPagination label="账号拥有的空间" page={spaces} />
-      {selected && (
-        <SiteReview
-          key={selected.workspaceId}
-          space={selected}
-          onClose={() => setSelected(null)}
-        />
+    <section aria-label="拥有的空间" className="admin-block">
+      <h3>拥有的空间</h3>
+      {spaces.error && (
+        <p role="alert" className="notice danger">
+          {spaces.error}
+        </p>
       )}
+      {!spaces.loading && !spaces.error && spaces.items.length === 0 && (
+        <p className="muted">这个账号没有拥有的空间。</p>
+      )}
+      <ul className="admin-list">
+        {!spaces.loading &&
+          !spaces.error &&
+          spaces.items.map((space) => (
+            <li key={space.workspaceId}>
+              <span className="admin-list-main">
+                <strong>{space.displayName}</strong>
+                <SpaceState space={space} />
+              </span>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => setSelected(space)}
+              >
+                审阅 {space.displayName}
+              </button>
+            </li>
+          ))}
+      </ul>
+      <AdminPagination label="账号拥有的空间" page={spaces} />
     </section>
   );
 }
 
-function SiteReview({ space, onClose }: { space: Space; onClose: () => void }) {
+/** A space's website state as moderation sees it. */
+export function SpaceState({
+  space,
+}: {
+  space: { enabled: boolean; eligible: boolean };
+}) {
+  const [label, tone] = !space.eligible
+    ? ["展示受限", "warn"]
+    : space.enabled
+      ? ["网站已开启", "ok"]
+      : ["网站已关闭", "off"];
+  return <span className={`state-chip ${tone}`}>{label}</span>;
+}
+
+export function SiteReview({
+  space,
+  onClose,
+}: {
+  space: Pick<Space, "workspaceId" | "displayName">;
+  onClose: () => void;
+}) {
   const base = `/api/auth/site/workspaces/${space.workspaceId}/review`;
   const articles = useAdminPage<Article>(base);
   const [selected, setSelected] = useState<Article | null>(null);
   return (
     <section
-      className="sub-panel"
+      className="admin-block"
       aria-label={`${space.displayName} 的公开内容审阅`}
     >
-      <h4>审阅 {space.displayName}</h4>
-      <p>
-        这里只显示当前符合仓库发布规则的内容及其引用媒体。网站关闭或展示受限时仍可审阅，私有文件和历史版本不在此范围内。
-      </p>
-      <button onClick={onClose}>关闭审阅</button>
-      {articles.error && <p role="alert">{articles.error}</p>}
-      {!articles.loading && !articles.error && articles.items.length === 0 && (
-        <p>当前没有符合发布规则的内容。</p>
-      )}
-      {!articles.loading &&
-        !articles.error &&
-        articles.items.map((article) => (
-          <p key={article.route}>
-            <button onClick={() => setSelected(article)}>
-              {article.title}
-            </button>{" "}
-            <small>{article.path}</small>
-          </p>
-        ))}
-      <AdminPagination label="审阅文章" page={articles} />
-      {selected && (
+      <div className="admin-block-head">
+        <button
+          type="button"
+          className="text-button hover-underline"
+          onClick={selected ? () => setSelected(null) : onClose}
+        >
+          ← {selected ? "返回文章列表" : "关闭审阅"}
+        </button>
+        <h3>审阅 {space.displayName}</h3>
+      </div>
+      {selected ? (
         <ReviewDocument
           key={selected.route}
           base={base}
           route={selected.route}
         />
+      ) : (
+        <>
+          <p className="muted">
+            这里只显示当前符合仓库发布规则的内容及其引用媒体。网站关闭或展示受限时仍可审阅，私有文件和历史版本不在此范围内。
+          </p>
+          {articles.error && (
+            <p role="alert" className="notice danger">
+              {articles.error}
+            </p>
+          )}
+          {!articles.loading &&
+            !articles.error &&
+            articles.items.length === 0 && (
+              <p className="muted">当前没有符合发布规则的内容。</p>
+            )}
+          <ul className="admin-list">
+            {!articles.loading &&
+              !articles.error &&
+              articles.items.map((article) => (
+                <li key={article.route}>
+                  <span className="admin-list-main">
+                    <button
+                      type="button"
+                      className="text-button hover-underline"
+                      onClick={() => setSelected(article)}
+                    >
+                      {article.title}
+                    </button>
+                    <small className="muted">{article.path}</small>
+                  </span>
+                </li>
+              ))}
+          </ul>
+          <AdminPagination label="审阅文章" page={articles} />
+        </>
       )}
     </section>
   );
@@ -116,11 +173,22 @@ function ReviewDocument({ base, route }: { base: string; route: string }) {
       active = false;
     };
   }, [base, route]);
-  if (error) return <p role="alert">{error}</p>;
-  if (!document) return <p role="status">正在读取审阅内容…</p>;
+  if (error)
+    return (
+      <p role="alert" className="notice danger">
+        {error}
+      </p>
+    );
+  if (!document)
+    return (
+      <p role="status" className="muted">
+        正在读取审阅内容…
+      </p>
+    );
   return (
-    <article className="sub-panel">
-      <h3>{document.title}</h3>
+    <article className="review-document">
+      <h4>{document.title}</h4>
+      <p className="muted">{document.path}</p>
       <Markdown
         source={document.media.body}
         images={document.media.images}

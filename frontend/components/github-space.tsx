@@ -205,6 +205,24 @@ export function GitHubSpace({
     connection?.available &&
     connected &&
     (connection.eligibleToCreate || result?.workspaceCreated);
+  // An account that may not create and has never used GitHub here has nothing to manage.
+  const dormant =
+    connection &&
+    !connection.eligibleToCreate &&
+    connection.version === 0 &&
+    !draft &&
+    history.items.length === 0;
+  if (dormant)
+    return (
+      <section className="sub-panel" aria-label="GitHub 个人空间">
+        <h2>新建一个空间</h2>
+        <p className="muted">
+          创建自己的空间需要创作者资格。{" "}
+          <a href="/account#creator">了解如何成为创作者</a>
+        </p>
+        {notice && <p role="status">{notice}</p>}
+      </section>
+    );
 
   return (
     <section className="sub-panel" aria-label="GitHub 个人空间">

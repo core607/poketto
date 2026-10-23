@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, message } from "../lib/browser-api";
 import { Login } from "./login";
-import type { AccountProfile } from "./account-panel";
+import type { AccountProfile } from "../lib/types";
 import type { SpaceSummary } from "./workspace-dashboard";
 import { permissionLabels } from "../lib/permissions";
 

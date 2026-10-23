@@ -161,14 +161,16 @@ offline restart public reads stay closed until remote verification succeeds.
 ## Content and images
 
 The management page lists the signed-in account's spaces; select one before editing.
-The studio's **Account** section connects an existing private GitHub or CNB
-repository, retries an interrupted creation and accepts invitations. Provider tokens
+The studio's **Create or join a space** section accepts invitations; creators and
+administrators also connect an existing private GitHub or CNB repository and retry an
+interrupted creation there. An
+account that has no space and cannot create one sees a welcome page instead. Provider tokens
 need metadata read and Git write access. Set `POKETTO_REPOSITORY_CREDENTIAL_KEY` to a
 Base64-encoded 32-byte secret before enabling repository connection. New spaces start
 with the website disabled.
 
 With the GitHub App configured ([configuration guide](github-app.md)), creators and
-administrators authorize their personal GitHub account in account settings, then
+administrators authorize their personal GitHub account in that section, then
 install the App through **Manage GitHub repository access**; a selected-repository
 installation needs at least one existing repository, such as an empty private one.
 Confirm the account and an unused name to create the space's private repository. If
@@ -177,7 +179,7 @@ same request. Reconcile an uncertain creation in the request history before star
 another; the browser never resends an uncertain remote write.
 
 To restore a GitHub App connection, the owner who supplied the original authorization
-restores it in account settings, selects the repository through **Manage GitHub
+restores it in that section, selects the repository through **Manage GitHub
 repository access**, then uses **Verify and restore connection** in the space's
 **Storage** section, giving the current name if it was renamed. This works after a
 group downgrade too. A transferred repository or a new one with the old name cannot

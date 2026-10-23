@@ -1,8 +1,13 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, message } from "../lib/browser-api";
-import type { Identity } from "../lib/types";
-import { AccountPanel, type AccountProfile } from "./account-panel";
+import {
+  canCreateSpaces,
+  siteGroupAbilities,
+  siteGroups,
+} from "../lib/site-groups";
+import type { AccountProfile, Identity } from "../lib/types";
+import { JoinSpace, SpacesPanel } from "./spaces-panel";
 import { useAdminPage } from "./admin-pagination";
 import { useConfirmation } from "./confirmation";
 import { WorkspaceProvider } from "./workspace-context";
@@ -27,7 +32,7 @@ export type SpaceSummary = {
 };
 const tabs = {
   content: "内容",
-  account: "账号",
+  spaces: "新建或加入空间",
   members: "成员与邀请",
   connections: "AI 助手",
   repository: "存储位置",
@@ -39,7 +44,7 @@ const tabs = {
 const descriptions: Record<keyof typeof tabs, string> = {
   content:
     "写笔记、整理分类和图片。保存会写进这个空间的仓库，发布后出现在网站上。",
-  account: "你的登录方式和昵称，以及新建或加入空间。",
+  spaces: "新建自己的空间，或者用邀请码加入别人的空间。",
   members: "邀请别人一起整理这个空间，并决定每个人能看、能改哪些内容。",
   connections: "让 Claude、ChatGPT 等 AI 助手读写这个空间，和你一起整理。",
   repository:
@@ -53,7 +58,7 @@ const descriptions: Record<keyof typeof tabs, string> = {
 type Tab = keyof typeof tabs;
 const icons: Record<Tab, IconName> = {
   content: "file",
-  account: "user",
+  spaces: "plus",
   members: "users",
   connections: "link",
   repository: "branch",
@@ -115,9 +120,9 @@ export function WorkspaceDashboard({
   const confirm = useConfirmation();
   const page = useAdminPage<SpaceSummary>("/api/auth/workspaces");
   const [identity, setIdentity] = useState<Identity | null>(null);
-  const [displayName, setDisplayName] = useState(account.account.displayName);
+  const [started, setStarted] = useState(false);
   const [selected, setSelected] = useState("");
-  const [tab, setTab] = useState<Tab>("account");
+  const [tab, setTab] = useState<Tab>("spaces");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [receipt, setReceipt] = useState("");
@@ -213,10 +218,10 @@ export function WorkspaceDashboard({
     const query = new URLSearchParams(window.location.search);
     const workspace =
       query.get("workspace") ?? page.items[0]?.workspaceId ?? "";
-    const requested = query.get("tab") ?? (workspace ? "content" : "account");
+    const requested = query.get("tab") ?? (workspace ? "content" : "spaces");
     void select(
       workspace,
-      requested in tabs ? (requested as Tab) : "account",
+      requested in tabs ? (requested as Tab) : "spaces",
       true,
       true,
     );
@@ -260,10 +265,10 @@ export function WorkspaceDashboard({
         return;
       }
       const query = new URLSearchParams(window.location.search);
-      const requested = query.get("tab") ?? "account";
+      const requested = query.get("tab") ?? "spaces";
       await select(
         query.get("workspace") ?? "",
-        requested in tabs ? (requested as Tab) : "account",
+        requested in tabs ? (requested as Tab) : "spaces",
         true,
         true,
       );
@@ -279,16 +284,16 @@ export function WorkspaceDashboard({
     tab === "site" && administrator
       ? "site"
       : !identity
-        ? "account"
+        ? "spaces"
         : identity.role !== "OWNER" &&
-            !["content", "account", "connections"].includes(tab) &&
+            !["content", "spaces", "connections"].includes(tab) &&
             !(
               tab === "corrections" && identity.capabilities.includes("PUBLISH")
             )
           ? "content"
           : tab;
   const available = (key: Tab) =>
-    key === "account" ||
+    key === "spaces" ||
     (key === "site" && administrator) ||
     (identity !== null &&
       key !== "site" &&
@@ -296,6 +301,12 @@ export function WorkspaceDashboard({
         key === "connections" ||
         (key === "corrections" && identity.capabilities.includes("PUBLISH")) ||
         identity.role === "OWNER"));
+  async function open(key: Tab) {
+    if (!(await discard())) return;
+    setDirty(false);
+    setTab(key);
+    writeUrl(selected, key, false, true);
+  }
   const navItem = (key: Tab) =>
     available(key) && (
       <button
@@ -303,12 +314,7 @@ export function WorkspaceDashboard({
         type="button"
         className="studio-nav-item"
         aria-current={activeTab === key ? "page" : undefined}
-        onClick={async () => {
-          if (!(await discard())) return;
-          setDirty(false);
-          setTab(key);
-          writeUrl(selected, key, false, true);
-        }}
+        onClick={() => void open(key)}
       >
         <Icon name={icons[key]} />
         {tabs[key]}
@@ -320,6 +326,30 @@ export function WorkspaceDashboard({
     (identity
       ? { displayName: identity.displayName ?? selected, role: identity.role }
       : undefined);
+  async function joined(workspaceId: string, created = false) {
+    setReceipt(
+      created
+        ? "空间已创建，公开网站默认关闭。"
+        : "已加入空间。你现在可以在这个空间中查看和整理获准访问的内容。",
+    );
+    setStarted(created);
+    page.reload();
+    await select(workspaceId, "content");
+  }
+  if (
+    !page.loading &&
+    !page.error &&
+    page.total === 0 &&
+    !selected &&
+    !canCreateSpaces(account.account.group)
+  )
+    return (
+      <Welcome
+        account={account}
+        onLogout={onLogout}
+        onJoined={(workspaceId) => joined(workspaceId)}
+      />
+    );
   const content = (
     <>
       {activeTab === "content" && identity && (
@@ -368,21 +398,14 @@ export function WorkspaceDashboard({
             workspaceId={identity.workspaceId}
           />
         )}
-      {activeTab === "account" && (
-        <AccountPanel
+      {activeTab === "spaces" && (
+        <SpacesPanel
           profile={account}
-          onDisplayName={setDisplayName}
           hasWorkspace={page.total > 0}
           workspaceUnavailable={!!page.error}
           onBeforeJoin={discard}
           onJoined={async (workspaceId, created) => {
-            setReceipt(
-              created
-                ? "空间已创建，公开网站默认关闭。"
-                : "已加入空间。你现在可以在这个空间中查看和整理获准访问的内容。",
-            );
-            page.reload();
-            await select(workspaceId, "content");
+            await joined(workspaceId, created);
           }}
         />
       )}
@@ -405,8 +428,8 @@ export function WorkspaceDashboard({
           onManage={async () => {
             if (!(await discard())) return;
             setDirty(false);
-            setTab("account");
-            writeUrl(selected, "account", false, true);
+            setTab("spaces");
+            writeUrl(selected, "spaces", false, true);
           }}
         />
         <nav className="studio-nav" aria-label="管理功能">
@@ -416,15 +439,24 @@ export function WorkspaceDashboard({
               {spaceSections.map(navItem)}
             </>
           )}
-          <p className="studio-nav-label">账号</p>
-          {navItem("account")}
+          <p className="studio-nav-label">空间</p>
+          {navItem("spaces")}
+          {administrator && <p className="studio-nav-label">站点</p>}
           {navItem("site")}
         </nav>
         <div className="studio-side-foot">
-          <span className="studio-user">
-            <Avatar name={displayName} />
-            <span>{displayName}</span>
-          </span>
+          <a
+            className="studio-user"
+            href="/account"
+            title="账号与安全"
+            onClick={async (event) => {
+              event.preventDefault();
+              if (await discard()) window.location.assign("/account");
+            }}
+          >
+            <Avatar name={account.account.displayName} />
+            <span>{account.account.displayName}</span>
+          </a>
           <button
             type="button"
             className="text-button hover-underline"
@@ -445,6 +477,12 @@ export function WorkspaceDashboard({
           <p className="notice success" role="status">
             {receipt}
           </p>
+        )}
+        {started && identity?.role === "OWNER" && (
+          <NextSteps
+            onOpen={(key) => void open(key)}
+            onDismiss={() => setStarted(false)}
+          />
         )}
         {error && (
           <p className="notice danger" role="alert">
@@ -473,6 +511,126 @@ export function WorkspaceDashboard({
           content
         )}
       </section>
+    </div>
+  );
+}
+
+/** First things to do in a space the account just created; each opens its studio section. */
+function NextSteps({
+  onOpen,
+  onDismiss,
+}: {
+  onOpen: (key: Tab) => void;
+  onDismiss: () => void;
+}) {
+  const steps: { key: Tab; label: string; hint: string }[] = [
+    {
+      key: "content",
+      label: "写第一篇笔记",
+      hint: "新建文件，保存后就会记进空间。",
+    },
+    {
+      key: "publication",
+      label: "打开公开网站",
+      hint: "想让别人看到时，再在这里开启网站。",
+    },
+    {
+      key: "connections",
+      label: "连接 AI 助手",
+      hint: "让 Claude 等助手帮你整理和查找。",
+    },
+    { key: "members", label: "邀请成员", hint: "和朋友一起整理这个空间。" },
+  ];
+  return (
+    <section className="sub-panel next-steps" aria-labelledby="next-steps">
+      <div className="panel-heading">
+        <h2 id="next-steps">接下来可以做什么</h2>
+        <button type="button" className="text-button" onClick={onDismiss}>
+          知道了
+        </button>
+      </div>
+      <ol>
+        {steps.map((step) => (
+          <li key={step.key}>
+            <button
+              type="button"
+              className="text-button hover-underline"
+              onClick={() => onOpen(step.key)}
+            >
+              <Icon name={icons[step.key]} />
+              {step.label}
+            </button>
+            <span className="muted">{step.hint}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/**
+ * The studio's entrance for an account with no space that may not create one: it explains what
+ * the account can do instead of showing repository tools it cannot use.
+ */
+function Welcome({
+  account,
+  onLogout,
+  onJoined,
+}: {
+  account: AccountProfile;
+  onLogout: () => Promise<void>;
+  onJoined: (workspaceId: string) => Promise<void>;
+}) {
+  const { displayName, group } = account.account;
+  return (
+    <div className="page page-narrow welcome">
+      <header className="page-head personal-head">
+        <Avatar name={displayName} large />
+        <div>
+          <h1>欢迎，{displayName}</h1>
+          <p>
+            你的账号类型是
+            <span className="group-badge">{siteGroups[group]}</span>：
+            {siteGroupAbilities[group]}
+          </p>
+        </div>
+      </header>
+      <nav className="welcome-links" aria-label="从这里开始">
+        <a href="/">
+          <Icon name="compass" />
+          <strong>发现</strong>
+          <span>看看大家公开的空间和文章。</span>
+        </a>
+        <a href="/community">
+          <Icon name="bell" />
+          <strong>我的社区</strong>
+          <span>关注动态、收藏和通知。</span>
+        </a>
+        <a href="/account">
+          <Icon name="settings" />
+          <strong>账号与安全</strong>
+          <span>昵称、邮箱、Google 登录和密码。</span>
+        </a>
+      </nav>
+      <JoinSpace compact onBeforeJoin={async () => true} onJoined={onJoined} />
+      <section className="sub-panel" aria-labelledby="become-creator">
+        <div className="panel-heading">
+          <h2 id="become-creator">想拥有自己的空间？</h2>
+        </div>
+        <p className="muted">
+          新建空间并公开成网站需要创作者资格。
+          <a href="/account#creator">查看如何成为创作者</a>
+        </p>
+      </section>
+      <p>
+        <button
+          type="button"
+          className="text-button hover-underline"
+          onClick={() => void onLogout()}
+        >
+          退出登录
+        </button>
+      </p>
     </div>
   );
 }

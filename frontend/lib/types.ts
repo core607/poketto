@@ -139,3 +139,14 @@ export type Identity = {
   role: "OWNER" | "MEMBER";
   capabilities: string[];
 };
+
+/** The signed-in account as `GET /api/auth/account` returns it. */
+export type AccountProfile = {
+  account: {
+    accountId: string;
+    loginName: string;
+    displayName: string;
+    siteAdministrator: boolean;
+    group: import("./site-groups").SiteGroup;
+  };
+};
