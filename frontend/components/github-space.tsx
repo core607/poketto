@@ -218,7 +218,7 @@ export function GitHubSpace({
         <h2>新建一个空间</h2>
         <p className="muted">
           创建自己的空间需要创作者资格。{" "}
-          <a href="/account#creator">了解如何成为创作者</a>
+          <a href="/account#creator">申请成为创作者</a>
         </p>
         {notice && <p role="status">{notice}</p>}
       </section>

@@ -100,10 +100,16 @@ public final class GoogleAccounts {
     }
 
     private AuthPrincipal lockIdentity(UUID account) {
-        return jdbc.queryForObject(
-                "select credential_version from auth_accounts where account_id=? for update",
-                (row, number) -> new AuthPrincipal(AuthPrincipal.Kind.ACCOUNT, account, account, row.getLong(1)),
+        AuthPrincipal principal = jdbc.queryForObject(
+                "select credential_version,suspended_at is not null from auth_accounts where account_id=? for update",
+                (row, number) -> row.getBoolean(2)
+                        ? null
+                        : new AuthPrincipal(AuthPrincipal.Kind.ACCOUNT, account, account, row.getLong(1)),
                 account);
+        if (principal == null) {
+            throw new AuthException(AuthException.Code.ACCOUNT_SUSPENDED);
+        }
+        return principal;
     }
 
     private void insert(Identity identity, UUID account) {

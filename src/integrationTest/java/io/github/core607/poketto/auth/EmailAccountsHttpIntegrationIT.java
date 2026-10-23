@@ -231,6 +231,53 @@ class EmailAccountsHttpIntegrationIT {
         return json.readTree(body);
     }
 
+    @Test
+    void suspensionEndsTheSessionNamesTheRefusalAndApplicationsReachTheQueue() throws Exception {
+        auth.initializeOwner("site-operator", PASSWORD);
+        MockHttpSession operator = login("site-operator", PASSWORD);
+        AuthPrincipal reader = AccountFixtures.create(auth, "plain-reader", PASSWORD);
+        MockHttpSession readerSession = login("plain-reader", PASSWORD);
+
+        mvc.perform(csrf(readerSession, post("/api/auth/creator-application"))
+                        .contentType("application/json")
+                        .content("{\"statement\":\"I keep a reading diary\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("OPEN"));
+        mvc.perform(csrf(readerSession, post("/api/auth/creator-application"))
+                        .contentType("application/json")
+                        .content("{\"statement\":\"Again\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("APPLICATION_OPEN"));
+        mvc.perform(get("/api/auth/site/creator-applications").session(readerSession))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/auth/site/creator-applications").session(operator))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].displayName").value("plain-reader"))
+                .andExpect(jsonPath("$.items[0].application.statement").value("I keep a reading diary"));
+        mvc.perform(get("/api/auth/site/overview").session(operator))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.openApplications").value(1))
+                .andExpect(jsonPath("$.accounts.VIEWER").value(1));
+
+        mvc.perform(csrf(operator, put("/api/auth/site/accounts/" + reader.accountId() + "/suspension"))
+                        .contentType("application/json")
+                        .content("{\"suspended\":true,\"reason\":\"Spam\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.suspended").value(true));
+        mvc.perform(get("/api/auth/account").session(readerSession)).andExpect(status().isUnauthorized());
+        MockHttpSession retry = new MockHttpSession();
+        mvc.perform(csrf(retry, post("/api/auth/login"))
+                        .param("username", "plain-reader")
+                        .param("password", PASSWORD))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ACCOUNT_SUSPENDED"));
+        mvc.perform(csrf(new MockHttpSession(), post("/api/auth/login"))
+                        .param("username", "plain-reader")
+                        .param("password", "wrong-password-for-suspended"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").doesNotExist());
+    }
+
     private MockHttpSession login(String login, String password) throws Exception {
         MockHttpSession session = new MockHttpSession();
         mvc.perform(csrf(session, post("/api/auth/login"))

@@ -41,7 +41,7 @@ async function fixture(t: TestContext, url: string) {
       else Reflect.deleteProperty(globalThis, name);
     }
   });
-  return { act, root, container };
+  return { window, act, root, container };
 }
 
 const profile = (group: string) => ({
@@ -110,6 +110,12 @@ test("the account page states what the group allows and keeps security settings"
       });
     if (path === "/api/auth/identity/policy")
       return Response.json({ emailAvailable: true, googleAvailable: false });
+    if (path === "/api/auth/creator-application")
+      return Response.json({
+        group: "VIEWER",
+        latest: null,
+        availableAt: null,
+      });
     assert.fail("Unexpected request " + path);
   };
   await f.act(async () => f.root.render(<AccountHome />));
@@ -118,4 +124,62 @@ test("the account page states what the group allows and keeps security settings"
   assert.match(f.container.textContent, /登录与安全/);
   assert.ok(f.container.querySelector("#creator"));
   assert.equal(f.container.querySelector('a[href="/admin"]'), null);
+});
+
+test("a declined applicant sees the note and waits; an open application blocks another", async (t) => {
+  const f = await fixture(t, "https://site.example/account");
+  const { CreatorApplication } =
+    await import("../components/creator-application");
+  const later = new Date(Date.now() + 3 * 86400000).toISOString();
+  const declined = {
+    id: "a1",
+    statement: "Notes",
+    status: "DECLINED",
+    createdAt: "2026-10-01T00:00:00Z",
+    decidedAt: "2026-10-02T00:00:00Z",
+    decisionNote: "Please add a sample",
+  };
+  const posts: unknown[] = [];
+  let standing: unknown = {
+    group: "VIEWER",
+    latest: declined,
+    availableAt: later,
+  };
+  globalThis.fetch = async (input, options) => {
+    const path = String(input);
+    if (path === "/api/auth/csrf")
+      return Response.json({ headerName: "X-CSRF", token: "fixture" });
+    assert.equal(path, "/api/auth/creator-application");
+    if (options?.method === "POST") {
+      posts.push(JSON.parse(String(options.body)));
+      return Response.json({
+        ...declined,
+        id: "a2",
+        status: "OPEN",
+        decidedAt: null,
+        decisionNote: null,
+        createdAt: "2026-10-23T00:00:00Z",
+      });
+    }
+    return Response.json(standing);
+  };
+  await f.act(async () => f.root.render(<CreatorApplication />));
+  assert.match(f.container.textContent, /未通过：Please add a sample/);
+  assert.match(f.container.textContent, /之后可以再次申请/);
+  assert.equal(f.container.querySelector("textarea"), null);
+
+  standing = { group: "VIEWER", latest: declined, availableAt: null };
+  await f.act(async () => f.root.render(<CreatorApplication key="again" />));
+  const field = f.container.querySelector("textarea")!;
+  field.value = "Sample published";
+  await f.act(async () => {
+    f.container
+      .querySelector("form")!
+      .dispatchEvent(
+        new f.window.Event("submit", { bubbles: true, cancelable: true }),
+      );
+  });
+  assert.deepEqual(posts, [{ statement: "Sample published" }]);
+  assert.match(f.container.textContent, /正在等待站点管理员审核/);
+  assert.equal(f.container.querySelector("textarea"), null);
 });

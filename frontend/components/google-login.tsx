@@ -41,7 +41,9 @@ export function GoogleReturnNotice({ global = false }: { global?: boolean }) {
           ? "该 Google 邮箱已对应一个账号。请使用原有方式登录，再到“登录与安全”绑定 Google。"
           : reason === "google_cancelled"
             ? "Google 授权已取消，你可以重新尝试。"
-            : "Google 登录或绑定未能完成，请重新发起授权。",
+            : reason === "google_account_suspended"
+              ? "这个账号已被站点管理员停用，暂时不能登录。"
+              : "Google 登录或绑定未能完成，请重新发起授权。",
     );
     url.searchParams.delete("loginError");
     window.history.replaceState(

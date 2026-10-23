@@ -90,6 +90,12 @@ export async function api<T>(
         "该 Google 身份已绑定其他账号，或当前账号已绑定另一 Google 身份。请先核对登录方式。",
       DELIVERY_UNAVAILABLE: "验证码暂时无法发送，请稍后重试。",
       LAST_LOGIN_METHOD: "至少需要保留一种登录方式。请先绑定其他登录方式。",
+      ACCOUNT_SUSPENDED:
+        "这个账号已被站点管理员停用，暂时不能登录。如有疑问，请联系站点管理员。",
+      PROTECTED_ACCOUNT: "不能停用自己或站点管理员；请先调整对方的策略组。",
+      APPLICATION_OPEN: "你已有一份待审核的申请，请等待管理员处理。",
+      APPLICATION_COOLDOWN: "上次申请未通过，冷静期结束后才能再次申请。",
+      ALREADY_CREATOR: "你已经具备创作者资格，无需申请。",
     };
     if (code && identityErrors[code])
       throw new ApiError(response.status, identityErrors[code], code);

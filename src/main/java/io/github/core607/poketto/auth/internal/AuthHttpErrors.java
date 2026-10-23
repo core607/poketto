@@ -15,10 +15,16 @@ final class AuthHttpErrors {
     }
 
     static void write(HttpServletResponse response, int status) throws IOException {
+        write(response, status, null);
+    }
+
+    /** The code is a fixed enum name, never caller input, so it needs no escaping. */
+    static void write(HttpServletResponse response, int status, String code) throws IOException {
         response.setStatus(status);
         response.setContentType("application/problem+json");
         response.setHeader("Cache-Control", "no-store");
         response.getWriter()
-                .write("{\"type\":\"about:blank\",\"title\":\"Request rejected\",\"status\":" + status + "}");
+                .write("{\"type\":\"about:blank\",\"title\":\"Request rejected\",\"status\":" + status
+                        + (code == null ? "" : ",\"code\":\"" + code + "\"") + "}");
     }
 }

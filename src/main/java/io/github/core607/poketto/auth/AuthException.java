@@ -12,7 +12,12 @@ public final class AuthException extends RuntimeException {
         LAST_ADMINISTRATOR,
         EMAIL_IN_USE,
         IDENTITY_IN_USE,
-        LAST_LOGIN_METHOD
+        LAST_LOGIN_METHOD,
+        ACCOUNT_SUSPENDED,
+        PROTECTED_ACCOUNT,
+        APPLICATION_OPEN,
+        APPLICATION_COOLDOWN,
+        ALREADY_CREATOR
     }
 
     private final Code code;

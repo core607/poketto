@@ -3,6 +3,8 @@ package io.github.core607.poketto.auth.internal;
 import io.github.core607.poketto.auth.AccountSessionLifetime;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthService;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
@@ -17,11 +19,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
@@ -88,6 +92,9 @@ class BrowserSecurityConfiguration {
                     return new UsernamePasswordAuthenticationToken(
                             principal, null, List.of(new SimpleGrantedAuthority("ROLE_ACCOUNT")));
                 } catch (AuthException exception) {
+                    if (exception.code() == AuthException.Code.ACCOUNT_SUSPENDED) {
+                        throw new DisabledException("Account suspended");
+                    }
                     throw new BadCredentialsException("Invalid credentials");
                 }
             }
@@ -192,7 +199,7 @@ class BrowserSecurityConfiguration {
                             accountSessions.apply(request);
                             response.setStatus(204);
                         })
-                        .failureHandler((request, response, exception) -> AuthHttpErrors.write(response, 401)))
+                        .failureHandler((request, response, exception) -> loginFailure(response, exception)))
                 .logout(logout -> logout.logoutUrl("/api/auth/logout")
                         .invalidateHttpSession(true)
                         .clearAuthentication(true)
@@ -216,6 +223,16 @@ class BrowserSecurityConfiguration {
                                 Duration.ofSeconds(windowSeconds)),
                         UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    /** Only a correct password reaches the suspension check, so naming it reveals nothing new. */
+    private static void loginFailure(HttpServletResponse response, AuthenticationException exception)
+            throws IOException {
+        if (exception instanceof DisabledException) {
+            AuthHttpErrors.write(response, 403, AuthException.Code.ACCOUNT_SUSPENDED.name());
+        } else {
+            AuthHttpErrors.write(response, 401);
+        }
     }
 
     private static Set<String> origins(String configured) {

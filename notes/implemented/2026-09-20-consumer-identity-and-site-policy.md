@@ -21,21 +21,15 @@ and display name; it does not require another login name. Existing account IDs,
 passwords, login names, memberships and content remain intact. Existing accounts
 can verify and bind an email after logging in.
 
-Registration invitations, the mechanism this replaces, gated account creation
-behind an issuer-owned credential: 256 random bits stored only as a digest,
-single-use, valid for seven days and revocable by its issuer. Site administrators
-issued them, and ordinary accounts could too when the operator enabled it. They
-let an operator admit trusted people before verification and send limits existed,
-and they kept account creation apart from workspace joining. They stopped fitting
-once ordinary readers were meant to join freely: what needed gating was space
-creation and website eligibility, which the groups below now control, while email
-proofs, send limits and the VIEWER default bound anonymous abuse. Migration `V10`
-drops the invitation table, and the former registration routes answer 404. An
-invitation gate may return only if open registration must close again, for
-example under abuse the send limits cannot bound. It must stay a credential
-separate from workspace invitations: reusing a workspace invitation to create an
-account would grant unrelated access and let any workspace owner bypass the site's
-registration policy, so a workspace invitation never creates an account.
+Registration invitations, which this replaced, were single-use, seven-day,
+issuer-revocable credentials stored as digests; they admitted trusted people before
+verification and send limits existed. Once readers were meant to join freely, the
+gate belonged on space creation and website eligibility, which the groups below
+control, while email proofs, send limits and the VIEWER default bound anonymous
+abuse. Migration `V10` drops the table and the former routes answer 404. An
+invitation gate may return only if open registration must close again. It must stay
+separate from workspace invitations: one that created accounts would grant unrelated
+access and let any workspace owner bypass the site's registration policy.
 
 `GET /api/auth/account` returns the signed-in account's identity and requires no
 workspace membership.
@@ -153,8 +147,30 @@ Role revocation or snapshot replacement invalidates subsequent reads.
 Account administration lists the account's owned spaces and their desired and
 eligible website states. Workspace owners can read the current ineligible owners'
 latest group-change reasons; administrators without membership do not gain that
-owner endpoint. The author can continue correcting content and request a group
-change from the operator.
+owner endpoint. The author can continue correcting content and ask for creator
+eligibility again through an application.
+
+## Creator applications and suspension
+
+A viewer or community member may hold one open creator application. Approval by a
+site administrator performs the ordinary audited change to CREATOR, so applications
+add a request queue, not a second promotion path; an applicant who has meanwhile
+become creator or administrator keeps that group. A decline carries a note for the
+applicant and a seven-day cooldown, which bounds queue flooding without a rate table.
+
+Suspension is separate from groups. A group decides what an account may do on the
+site; suspension decides whether it may act at all, for abuse a downgrade does not
+stop. Suspending bumps the credential version and revokes machine credentials as
+password recovery does, refuses password and Google login with `ACCOUNT_SUSPENDED`
+only after the password or provider check succeeds, and withdraws websites the
+account owns through the same owner-eligibility view. Memberships, group, content and
+the owner's website switch remain, so restoring needs only a new login and new keys.
+Administrators cannot be suspended, even by themselves: demoting first keeps
+last-administrator protection in one place. Changes are audited like group changes.
+Co-owners see that an owner is suspended, not why.
+
+A SUSPENDED group would conflate access with eligibility and lose the group to
+restore; deleting accounts would destroy memberships and history. Both are rejected.
 
 ## Delivery and data
 
