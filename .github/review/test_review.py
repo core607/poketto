@@ -293,7 +293,7 @@ class ReviewTests(unittest.TestCase):
                             for i in range(changed_files))
             self.run_review(data)
             manifest = json.loads((self.output / "manifest.json").read_bytes())
-            expected = min(30, 8 + 2 * changed_files)
+            expected = min(30, 12 + 2 * changed_files)
             self.assertEqual(expected, len(self.provider.requests))
             self.assertEqual(expected, manifest["used_turns"])
             self.assertEqual(expected, manifest["max_turns"])
@@ -629,6 +629,94 @@ class ReviewTests(unittest.TestCase):
             review.NoRedirect().redirect_request(None, None, 302, "", {}, "https://other.invalid")
         with self.assertRaises(review.Incomplete):
             provider.complete(b"x" * (review.TRANSPORT_BYTES + 1))
+
+
+
+class LinkedNoteTests(unittest.TestCase):
+    """Notes are read from a real bare-capable repository at fixed commits, as the runner reads them."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name)
+
+        def git(*args):
+            return subprocess.check_output(["git", *args], cwd=self.repo, stderr=subprocess.DEVNULL).decode().strip()
+
+        self.run_git = git
+        git("init", "-b", "main")
+        git("config", "user.email", "fixture@example.invalid")
+        git("config", "user.name", "Fixture")
+        git("config", "core.autocrlf", "false")
+        self.write("src/app/Worker.java", "class Worker {}\n")
+        self.write("docs/usage.md", "# Usage\n")
+        self.write("notes/implemented/2026-01-01-worker.md",
+                   "# Worker\n\nIntro without links.\n\n"
+                   "The [worker](../../src/app/Worker.java#L1) speaks protocol 1.\n\n"
+                   "See the [usage](../../docs/usage.md) and [site](https://example.invalid/x).\n")
+        self.write("notes/implemented/2026-01-02-edited.md", "Edited [worker](../../src/app/Worker.java).\n")
+        self.write("notes/archived/2026-01-03-old.md", "Old [worker](../../src/app/Worker.java).\n")
+        self.write("notes/proposed/2026-01-04-plan.md", "Plan for <[worker](<../../src/app/Worker.java>)>.\n")
+        git("add", ".")
+        git("commit", "-m", "base")
+        self.base = git("rev-parse", "HEAD")
+        self.write("src/app/Worker.java", "class Worker { int protocol = 2; }\n")
+        self.write("notes/implemented/2026-01-02-edited.md", "Edited [worker](../../src/app/Worker.java) to 2.\n")
+        git("add", ".")
+        git("commit", "-m", "head")
+        self.head = git("rev-parse", "HEAD")
+        revision = {"base": self.base, "head": self.head, "base_ref": "main"}
+        self.repository = review.RepositoryTools(self.repo, revision, self.base, review.Budget(), review.git)
+        self.changed = review.changed_paths(self.repository, self.base, self.head)
+
+    def write(self, path, text):
+        target = self.repo / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8", newline="\n")
+
+    def test_only_active_notes_linking_a_changed_file_supply_their_linking_paragraphs(self):
+        block, stats = review.linked_notes(self.repository, self.head, self.changed)
+        payload = json.loads(block.split("<untrusted-linked-notes>\n", 1)[1].split("\n</untrusted-linked-notes>")[0])
+        self.assertEqual(["notes/implemented/2026-01-01-worker.md", "notes/proposed/2026-01-04-plan.md"],
+                         [item["note"] for item in payload["notes"]])
+        self.assertEqual(["The [worker](../../src/app/Worker.java#L1) speaks protocol 1."],
+                         payload["notes"][0]["paragraphs"])
+        self.assertEqual({"notes": 2, "paragraphs": 2, "omitted_notes": 0}, {k: stats[k] for k in ("notes", "paragraphs", "omitted_notes")})
+
+    def test_unchanged_link_targets_and_note_only_changes_supply_nothing(self):
+        self.assertEqual(("", {"notes": 0, "paragraphs": 0, "omitted_notes": 0, "bytes": 0}),
+                         review.linked_notes(self.repository, self.head, {"notes/implemented/2026-01-02-edited.md"}))
+        block, stats = review.linked_notes(self.repository, self.head, {"docs/usage.md"})
+        self.assertIn("See the [usage]", block)
+        self.assertEqual(1, stats["notes"])
+
+    def test_notes_beyond_the_byte_bound_are_counted_not_truncated(self):
+        with patch.object(review, "LINKED_NOTE_BYTES", 120):
+            block, stats = review.linked_notes(self.repository, self.head, self.changed)
+        payload = json.loads(block.split("<untrusted-linked-notes>\n", 1)[1].split("\n</untrusted-linked-notes>")[0])
+        self.assertEqual(1, payload["omitted_notes"])
+        self.assertEqual(1, len(payload["notes"]))
+        self.assertLessEqual(stats["bytes"], 120)
+
+    def test_review_requests_carry_linked_notes_and_the_manifest_counts_them(self):
+        revision = {"base": self.base, "head": self.head, "base_ref": "main"}
+        merge, data = review.object_diff(self.repo, revision, review.Budget())
+        provider = FakeProvider()
+        output = Path(self.temp.name) / "output"
+        output.mkdir()
+        evening = review.datetime(2026, 9, 9, 20, tzinfo=review.BEIJING)
+        with patch.object(review, "beijing_now", return_value=evening):
+            review.complete_review(FakeGitHub(revision), provider, revision, "title", "fixture-model", "rules",
+                                   merge, data, output, self.repository)
+        first = json.loads(provider.requests[0])
+        self.assertIn("<untrusted-linked-notes>", first["messages"][1]["content"])
+        self.assertIn("speaks protocol 1", first["messages"][1]["content"])
+        manifest = json.loads((output / "manifest.json").read_bytes())
+        self.assertEqual(2, manifest["linked_notes"]["notes"])
+
+    def test_findings_audit_accepts_note_severity(self):
+        body = '<!-- findings: [{"id": "N1", "severity": "note", "file": "notes/a.md", "line": 1, "summary": "x"}] -->'
+        self.assertEqual([], review.audit_findings(body, {"src/app/Worker.java"}, lambda path: 3))
 
 
 if __name__ == "__main__":

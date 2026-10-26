@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import posixpath
 import re
 import signal
 import subprocess
@@ -46,6 +47,10 @@ REVIEW_STATUS = "ai-review"
 # The account the workflow posts reviews as, and the bound on author replies carried into a re-review.
 REVIEW_BOT = "github-actions[bot]"
 REPLY_BYTES = 24_000
+# Paragraphs of active notes that link to a changed file. Notes beyond the bound are only counted.
+LINKED_NOTE_BYTES = 24_000
+NOTE_ROOTS = ("notes/implemented/", "notes/proposed/")
+MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
 # The audit note is for a person, and an unbounded findings list must not make the review unpostable.
 AUDIT_LINES = 10
 FINDINGS = re.compile(r"<!--\s*findings:\s*(\[.*?\])\s*-->", re.DOTALL)
@@ -583,6 +588,49 @@ def replies_block(replies):
             + "\n</untrusted-author-replies>\n")
 
 
+def linked_notes(repository, head, changed):
+    """The paragraphs of active notes that link to a file this PR changes, so the reviewer can tell
+    whether the change makes one of them false. A note the PR edits is skipped because its author is
+    already updating it. Notes are read at the head as untrusted text and bounded as a whole."""
+    targets = {path for path in changed if not path.startswith("notes/")}
+    stats = {"notes": 0, "paragraphs": 0, "omitted_notes": 0, "bytes": 0}
+    if not targets:
+        return "", stats
+    listing = git(["ls-tree", "-r", "--name-only", "-z", head, "--", *NOTE_ROOTS],
+                  repository.budget, repository.directory)
+    notes = sorted(path.decode("utf-8", errors="replace") for path in listing.split(b"\0")
+                   if path.endswith(b".md"))
+    kept, omitted, size = [], 0, 0
+    for note in notes:
+        if note in changed:
+            continue
+        text = git(["cat-file", "-p", f"{head}:{note}"], repository.budget, repository.directory)
+        folder = posixpath.dirname(note)
+        paragraphs = []
+        for paragraph in re.split(r"\n[ \t]*\n", text.decode("utf-8", errors="replace")):
+            for match in MARKDOWN_LINK.finditer(paragraph):
+                target = match.group(1).split("#", 1)[0]
+                if (target and "://" not in target and not target.startswith("mailto:")
+                        and posixpath.normpath(posixpath.join(folder, target)) in targets):
+                    paragraphs.append(paragraph.strip())
+                    break
+        if not paragraphs:
+            continue
+        item = {"note": note, "paragraphs": paragraphs}
+        cost = len(encoded(item))
+        if size + cost > LINKED_NOTE_BYTES:
+            omitted += 1
+            continue
+        kept.append(item)
+        size += cost
+    stats.update(notes=len(kept), paragraphs=sum(len(item["paragraphs"]) for item in kept),
+                 omitted_notes=omitted, bytes=size)
+    if not kept and not omitted:
+        return "", stats
+    return ("\n<untrusted-linked-notes>\n" + encoded({"omitted_notes": omitted, "notes": kept}).decode("utf-8")
+            + "\n</untrusted-linked-notes>\n"), stats
+
+
 def audit_findings(body, changed, lines_at_head):
     """Mechanical checks on the findings list the prompt requires: a finding must point at a file
     that exists at the head and at a line inside it. A blocker outside the changed files is allowed
@@ -599,8 +647,8 @@ def audit_findings(body, changed, lines_at_head):
     problems = []
     for item in findings:
         label = str(item.get("id", "?"))[:16]
-        if item.get("severity") not in {"blocking", "suggestion", "unverified"}:
-            problems.append(f"{label} 的 severity 不是 blocking、suggestion 或 unverified。")
+        if item.get("severity") not in {"blocking", "suggestion", "unverified", "note"}:
+            problems.append(f"{label} 的 severity 不是 blocking、suggestion、unverified 或 note。")
         path, line = item.get("file"), item.get("line")
         if changed is None or not isinstance(path, str) or not path:
             continue
@@ -620,7 +668,7 @@ def audit_findings(body, changed, lines_at_head):
 def complete_review(github, provider, revision, title, model, rules, merge, data, output, repository,
                     previous=None, resume=False, replies=()):
     changed_files = sum(line.startswith(b"diff --git ") for line in data.split(b"\n"))
-    rounds = RoundBudget(min(MAX_TURNS, 8 + 2 * changed_files))
+    rounds = RoundBudget(min(MAX_TURNS, 12 + 2 * changed_files))
     manifest = {**revision, "merge_base": merge, "model": model, "diff_bytes": len(data),
                 "diff_sha256": digest(data), "rules_sha256": digest(rules.encode("utf-8")),
                 "state": "incomplete", "parts": [], "input_tokens": INPUT_TOKENS,
@@ -633,6 +681,14 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
     save_manifest(output, manifest)
     history = ("\n<untrusted-review-checkpoint>\n" + review_session.checkpoint(previous, encoded)
                + "\n</untrusted-review-checkpoint>\n" + replies_block(list(replies))) if previous else ""
+    try:
+        notes, manifest["linked_notes"] = linked_notes(repository, revision["head"],
+                                                       changed_paths(repository, merge, revision["head"]))
+    except Incomplete:
+        # Note context is advisory like the findings audit: without it the code review still runs.
+        notes, manifest["linked_notes"] = "", {"unavailable": True}
+    save_manifest(output, manifest)
+    history += notes
     request = lambda text: payload(model, rules, revision, title, history + text)
     saved_requests = {}
     context_tokens = {}

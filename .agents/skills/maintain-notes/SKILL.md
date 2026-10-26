@@ -9,7 +9,7 @@ This skill is guidance, not a checklist. [AGENTS.md](../../../AGENTS.md) owns th
 
 ## Before writing a note
 
-Apply the creation rule in AGENTS.md: a note holds lasting rationale that code, tests, and current docs do not explain. Search active notes for the same decision, mechanism, or rejected alternative. When one owns the decision, update it instead of adding a second note.
+Apply the creation rule in AGENTS.md: a note holds lasting rationale that code, tests, and current docs do not explain. Search active notes for the same decision, mechanism, or rejected alternative, and for the name of any mechanism the change replaces. When one owns the decision, update it instead of adding a second note.
 
 A note opens with `## Problem`, stated without the solution. `## Decision` describes shipped reality in the present tense; a proposal has `## Proposal` and acceptance criteria instead. `## Alternatives` records each real alternative and why it lost; alternatives are recorded, never invented. `## Consequences` states what the choice cost and what it bought. Verification names the tests or checks that pin the decision; the tests already state their cases.
 
@@ -27,7 +27,7 @@ A new note audits the notes it touches; a failed note budget or an explicit requ
 - **Implemented, keep:** its alternatives, ownership boundary, negative guarantee, durable or wire semantics, security rule, or reintroduction condition is likely to guide a future change. Length does not matter.
 - **Implemented, delete:** it records only a local UI adjustment, a mechanical change, or a feature description that docs/ now owns. A bug fix, performance change, or behavior decision does not qualify merely because its implementation was small.
 - **Implemented, consolidate:** a current owner fully supersedes it. The owner absorbs every unique rationale, alternative, consequence, verification, and named gap; inbound links move to the owner; then the old note is deleted. When a feature is gone from code, configuration, schema, durable and wire formats, and docs, its addition note folds into the removal note, which keeps the original motivation, why it stopped justifying itself, and the condition for reintroducing it.
-- **Partial supersession:** keep both notes, cross-link them, and update the facts that remain current. Removing one transport, default, or implementation while durable data or other paths survive is partial.
+- **Partial supersession:** keep both notes, cross-link them with a `Partially superseded by` line under the older note's date, and update the facts that remain current. Removing one transport, default, or implementation while durable data or other paths survive is partial.
 - **Implemented, archive:** the decision is complete and unlikely to guide future work, but its rationale is worth keeping as history. Redirect inbound links first, then move it with the `Archived:` line; a note whose body still needs correction is not ready.
 - **Proposed:** never archived. A proposal no longer worth pursuing moves to rejected/ with an honest reason.
 - **Rejected, keep:** the losing idea is still tempting and the note explains why it loses.

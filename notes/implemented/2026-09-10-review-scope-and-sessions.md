@@ -2,6 +2,7 @@
 
 Date: 2026-09-10
 Status: Implemented
+Partially superseded by: [review checks linked notes](2026-10-26-review-checks-linked-notes.md)
 
 ## Problem
 
