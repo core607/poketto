@@ -155,6 +155,18 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(2, len(third["reports"]))
         self.assertEqual(self.first, third["reports"][0]["revision"]["head"])
 
+    def test_resume_sends_this_rounds_linked_notes_not_only_the_old_prefix(self):
+        _, first, _, _ = self.run_at(self.first)
+        block = "\n<untrusted-linked-notes>\nCURRENT-ROUND-NOTE\n</untrusted-linked-notes>\n"
+        with patch.object(review, "linked_notes", return_value=(block, {"notes": 1})):
+            _, _, _, manifest = self.run_at(self.third, first)
+        sent = json.loads(self.provider.requests[-1])
+        old = first["requests"]["cross-contract"]["messages"]
+        self.assertEqual("continued", manifest["session_mode"])
+        self.assertNotIn("CURRENT-ROUND-NOTE", json.dumps(old, ensure_ascii=False))
+        self.assertIn("CURRENT-ROUND-NOTE", sent["messages"][len(old)]["content"])
+        self.assertIn("笔记段落以本条消息附带的为准", sent["messages"][len(old)]["content"])
+
     def test_rules_change_rebuilds_current_full_diff_and_keeps_prior_findings(self):
         _, first, _, _ = self.run_at(self.first)
         _, _, _, manifest = self.run_at(self.third, first, rules="new rules")

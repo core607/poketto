@@ -8,7 +8,7 @@ The public README and [usage reference](docs/usage.md) have .zh.md counterparts;
 
 Current phase: development. Implement product capabilities only from an assigned, settled task; do not infer work from the roadmap or implement ideas still under discussion.
 
-Read the owning code and documents needed for the task. Local wording and mechanical edits need only directly relevant context. Use these routes when their subject is affected:
+Read the owning code and documents needed for the task; notes record why, so confirm a note's mechanism in the code or owning README before relying on it. Local wording and mechanical edits need only directly relevant context. Use these routes when their subject is affected:
 
 - Product behavior, permissions, or data ownership: the [requirements note](notes/implemented/2026-08-25-requirements-and-architecture.md) and the owning decisions, including any record the change implements or supersedes.
 - Content and media: the [CodeAct contract](notes/implemented/2026-09-09-codeact-content-and-media.md).
@@ -45,7 +45,7 @@ Use [pre-push-checks](.agents/skills/pre-push-checks/SKILL.md) for delivery veri
 - Work agreed in conversation but not implemented in the same change must land as a proposed note, because a future implementer may not have that conversation. Work implemented in the change that agrees it needs no proposal; its lasting rationale, if any, goes straight into implemented/. Whoever implements a proposal, in the same change, either moves it into implemented/ rewritten as what was built, or deletes it when it holds no lasting rationale once the behavior is documented where it belongs.
 - Every note must stand alone: a reader who sees only the repository must be able to resolve every reference, so cite committed paths and never a chat, a plan, a review round, or a private machine path. A well-written proposed note can serve directly as a subagent's task brief.
 - File name: yyyy-mm-dd-topic.md. A note records the problem, the decision or proposal, real alternatives, and consequences; its verification names the tests or checks that pin the decision without restating their cases.
-- Never rewrite an old note into a different decision. A reversal gets a new cross-linked note or consolidates the old one into it; an implemented note keeps its paths, names, and other facts current.
+- Never rewrite an old note into a different decision; a reversal gets a new cross-linked note or consolidates the old one. A change that makes a note statement false corrects it in the same change, and notes link versions, limits and paths to their owner rather than restating them ([rationale](notes/implemented/2026-10-26-review-checks-linked-notes.md)).
 - Every new note triggers a same-topic audit resolved in the same change, never deferred. [maintain-notes](.agents/skills/maintain-notes/SKILL.md) classifies notes for deletion, consolidation into their current owner, archiving, or rejection.
 - archived/ is frozen: archiving is a move plus an `Archived: YYYY-MM-DD` line below the note's date, with inbound links redirected first; afterwards the note takes no edits and has no authority over current behavior.
 - [Document budgets](config/document-budgets.properties) cap the active notes and the standing documents, and `repoCheck` enforces them. When one fails, move content to its home, condense it, or audit the notes; raise a ceiling only when the words are needed, and say why in the pull request.

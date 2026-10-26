@@ -43,7 +43,7 @@ An environment-specific failure needs evidence: exact command, failure, platform
 2. Commit on a short-lived branch and inspect any files changed by formatting or hooks.
 3. Push normally so repository hooks run.
 4. Verify the remote branch ref equals local `HEAD`, then open the PR and follow its live CI. Pending checks remain pending.
-5. After CI succeeds the AI Review workflow posts as a PR **review**, not a comment: read it with `gh pr view <n> --json reviews`. Fix every blocking item and reply naming the commit. A review with no blocking item is a merge verdict: do not push suggestions onto the reviewed head, because each push costs a CI run and another review. Reply once to each suggestion with the reason when declining it; carry the ones worth taking into a later change.
+5. After CI succeeds the AI Review workflow posts as a PR **review**, not a comment: read it with `gh pr view <n> --json reviews`. Fix every blocking item and reply naming the commit. A review with no blocking item is a merge verdict: do not push suggestions onto the reviewed head, because each push costs a CI run and another review. Reply once to each suggestion with the reason when declining it; carry the ones worth taking into a later change. Correct every note item (N) in the same PR, or reply that its statement still holds.
 6. A review belongs to the commit it was posted for, and the workflow marks that commit with the `ai-review` status. Before merging, confirm that status is present on the head you are about to merge:
 
    ```sh
