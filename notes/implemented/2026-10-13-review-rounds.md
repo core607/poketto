@@ -18,7 +18,7 @@ A re-review receives the owner's pull request comments posted after the workflow
 
 Before posting, the workflow audits the findings list: a missing or malformed list, a file absent at the head, a line beyond the file, and a blocker in a file the pull request did not change are appended as an automatic note under the review. The audit never rewrites the model's text and never fails the run.
 
-When the merge base moves between reviews, by a merge of `main` or a new base, the workflow compares the stable patch identity of the pull request's own core change before and after. An unchanged identity means only `main` moved: no model call is made, the head receives the `ai-review` status with that reason, and the previous session carries forward. A changed identity reviews the complete core diff from the new merge base with the prior checkpoint, never a diff from the previous head, which would contain `main`'s changes.
+When the merge base moves between reviews, by a merge of `main` or a new base, the workflow compares the stable patch identity of the pull request's own core change before and after. An unchanged identity means only `main` moved: no model call is made, the head receives the `ai-review` status and a one-line notice review with that reason, and the previous session carries forward. A changed identity reviews the complete core diff from the new merge base with the prior checkpoint, never a diff from the previous head, which would contain `main`'s changes.
 
 CI no longer runs on `edited`.
 

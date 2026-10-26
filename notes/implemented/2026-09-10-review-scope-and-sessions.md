@@ -14,7 +14,7 @@ The AI review workflow evaluates runtime source, runtime scripts, dependencies, 
 
 `.github/review/review_scope.py` owns classification. Git lists changed paths with NUL delimiters and rename detection disabled, then generates a diff using literal selected paths. Moves across the scope boundary therefore retain the runtime addition or deletion. Binary assets outside scope do not prevent review; unsupported binary or non-UTF-8 changes inside scope remain explicit failures. Scope is based on file purpose and location rather than changed-line counts.
 
-The workflow still triggers normally and records `state: exempt` when no core change needs review. It does not post an approval or create a new model review. A prior session is carried forward unchanged, including its actual reviewed head and previous findings. Draft events retain their no-call behavior.
+The workflow still triggers normally and records `state: exempt` when no core change needs review. It posts a one-line notice review, never an approval or a model review. A prior session is carried forward unchanged, including its actual reviewed head and previous findings. Draft events retain their no-call behavior.
 
 ## Verification before AI review
 

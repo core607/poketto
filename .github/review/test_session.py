@@ -95,7 +95,8 @@ class SessionTests(unittest.TestCase):
         result, second, github, manifest = self.run_at(self.second, first)
         self.assertEqual(calls, len(self.provider.requests))
         self.assertEqual(first, second)
-        self.assertEqual([], github.posts)
+        self.assertEqual(1, len(github.posts))
+        self.assertIn(review.EXEMPT_MARKER, github.posts[0]["body"])
         self.assertEqual("exempt", manifest["state"])
         self.assertIn("previous findings are unchanged", result)
 
@@ -103,7 +104,8 @@ class SessionTests(unittest.TestCase):
         result, state, github, manifest = self.run_at(self.second, base=self.first)
         self.assertEqual([], self.provider.requests)
         self.assertIsNone(state)
-        self.assertEqual([], github.posts)
+        self.assertEqual(1, len(github.posts))
+        self.assertIn(review.EXEMPT_MARKER, github.posts[0]["body"])
         self.assertEqual("exempt", manifest["state"])
 
     def test_scope_crossing_rename_preserves_the_runtime_deletion(self):
