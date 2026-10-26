@@ -48,8 +48,8 @@ at most 128 readers bounds descriptor use. The shell wrapper, execution identity
 frame bounds and exit-status mapping remain part of the protocol.
 
 The launcher and game supervisor remain Python. The
-[remaining launcher proposal](../proposed/2026-10-20-rust-sandbox-programs.md) owns
-its separate evidence and acceptance conditions; the
+[sandcrab proposal](../proposed/2026-10-26-sandcrab-sandbox-service.md) owns
+their replacement and its acceptance conditions; the
 [repository supervisor decision](2026-10-21-rust-repository-supervisor.md) owns its host runtime.
 
 ## Alternatives

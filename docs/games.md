@@ -110,7 +110,7 @@ PostgreSQL. This switch is independent of plaza interactions.
 `./gradlew stageGameWorker` stages the worker sources and the exact browser rule
 runtime. Use [the worker example](../executor-service/game-config.example.json),
 [service](../executor-service/poketto-games.service) and
-[slice](../executor-service/pokettogames.slice) with the existing pinned SRT
+[slice](../executor-service/pokettogames.slice) with the existing pinned sandbox
 toolchain described in the [worker reference](../executor-service/README.md).
 Replace example paths and IDs with operator configuration outside the repository.
 
@@ -134,7 +134,7 @@ protocol offers only jobs and revocation, without repository exports, retained
 copies or a command bridge. No containment failure falls back to a host process.
 
 The example allows two jobs, each bounded to five seconds, 128 MiB RAM, 48 tasks,
-50% CPU, 2 MiB temporary storage and 96 KiB output. Tasks include SRT and Node's own
+50% CPU, 2 MiB temporary storage and 96 KiB output. Tasks include bubblewrap and Node's own
 threads; configurations with fewer than 48 tasks per job are rejected. The independent slice caps aggregate use
 at 384 MiB, 128 tasks and 100% CPU with swap disabled. Failed containment retains
 admission until supervisor recovery confirms cleanup. Separate limits protect

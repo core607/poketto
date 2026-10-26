@@ -14,7 +14,7 @@ pinned workspace, safe Unix interfaces and `ed25519-dalek`. It embeds no Python.
 The [execution contract](2026-09-05-local-execution-supervisor.md) retains authority,
 containment, durability and copy lifetime. The game service, test oracle, launcher
 and baseline installer retain Python; launcher replacement requires its
-[own evidence](../proposed/2026-10-20-rust-sandbox-programs.md).
+[own decision](../proposed/2026-10-26-sandcrab-sandbox-service.md).
 
 Parsing rejects duplicate keys, preserves numeric token types across shared JSON
 features and bounds nesting. Library-version differences may reject malformed
