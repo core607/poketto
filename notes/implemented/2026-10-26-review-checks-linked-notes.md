@@ -24,7 +24,7 @@ A partially superseded note carries a `Partially superseded by` line under its d
 
 **Review every changed document.** It reverses the exemption of documentation-only pushes, which exists to save model calls.
 
-**Move every current fact out of notes.** Notes would then never drift, but the facts need a contributor-facing home that the repository does not yet have; this check covers the facts that remain.
+**Move every current fact out of notes.** Notes would then never drift, but the facts need the contributor-facing home that [documentation layers](../proposed/2026-10-26-documentation-layers.md) proposes; until then this check covers them.
 
 ## Consequences
 
