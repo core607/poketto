@@ -4,7 +4,7 @@ Date: 2026-10-18
 
 ## Problem
 
-A new full-read [account copy](2026-09-14-account-working-copies.md) exports the whole history as a bundle and clones it inside SRT. For a 168 MB repository on the 2 vCPU production host, on 2026-10-17, that took 12.5 s: about 7 s in the application, and 5.2 s with a 204 MB memory peak in the clone. Yet every full-read copy at one commit starts from identical bytes, and [concurrent agent copies](2026-10-18-concurrent-agent-copies.md) need copies to be cheap.
+A new full-read [account copy](2026-09-14-account-working-copies.md) exports the whole history as a bundle and clones it inside the sandbox. For a 168 MB repository on the 2 vCPU production host, on 2026-10-17, that took 12.5 s: about 7 s in the application, and 5.2 s with a 204 MB memory peak in the clone. Yet every full-read copy at one commit starts from identical bytes, and [concurrent agent copies](2026-10-18-concurrent-agent-copies.md) need copies to be cheap.
 
 ## Decision
 
@@ -17,8 +17,8 @@ The worker keeps seeds, pristine reflinked trees of initialized copies, under `c
 
 ## Alternatives
 
-- **overlayfs over one read-only checkout per commit.** Each copy would depend on a lower layer that must outlive it, and SRT's mounts would gain an overlay. Reflinked copies stay ordinary independent directories, so quota, capture, attachment and disposal are unchanged.
-- **Advancing an older seed to the requested commit.** This would also serve agents that start after a save moved main, but it needs an incremental export and a checkout inside SRT. Exact-commit seeds already cover many agents starting at once. Advancing waits until measurements show the need.
+- **overlayfs over one read-only checkout per commit.** Each copy would depend on a lower layer that must outlive it, and the sandbox's mounts would gain an overlay. Reflinked copies stay ordinary independent directories, so quota, capture, attachment and disposal are unchanged.
+- **Advancing an older seed to the requested commit.** This would also serve agents that start after a save moved main, but it needs an incremental export and a checkout inside the sandbox. Exact-commit seeds already cover many agents starting at once. Advancing waits until measurements show the need.
 
 ## Consequences
 

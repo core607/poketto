@@ -25,7 +25,7 @@ Corpus-only TF-IDF and MiniBatchKMeans produce 32 topic folders. Each folder lis
 
 ## Install the independent worker
 
-Agentic runs need a dedicated instance of [executor-service](../../executor-service/README.md) on Linux. Install matching worker sources from Git with LF endings, the pinned SRT toolchain, root-owned code/configuration, a separate unprivileged execution account and an application account. Follow the existing worker's cgroup, socket, signing-key and XFS project-quota requirements. No host-shell or Docker execution fallback exists.
+Agentic runs need a dedicated instance of [executor-service](../../executor-service/README.md) on Linux. Install matching worker sources from Git with LF endings, the pinned sandbox toolchain, root-owned code/configuration, a separate unprivileged execution account and an application account. Follow the existing worker's cgroup, socket, signing-key and XFS project-quota requirements. No host-shell or Docker execution fallback exists.
 
 Use a separate bounded pool; its export directory belongs to the application account. For this corpus allow at least 60,000 files plus Git metadata per copy; the tested inode budget is 150,000, bundle bound 256 MiB, copy bound 2 GiB and pool bound 8 GiB. The worker unit prefix must match `poketto-exec-[a-z0-9]+-`. Configure initialization for 120 seconds, commands for 30 seconds, one active session, command memory 512 MiB and an aggregate bounded slice. Validate these sizes on the actual host; the service never reduces the corpus to fit. The measured corpus bundle and file counts are in the preparation manifest.
 
