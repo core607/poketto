@@ -47,6 +47,9 @@ REVIEW_STATUS = "ai-review"
 # The account the workflow posts reviews as, and the bound on author replies carried into a re-review.
 REVIEW_BOT = "github-actions[bot]"
 REPLY_BYTES = 24_000
+# Marks the one-line review posted for a head with nothing to review. It gives the author an event to
+# act on, and author_replies ignores it so replies to the last real review still reach the next one.
+EXEMPT_MARKER = "<!-- ai-review: exempt -->"
 # Paragraphs of active notes that link to a changed file. Notes beyond the bound are only counted.
 LINKED_NOTE_BYTES = 24_000
 NOTE_ROOTS = ("notes/implemented/", "notes/proposed/")
@@ -158,7 +161,8 @@ class GitHub:
         re-review cannot tell an answered finding from an ignored one and raises it again."""
         reviews = self.api(f"pulls/{self.number}/reviews?per_page=100")
         since = max((r["submitted_at"] for r in reviews
-                     if r.get("user", {}).get("login") == REVIEW_BOT and r.get("submitted_at")), default=None)
+                     if r.get("user", {}).get("login") == REVIEW_BOT and r.get("submitted_at")
+                     and EXEMPT_MARKER not in (r.get("body") or "")), default=None)
         if since is None:
             return []
         # `since` keeps the newest replies on the first page however long the thread has grown.
@@ -859,6 +863,7 @@ def scoped_review(github, provider_factory, revision, title, model, rules, merge
         # Every path marks the head. Setting the status is idempotent, so a head whose earlier call
         # failed regains one, and a head with nothing to review stops looking like an unreviewed one.
         record["review_status"] = set_status(github, revision["head"], description)
+        record["notice_review"] = None if reviewed else post_notice(github, revision["head"], base_only, previous)
         save_manifest(output, record)
         if previous:
             (output / "session.json").write_bytes(encoded(previous))
@@ -872,6 +877,21 @@ def scoped_review(github, provider_factory, revision, title, model, rules, merge
     complete_review(github, provider_factory(), revision, title, model, rules, merge, data,
                     output, repository, previous, resume, github.author_replies() if previous else ())
     return f"AI review: core runtime coverage complete ({mode}); inspect the reported findings."
+
+
+def post_notice(github, head, base_only, previous):
+    """A one-line review for a head with nothing to review. A status alone raises no review event, so
+    the author's agent, which waits for one, would not learn that the head may merge. Best effort like
+    the status: the head is already marked, so a failed post must not fail the run."""
+    verdict = ("本次只合并了 main，PR 自身的改动没有变化" if base_only
+               else "本次提交没有需要审查的核心运行时改动")
+    body = (f"**结论：** {verdict}，未调用模型。" + ("之前的审稿结论不变。" if previous else "")
+            + "\n\n" + EXEMPT_MARKER)
+    try:
+        return github.post(head, body)["id"]
+    except (Incomplete, ValueError, KeyError, TypeError):
+        print("AI review: the exempt notice could not be posted on this head.")
+        return None
 
 
 def verified_ci(github, revision, run_id=None):

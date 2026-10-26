@@ -78,7 +78,9 @@ class MainMovesUnderReviewTests(unittest.TestCase):
         self.assertEqual(calls, len(self.provider.requests))
         self.assertIn("only main moved", result)
         self.assertEqual("exempt", manifest["state"])
-        self.assertEqual([], github.posts)
+        self.assertEqual([self.merged], [post["commit_id"] for post in github.posts])
+        self.assertIn("只合并了 main", github.posts[0]["body"])
+        self.assertIn("之前的审稿结论不变", github.posts[0]["body"])
         self.assertIn("only main moved", github.statuses[0]["description"])
         self.assertEqual(self.merged, github.statuses[0]["commit_id"])
         self.assertEqual(self.change, state["revision"]["head"])
@@ -172,6 +174,24 @@ class AuthorReplyTests(unittest.TestCase):
 
         github.api = api
         self.assertEqual([{"at": "2026-10-13T03:00:00Z", "body": "fixed in abc"}], github.author_replies())
+        self.assertIn("since=2026-10-13T02%3A00%3A00Z", paths[-1])
+
+    def test_exempt_notices_do_not_hide_replies_to_the_last_real_review(self):
+        github = review.GitHub("owner/project", 25, review.Budget())
+        paths = []
+
+        def api(path):
+            paths.append(path)
+            if "/reviews" in path:
+                return [{"user": {"login": review.REVIEW_BOT}, "submitted_at": "2026-10-13T02:00:00Z",
+                         "body": "**结论：** 有 1 条阻塞项"},
+                        {"user": {"login": review.REVIEW_BOT}, "submitted_at": "2026-10-13T04:00:00Z",
+                         "body": "**结论：** 本次只合并了 main。\n\n" + review.EXEMPT_MARKER}]
+            return [{"author_association": "OWNER", "created_at": "2026-10-13T03:00:00Z", "body": "declined S1"},
+                    {"author_association": "OWNER", "created_at": "2026-10-13T05:00:00Z", "body": "fixed B1"}]
+
+        github.api = api
+        self.assertEqual(["declined S1", "fixed B1"], [reply["body"] for reply in github.author_replies()])
         self.assertIn("since=2026-10-13T02%3A00%3A00Z", paths[-1])
 
     def test_no_earlier_review_means_no_replies(self):

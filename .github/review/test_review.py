@@ -241,7 +241,25 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual([self.head], [status["commit_id"] for status in self.github.statuses])
         self.assertIn("no review needed", self.github.statuses[0]["description"])
         self.assertEqual([], self.provider.requests)
-        self.assertEqual([], self.github.posts)
+        # The status raises no review event, so a one-line notice tells the waiting author.
+        self.assertEqual([self.head], [post["commit_id"] for post in self.github.posts])
+        self.assertIn("没有需要审查的核心运行时改动", self.github.posts[0]["body"])
+        self.assertNotIn("之前的审稿结论不变", self.github.posts[0]["body"])
+        self.assertIn(review.EXEMPT_MARKER, self.github.posts[0]["body"])
+        self.assertEqual(1, record["notice_review"])
+
+    def test_a_failed_notice_still_finishes_the_exempt_run(self):
+        def fail(head, body):
+            raise review.Incomplete("Fixture post failure.")
+        self.github.post = fail
+        summary = review.scoped_review(
+            self.github, lambda: self.provider, self.revision, "fixture", "fixture-model",
+            "trusted rules", self.merge, b"", self.output,
+            review.RepositoryTools(self.repo, self.revision, self.merge, review.Budget(), review.git))
+        self.assertIn("no core runtime changes", summary)
+        record = json.loads((self.output / "manifest.json").read_bytes())
+        self.assertIsNone(record["notice_review"])
+        self.assertEqual(review.REVIEW_STATUS, record["review_status"])
 
     def test_rereviewing_the_same_head_sets_the_status_instead_of_reporting_no_review(self):
         # A head whose status call failed stays the head; the next run finds an empty core delta
