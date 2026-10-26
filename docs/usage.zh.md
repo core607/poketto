@@ -172,7 +172,7 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 `/mcp` 通过 Streamable HTTP 提供 MCP，以工作空间 Bearer 凭据（API key 或 OAuth 访问令牌）认证，独立于浏览器会话。工具目录始终包含 `get_asset` 和 `put_asset`；启用执行器后还包含 `repo_exec`、`repo_discard` 和 `get_artifact`。没有独立的文件工具：通过 `repo_exec` 查看目录、搜索、读取和编辑文件，用 `poketto` CLI 持久化修改，并按需逐层读取仓库的 `AGENTS.md`。详见 [CodeAct 入口记录](../notes/implemented/2026-09-10-codeact-mcp-entrance.md)。
 
-`repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证 root supervisor 和低权限 SRT 账号。应用默认接纳四个会话、四条并发命令、最多 128 MiB bundle，不超过 worker 的限制；按站点分组的每账号命令上限见 [.env.example](../deploy/.env.example)。worker 缺失或隔离能力不受支持时，不会降级为普通子进程。
+`repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证 root supervisor 和低权限执行账号。应用默认接纳四个会话、四条并发命令、最多 128 MiB bundle，不超过 worker 的限制；按站点分组的每账号命令上限见 [.env.example](../deploy/.env.example)。worker 缺失或隔离能力不受支持时，不会降级为普通子进程。
 
 请求体上限为 128 KiB（超出时在工具执行前返回 413），命令上限 16,384 字符，编码后的桥接帧上限 512 KiB。拒绝结果包含 `code` 和 `reason`。详见 [MCP 请求准入移除](../notes/implemented/2026-09-15-mcp-request-admission-removal.md)。
 

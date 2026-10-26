@@ -446,7 +446,7 @@ the repository's `AGENTS.md` files as you go. See the
 `repo_exec` requires the `EXECUTE_REPOSITORY` capability and
 `POKETTO_EXECUTOR_ENABLED=true`. Configure `POKETTO_EXECUTOR_SOCKET`,
 `POKETTO_EXECUTOR_SIGNING_KEY` and `POKETTO_EXECUTOR_STAGING_DIRECTORY` on the Linux
-application, then install and verify the root supervisor and unprivileged SRT account
+application, then install and verify the root supervisor and unprivileged execution account
 as the [worker reference](../executor-service/README.md) describes. The application
 admits four sessions, four concurrent commands and 128 MiB bundles by default, within the
 worker's limits; [.env.example](../deploy/.env.example) also lists per-account command limits

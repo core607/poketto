@@ -85,7 +85,7 @@ Default copies are keyed by Poketto account, workspace and reading scope. Author
 
 ## Execution boundary
 
-Pin SRT and run it as a dedicated low-privilege identity behind a permissioned local socket. Spring supplies a server-issued snapshot lease resolved from authorized workspace and commit. Caller arguments cannot select host paths, repository coordinates, cache roots, or clone sources.
+Pin the sandbox tools and run commands as a dedicated low-privilege identity behind a permissioned local socket. Spring supplies a server-issued snapshot lease resolved from authorized workspace and commit. Caller arguments cannot select host paths, repository coordinates, cache roots, or clone sources.
 
 Execution copies have no shared source-object inodes, alternates, or credentials. Commands cannot access application caches, managed originals, other workspaces, host profiles, service sockets, or undeclared filesystem paths. Network access, including proxy routes, is denied. Time, CPU, memory, descendant count, storage, and output limits are enforced outside the command. Cancellation, revocation, expiry, failure, and restart terminate descendants and clean abandoned execution state without following caller-controlled paths.
 

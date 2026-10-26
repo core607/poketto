@@ -60,7 +60,7 @@ A remote ref update, including a force push or an unborn `main`, preserves alrea
 
 Unreachable fetched objects can accumulate until safe whole-cache eviction; the authority does not run concurrent Git garbage collection.
 
-SRT does not receive this cache or the authority binding. [Repository-native retrieval and sandboxed execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) owns full-copy, commit-pinned execution workspaces.
+The sandbox does not receive this cache or the authority binding. [Repository-native retrieval and sandboxed execution](2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) owns full-copy, commit-pinned execution workspaces.
 
 ## Alternatives considered
 
@@ -68,7 +68,7 @@ SRT does not receive this cache or the authority binding. [Repository-native ret
 
 **Support local and remote authority profiles.** This would double recovery, locking, and failure semantics. A disposable persistent cache keeps the single-server performance benefit without creating a second truth.
 
-**Let SRT clone or push authority directly.** That would give an untrusted execution boundary credentials and network access. The application remains the only holder of the binding and the only component that advances the ref.
+**Let the sandbox clone or push authority directly.** That would give an untrusted execution boundary credentials and network access. The application remains the only holder of the binding and the only component that advances the ref.
 
 **Persist provider coordinates in each cache's Git configuration.** Standard Git tooling would make this convenient, but cache files, diagnostics, or sandbox copying could leak private repository identity. The adapter opens transports from the secret binding without writing it to the repository.
 
