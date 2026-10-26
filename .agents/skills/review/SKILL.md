@@ -28,7 +28,7 @@ One substantiated blocking finding beats a list of nitpicks. If nothing substant
 5. **Security:** trace enforcement to the operation that executes it, including alternate callers that bypass schemas or wrappers. For affected Poketto paths, verify capability isolation, public/private search separation, SSRF redirect and DNS handling, Markdown sanitization/CSP, budget reservation and settlement, and secret handling against the requirements note.
 6. **Bounds:** apply byte, token, item, and time limits to the complete emitted or retained result, including wrappers and metadata. Check tiny, exact, oversized-single-item, and multibyte cases.
 7. **Evidence:** tests or replayable evidence must exercise the real entry path and observe external state, durable data, rendered output, or emitted events — not trust the agent's own report. An invalid case should fail for the intended rule.
-8. **Documentation:** affected README, Javadoc, user docs, and bilingual public pairs update with the behavior, and new prose meets [prose-standard](../prose-standard/SKILL.md): flag change narration, restated test cases, review history, and rationale repeated outside its home. Generated artifacts change through their owner.
+8. **Documentation:** affected README, Javadoc, user docs, and bilingual public pairs update with the behavior, and new prose meets [prose-standard](../prose-standard/SKILL.md): flag change narration, restated test cases, review history, and rationale repeated outside its home. Generated artifacts change through their owner. A note statement the change makes false is corrected in the same change.
 
 ## Poketto invariants to trace
 
