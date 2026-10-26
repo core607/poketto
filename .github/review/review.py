@@ -752,8 +752,9 @@ def complete_review(github, provider, revision, title, model, rules, merge, data
     if resume and direct:
         fresh = json.loads(cross_request)
         followup = json.loads(payload(model, rules, revision, title,
-                    "继续评审本次核心代码改动。历史结果只属于旧提交，重新核实受影响关系和未解决问题。\n"
-                    + replies_block(list(replies)) + "<untrusted-diff>\n" + data.decode("utf-8") + "\n</untrusted-diff>"))["messages"][-1]["content"]
+                    "继续评审本次核心代码改动。历史结果只属于旧提交，重新核实受影响关系和未解决问题。"
+                    "笔记段落以本条消息附带的为准，之前附带的不再适用；本条没有附带，就表示本轮没有需要核对的笔记。\n"
+                    + replies_block(list(replies)) + notes + "<untrusted-diff>\n" + data.decode("utf-8") + "\n</untrusted-diff>"))["messages"][-1]["content"]
         continued = review_session.continuation(previous.get("requests", {}).get("cross-contract"),
                         fresh, followup, encoded, COMPACT_TOKENS,
                         FRAMING_ALLOWANCE + FINAL_BYTES + BUDGET_MESSAGE_BYTES,
