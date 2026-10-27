@@ -40,14 +40,15 @@ COPY --from=build /app/spring-boot-loader/ ./
 COPY --from=build /app/snapshot-dependencies/ ./
 COPY --from=build /app/application/ ./
 # The host updater extracts this runtime from the exact image; operator configuration stays on the host.
-COPY executor-service/launcher.py executor-service/resource_pool.py /opt/poketto-worker/
+COPY executor-service/resource_pool.py /opt/poketto-worker/
 COPY --from=sandbox-programs /source/target/x86_64-unknown-linux-musl/release/poketto /opt/poketto-worker/bin/poketto
 COPY --from=sandbox-programs /source/target/x86_64-unknown-linux-musl/release/poketto-shell /opt/poketto-worker/bin/poketto-shell
 COPY --from=sandbox-programs /source/target/x86_64-unknown-linux-musl/release/poketto-syncfs /opt/poketto-worker/bin/poketto-syncfs
 COPY --from=sandbox-programs /source/target/x86_64-unknown-linux-musl/release/poketto-supervisor /opt/poketto-worker/poketto-supervisor
+COPY --from=sandbox-programs /source/target/x86_64-unknown-linux-musl/release/poketto-launch /opt/poketto-worker/poketto-launch
 RUN cd /opt/poketto-worker && sed -i 's/\r$//' *.py \
     && printf '%s\n' "$POKETTO_REVISION" > revision \
-    && sha256sum *.py poketto-supervisor bin/poketto bin/poketto-shell bin/poketto-syncfs > SHA256SUMS
+    && sha256sum *.py poketto-supervisor poketto-launch bin/poketto bin/poketto-shell bin/poketto-syncfs > SHA256SUMS
 USER poketto
 ENV POKETTO_DATA_DIR=/var/lib/poketto
 EXPOSE 8080

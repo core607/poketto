@@ -32,7 +32,6 @@ from binary_capture import BinaryCapture
 from artifacts import ArtifactRejected, ArtifactStore, MAX_OUTPUT_BYTES, retain_output
 from disk_pool import DiskPool
 from command_channel import CommandChannel, CommandEnded
-from launcher import program_directory, trusted_executable, verify_programs, verify_tools
 
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -51,6 +50,20 @@ IDENTITY = ('principalId', 'accountId', 'workspaceId', 'serverSessionHash')
 # The launcher starts from an empty root; /proc and /dev are fresh, and host sysfs is absent.
 # Keep the explicit sysfs denial in the shared policy so both worker modes retain the boundary.
 DENY_READ = ('/', '/sys')
+
+
+def program_directory(launcher):
+    """Resolve the selected release once; only its shared programs enter the sandbox."""
+    return Path(launcher).resolve(strict=True).parent / 'bin'
+
+
+def verify_launch(launcher, tools, programs=True):
+    """Ask the installed Rust launcher to verify the tools and, for repositories, the programs."""
+    result = subprocess.run([str(launcher), '--verify' if programs else '--verify-tools', str(tools)],
+                            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15,
+                            env={'PATH': '/usr/bin:/bin'})
+    if result.returncode:
+        raise ValueError(result.stderr.strip() or 'Sandbox tool verification failed')
 
 
 class Rejected(Exception):
@@ -1308,7 +1321,7 @@ class SystemdBackend:
             args += ['-p', 'BindsTo=' + self.c['supervisorUnit'], '-p', 'After=' + self.c['supervisorUnit']]
         if timeout_ms is not None:
             args += ['-p', f'RuntimeMaxSec={timeout_ms / 1000}']
-        args += ['/usr/bin/env', '-i', 'PATH=/usr/bin:/bin', '/usr/bin/python3', self.c['launcher'], str(record)]
+        args += ['/usr/bin/env', '-i', 'PATH=/usr/bin:/bin', self.c['launcher'], str(record)]
         return args, record, settings
 
     def run(self, s, payload, timeout_ms):
@@ -1525,7 +1538,7 @@ class DiskSystemdBackend(SystemdBackend):
     def flush(self, s):
         # Filesystem synchronization retains checked()'s subprocess timeout and failure handling.
         helper = program_directory(self.c['launcher']) / 'poketto-syncfs'
-        trusted_executable(helper)
+        verify_launch(self.c['launcher'], self.c['toolsRoot'])
         checked([str(helper), str(self.mount_path(s))])
 
     def execute(self, s, data, on_start, on_ready):
@@ -1621,10 +1634,12 @@ class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
 
 def load_config(path):
     c = json_read(Path(path).read_bytes())
-    for name in ('runtimeRoot', 'exportRoot', 'socketPath', 'publicKey', 'toolsRoot', 'launcher'):
+    for name in ('runtimeRoot', 'exportRoot', 'socketPath', 'publicKey', 'toolsRoot'):
         p = Path(c[name])
         if not p.is_absolute() or '..' in p.parts or not re.fullmatch(r'/[A-Za-z0-9_./-]+', str(p)):
             raise ValueError('Configuration paths must be absolute')
+    # Like the Rust supervisor, run the launcher installed beside this worker.
+    c['launcher'] = str(Path(__file__).resolve().with_name('poketto-launch'))
     if Path(c['socketPath']).parent != Path(c['runtimeRoot']):
         raise ValueError('Socket must be directly under the dedicated runtime root')
     for name in ('leaseSeconds', 'renewAfterSeconds', 'maxRequests', 'maxSessions', 'maxBundleBytes',
@@ -1671,8 +1686,7 @@ def main():
     # Cleanup precedes capacity validation, so a broken installation cannot strand old trees.
     backend.pool = ResourcePool(config.get('resourceSlice'))
     backend.pool.verify()
-    verify_tools(config['toolsRoot'])
-    verify_programs(program_directory(config['launcher']))
+    verify_launch(config['launcher'], config['toolsRoot'])
     prepare_descriptor_limit()
     key = load_pem_public_key(Path(config['publicKey']).read_bytes())
     if not isinstance(key, Ed25519PublicKey):

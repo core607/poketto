@@ -11,7 +11,7 @@ The fixed worker policy needs no proxy. Omitting SRT's network section removes i
 
 ## Decision
 
-[launcher.py](../../executor-service/launcher.py) validates the tools and translates the worker's policy into bubblewrap arguments, then replaces itself with `bwrap`. The pinned static `apply-seccomp` installs its filter before the command. This applies to initialization, persistent shells, baseline installation and games; the game's own Node.js remains inside the boundary.
+The [launcher](../../executor-service/rust/sandcrab-launch/src/lib.rs), installed as `poketto-launch`, validates the tools and translates the worker's policy into bubblewrap arguments, then replaces itself with `bwrap`. The pinned static `apply-seccomp` installs its filter before the command. This applies to initialization, persistent shells, baseline installation and games; the game's own Node.js remains inside the boundary.
 
 The repository and game workers retain ownership of their readable and writable paths. The launcher rejects unsupported policy fields, overlapping grants, weaker namespaces and network exceptions instead of silently ignoring them. It enters the root-owned bootstrap before starting the boundary; untrusted repository or shell configuration cannot influence host startup.
 
@@ -44,4 +44,4 @@ A same-host serial comparison on 2026-10-20 used three fresh persistent shells p
 
 Poketto owns sandbox argument generation. SRT fixes to that layer do not apply automatically; bubblewrap or seccomp upgrades require live equivalence verification again. The SRT package remains the source of the pinned helper, and Node remains a toolkit and game dependency. Reducing idle cost does not remove workload CPU, storage or application limits.
 
-`test_launcher.py` pins policy rejection, tool validation, startup failure and interrupted-record cleanup. The [launcher comparison](../../executor-native/README.md#launcher-comparison) checks live equivalence and resource ratios; the worker and Java [native probes](../../executor-native/README.md), toolkit operations and game scenario cover functional, containment and cleanup behavior.
+The [launcher tests](../../executor-service/rust/sandcrab-launch/src/tests.rs) and `test_launcher.py` pin policy rejection, tool validation, startup failure and interrupted-record cleanup. The [launcher comparison](../../executor-native/README.md#launcher-comparison) checks live equivalence and resource ratios; the worker and Java [native probes](../../executor-native/README.md), toolkit operations and game scenario cover functional, containment and cleanup behavior.

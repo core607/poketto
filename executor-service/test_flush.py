@@ -16,12 +16,12 @@ class FilesystemFlushTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.backend = DiskSystemdBackend.__new__(DiskSystemdBackend)
-        self.backend.c = {'launcher': str(Path(__file__).with_name('launcher.py'))}
+        self.backend.c = {'launcher': str(Path(__file__).with_name('poketto-launch')), 'toolsRoot': '/opt/tools'}
         self.backend.mount_path = Mock(return_value=self.root)
         self.session = Mock()
         self.program = Path(__file__).with_name('bin') / 'poketto-syncfs'
         # Ordinary Linux runners own their checkout; image/native acceptance checks real root ownership.
-        trusted = patch('worker.trusted_executable')
+        trusted = patch('worker.verify_launch')
         self.trusted = trusted.start()
         self.addCleanup(trusted.stop)
 
@@ -31,7 +31,7 @@ class FilesystemFlushTests(unittest.TestCase):
             self.backend.flush(self.session)
         execute.assert_called_once_with([str(self.program), str(self.root)], check=True,
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
-        self.trusted.assert_called_once_with(self.program)
+        self.trusted.assert_called_once_with(self.backend.c['launcher'], '/opt/tools')
         self.assertEqual('kept', (self.root / 'acknowledged.txt').read_text())
 
     def test_helper_rejects_missing_extra_and_non_directory_arguments(self):

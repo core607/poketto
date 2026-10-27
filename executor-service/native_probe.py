@@ -70,7 +70,7 @@ def main():
     (root / 'public.pem').write_bytes(key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo))
     config = {'runtimeRoot': str(runtime), 'exportRoot': str(exports),
         'socketPath': str(runtime / 'control.sock'), 'publicKey': str(root / 'public.pem'),
-        'toolsRoot': str((args.tools or root / 'tools').resolve(strict=True)), 'launcher': str(root / 'launcher.py'),
+        'toolsRoot': str((args.tools or root / 'tools').resolve(strict=True)),
         'execUser': user, 'appUid': 0, 'appGid': 0, 'unitPrefix': unit_prefix,
         'supervisorUnit': supervisor + '.service', 'resourceSlice': resource_pool.name, 'leaseSeconds': 15, 'renewAfterSeconds': 5,
         'maxRequests': 4096, 'maxConnections': 32, 'maxExecutionsPerSession': 1000, 'maxSessions': 4, 'maxBundleBytes': 16777216,
@@ -750,7 +750,7 @@ def main():
             'shellLoopSha256': hashlib.sha256((root / 'bin/poketto-shell').read_bytes()).hexdigest(),
             'syncProgramSha256': hashlib.sha256((root / 'bin/poketto-syncfs').read_bytes()).hexdigest(),
             'probeSha256': hashlib.sha256((root / 'native_probe.py').read_bytes()).hexdigest(),
-            'launcherSha256': hashlib.sha256((root / 'launcher.py').read_bytes()).hexdigest()}), flush=True)
+            'launcherSha256': hashlib.sha256((root / 'poketto-launch').read_bytes()).hexdigest()}), flush=True)
     finally:
         try:
             for stop in heartbeat_stops:

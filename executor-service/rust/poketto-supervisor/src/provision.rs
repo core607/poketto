@@ -73,6 +73,8 @@ pub enum Source {
     Export(Export),
     Seed,
 }
+/// Programs bound read-only into every repository sandbox from the selected release.
+const PROGRAMS: [&str; 3] = ["poketto", "poketto-shell", "poketto-syncfs"];
 fn invalid() -> io::Error {
     io::Error::other("Provisioning unavailable")
 }
@@ -149,16 +151,13 @@ impl Factory {
         }
         runtime_directories(&config)?;
         cleanup_runtime(&config)?;
+        // Cleanup above stays available with damaged tools; serving requires intact ones.
         config.launcher = config.launcher.canonicalize()?;
-        runtime::verify_trusted_file(&config.launcher, false)?;
+        sandcrab_launch::trusted_executable(&config.launcher).map_err(io::Error::other)?;
         sandcrab_core::fs::protected_directory(&config.tools_root)?;
+        sandcrab_launch::verify_tools(&config.tools_root).map_err(io::Error::other)?;
         let programs = config.launcher.parent().ok_or_else(invalid)?.join("bin");
-        for program in ["poketto", "poketto-shell", "poketto-syncfs"] {
-            runtime::verify_program(&programs.join(program))?;
-        }
-        if fs::read_dir(&programs)?.count() != 3 {
-            return Err(invalid());
-        }
+        sandcrab_launch::verify_programs(&programs, &PROGRAMS).map_err(io::Error::other)?;
         sandcrab_core::fs::protected_directory(config.export_root.parent().ok_or_else(invalid)?)?;
         let info = fs::symlink_metadata(&config.export_root)?;
         if !info.is_dir() || info.uid() != config.app_uid || info.mode() & 0o077 != 0 {
@@ -291,7 +290,6 @@ impl Factory {
             "/usr/bin/env".into(),
             "-i".into(),
             "PATH=/usr/bin:/bin".into(),
-            "/usr/bin/python3".into(),
             config.launcher.to_string_lossy().into(),
             record.to_string_lossy().into(),
         ];
@@ -793,7 +791,7 @@ mod tests {
                 disk_bytes: 1 << 20,
                 disk_inodes: 1024,
                 tools_root: "/opt/poketto-executor/tools".into(),
-                launcher: "/opt/poketto-executor/launcher.py".into(),
+                launcher: "/opt/poketto-executor/poketto-launch".into(),
                 exec_user: "poketto-exec".into(),
                 exec_uid: uid,
                 exec_gid: gid,
@@ -897,6 +895,16 @@ mod tests {
             .unwrap();
         let command = &plan.description.command;
         assert_eq!(command[0], "systemd-run");
+        assert_eq!(
+            command[command.len() - 5..],
+            [
+                "/usr/bin/env",
+                "-i",
+                "PATH=/usr/bin:/bin",
+                "/opt/poketto-executor/poketto-launch",
+                &plan.records[0].0.to_string_lossy(),
+            ]
+        );
         assert!(plan.description.unit.starts_with("poketto-exec-worker-"));
         assert_eq!(property(command, "User="), Some("poketto-exec"));
         assert_eq!(property(command, "MemorySwapMax="), Some("0"));

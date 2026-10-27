@@ -926,7 +926,7 @@ class ProtocolTests(unittest.TestCase):
 class SandboxPolicyTests(unittest.TestCase):
     def test_every_mode_hides_the_host_sysfs_that_a_denied_root_leaves_readable(self):
         backend = SystemdBackend.__new__(SystemdBackend)
-        backend.c = {'toolsRoot': '/opt/poketto/tools', 'launcher': str(Path(__file__).with_name('launcher.py'))}
+        backend.c = {'toolsRoot': '/opt/poketto/tools', 'launcher': str(Path(__file__).with_name('poketto-launch'))}
         backend.sessions = Path('/run/poketto/sessions')
         session = Session(uid(), (), '', 115)
         for mode in ('initialize', 'shell', 'baseline'):

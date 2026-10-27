@@ -4,11 +4,11 @@ Date: 2026-10-26
 
 ## Problem
 
-Poketto dispatches sandboxed work through three implementations. Repository execution uses the static Rust supervisor ([Rust repository supervisor](../implemented/2026-10-21-rust-repository-supervisor.md)). Games use [game_worker.py](../../executor-service/game_worker.py), which builds its service, session, systemd backend and server from classes in [worker.py](../../executor-service/worker.py). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases with its own TypeScript client. Every path starts sandboxes through the Python [launcher.py](../../executor-service/launcher.py). A further consumer, a corpus command for [creator QA](../implemented/2026-10-09-creator-qa.md), would need a fourth path or another Python service.
+Poketto dispatches sandboxed work through three implementations. Repository execution uses the static Rust supervisor ([Rust repository supervisor](../implemented/2026-10-21-rust-repository-supervisor.md)). Games use [game_worker.py](../../executor-service/game_worker.py), which builds its service, session, systemd backend and server from classes in [worker.py](../../executor-service/worker.py). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases with its own TypeScript client. Every path starts sandboxes through the Rust launcher of the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md). A further consumer, a corpus command for [creator QA](../implemented/2026-10-09-creator-qa.md), would need a fourth path or another Python service.
 
 The duplication reaches verification. Most executor-service Python tests import the Python modules the game supervisor runs, while the Rust crates are covered by their unit tests, the differential frame comparisons in [test_supervisor.py](../../executor-service/test_supervisor.py) and the native probes.
 
-The [daemon](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still serves Poketto's copy operations through an extension and keeps Poketto's signed frame schema, so it is not reusable alone. The launcher's Python startup used 40.8 ms of CPU in a 2026-10-20 development-container measurement, which did not show it limiting production capacity.
+The [daemon](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still serves Poketto's copy operations through an extension and keeps Poketto's signed frame schema, so it is not reusable alone.
 
 No maintained sandbox service fits the default two-core, 4 GB deployment target ([continuous delivery](../implemented/2026-09-03-continuous-delivery.md)), whose current production host exposes no KVM device. E2B and microsandbox need KVM, OpenSandbox needs Docker or Kubernetes, and bubblewrap, nsjail, Anthropic's sandbox-runtime and the hakoniwa crate offer no service interface.
 
@@ -44,7 +44,7 @@ Poketto composes copies, seeds, publication checks, saves, moves and journals in
 ### Phases
 
 0. Validation, without production code. Check that the OpenSandbox Kotlin SDK reaches execd through the daemon over loopback. Map saves, moves and bridge requests onto the primitives and count the operations that need extensions. Measure the specification changes from 1.1.0 to 1.2.0. Benchmark one signed frame against one keep-alive HTTP request.
-1. In-repository split. Separate `sandcrab-core`, `sandcrab-launch` and the daemon from the Poketto crates under [executor-service/rust](../../executor-service/rust/Cargo.toml). The Rust launcher keeps every current check: root-owned, unwritable binaries and ancestors without symlinks; the `apply-seccomp` SHA-256 pin; bubblewrap 0.6.1 or newer. Both supervisors call its verification instead of importing launcher.py, and the baseline installer stays a Python program inside the sandbox. Tests target the Rust implementation directly.
+1. In-repository split, shipped as the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md), which also lists its outstanding native acceptance.
 2. Finite jobs. Games and the QA corpus command run as jobs; game_worker.py retires, and worker.py loses its production role.
 3. Repository operations move to the primitives until the daemon contains no Poketto code.
 4. Extraction. Move the crates to their own repository with history, publish releases with checksums and benchmarks, and pin a release in Poketto. This phase starts only after phases 1 to 3 have shipped and four weeks have passed without a change that crosses the boundary.
@@ -73,11 +73,7 @@ ARTIFACT_READ and ARTIFACT_REMOVE move to Poketto, which keeps artifact bytes af
 
 ## Acceptance criteria
 
-- Phase 0 is recorded in this note before phase 1 starts, including any operation that cannot be expressed without an extension.
-- Phase 1:
-  - The cases of [test_launcher.py](../../executor-service/test_launcher.py) pass against the Rust launcher.
-  - The [launcher comparison](../../executor-native/README.md#launcher-comparison) finds identical containment for the Python and Rust launchers and reports their resource ratio.
-- Phases 1 to 3:
+- Phases 2 and 3:
   - The native adapter probe, the toolkit acceptance, the game worker's tests and the `load` lane pass.
   - A 50-agent round on one host with unchanged bounds, before and after, reports goodput, p95 latency, refusals and CPU split by application container, supervisor and sandbox units, and none gets worse.
 - Phase 2 runs the native games scenario through the Rust daemon and removes game_worker.py.
@@ -91,7 +87,6 @@ ARTIFACT_READ and ARTIFACT_REMOVE move to Poketto, which keeps artifact bytes af
 - **Contribute a bubblewrap runtime to OpenSandbox.** No API to maintain, but a Python server and a Go execd stay resident on a 4 GB host, and its bubblewrap sessions ([OSEP-0013](https://github.com/alibaba/OpenSandbox/blob/main/oseps/0013-isolated-execution-api.md)) are an inner layer that leaves cgroup limits to an outer container.
 - **Use microVMs.** Stronger isolation, but E2B, including its single-host package, and microsandbox need KVM.
 - **Run every command in gVisor.** [Repository-native retrieval and sandboxed execution](../implemented/2026-09-01-repository-native-retrieval-and-sandboxed-execution.md) records why it lost for the single-host deployment.
-- **Keep the Python launcher until fresh starts limit capacity.** That avoids a second implementation of privileged validation; unifying the paths, not capacity, is the reason to replace it.
 
 ## Consequences
 

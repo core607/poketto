@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
 
 POSTGRES = 'postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0'
-MODULES = ('poketto-supervisor', 'disk_pool.py', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'launcher.py', 'resource_pool.py', 'bridge.py', 'bin/poketto',
+MODULES = ('poketto-supervisor', 'disk_pool.py', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'poketto-launch', 'resource_pool.py', 'bridge.py', 'bin/poketto',
            'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py')
 
 
@@ -93,7 +93,7 @@ def main():
         for name in MODULES:
             (root / name).parent.mkdir(mode=0o755, parents=True, exist_ok=True)
             shutil.copyfile(source / name, root / name)
-            (root / name).chmod(0o555 if name.startswith('bin/') or name == 'poketto-supervisor' else 0o644)
+            (root / name).chmod(0o555 if name.startswith('bin/') or name in ('poketto-supervisor', 'poketto-launch') else 0o644)
         (root / 'bin').chmod(0o755)
         key = Ed25519PrivateKey.generate()
         private = root / 'private.pem'
@@ -105,7 +105,7 @@ def main():
         worker_settings = {
             'runtimeRoot': str(root / 'runtime'), 'exportRoot': str(exports),
             'socketPath': str(root / 'runtime/control.sock'), 'publicKey': str(root / 'public.pem'),
-            'toolsRoot': str(tools), 'launcher': str(root / 'launcher.py'), 'execUser': exec_user,
+            'toolsRoot': str(tools), 'execUser': exec_user,
             'appUid': app_account.pw_uid, 'appGid': app_account.pw_gid,
             'unitPrefix': 'poketto-exec-c' + token + '-', 'supervisorUnit': worker_unit + '.service',
             'resourceSlice': pool.name, 'leaseSeconds': 30, 'renewAfterSeconds': 10,

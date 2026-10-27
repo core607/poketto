@@ -23,7 +23,12 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def integrity_checks(root, tools, source, record, user, verify_tools):
+def launch_command(launcher):
+    """The previous Python launcher runs under the system interpreter; the Rust launcher runs directly."""
+    return ['/usr/bin/python3', '-I', str(launcher)] if launcher.suffix == '.py' else [str(launcher)]
+
+
+def integrity_checks(root, tools, launcher, record, user, verify_tools):
     copied = root / 'integrity-tools'
     for relative in ('extracted/usr/bin/bwrap',
                      'node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp'):
@@ -49,8 +54,7 @@ def integrity_checks(root, tools, source, record, user, verify_tools):
                 raise AssertionError('Supervisor tool validation accepted ' + name)
             except ValueError as error:
                 assert expected in str(error)
-            attempt = subprocess.run(['runuser', '-u', user, '--', '/usr/bin/python3', '-I',
-                                      str(source / 'launcher.py'), str(invalid_record)],
+            attempt = subprocess.run(['runuser', '-u', user, '--', *launch_command(launcher), str(invalid_record)],
                                      capture_output=True, text=True, timeout=10)
             assert attempt.returncode != 0 and expected in attempt.stderr, attempt.stderr
             print(json.dumps({'integrity': name, 'supervisorAndLauncher': 'PASS'}), flush=True)
@@ -59,11 +63,11 @@ def integrity_checks(root, tools, source, record, user, verify_tools):
             target.chmod(0o755)
 
 
-def compare_snapshots(reference, direct, driver_comparison=False):
+def compare_snapshots(reference, direct, driver_comparison=False, reference_driver='python3'):
     assert reference['assertions'] == direct['assertions']
     assert reference['security'] == direct['security']
     processes = []
-    for snapshot, driver in ((reference, 'python3'), (direct, 'poketto-shell')):
+    for snapshot, driver in ((reference, reference_driver), (direct, 'poketto-shell')):
         rows = [dict(row) for row in snapshot['processes']]
         selected = next(row for row in rows if row['pid'] == 2)
         assert selected['comm'] == driver
@@ -110,8 +114,12 @@ def main():
     sys.path.insert(0, str(source))
     from command_channel import CommandChannel, CommandEnded
     from native_pool import NativePool
-    from worker import Session, SystemdBackend
-    from launcher import verify_tools
+    from worker import Session, SystemdBackend, verify_launch
+    launcher = source / 'poketto-launch'
+
+    def verify_tools(path):
+        verify_launch(launcher, path)
+
     verify_tools(tools)
     token = uuid.uuid4().hex[:8]
     root = Path(tempfile.mkdtemp(prefix='poketto-sandbox-' + token + '-', dir='/var/lib'))
@@ -120,7 +128,7 @@ def main():
     pool = NativePool(token, memory='384M', tasks=128)
     created_user = False
     units, measurements, snapshots = [], [], {}
-    launchers = [('direct', source / 'launcher.py')]
+    launchers = [('direct', launcher)]
     reference_source = args.reference_worker_source.resolve(strict=True) if args.reference_worker_source else None
     reference_programs = reference_source / 'bin' if reference_source else None
     if args.reference_launcher:
@@ -133,7 +141,7 @@ def main():
         created_user = True
         account = pwd.getpwnam(user)
         backend = object.__new__(SystemdBackend)
-        backend.c = {'toolsRoot': str(tools), 'launcher': str(source / 'launcher.py')}
+        backend.c = {'toolsRoot': str(tools), 'launcher': str(launcher)}
         backend.sessions = root / 'sessions'
         backend.sessions.mkdir(mode=0o755)
         session = Session(str(uuid.uuid4()), (), '', time.time() + 600)
@@ -148,7 +156,10 @@ def main():
             (lease / name).chmod(0o444)
         bootstrap = lease / 'bootstrap'
         bootstrap.mkdir(mode=0o755)
+        # A reference tree with the native driver compares only the launchers.
         reference_driver = reference_source / 'shell_loop.py' if reference_source else args.reference_driver
+        if reference_driver and not reference_driver.exists():
+            reference_driver = None
         if reference_driver:
             shutil.copyfile(reference_driver, bootstrap / 'shell_loop.py')
         shutil.copyfile(Path(__file__).with_name('sandbox_snapshot.py'), bootstrap / 'sandbox_snapshot.py')
@@ -174,10 +185,10 @@ def main():
         record.write_text(json.dumps({'mode': 'shell', 'root': str(lease),
                                      'tools': str(tools), 'settings': str(settings)}))
         record.chmod(0o444)
-        integrity_checks(root, tools, source, record, user, verify_tools)
+        integrity_checks(root, tools, launcher, record, user, verify_tools)
         # Both launchers get identical command bytes, grants, quotas and filesystem contents.
         for iteration in range(args.iterations):
-            for label, launcher in launchers:
+            for label, program in launchers:
                 available = int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines()
                                      if line.startswith('MemAvailable:')))
                 assert available >= 1536 * 1024, 'Host memory guard stopped sandbox acceptance'
@@ -190,9 +201,9 @@ def main():
                            '-p', 'RuntimeMaxSec=' + str(60 + args.idle_seconds),
                            '-p', 'NoNewPrivileges=yes', '-p', 'UMask=0077',
                            '-p', 'TemporaryFileSystem=/tmp:rw,size=8388608,nr_inodes=1024,mode=1777,nosuid,nodev',
-                           '-p', 'BindReadOnlyPaths=' + str(tools) + ' ' + str(launcher) + ' ' + str(record) + ' ' + str(settings),
+                           '-p', 'BindReadOnlyPaths=' + str(tools) + ' ' + str(program) + ' ' + str(record) + ' ' + str(settings),
                            '-p', 'BindPaths=' + str(lease),
-                           '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin', '/usr/bin/python3', str(launcher), str(record)]
+                           '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin', *launch_command(program), str(record)]
                 process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 channel = CommandChannel(process)
                 timings = {}
@@ -262,7 +273,8 @@ def main():
                   'probeSha256': digest(Path(__file__)), 'snapshotSha256': digest(Path(__file__).with_name('sandbox_snapshot.py')),
                   'scope': 'Serial fresh shell true and idle cgroup charges; 50 percent CPU quota; not HTTP capacity.'}
         if 'reference' in medians:
-            compare_snapshots(snapshots['reference'], snapshots['direct'], bool(reference_source))
+            compare_snapshots(snapshots['reference'], snapshots['direct'], bool(reference_source),
+                              'python3' if reference_driver else 'poketto-shell')
             result['ratios'] = {key: medians['direct'][key] / medians['reference'][key]
                                 for key in ('startupCpuUsec', 'memoryBytes', 'idleTasks')}
         if args.idle_seconds:

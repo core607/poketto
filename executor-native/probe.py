@@ -70,14 +70,14 @@ def main():
     disk_pool = root / 'copy-pool'
     game_fixture = None
     evidence = []
-    for name in ('poketto-supervisor', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'disk_pool.py', 'launcher.py', 'resource_pool.py', 'bridge.py', 'bin/poketto', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
+    for name in ('poketto-supervisor', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'disk_pool.py', 'poketto-launch', 'resource_pool.py', 'bridge.py', 'bin/poketto', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
         (root / name).parent.mkdir(mode=0o755, parents=True, exist_ok=True)
         shutil.copy2(worker_source / name, root / name)
-        os.chmod(root / name, 0o555 if name.startswith('bin/') or name == 'poketto-supervisor' else 0o644)
+        os.chmod(root / name, 0o555 if name.startswith('bin/') or name in ('poketto-supervisor', 'poketto-launch') else 0o644)
     (root / 'bin').chmod(0o755)
     if args.source_layout == 'managed':
         # Exercise the deployment selector through real systemd/SRT mounts and CLI subprocesses.
-        sources = sorted([*root.glob('*.py'), root / 'poketto-supervisor'])
+        sources = sorted([*root.glob('*.py'), root / 'poketto-supervisor', root / 'poketto-launch'])
         payload = {p.relative_to(root).as_posix(): digest(p) for p in [*sources, *(root / 'bin').iterdir()]}
         release = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         generations = root / 'releases'
@@ -291,7 +291,7 @@ with socket.socket(socket.AF_UNIX) as connection:
         before = {str(p.relative_to(source)): digest(p) for p in source.rglob('*') if p.is_file()}
         worker_config = {'runtimeRoot': str(root / 'runtime'), 'exportRoot': str(root / 'exports'),
             'socketPath': str(root / 'runtime/control.sock'), 'publicKey': str(root / 'public.pem'),
-            'toolsRoot': str(tools), 'launcher': str(root / 'launcher.py'), 'execUser': exec_user,
+            'toolsRoot': str(tools), 'execUser': exec_user,
             'appUid': app_account.pw_uid, 'appGid': app_account.pw_gid,
             'unitPrefix': 'poketto-exec-j' + token + '-', 'supervisorUnit': supervisor + '.service', 'resourceSlice': resource_pool.name,
             'leaseSeconds': 15, 'renewAfterSeconds': 5, 'maxRequests': 4096, 'maxConnections': 32,
@@ -364,7 +364,7 @@ with socket.socket(socket.AF_UNIX) as connection:
             'resourcePoolSha256': digest(root / 'resource_pool.py'),
             'nativePoolSha256': digest(worker_source / 'native_pool.py'),
             'supervisorKind': 'rust', 'workerSha256': digest(root / 'poketto-supervisor'),
-            'launcherSha256': digest(root / 'launcher.py'), 'shellLoopSha256': digest(root / 'bin/poketto-shell'),
+            'launcherSha256': digest(root / 'poketto-launch'), 'shellLoopSha256': digest(root / 'bin/poketto-shell'),
             'syncProgramSha256': digest(root / 'bin/poketto-syncfs'),
             'cliSha256': digest(root / 'bin/poketto'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),

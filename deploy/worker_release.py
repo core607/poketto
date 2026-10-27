@@ -18,9 +18,11 @@ class DeploymentError(RuntimeError):
         self.missing = missing
 
 
-SOURCES = frozenset(("launcher.py", "resource_pool.py"))
+SOURCES = frozenset(("resource_pool.py",))
 SUPERVISOR = "poketto-supervisor"
-BINARIES = frozenset(("bin/poketto", "bin/poketto-shell", "bin/poketto-syncfs", SUPERVISOR))
+# The supervisor runs the launcher installed beside it in the same generation.
+LAUNCHER = "poketto-launch"
+BINARIES = frozenset(("bin/poketto", "bin/poketto-shell", "bin/poketto-syncfs", SUPERVISOR, LAUNCHER))
 PAYLOAD = SOURCES | BINARIES
 
 
@@ -143,8 +145,8 @@ class WorkerRelease:
         protected(self.root, directory=True)
         protected(self.configuration)
         settings = json.loads(self.configuration.read_bytes())
-        if settings.get("launcher") != str(self.root / "launcher.py") or settings.get("supervisorUnit") != config["service"]:
-            raise DeploymentError("executor deployment must match the installed launcher and supervisor")
+        if settings.get("supervisorUnit") != config["service"]:
+            raise DeploymentError("executor deployment must match the installed supervisor")
         self.store = self.root / "releases"
         self.current = self.store / "current"
 
@@ -187,11 +189,11 @@ class WorkerRelease:
                         if name not in BINARIES:
                             raise DeploymentError("stored worker release contains an unexpected program")
                         names.add(name)
-                elif re.fullmatch(r"[a-z_]+\.py", file.name) or file.name in ("requirements.txt", SUPERVISOR):
+                elif re.fullmatch(r"[a-z_]+\.py", file.name) or file.name in ("requirements.txt", SUPERVISOR, LAUNCHER):
                     names.add(file.name)
                 else:
                     raise DeploymentError("stored worker release contains an unexpected file")
-            if SUPERVISOR not in names or "launcher.py" not in names:
+            if SUPERVISOR not in names or LAUNCHER not in names:
                 raise DeploymentError("stored worker release is incomplete")
         for name in names:
             file = path / name
@@ -211,7 +213,7 @@ class WorkerRelease:
     def _aliases(data):
         # Sandbox programs follow the resolved launcher inside the selected generation.
         # The installed service entry and helper scripts use aliases in the protected root.
-        return {name for name in data if name.endswith(".py") or name == SUPERVISOR}
+        return {name for name in data if name.endswith(".py") or name in (SUPERVISOR, LAUNCHER)}
 
     @staticmethod
     def _identity(data):
