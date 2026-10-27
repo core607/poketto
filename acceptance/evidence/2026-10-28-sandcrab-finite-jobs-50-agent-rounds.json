@@ -1,0 +1,653 @@
+{
+ "kind": "sandcrab-phase-2-load-comparison",
+ "date": "2026-10-28",
+ "method": "acceptance/load-suite.py with the arguments and production bounds of the phase 1 rounds in acceptance/evidence/2026-10-27-sandcrab-50-agent-rounds.json, which are the before runs; CPU split from cgroup usage_usec of the application container, the executor supervisor service and the rest of the executor slice (sandbox units), sampled around each run including its warm-up and copy cleanup",
+ "note": "Phase 2 changes the game supervisor; the repository path changes only by building identical systemd-run arguments through a shared profile. Three identical after runs gave judged p95 0.447, 0.745 and 0.484 s while server-side command totalMs p95 stayed at 792, 770 and 761, against 792 and 765 before; busy host CPU in the judged windows was 0.11 to 0.16 cores, against 0.15 and 0.18 for the before runs, with no steal. The client p95 includes the Guangzhou to Singapore link.",
+ "runs": [
+  {
+   "label": "after, first (28c56642, application restarted by the deployment)",
+   "cpuSplit": {
+    "windowSeconds": 782.0,
+    "appCpuSeconds": 145.58,
+    "supervisorCpuSeconds": 32.73,
+    "sandboxUnitCpuSeconds": 60.51
+   },
+   "receipt": {
+    "kind": "agent-load-suite",
+    "label": "after-28c56642-first",
+    "sourceCommit": "28c566426523f516d06b77b4d1af5f3c2c0a574a",
+    "started": "2026-10-27T17:47:14Z",
+    "settings": {
+     "seconds": 360,
+     "warmup": 60.0,
+     "think": [
+      3.0,
+      10.0
+     ],
+     "thinkDistribution": "uniform",
+     "warmUpRun": [
+      10,
+      20
+     ]
+    },
+    "preflight": {
+     "noOtherLoad": {
+      "ok": true,
+      "detail": "0 other load processes"
+     },
+     "tools": {
+      "ok": true,
+      "detail": "repo_exec and repo_discard listed"
+     },
+     "quiet": {
+      "ok": true,
+      "detail": "0 commands in the last 3 minutes"
+     },
+     "idle": {
+      "ok": true,
+      "detail": "no live sandboxes after 0 s"
+     }
+    },
+    "stages": [
+     {
+      "agents": 50,
+      "verdict": "PASS",
+      "reasons": [],
+      "requirement": [
+       0.99,
+       1.0
+      ],
+      "afterWarmup": {
+       "calls": 2251,
+       "p50": 0.206,
+       "p95": 0.447,
+       "p99": 1.008,
+       "okRate": 1.0,
+       "callsPerSecond": 7.5,
+       "outcomes": {
+        "OK": 2251
+       }
+      },
+      "all": {
+       "calls": 2673,
+       "p50": 0.209,
+       "p95": 0.942,
+       "p99": 7.083,
+       "okRate": 0.9757,
+       "callsPerSecond": 7.42,
+       "outcomes": {
+        "EXECUTION_REFUSED:CAPACITY": 48,
+        "OK": 2608,
+        "EXECUTION_REFUSED:BUSY": 17
+       }
+      },
+      "timeline": [
+       {
+        "from": 0,
+        "calls": 199,
+        "ok": 134,
+        "p95": 8.665
+       },
+       {
+        "from": 30,
+        "calls": 220,
+        "ok": 220,
+        "p95": 0.677
+       },
+       {
+        "from": 60,
+        "calls": 218,
+        "ok": 218,
+        "p95": 0.467
+       },
+       {
+        "from": 90,
+        "calls": 229,
+        "ok": 229,
+        "p95": 0.522
+       },
+       {
+        "from": 120,
+        "calls": 220,
+        "ok": 220,
+        "p95": 0.517
+       },
+       {
+        "from": 150,
+        "calls": 219,
+        "ok": 219,
+        "p95": 0.936
+       },
+       {
+        "from": 180,
+        "calls": 231,
+        "ok": 231,
+        "p95": 0.298
+       },
+       {
+        "from": 210,
+        "calls": 225,
+        "ok": 225,
+        "p95": 0.581
+       },
+       {
+        "from": 240,
+        "calls": 228,
+        "ok": 228,
+        "p95": 0.471
+       },
+       {
+        "from": 270,
+        "calls": 231,
+        "ok": 231,
+        "p95": 0.278
+       },
+       {
+        "from": 300,
+        "calls": 229,
+        "ok": 229,
+        "p95": 0.28
+       },
+       {
+        "from": 330,
+        "calls": 219,
+        "ok": 219,
+        "p95": 0.305
+       },
+       {
+        "from": 360,
+        "calls": 5,
+        "ok": 5,
+        "p95": 0.271
+       }
+      ],
+      "copies": 50,
+      "baseline": null,
+      "server": {
+       "commands": 2673,
+       "freshSandboxes": 50,
+       "stoppedIn": {
+        "completeMs": 48,
+        "permitMs": 17
+       },
+       "totalMs": {
+        "p50": 58,
+        "p95": 792
+       },
+       "freshWorkerRunMs": {
+        "p50": 237,
+        "p90": 561
+       },
+       "warnings": {
+        "Worker lease renewal failed": 0,
+        "Account command completion was not confirmed": 0,
+        "Account command did not run": 48
+       }
+      },
+      "metrics": {
+       "executorCpuCores": {
+        "avg": 0.107,
+        "max": 0.26548226666666574
+       },
+       "executorMemoryBytes": {
+        "avg": 2956014878.72,
+        "max": 2979053568.0
+       },
+       "appCpuCores": {
+        "avg": 0.21,
+        "max": 0.6151215555555556
+       },
+       "appMemoryBytes": {
+        "avg": 1405331210.24,
+        "max": 1471164416.0
+       },
+       "databaseCpuCores": {
+        "avg": 0.041,
+        "max": 0.052486288888839126
+       },
+       "liveSandboxes": {
+        "avg": 44.76,
+        "max": 50.0
+       }
+      }
+     }
+    ],
+    "cleanup": {
+     "discarded": {
+      "DISCARDED": 50
+     }
+    },
+    "finished": "2026-10-27T18:00:12Z",
+    "result": "PASS"
+   }
+  },
+  {
+   "label": "after, second (28c56642)",
+   "cpuSplit": {
+    "windowSeconds": 745.4,
+    "appCpuSeconds": 67.79,
+    "supervisorCpuSeconds": 19.2,
+    "sandboxUnitCpuSeconds": 27.52
+   },
+   "receipt": {
+    "kind": "agent-load-suite",
+    "label": "after-28c56642-warm",
+    "sourceCommit": "28c566426523f516d06b77b4d1af5f3c2c0a574a",
+    "started": "2026-10-27T18:03:56Z",
+    "settings": {
+     "seconds": 360,
+     "warmup": 60.0,
+     "think": [
+      3.0,
+      10.0
+     ],
+     "thinkDistribution": "uniform",
+     "warmUpRun": [
+      10,
+      20
+     ]
+    },
+    "preflight": {
+     "noOtherLoad": {
+      "ok": true,
+      "detail": "0 other load processes"
+     },
+     "tools": {
+      "ok": true,
+      "detail": "repo_exec and repo_discard listed"
+     },
+     "quiet": {
+      "ok": true,
+      "detail": "0 commands in the last 3 minutes"
+     },
+     "idle": {
+      "ok": true,
+      "detail": "no live sandboxes after 0 s"
+     }
+    },
+    "stages": [
+     {
+      "agents": 50,
+      "verdict": "PASS",
+      "reasons": [],
+      "requirement": [
+       0.99,
+       1.0
+      ],
+      "afterWarmup": {
+       "calls": 2248,
+       "p50": 0.205,
+       "p95": 0.745,
+       "p99": 1.037,
+       "okRate": 1.0,
+       "callsPerSecond": 7.49,
+       "outcomes": {
+        "OK": 2248
+       }
+      },
+      "all": {
+       "calls": 2679,
+       "p50": 0.207,
+       "p95": 0.953,
+       "p99": 6.327,
+       "okRate": 0.978,
+       "callsPerSecond": 7.44,
+       "outcomes": {
+        "EXECUTION_REFUSED:CAPACITY": 44,
+        "OK": 2620,
+        "EXECUTION_REFUSED:BUSY": 15
+       }
+      },
+      "timeline": [
+       {
+        "from": 0,
+        "calls": 208,
+        "ok": 149,
+        "p95": 7.869
+       },
+       {
+        "from": 30,
+        "calls": 222,
+        "ok": 222,
+        "p95": 0.919
+       },
+       {
+        "from": 60,
+        "calls": 219,
+        "ok": 219,
+        "p95": 0.303
+       },
+       {
+        "from": 90,
+        "calls": 229,
+        "ok": 229,
+        "p95": 0.777
+       },
+       {
+        "from": 120,
+        "calls": 220,
+        "ok": 220,
+        "p95": 0.462
+       },
+       {
+        "from": 150,
+        "calls": 219,
+        "ok": 219,
+        "p95": 0.887
+       },
+       {
+        "from": 180,
+        "calls": 231,
+        "ok": 231,
+        "p95": 0.268
+       },
+       {
+        "from": 210,
+        "calls": 225,
+        "ok": 225,
+        "p95": 0.965
+       },
+       {
+        "from": 240,
+        "calls": 230,
+        "ok": 230,
+        "p95": 0.432
+       },
+       {
+        "from": 270,
+        "calls": 225,
+        "ok": 225,
+        "p95": 0.904
+       },
+       {
+        "from": 300,
+        "calls": 227,
+        "ok": 227,
+        "p95": 0.283
+       },
+       {
+        "from": 330,
+        "calls": 222,
+        "ok": 222,
+        "p95": 0.926
+       },
+       {
+        "from": 360,
+        "calls": 2,
+        "ok": 2,
+        "p95": 0.233
+       }
+      ],
+      "copies": 50,
+      "baseline": null,
+      "server": {
+       "commands": 2679,
+       "freshSandboxes": 50,
+       "stoppedIn": {
+        "completeMs": 44,
+        "permitMs": 15
+       },
+       "totalMs": {
+        "p50": 56,
+        "p95": 770
+       },
+       "freshWorkerRunMs": {
+        "p50": 202,
+        "p90": 447
+       },
+       "warnings": {
+        "Worker lease renewal failed": 0,
+        "Account command completion was not confirmed": 0,
+        "Account command did not run": 44
+       }
+      },
+      "metrics": {
+       "executorCpuCores": {
+        "avg": 0.104,
+        "max": 0.250649866666668
+       },
+       "executorMemoryBytes": {
+        "avg": 2232639651.84,
+        "max": 2257252352.0
+       },
+       "appCpuCores": {
+        "avg": 0.138,
+        "max": 0.35685695555555536
+       },
+       "appMemoryBytes": {
+        "avg": 1592715182.08,
+        "max": 1610297344.0
+       },
+       "databaseCpuCores": {
+        "avg": 0.039,
+        "max": 0.04727128888892669
+       },
+       "liveSandboxes": {
+        "avg": 44.08,
+        "max": 50.0
+       }
+      }
+     }
+    ],
+    "cleanup": {
+     "discarded": {
+      "DISCARDED": 50
+     }
+    },
+    "finished": "2026-10-27T18:16:19Z",
+    "result": "PASS"
+   }
+  },
+  {
+   "label": "after, third (28c56642)",
+   "cpuSplit": {
+    "windowSeconds": 734.6,
+    "appCpuSeconds": 62.22,
+    "supervisorCpuSeconds": 19.04,
+    "sandboxUnitCpuSeconds": 27.17
+   },
+   "receipt": {
+    "kind": "agent-load-suite",
+    "label": "after-28c56642-warm2",
+    "sourceCommit": "28c566426523f516d06b77b4d1af5f3c2c0a574a",
+    "started": "2026-10-27T18:20:32Z",
+    "settings": {
+     "seconds": 360,
+     "warmup": 60.0,
+     "think": [
+      3.0,
+      10.0
+     ],
+     "thinkDistribution": "uniform",
+     "warmUpRun": [
+      10,
+      20
+     ]
+    },
+    "preflight": {
+     "noOtherLoad": {
+      "ok": true,
+      "detail": "0 other load processes"
+     },
+     "tools": {
+      "ok": true,
+      "detail": "repo_exec and repo_discard listed"
+     },
+     "quiet": {
+      "ok": true,
+      "detail": "0 commands in the last 3 minutes"
+     },
+     "idle": {
+      "ok": true,
+      "detail": "no live sandboxes after 0 s"
+     }
+    },
+    "stages": [
+     {
+      "agents": 50,
+      "verdict": "PASS",
+      "reasons": [],
+      "requirement": [
+       0.99,
+       1.0
+      ],
+      "afterWarmup": {
+       "calls": 2251,
+       "p50": 0.204,
+       "p95": 0.484,
+       "p99": 0.98,
+       "okRate": 1.0,
+       "callsPerSecond": 7.5,
+       "outcomes": {
+        "OK": 2251
+       }
+      },
+      "all": {
+       "calls": 2689,
+       "p50": 0.206,
+       "p95": 0.905,
+       "p99": 6.001,
+       "okRate": 0.9721,
+       "callsPerSecond": 7.47,
+       "outcomes": {
+        "EXECUTION_REFUSED:CAPACITY": 60,
+        "OK": 2614,
+        "EXECUTION_REFUSED:BUSY": 15
+       }
+      },
+      "timeline": [
+       {
+        "from": 0,
+        "calls": 208,
+        "ok": 133,
+        "p95": 7.432
+       },
+       {
+        "from": 30,
+        "calls": 227,
+        "ok": 227,
+        "p95": 0.606
+       },
+       {
+        "from": 60,
+        "calls": 211,
+        "ok": 211,
+        "p95": 0.272
+       },
+       {
+        "from": 90,
+        "calls": 237,
+        "ok": 237,
+        "p95": 0.578
+       },
+       {
+        "from": 120,
+        "calls": 211,
+        "ok": 211,
+        "p95": 0.669
+       },
+       {
+        "from": 150,
+        "calls": 227,
+        "ok": 227,
+        "p95": 0.535
+       },
+       {
+        "from": 180,
+        "calls": 231,
+        "ok": 231,
+        "p95": 0.257
+       },
+       {
+        "from": 210,
+        "calls": 228,
+        "ok": 228,
+        "p95": 0.287
+       },
+       {
+        "from": 240,
+        "calls": 228,
+        "ok": 228,
+        "p95": 0.746
+       },
+       {
+        "from": 270,
+        "calls": 229,
+        "ok": 229,
+        "p95": 0.268
+       },
+       {
+        "from": 300,
+        "calls": 226,
+        "ok": 226,
+        "p95": 0.321
+       },
+       {
+        "from": 330,
+        "calls": 226,
+        "ok": 226,
+        "p95": 0.288
+       }
+      ],
+      "copies": 50,
+      "baseline": null,
+      "server": {
+       "commands": 2689,
+       "freshSandboxes": 50,
+       "stoppedIn": {
+        "completeMs": 60,
+        "permitMs": 15
+       },
+       "totalMs": {
+        "p50": 56,
+        "p95": 761
+       },
+       "freshWorkerRunMs": {
+        "p50": 207,
+        "p90": 752
+       },
+       "warnings": {
+        "Worker lease renewal failed": 0,
+        "Account command completion was not confirmed": 0,
+        "Account command did not run": 60
+       }
+      },
+      "metrics": {
+       "executorCpuCores": {
+        "avg": 0.105,
+        "max": 0.25573668888888884
+       },
+       "executorMemoryBytes": {
+        "avg": 2235184414.72,
+        "max": 2262110208.0
+       },
+       "appCpuCores": {
+        "avg": 0.13,
+        "max": 0.33283
+       },
+       "appMemoryBytes": {
+        "avg": 1606560645.12,
+        "max": 1610457088.0
+       },
+       "databaseCpuCores": {
+        "avg": 0.039,
+        "max": 0.045738333333348334
+       },
+       "liveSandboxes": {
+        "avg": 44.56,
+        "max": 50.0
+       }
+      }
+     }
+    ],
+    "cleanup": {
+     "discarded": {
+      "DISCARDED": 50
+     }
+    },
+    "finished": "2026-10-27T18:32:44Z",
+    "result": "PASS"
+   }
+  }
+ ]
+}
