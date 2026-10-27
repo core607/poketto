@@ -47,9 +47,10 @@ cannot delay it indefinitely. Finished-command output is discarded, and retainin
 at most 128 readers bounds descriptor use. The shell wrapper, execution identity,
 frame bounds and exit-status mapping remain part of the protocol.
 
-The launcher and game supervisor remain Python. The
+The game supervisor remains Python; the
 [sandcrab proposal](../proposed/2026-10-26-sandcrab-sandbox-service.md) owns
-their replacement and its acceptance conditions; the
+its replacement. The [in-repository split](2026-10-27-sandcrab-in-repository-split.md)
+made the launcher Rust; the
 [repository supervisor decision](2026-10-21-rust-repository-supervisor.md) owns its host runtime.
 
 ## Alternatives

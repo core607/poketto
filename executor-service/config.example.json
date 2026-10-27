@@ -4,7 +4,6 @@
   "socketPath": "/run/poketto-executor/control.sock",
   "publicKey": "/etc/poketto-executor/public.pem",
   "toolsRoot": "/opt/poketto-executor/tools",
-  "launcher": "/opt/poketto-executor/launcher.py",
   "execUser": "poketto-exec",
   "appUid": 1001,
   "appGid": 1001,

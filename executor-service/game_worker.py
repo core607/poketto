@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from resource_pool import ResourcePool
 from worker import (DENY_READ, Service, Session, SystemdBackend, Handler, Server, Rejected,
-                    checked, integer, json_read, verify_tools)
+                    checked, integer, json_read, verify_launch)
 
 MAX_INPUT = 512 * 1024
 MAX_BUNDLE = 384 * 1024
@@ -235,7 +235,7 @@ def main():
         return
     backend.pool = ResourcePool(config['resourceSlice'])
     backend.pool.verify()
-    verify_tools(config['toolsRoot'])
+    verify_launch(config['launcher'], config['toolsRoot'], programs=False)
     key = load_pem_public_key(Path(config['publicKey']).read_bytes())
     if not isinstance(key, Ed25519PublicKey):
         raise SystemExit('Ed25519 public key required')

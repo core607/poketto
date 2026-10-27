@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 022
 
-# Installs the V8 compile cache that launcher.py names in NODE_COMPILE_CACHE; execute on the worker
+# Installs the V8 compile cache that the launcher names in NODE_COMPILE_CACHE; execute on the worker
 # host as root after prepare-tools.sh for each execution account sharing the tools, and again after
 # changing Node or SRT. A code cache is executable, so no lease may write it: Node keys entries by
 # uid, so the account fills a fresh private directory, and root installs that uid's part read-only.

@@ -11,6 +11,7 @@ fixture = ["sandcrab-daemon/fixture"]
 
 [dependencies]
 sandcrab-core = { path = "../sandcrab-core" }
+sandcrab-launch = { path = "../sandcrab-launch" }
 sandcrab-daemon = { path = "../sandcrab-daemon" }
 base64.workspace = true
 rustix = { workspace = true, features = ["net", "time"] }

@@ -196,7 +196,8 @@ impl Config {
             disk_bytes: number(value, "diskBytes")?,
             disk_inodes: number(value, "diskInodes")?,
             tools_root: path(value, "toolsRoot")?,
-            launcher: path(value, "launcher")?,
+            // The launcher from the supervisor's own release; configuration cannot select another.
+            launcher: std::env::current_exe()?.with_file_name("poketto-launch"),
             exec_user,
             exec_uid,
             exec_gid,

@@ -1,0 +1,13 @@
+[package]
+name = "poketto-launch"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+sandcrab-core = { path = "../sandcrab-core" }
+sandcrab-launch = { path = "../sandcrab-launch" }
+rustix = { workspace = true, features = ["process"] }
+serde_json.workspace = true

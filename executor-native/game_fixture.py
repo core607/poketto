@@ -34,11 +34,12 @@ class GameFixture:
                 fixture.accepted += 1
         self.listener = socketserver.TCPServer(('127.0.0.1', 0), Listener)
         threading.Thread(target=self.listener.serve_forever, daemon=True).start()
+        # The repository probe has already installed the shared launcher in this root.
         for name in ('game_worker.py', 'game-entry.mjs', 'game-runtime.mjs', 'game-example.mjs'):
             shutil.copy2(source / name, root / name)
             os.chmod(root / name, 0o644)
         self.config = {'runtimeRoot': str(self.runtime), 'socketPath': str(self.runtime / 'control.sock'),
-            'publicKey': str(root / 'game-public.pem'), 'toolsRoot': str(tools), 'launcher': str(root / 'launcher.py'),
+            'publicKey': str(root / 'game-public.pem'), 'toolsRoot': str(tools), 'launcher': str(root / 'poketto-launch'),
             'execUser': self.user, 'repositoryExecUser': repository_user,
             'repositoryRuntimeRoot': str(root / 'runtime'), 'repositoryResourceSlice': repository_slice,
             'appUid': app.pw_uid, 'appGid': app.pw_gid, 'unitPrefix': 'poketto-game-' + self.token + '-',

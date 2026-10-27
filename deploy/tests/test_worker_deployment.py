@@ -7,7 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from worker_release import BINARIES, DeploymentError, PAYLOAD, SOURCES, WorkerRelease, read_bundle, sha, validate_config
+from worker_release import (BINARIES, LAUNCHER, PYTHON_LAUNCHER, DeploymentError, PAYLOAD, SOURCES, WorkerRelease,
+                            read_bundle, sha, validate_config)
 
 
 REVISION = "a" * 40
@@ -51,8 +52,7 @@ class WorkerDeploymentTests(unittest.TestCase):
             (self.root / name).write_text("VALUE = 'old'\n")
         program(self.root, "old")
         self.configuration = self.root / "config.json"
-        self.private = json.dumps({"launcher": str(self.root / "launcher.py"),
-                                   "supervisorUnit": "example.service", "private": "operator-$secret"}).encode()
+        self.private = json.dumps({"supervisorUnit": "example.service", "private": "operator-$secret"}).encode()
         self.configuration.write_bytes(self.private)
         self.configuration.chmod(0o600)
         self.token = self.root / "probe-token"
@@ -158,10 +158,43 @@ class WorkerDeploymentTests(unittest.TestCase):
         self.assertTrue((self.worker.store / previous / "poketto-supervisor").is_file())
         self.worker.install(plan)
         self.worker.verify(plan)
-        selected = (self.root / "launcher.py").resolve().parent
+        selected = (self.root / "poketto-supervisor").resolve().parent
         self.assertEqual((self.image / "bin/poketto").read_bytes(), (selected / "bin/poketto").read_bytes())
         self.assertFalse((selected / "cli.py").exists())
         self.assertEqual(0o555, (selected / "bin/poketto").stat().st_mode & 0o777)
+
+    def test_python_launcher_generation_upgrades_and_remains_the_rollback_target(self):
+        old = {name: (self.root / name).read_bytes() for name in SOURCES | BINARIES if name != LAUNCHER}
+        old[PYTHON_LAUNCHER] = b"VALUE = 'previous Python launcher'\n"
+        previous = self.worker._stage(old)
+        self.worker._select(previous)
+        (self.root / LAUNCHER).unlink()
+        for name in self.worker._aliases(old):
+            target = self.root / name
+            target.unlink(missing_ok=True)
+            target.symlink_to("releases/current/" + name)
+        plan = self.worker.prepare("image", REVISION)
+        self.assertEqual(previous, plan["previousRelease"])
+        self.fail_start = True
+        with self.assertRaisesRegex(DeploymentError, "previous sources restored"):
+            self.worker.install(plan)
+        self.assertEqual(old[PYTHON_LAUNCHER], (self.root / PYTHON_LAUNCHER).read_bytes())
+        self.worker.install(plan)
+        self.worker.verify(plan)
+        self.assertEqual((self.image / LAUNCHER).read_bytes(), (self.root / LAUNCHER).read_bytes())
+
+    def test_first_adoption_accepts_a_manual_install_with_the_python_launcher(self):
+        (self.root / LAUNCHER).unlink()
+        (self.root / PYTHON_LAUNCHER).write_text("VALUE = 'old'\n")
+        plan = self.worker.prepare("image", REVISION)
+        stored = self.worker._sources(self.worker.store / plan["previousRelease"])
+        self.assertIn(PYTHON_LAUNCHER, stored)
+        self.assertNotIn(LAUNCHER, stored)
+        self.worker.install(plan)
+        self.worker.verify(plan)
+        (self.worker.store / plan["previousRelease"] / PYTHON_LAUNCHER).unlink()
+        with self.assertRaisesRegex(DeploymentError, "lacks its supervisor or launcher"):
+            self.worker._sources(self.worker.store / plan["previousRelease"])
 
     def test_program_integrity_and_execute_permissions_are_required(self):
         binary = self.image / "poketto-supervisor"
@@ -193,13 +226,13 @@ class WorkerDeploymentTests(unittest.TestCase):
         self.fail_start = True
         with self.assertRaisesRegex(DeploymentError, "previous sources restored"):
             self.worker.install(plan)
-        selected = (self.root / "launcher.py").resolve().parent
+        selected = (self.root / "poketto-supervisor").resolve().parent
         self.assertEqual(old["shell_loop.py"], (selected / "shell_loop.py").read_bytes())
         self.assertEqual(old["bin/poketto"], (selected / "bin/poketto").read_bytes())
         self.assertEqual(old["bin/poketto-shell"], (selected / "bin/poketto-shell").read_bytes())
         self.worker.install(plan)
         self.worker.verify(plan)
-        selected = (self.root / "launcher.py").resolve().parent
+        selected = (self.root / "poketto-supervisor").resolve().parent
         self.assertFalse((selected / "shell_loop.py").exists())
         self.assertEqual((self.image / "bin/poketto-shell").read_bytes(), (selected / "bin/poketto-shell").read_bytes())
 
@@ -243,7 +276,7 @@ class WorkerDeploymentTests(unittest.TestCase):
             os.umask(previous)
         for path in (self.worker.store, self.worker.store / plan["release"]):
             self.assertEqual(path.stat().st_mode & 0o777, 0o755)
-        self.assertEqual((self.root / "launcher.py").stat().st_mode & 0o777, 0o644)
+        self.assertEqual((self.root / "resource_pool.py").stat().st_mode & 0o777, 0o644)
         self.assertEqual(self.configuration.stat().st_mode & 0o777, 0o600)
 
     def test_interruption_after_switch_restarts_a_stopped_worker_on_reconciliation(self):
@@ -259,13 +292,13 @@ class WorkerDeploymentTests(unittest.TestCase):
         with self.assertRaisesRegex(DeploymentError, "configuration changed"):
             self.worker.install(plan)
         self.configuration.write_bytes(self.private)
-        (self.root / "launcher.py").write_text("VALUE = 'drift'\n")
+        (self.root / "resource_pool.py").write_text("VALUE = 'drift'\n")
         with self.assertRaisesRegex(DeploymentError, "source changed"):
             self.worker.install(plan)
         self.assertFalse(any(call[:2] in (("systemctl", "start"), ("systemctl", "stop")) for call in self.calls))
 
     def test_bad_bundle_never_stops_the_worker(self):
-        (self.image / "launcher.py").write_text("tampered\n")
+        (self.image / "resource_pool.py").write_text("tampered\n")
         with self.assertRaisesRegex(DeploymentError, "checksum mismatch"):
             self.worker.prepare("image", REVISION)
         self.assertEqual(self.calls[-1][:2], ("docker", "rm"))
@@ -279,19 +312,19 @@ class WorkerDeploymentTests(unittest.TestCase):
         with self.assertRaisesRegex(DeploymentError, "only the complete runtime"):
             read_bundle(self.image, REVISION)
         extra.unlink()
-        (self.image / "launcher.py").unlink()
-        (self.image / "launcher.py").symlink_to(self.configuration)
+        (self.image / "resource_pool.py").unlink()
+        (self.image / "resource_pool.py").symlink_to(self.configuration)
         with self.assertRaisesRegex(DeploymentError, "invalid file"):
             read_bundle(self.image, REVISION)
 
     def test_tampered_release_and_unmanaged_links_are_never_accepted(self):
         plan = self.worker.prepare("image", REVISION)
         self.worker.install(plan)
-        (self.worker.store / plan["release"] / "launcher.py").write_text("VALUE='drift'\n")
+        (self.worker.store / plan["release"] / "resource_pool.py").write_text("VALUE='drift'\n")
         with self.assertRaisesRegex(DeploymentError, "checksum mismatch"):
             self.worker.verify(plan)
-        (self.root / "launcher.py").unlink()
-        (self.root / "launcher.py").symlink_to(self.configuration)
+        (self.root / "resource_pool.py").unlink()
+        (self.root / "resource_pool.py").symlink_to(self.configuration)
         with self.assertRaisesRegex(DeploymentError, "not managed"):
             self.worker.verify(plan)
 

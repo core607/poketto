@@ -18,7 +18,7 @@ Build the runtime with Java 26:
 `build/executor-native/runtime` contains only compiled classes, resolved JARs and a SHA-256 manifest;
 the probe verifies every manifest entry and rejects unlisted files. Copy that directory, `probe.py`,
 `rejected_peer.py` and `build/executor-service/worker` to isolated host staging. Preserve the latter's
-root-level `poketto-supervisor`, `bin/` directory and executable permissions. Never stage operator settings or credentials.
+root-level `poketto-supervisor` and `poketto-launch`, `bin/` directory and executable permissions. Never stage operator settings or credentials.
 
 For `--scenario games`, also stage `game_fixture.py` beside `probe.py`. Run
 `./gradlew stageGameWorker` and add its `game_worker.py`, `game-entry.mjs`,
@@ -125,10 +125,10 @@ CPU/memory/tasks, and requires each direct/reference median resource ratio to be
 Add `--toolkit` and [sandbox_toolkit.py](sandbox_toolkit.py) to verify installed image, PDF, Office,
 archive and Git operations. Require exit zero and `cleanup: PASS`; these figures do not establish HTTP capacity.
 
-For the native driver, use `--reference-worker-source` with the previous Python
-driver's complete staged tree and `--idle-seconds 60`. Both paths retain the same
-isolation and quotas. The idle CPU ratio must be at most one tenth; startup,
-memory and task ratios are reported without the SRT one-third threshold.
+`--reference-worker-source` takes a previous complete staged tree. With a Python
+driver, add `--idle-seconds 60`; the idle CPU ratio must be at most one tenth. With
+`launcher.py` and the native driver, only the launchers differ and snapshots must match.
+Either way startup, memory and task ratios are reported without the SRT threshold.
 
 ## Evidence
 

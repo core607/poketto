@@ -48,7 +48,7 @@ in the selected application image. In the protected
 
 The service must invoke `sourceDirectory/poketto-supervisor --config configFile`;
 `ExecStopPost` uses the same command with `--cleanup` appended.
-The worker configuration's `launcher` must be `sourceDirectory/launcher.py`.
+The supervisor runs the `poketto-launch` of its own generation; the configuration names no launcher.
 Provision the native service before enabling automatic updates. Adopting it from a
 Python service is a separate operator action: preserve the old unit, runtime and
 protected configuration for recovery, install the native bundle and matching unit,
@@ -69,8 +69,8 @@ The updater verifies the bundle, stages complete generations in
 `sourceDirectory/releases/`, and converts the runtime source files to links
 through `releases/current`. It stops the service before atomically switching
 generations and starting it. Private configuration, keys, tools, quotas and copy
-storage are untouched. The supervisor lives beside the launcher; sandbox programs live in its protected
-`bin/` directory, resolved beside its launcher; the updater verifies their checksums,
+storage are untouched. The supervisor and `poketto-launch` share a generation; sandbox programs live in its protected
+`bin/` directory; the updater verifies their checksums,
 x64 ELF format and executable permissions. Unchanged runtime files keep the running
 worker. `--check` validates and stages files without changing the selector or restarting services.
 

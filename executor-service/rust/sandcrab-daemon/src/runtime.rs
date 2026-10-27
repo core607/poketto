@@ -77,24 +77,9 @@ pub struct Runtime {
 fn unavailable() -> io::Error {
     io::Error::other("Execution runtime unavailable")
 }
+/// A protected executable, as the launcher requires of its tools.
 pub fn verify_program(path: &Path) -> io::Result<()> {
-    verify_trusted_file(path, true)
-}
-pub fn verify_trusted_file(path: &Path, executable: bool) -> io::Result<()> {
-    if !path.is_absolute() {
-        return Err(unavailable());
-    }
-    for ancestor in path.ancestors() {
-        let metadata = fs::symlink_metadata(ancestor)?;
-        if metadata.file_type().is_symlink() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0
-        {
-            return Err(unavailable());
-        }
-    }
-    if !path.is_file() || executable && fs::metadata(path)?.mode() & 0o111 == 0 {
-        return Err(unavailable());
-    }
-    Ok(())
+    sandcrab_launch::trusted_executable(path).map_err(io::Error::other)
 }
 impl Runtime {
     pub fn validate(description: &Description) -> io::Result<()> {
