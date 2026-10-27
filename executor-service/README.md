@@ -15,7 +15,7 @@ Supervisor startup and every launch verify both isolation tools. Binaries and ev
 
 The static Rust `poketto-supervisor` runs from [poketto-executor.service](poketto-executor.service). `./gradlew stageExecutorWorker` stages runtime and test/game dependencies under `build/executor-service/worker`. Install it beside `poketto-launch` and `resource_pool.py`; sandbox `bin/` contains only `poketto`, `poketto-shell` and `poketto-syncfs`. Code, tools, configuration and public key are root-owned and unwritable by either unprivileged account. Only the application holds the Ed25519 private key. Never commit keys or operator configuration.
 
-The baseline installer uses standard-library Python; [requirements.txt](requirements.txt) is for games and test clients. The supervisor embeds no interpreter ([decision](../notes/implemented/2026-10-21-rust-repository-supervisor.md)).
+The baseline installer uses standard-library Python; [requirements.txt](requirements.txt) is for test clients. The supervisor embeds no interpreter ([decision](../notes/implemented/2026-10-21-rust-repository-supervisor.md)).
 
 Package Python sources with LF endings; CRLF breaks executable shebangs. Gradle builds the [pinned Rust workspace](rust/Cargo.toml) through Docker. The updater delivers sources and programs together. Each repository sandbox mounts the selected release's executable-only `bin/` read-only, sharing file pages. Record revision and hashes, verify installed files and run `poketto --help` through the deployed connector after restart.
 

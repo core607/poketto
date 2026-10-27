@@ -1,4 +1,4 @@
-"""Independent disposable game worker beside the native repository fixture."""
+"""Independent disposable Rust game supervisor beside the native repository fixture."""
 import json
 import os
 from pathlib import Path
@@ -35,11 +35,11 @@ class GameFixture:
         self.listener = socketserver.TCPServer(('127.0.0.1', 0), Listener)
         threading.Thread(target=self.listener.serve_forever, daemon=True).start()
         # The repository probe has already installed the shared launcher in this root.
-        for name in ('game_worker.py', 'game-entry.mjs', 'game-runtime.mjs', 'game-example.mjs'):
+        for name in ('poketto-games', 'game-entry.mjs', 'game-runtime.mjs', 'game-example.mjs'):
             shutil.copy2(source / name, root / name)
-            os.chmod(root / name, 0o644)
+            os.chmod(root / name, 0o555 if name == 'poketto-games' else 0o644)
         self.config = {'runtimeRoot': str(self.runtime), 'socketPath': str(self.runtime / 'control.sock'),
-            'publicKey': str(root / 'game-public.pem'), 'toolsRoot': str(tools), 'launcher': str(root / 'poketto-launch'),
+            'publicKey': str(root / 'game-public.pem'), 'toolsRoot': str(tools),
             'execUser': self.user, 'repositoryExecUser': repository_user,
             'repositoryRuntimeRoot': str(root / 'runtime'), 'repositoryResourceSlice': repository_slice,
             'appUid': app.pw_uid, 'appGid': app.pw_gid, 'unitPrefix': 'poketto-game-' + self.token + '-',
@@ -62,41 +62,18 @@ class GameFixture:
         sentinel.write_text('Synthetic host file outside game grants')
         sentinel.chmod(0o444)
         self.config_path.write_text(json.dumps(self.config))
-        (self.root / 'game-worker-entry.py').write_text('''import json, os, subprocess, threading
-from pathlib import Path
-import game_worker
-original = game_worker.GameBackend.run
-counter_lock = threading.Lock()
-def observed(self, *args):
- with counter_lock:
-  counter = Path(__file__).with_name('game-run-count')
-  count = int(counter.read_text()) if counter.exists() else 0
-  counter.write_text(str(count+1)); counter.chmod(0o600)
- def snapshot():
-  value = subprocess.run(['ps','-u',self.c['execUser'],'-o','pid,ppid,nlwp,stat,comm,wchan:24'], capture_output=True, text=True, timeout=3)
-  unit = subprocess.run(['systemctl','show',args[0].unit,'-p','TasksCurrent','-p','TasksMax','-p','MemoryCurrent','-p','CPUUsageNSec'], capture_output=True, text=True, timeout=3)
-  path = Path(__file__).with_name('game-processes.json')
-  path.write_text(json.dumps({'processes':value.stdout,'unit':unit.stdout})); path.chmod(0o600)
- timer = threading.Timer(2, snapshot); timer.daemon=True; timer.start()
- try: result = original(self, *args)
- finally: timer.cancel()
- if result['exitCode'] != 0:
-  path = Path(__file__).with_name('game-diagnostic.json')
-  path.write_text(json.dumps(result)); path.chmod(0o600)
- return result
-game_worker.GameBackend.run = observed
-game_worker.main()
-''')
+        self.config_path.chmod(0o600)
         self.start_worker()
         return {'gameSocket': self.config['socketPath'], 'gamePrivateKey': str(private),
                 'gameHostFile': str(sentinel), 'gameHostPort': self.listener.server_address[1],
                 'gameExample': str(self.root / 'game-example.mjs')}
 
     def start_worker(self):
+        supervisor = str(self.root / 'poketto-games')
         run(['systemd-run', '--quiet', '--unit', self.supervisor, '--slice', self.pool.name,
-             '-p', 'User=root', '-p', 'Environment=PYTHONPATH=' + str(self.tools / 'python'), '-p', 'UMask=0077',
-             '-p', f'ExecStopPost=/usr/bin/python3 {self.root}/game_worker.py --config {self.config_path} --cleanup',
-             '/usr/bin/python3', str(self.root / 'game-worker-entry.py'), '--config', str(self.config_path)])
+             '-p', 'User=root', '-p', 'UMask=0077',
+             '-p', f'ExecStopPost={supervisor} --config {self.config_path} --cleanup',
+             supervisor, '--config', str(self.config_path)])
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             if Path(self.config['socketPath']).is_socket():
@@ -140,20 +117,12 @@ game_worker.main()
         self.listener.shutdown()
         self.listener.server_close()
         try:
-            diagnostic = self.root / 'game-diagnostic.json'
-            if diagnostic.exists():
-                result = json.loads(diagnostic.read_text())
-                print(json.dumps({'syntheticGameDiagnostic': {'exitCode': result['exitCode'],
-                    'reason': result['terminationReason'], 'stderr': result['stderr'][:4000]}}), flush=True)
-                processes = self.root / 'game-processes.json'
-                if processes.exists():
-                    print(json.dumps({'syntheticGameProcesses': json.loads(processes.read_text())}), flush=True)
             subprocess.run(['systemctl', 'stop', self.supervisor], capture_output=True, timeout=25)
             subprocess.run(['systemctl', 'reset-failed', self.supervisor], capture_output=True, timeout=10)
             if self.created_user:
                 self.no_processes()
                 if self.config_path.exists():
-                    run(['/usr/bin/python3', str(self.root / 'game_worker.py'), '--config', str(self.config_path), '--cleanup'])
+                    run([str(self.root / 'poketto-games'), '--config', str(self.config_path), '--cleanup'])
                 sessions = self.runtime / 'sessions'
                 assert not sessions.exists() or not list(sessions.iterdir())
                 run(['userdel', self.user])

@@ -1,0 +1,16 @@
+[package]
+name = "poketto-games"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+sandcrab-core = { path = "../sandcrab-core" }
+sandcrab-launch = { path = "../sandcrab-launch" }
+sandcrab-daemon = { path = "../sandcrab-daemon" }
+base64.workspace = true
+rustix = { workspace = true, features = ["process"] }
+serde_json.workspace = true
+signal-hook = "=0.4.5"

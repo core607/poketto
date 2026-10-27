@@ -8,7 +8,10 @@ use sandcrab_core::{
     mailbox::Mailbox,
     unit::{Maintenance, stop_launch},
 };
-use sandcrab_daemon::runtime::{self, InitError, Runtime};
+use sandcrab_daemon::{
+    install::unit_name as name,
+    runtime::{self, InitError, Runtime},
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -80,14 +83,6 @@ fn invalid() -> io::Error {
 }
 fn checked(args: &[String]) -> io::Result<std::process::Output> {
     sandcrab_core::unit::checked(args, Duration::from_secs(15))
-}
-fn name(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 240
-        && value.as_bytes()[0].is_ascii_alphanumeric()
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
 }
 fn directory(path: &Path, gid: u32, mode: u32) -> io::Result<()> {
     match DirBuilder::new().mode(mode).create(path) {
@@ -169,24 +164,7 @@ impl Factory {
             config.disk_bytes,
             config.disk_inodes,
         )?;
-        let group = checked(&[
-            "systemctl".into(),
-            "show".into(),
-            config.resource_slice.clone(),
-            "--property=ControlGroup".into(),
-            "--value".into(),
-        ])?;
-        let group = std::str::from_utf8(&group.stdout)
-            .map_err(|_| invalid())?
-            .trim();
-        if !group.starts_with('/')
-            || !sandcrab_core::fs::normal(Path::new(group))
-            || group.rsplit('/').next() != Some(config.resource_slice.as_str())
-        {
-            return Err(invalid());
-        }
-        let resource_pool = Path::new("/sys/fs/cgroup").join(group.trim_start_matches('/'));
-        sandcrab_core::unit::verify_resource_pool(&resource_pool)?;
+        let resource_pool = sandcrab_daemon::install::resource_pool(&config.resource_slice)?;
         Ok(Self {
             config,
             pool,
@@ -239,77 +217,25 @@ impl Factory {
             "filesystem":{"denyRead":["/","/sys"],"allowRead":read,"denyWrite":[],"allowWrite":[mount.join("work"),mount.join("home"),mount.join("bridge/requests"),PathBuf::from("/tmp")]},"enableWeakerNestedSandbox":false});
         let record_value = json!({"mode":mode,"commit":commit,"root":mount,"tools":config.tools_root,"settings":settings});
         let unit = format!("{}{}", config.unit_prefix, operation);
-        let mut command = vec![
-            "systemd-run".into(),
-            "--quiet".into(),
-            "--wait".into(),
-            "--pipe".into(),
-            "--unit".into(),
-            unit.clone(),
-            "--slice".into(),
-            config.resource_slice.clone(),
-            "-p".into(),
-            format!("User={}", config.exec_user),
-            "-p".into(),
-            format!("CPUQuota={}%", config.cpu_quota_percent),
-            "-p".into(),
-            format!("MemoryMax={}", config.memory_bytes),
-            "-p".into(),
-            "MemorySwapMax=0".into(),
-            "-p".into(),
-            format!("TasksMax={}", config.tasks_max),
-            "-p".into(),
-            "KillMode=control-group".into(),
-            "-p".into(),
-            "TimeoutStopSec=1".into(),
-            "-p".into(),
-            "SendSIGKILL=yes".into(),
-            "-p".into(),
-            "NoNewPrivileges=yes".into(),
-            "-p".into(),
-            "UMask=0077".into(),
-            "-p".into(),
-            format!(
-                "TemporaryFileSystem=/tmp:rw,size={},nr_inodes={},mode=1777,nosuid,nodev",
-                config.temporary_bytes, config.temporary_inodes
-            ),
-            "-p".into(),
-            format!(
-                "BindReadOnlyPaths={} {} {} {}",
-                config.tools_root.display(),
-                config.launcher.display(),
-                record.display(),
-                settings.display()
-            ),
-            "-p".into(),
-            format!("BindPaths={}", mount.display()),
-            "-p".into(),
-            format!("BindsTo={}", config.supervisor_unit),
-            "-p".into(),
-            format!("After={}", config.supervisor_unit),
-            "/usr/bin/env".into(),
-            "-i".into(),
-            "PATH=/usr/bin:/bin".into(),
-            config.launcher.to_string_lossy().into(),
-            record.to_string_lossy().into(),
-        ];
-        if mode == "initialize" || mode == "baseline" {
-            let offset = command
-                .iter()
-                .position(|arg| arg == "/usr/bin/env")
-                .ok_or_else(invalid)?;
-            command.splice(
-                offset..offset,
-                [
-                    "-p".into(),
-                    format!(
-                        "RuntimeMaxSec={}.{:03}",
-                        config.init_timeout_millis / 1000,
-                        config.init_timeout_millis % 1000
-                    ),
-                ],
-            );
-        }
+        let profile = sandcrab_core::unit::Profile {
+            tools: config.tools_root.clone(),
+            launcher: config.launcher.clone(),
+            exec_user: config.exec_user.clone(),
+            resource_slice: config.resource_slice.clone(),
+            supervisor_unit: config.supervisor_unit.clone(),
+            cpu_quota_percent: config.cpu_quota_percent,
+            memory_bytes: config.memory_bytes,
+            tasks_max: config.tasks_max,
+            temporary_bytes: config.temporary_bytes,
+            temporary_inodes: config.temporary_inodes,
+        };
+        let command = profile.command(
+            &unit,
+            &record,
+            &settings,
+            mount,
+            (mode == "initialize" || mode == "baseline").then_some(config.init_timeout_millis),
+        );
         Ok((
             sandcrab_core::unit::Launch {
                 cgroup: self.resource_pool.join(format!("{unit}.service")),

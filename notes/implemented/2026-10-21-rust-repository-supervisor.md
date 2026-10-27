@@ -12,9 +12,9 @@ after synchronization, Java journal and native sandbox-program changes.
 An independent static Rust service owns repository supervision, using the shared
 pinned workspace, safe Unix interfaces and `ed25519-dalek`. It embeds no Python.
 The [execution contract](2026-09-05-local-execution-supervisor.md) retains authority,
-containment, durability and copy lifetime. The game service, test oracle and baseline
-installer retain Python; the [in-repository split](2026-10-27-sandcrab-in-repository-split.md)
-replaced the launcher.
+containment, durability and copy lifetime. The test oracle and baseline installer retain
+Python; the [in-repository split](2026-10-27-sandcrab-in-repository-split.md) replaced the
+launcher and [finite jobs](2026-10-28-sandcrab-finite-jobs.md) the game service.
 
 Parsing rejects duplicate keys, preserves numeric token types across shared JSON
 features and bounds nesting. Library-version differences may reject malformed

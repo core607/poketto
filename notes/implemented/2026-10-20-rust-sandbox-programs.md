@@ -47,10 +47,9 @@ cannot delay it indefinitely. Finished-command output is discarded, and retainin
 at most 128 readers bounds descriptor use. The shell wrapper, execution identity,
 frame bounds and exit-status mapping remain part of the protocol.
 
-The game supervisor remains Python; the
-[sandcrab proposal](../proposed/2026-10-26-sandcrab-sandbox-service.md) owns
-its replacement. The [in-repository split](2026-10-27-sandcrab-in-repository-split.md)
-made the launcher Rust; the
+The [in-repository split](2026-10-27-sandcrab-in-repository-split.md)
+made the launcher Rust and [finite jobs](2026-10-28-sandcrab-finite-jobs.md) the
+game supervisor; the
 [repository supervisor decision](2026-10-21-rust-repository-supervisor.md) owns its host runtime.
 
 ## Alternatives
@@ -68,7 +67,7 @@ toolchain across the small programs while retaining memory safety.
 ## Consequences
 
 The build gains a compiled toolchain, provided by Docker on contributor machines.
-The host bridge and client share Rust while the game service retains Python.
+The host bridge and client share Rust.
 Wire changes update their parity fixtures. Python remains available to sandbox
 commands. No unsupported isolation configuration gains an
 unsandboxed fallback.
