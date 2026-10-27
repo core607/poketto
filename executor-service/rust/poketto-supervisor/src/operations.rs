@@ -44,12 +44,12 @@ pub fn open(
     if seeded && (data.len() != 4 || data["seed"] != true) {
         return Err("INVALID_REQUEST");
     }
-    let factory = factory.ok_or("SESSION_NOT_READY")?;
-    let source = if seeded {
-        Some(provision::Source::Seed)
+    // The field set is checked before anything that depends on the installation.
+    let fields = if seeded {
+        true
     } else if initialize {
-        if data.len() != 6
-            || ![
+        data.len() == 6
+            && [
                 "copyId",
                 "scope",
                 "commit",
@@ -59,27 +59,39 @@ pub fn open(
             ]
             .iter()
             .all(|k| data.contains_key(*k))
-        {
-            return Err("INVALID_REQUEST");
-        }
+    } else {
+        data.len() == 3
+    };
+    if !fields {
+        return Err("INVALID_REQUEST");
+    }
+    let export = if initialize && !seeded {
         let id = string(&payload["data"], "exportId")?;
         let digest = string(&payload["data"], "bundleSha256")?;
         let bytes = data["bundleBytes"]
             .as_u64()
-            .filter(|n| *n > 0 && *n <= factory.config.max_bundle_bytes)
+            .filter(|n| *n > 0)
             .ok_or("INVALID_REQUEST")?;
         if !uuid(id) || !hex(digest, 64) {
             return Err("INVALID_REQUEST");
         }
-        Some(provision::Source::Export(provision::Export {
+        Some(provision::Export {
             id: id.into(),
             bytes,
             digest: digest.into(),
-        }))
+        })
     } else {
-        if data.len() != 3 {
+        None
+    };
+    let factory = factory.ok_or("SESSION_NOT_READY")?;
+    let source = if seeded {
+        Some(provision::Source::Seed)
+    } else if let Some(export) = export {
+        if export.bytes > factory.config.max_bundle_bytes {
             return Err("INVALID_REQUEST");
         }
+        Some(provision::Source::Export(export))
+    } else {
         None
     };
     let lease = payload["leaseId"].as_str().unwrap();
