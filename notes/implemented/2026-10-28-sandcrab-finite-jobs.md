@@ -23,4 +23,4 @@ Production runs no Python supervisor; [worker.py](../../executor-service/worker.
 
 ## Verification
 
-`executorRustCheck` runs the job admission tests and the `poketto-games` bounds, configuration and policy tests. The [native probe](../../executor-native/README.md) `games` scenario exercises real containment, revocation, contention and supervisor loss.
+`executorRustCheck` runs the job admission tests and the `poketto-games` bounds, configuration and policy tests. The [native probe](../../executor-native/README.md) `games` scenario exercises real containment, revocation, contention and supervisor loss; on the production host it and the adapter scenario passed with the Rust game supervisor ([receipt](../../executor-native/evidence/2026-10-28-sandcrab-finite-jobs-native-probe.json)).
