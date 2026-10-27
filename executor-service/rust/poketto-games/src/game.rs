@@ -109,7 +109,7 @@ pub fn input(data: &Value) -> Result<Vec<u8>, &'static str> {
     if mode == "init"
         && !(request["seed"].is_u64() && request["seed"].as_u64().is_some_and(|s| s <= 0xffff_ffff))
     {
-        return Err("INVALID_REQUEST");
+        return Err("INVALID_GAME");
     }
     encoded(&request["state"], MAX_STATE)?;
     if mode == "act" && !request["action"].as_str().is_some_and(|a| a.len() <= 128) {
@@ -177,8 +177,8 @@ mod tests {
                 "INVALID_GAME",
             ),
             ("/request/mode", json!("shell"), "INVALID_GAME"),
-            ("/request/seed", json!(1_u64 << 32), "INVALID_REQUEST"),
-            ("/request/seed", json!(-1), "INVALID_REQUEST"),
+            ("/request/seed", json!(1_u64 << 32), "INVALID_GAME"),
+            ("/request/seed", json!(-1), "INVALID_GAME"),
             (
                 "/request/state",
                 json!({"text":"猫".repeat(12000)}),
