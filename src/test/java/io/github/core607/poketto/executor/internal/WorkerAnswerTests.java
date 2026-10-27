@@ -103,7 +103,7 @@ class WorkerAnswerTests {
 
     @Test
     void aHandshakeThatAdvertisesAnotherProtocolIsRefused() {
-        String good = "{\"ok\":true,\"version\":1,\"maxFrameBytes\":1048576,\"codeActProtocol\":2,"
+        String good = "{\"ok\":true,\"version\":1,\"maxFrameBytes\":1048576,\"codeActProtocol\":3,"
                 + "\"artifactProtocol\":1,\"moveProtocol\":1,\"exportProtocol\":1,\"diskCopyProtocol\":1,\"gitBaselineProtocol\":1,\"workspaceSyncProtocol\":1,\"leaseSandboxProtocol\":1,\"seedProtocol\":1,\"workerBootId\":\""
                 + UUID
                 + "\",\"leaseSeconds\":60,\"renewAfterSeconds\":20}";
@@ -111,7 +111,7 @@ class WorkerAnswerTests {
                         .leaseSeconds())
                 .isEqualTo(60);
         assertThatThrownBy(() -> WorkerResponses.read(
-                        json(good.replace("\"codeActProtocol\":2", "\"codeActProtocol\":1")),
+                        json(good.replace("\"codeActProtocol\":3", "\"codeActProtocol\":2")),
                         WorkerResponses.Handshake.class))
                 .describedAs("a worker without execution-bound bridge polls must fail before admission")
                 .isInstanceOf(WorkerUnavailableException.class);

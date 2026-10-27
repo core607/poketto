@@ -107,7 +107,7 @@ final class WorkerResponses {
             workerBootId = ProtocolValues.uuid(workerBootId, "workerBootId");
             require(version == 1, "version", "must be 1");
             require(maxFrameBytes == WorkerClient.MAX_FRAME, "maxFrameBytes", "must be " + WorkerClient.MAX_FRAME);
-            require(codeActProtocol == 2, "codeActProtocol", "must be 2");
+            require(codeActProtocol == 3, "codeActProtocol", "must be 3");
             require(artifactProtocol == 1, "artifactProtocol", "must be 1");
             require(moveProtocol == 1, "moveProtocol", "must be 1");
             require(exportProtocol == 1, "exportProtocol", "must be 1");

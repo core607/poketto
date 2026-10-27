@@ -60,7 +60,7 @@ impl Extension for Repository {
     }
     fn hello(&self) -> serde_json::Map<String, Value> {
         let disk = if self.factory.is_some() { 1 } else { 0 };
-        let Value::Object(fields) = json!({"codeActProtocol":2,"artifactProtocol":1,"moveProtocol":1,
+        let Value::Object(fields) = json!({"codeActProtocol":3,"artifactProtocol":1,"moveProtocol":1,
             "exportProtocol":1,"diskCopyProtocol":disk,"gitBaselineProtocol":1,"workspaceSyncProtocol":1,
             "leaseSandboxProtocol":1,"seedProtocol":1})
         else {
