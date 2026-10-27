@@ -1,6 +1,14 @@
 //! Fixed sandbox launch plans and bounded exports for signed OPEN/ATTACH requests.
-use crate::{lease::Description, pool::Pool, runtime};
+use crate::{
+    lease::{CopyVolume, Description, Lease},
+    pool::Pool,
+};
 use rustix::fs::{Gid, OFlags, chown, fchown};
+use sandcrab_core::{
+    mailbox::Mailbox,
+    unit::{Maintenance, stop_launch},
+};
+use sandcrab_daemon::runtime::{self, InitError, Runtime};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -9,7 +17,11 @@ use std::{
     io::{self, Read, Write},
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicBool, Ordering},
+    process::{Command, Stdio},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 #[derive(Clone, Deserialize)]
@@ -46,6 +58,8 @@ pub struct Factory {
 }
 pub struct Plan {
     pub description: runtime::Description,
+    /// The copy the plan mounts.
+    pub owner: Description,
     pub records: Vec<(PathBuf, Value)>,
     pub initialize: Option<sandcrab_core::unit::Launch>,
 }
@@ -363,11 +377,15 @@ impl Factory {
                 .parent()
                 .unwrap()
                 .join("bin/poketto-syncfs"),
+            exec_uid: owner.exec_uid,
+            exec_gid: owner.exec_gid,
+            commit: owner.commit.clone(),
+            transient_files: crate::baseline::STAGING,
             owned_files: records.iter().map(|(p, _)| p.clone()).collect(),
-            lease: owner,
         };
         Ok(Plan {
             description,
+            owner,
             records,
             initialize: init,
         })
@@ -487,6 +505,147 @@ impl Factory {
     }
 }
 
+/// Mount the plan's copy for `runtime`: create and initialize it from a bundle export or a
+/// seed, or attach an existing one. Initialization runs in its own sandbox unit.
+pub fn prepare(
+    runtime: &mut Runtime,
+    plan: &Plan,
+    factory: &Factory,
+    source: Option<&Source>,
+    cancelled: &AtomicBool,
+    on_start: impl FnOnce() -> io::Result<()>,
+) -> Result<Arc<Mailbox>, InitError> {
+    let initialize = source.is_some();
+    let description = runtime.description().clone();
+    let owner = &plan.owner;
+    Runtime::validate(&description)?;
+    if cancelled.load(Ordering::SeqCst) {
+        return Err(InitError::Code("SESSION_CLOSED"));
+    }
+    if initialize {
+        factory.pool.create(owner)?;
+    }
+    let ownership = Lease::claim(
+        owner,
+        &description.mount,
+        &description.unit,
+        &description.cgroup,
+        !initialize,
+    )
+    .map_err(|error| {
+        if error.kind() == io::ErrorKind::WouldBlock {
+            InitError::Code("COPY_BUSY")
+        } else if !initialize {
+            InitError::Code("COPY_UNAVAILABLE")
+        } else {
+            InitError::Io(error)
+        }
+    })?;
+    runtime.volume = Some(Box::new(CopyVolume {
+        lease: ownership,
+        owner: owner.clone(),
+    }));
+    if matches!(source, Some(Source::Seed)) {
+        let target = owner.pool_root.join("copies").join(&owner.copy_id);
+        if !factory.pool.seeds()?.populate(
+            &target,
+            &owner.workspace_id,
+            &owner.scope,
+            &owner.commit,
+        )? {
+            runtime.discard_uninitialized = true;
+            return Err(InitError::Code("SEED_ABSENT"));
+        }
+    }
+
+    copy(runtime).lease.prepare(owner)?;
+    {
+        let shared = runtime.files();
+        let mut files = shared.state.lock().unwrap();
+        files.mounted = true;
+        files.prepare_artifacts()?;
+    }
+    let bridge = Arc::new(Mailbox::create(
+        &description.mount.join("bridge"),
+        owner.exec_gid,
+        crate::BRIDGE_OPERATIONS,
+    )?);
+    runtime.bridge = Some(bridge.clone());
+    if cancelled.load(Ordering::SeqCst) {
+        return Err(InitError::Code("SESSION_CLOSED"));
+    }
+    factory.write_records(plan)?;
+    if let Some(Source::Export(export)) = source {
+        factory
+            .copy_export(&description.mount, export, cancelled)
+            .map_err(|error| match error.kind() {
+                io::ErrorKind::InvalidData => InitError::Code("INVALID_EXPORT"),
+                io::ErrorKind::Interrupted => InitError::Code("SESSION_CLOSED"),
+                _ => InitError::Io(error),
+            })?;
+        on_start()?;
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(InitError::Code("SESSION_CLOSED"));
+        }
+        let launch = plan.initialize.as_ref().ok_or_else(invalid)?.clone();
+        runtime.maintenance = Some(Maintenance {
+            launch: launch.clone(),
+            child: None,
+        });
+        let args = &launch.command;
+        let child = Command::new(&args[0])
+            .args(&args[1..])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        runtime.maintenance.as_mut().unwrap().child = Some(child);
+        let result = sandcrab_core::raw::collect(
+            runtime
+                .maintenance
+                .as_mut()
+                .unwrap()
+                .child
+                .as_mut()
+                .unwrap(),
+            Duration::from_millis(factory.config.init_timeout_millis),
+            cancelled,
+            || stop_launch(&launch),
+        );
+        runtime.stop_maintenance()?;
+        if !result?.success() {
+            return Err(InitError::Code(if cancelled.load(Ordering::SeqCst) {
+                "SESSION_CLOSED"
+            } else {
+                "INITIALIZATION_FAILED"
+            }));
+        }
+        runtime.sync_copy()?;
+        copy(runtime).lease.mark_initialized()?;
+        if !cancelled.load(Ordering::SeqCst) {
+            let original = owner.pool_root.join("copies").join(&owner.copy_id);
+            let _ = factory.pool.seeds().and_then(|store| {
+                store.capture(&original, &owner.workspace_id, &owner.scope, &owner.commit)
+            });
+        }
+    } else if matches!(source, Some(Source::Seed)) {
+        runtime.sync_copy()?;
+        copy(runtime).lease.mark_initialized()?;
+    }
+    if cancelled.load(Ordering::SeqCst) {
+        return Err(InitError::Code("SESSION_CLOSED"));
+    }
+    Ok(bridge)
+}
+/// The copy a prepared runtime owns.
+fn copy(runtime: &mut Runtime) -> &mut CopyVolume {
+    runtime
+        .volume
+        .as_mut()
+        .and_then(|volume| volume.as_any_mut().downcast_mut())
+        .expect("prepare installs the copy before using it")
+}
+
 pub(crate) fn runtime_directories(config: &Config) -> io::Result<()> {
     sandcrab_core::fs::protected_directory(&config.runtime_root)?;
     directory(&config.runtime_root, config.exec_gid, 0o751)?;
@@ -604,4 +763,307 @@ pub(crate) fn cleanup_runtime(config: &Config) -> io::Result<()> {
         fs::remove_file(entry.path())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    const LEASE: &str = "10000000-0000-4000-8000-000000000001";
+    const COPY: &str = "20000000-0000-4000-8000-000000000002";
+    const OWNER: &str = "30000000-0000-4000-8000-000000000003";
+    const EXPORT: &str = "40000000-0000-4000-8000-000000000004";
+    struct Fixture {
+        root: PathBuf,
+        factory: Factory,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            let root = std::env::temp_dir()
+                .join(format!("poketto-provision-{}", crate::new_uuid().unwrap()));
+            for name in ["runtime/records", "runtime/sessions", "exports", "pool"] {
+                fs::create_dir_all(root.join(name)).unwrap();
+            }
+            let uid = rustix::process::getuid().as_raw();
+            let gid = rustix::process::getgid().as_raw();
+            let config = Config {
+                runtime_root: root.join("runtime"),
+                export_root: root.join("exports"),
+                copy_root: root.join("pool"),
+                pool_bytes: 1 << 30,
+                disk_bytes: 1 << 20,
+                disk_inodes: 1024,
+                tools_root: "/opt/poketto-executor/tools".into(),
+                launcher: "/opt/poketto-executor/launcher.py".into(),
+                exec_user: "poketto-exec".into(),
+                exec_uid: uid,
+                exec_gid: gid,
+                app_uid: uid,
+                app_gid: gid,
+                unit_prefix: "poketto-exec-worker-".into(),
+                supervisor_unit: "poketto-executor.service".into(),
+                resource_slice: "poketto-executor.slice".into(),
+                memory_bytes: 536870912,
+                tasks_max: 64,
+                cpu_quota_percent: 100,
+                temporary_bytes: 8388608,
+                temporary_inodes: 1024,
+                max_bundle_bytes: 64,
+                init_timeout_millis: 60000,
+            };
+            let factory = Factory {
+                pool: Pool {
+                    root: config.copy_root.clone(),
+                    maximum_bytes: config.pool_bytes,
+                    copy_bytes: config.disk_bytes,
+                    copy_inodes: config.disk_inodes,
+                },
+                config,
+                resource_pool: "/sys/fs/cgroup/poketto-executor.slice".into(),
+            };
+            Self { root, factory }
+        }
+        fn owner(&self, scope: &str, commit: &str) -> Description {
+            self.factory.owner(COPY, OWNER, OWNER, scope, commit)
+        }
+        fn mount(&self) -> PathBuf {
+            self.root.join("runtime/sessions").join(LEASE)
+        }
+        fn export(&self, bytes: &[u8]) -> Export {
+            fs::write(
+                self.root.join("exports").join(format!("{EXPORT}.bundle")),
+                bytes,
+            )
+            .unwrap();
+            Export {
+                id: EXPORT.into(),
+                bytes: bytes.len() as u64,
+                digest: format!("{:x}", Sha256::digest(bytes)),
+            }
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+    fn property<'a>(command: &'a [String], name: &str) -> Option<&'a str> {
+        command
+            .windows(2)
+            .find(|pair| pair[0] == "-p" && pair[1].starts_with(name))
+            .map(|pair| &pair[1][name.len()..])
+    }
+    fn readable(policy: &Value) -> Vec<String> {
+        policy["filesystem"]["allowRead"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect()
+    }
+    fn text(path: PathBuf) -> String {
+        path.to_string_lossy().into_owned()
+    }
+    #[test]
+    fn a_plan_rejects_identifiers_scopes_and_commits_outside_the_lease_contract() {
+        let fixture = Fixture::new();
+        let commit = "a".repeat(40);
+        assert!(
+            fixture
+                .factory
+                .plan(LEASE, fixture.owner("full", &commit), true)
+                .is_ok()
+        );
+        for (lease, scope, commit) in [
+            ("not-a-lease", "full", commit.clone()),
+            (LEASE, "private", commit.clone()),
+            (LEASE, "full", "A".repeat(40)),
+            (LEASE, "full", "a".repeat(39)),
+        ] {
+            assert!(
+                fixture
+                    .factory
+                    .plan(lease, fixture.owner(scope, &commit), true)
+                    .is_err(),
+                "{lease} {scope} {commit}"
+            );
+        }
+    }
+    #[test]
+    fn the_shell_unit_is_bounded_bound_to_the_supervisor_and_never_time_limited() {
+        let fixture = Fixture::new();
+        let plan = fixture
+            .factory
+            .plan(LEASE, fixture.owner("full", &"a".repeat(40)), false)
+            .unwrap();
+        let command = &plan.description.command;
+        assert_eq!(command[0], "systemd-run");
+        assert!(plan.description.unit.starts_with("poketto-exec-worker-"));
+        assert_eq!(property(command, "User="), Some("poketto-exec"));
+        assert_eq!(property(command, "MemorySwapMax="), Some("0"));
+        assert_eq!(property(command, "NoNewPrivileges="), Some("yes"));
+        assert_eq!(
+            property(command, "BindsTo="),
+            Some("poketto-executor.service")
+        );
+        assert_eq!(property(command, "KillMode="), Some("control-group"));
+        assert_eq!(property(command, "RuntimeMaxSec="), None);
+        let slice = command.iter().position(|v| v == "--slice").unwrap();
+        assert_eq!(command[slice + 1], "poketto-executor.slice");
+        assert!(plan.initialize.is_none());
+        assert_eq!(plan.records.len(), 2);
+        assert_eq!(plan.description.transient_files, crate::baseline::STAGING);
+        assert_eq!(plan.description.mount, fixture.mount());
+        assert_eq!(
+            plan.description.owned_files,
+            plan.records
+                .iter()
+                .map(|(p, _)| p.clone())
+                .collect::<Vec<_>>()
+        );
+    }
+    #[test]
+    fn each_mode_reads_only_its_own_bundle_and_writes_only_its_own_directories() {
+        let fixture = Fixture::new();
+        let commit = "a".repeat(40);
+        let plan = fixture
+            .factory
+            .plan(LEASE, fixture.owner("full", &commit), true)
+            .unwrap();
+        let mount = fixture.mount();
+        let snapshot = text(mount.join("snapshot.bundle"));
+        let shell = &plan.records[1].1;
+        let initialize = &plan.records[3].1;
+        assert_eq!(plan.records[0].1["mode"], "shell");
+        assert_eq!(plan.records[2].1["mode"], "initialize");
+        assert!(!readable(shell).contains(&snapshot));
+        assert!(readable(initialize).contains(&snapshot));
+        for policy in [shell, initialize] {
+            assert_eq!(policy["filesystem"]["denyRead"], json!(["/", "/sys"]));
+            assert_eq!(policy["filesystem"]["denyWrite"], json!([]));
+            assert_eq!(policy["enableWeakerNestedSandbox"], false);
+            assert_eq!(
+                policy["network"],
+                json!({"allowedDomains":[],"deniedDomains":[],"allowAllUnixSockets":false})
+            );
+            assert_eq!(
+                policy["filesystem"]["allowWrite"],
+                json!([
+                    mount.join("work"),
+                    mount.join("home"),
+                    mount.join("bridge/requests"),
+                    "/tmp"
+                ])
+            );
+            assert!(!readable(policy).contains(&text(mount.clone())));
+        }
+        let init = plan.initialize.unwrap();
+        assert!(property(&init.command, "RuntimeMaxSec=").is_some());
+        let (baseline, records) = fixture.factory.baseline_plan(&mount, &commit).unwrap();
+        assert!(property(&baseline.command, "RuntimeMaxSec=").is_some());
+        assert_eq!(records[0].1["mode"], "baseline");
+        let readable = readable(&records[1].1);
+        assert!(readable.contains(&text(mount.join("baseline.bundle"))));
+        assert!(!readable.contains(&snapshot));
+    }
+    #[test]
+    fn a_baseline_plan_only_targets_a_session_mount_and_a_full_commit() {
+        let fixture = Fixture::new();
+        let commit = "a".repeat(40);
+        let sessions = fixture.root.join("runtime/sessions");
+        assert!(
+            fixture
+                .factory
+                .baseline_plan(&fixture.mount(), &commit)
+                .is_ok()
+        );
+        assert!(
+            fixture
+                .factory
+                .baseline_plan(&fixture.mount(), "abc")
+                .is_err()
+        );
+        for mount in [
+            fixture.root.join("runtime/records").join(LEASE),
+            sessions.join("other"),
+        ] {
+            assert!(fixture.factory.baseline_plan(&mount, &commit).is_err());
+        }
+    }
+    #[test]
+    fn launch_records_are_created_once_and_readable_only_by_the_execution_group() {
+        let fixture = Fixture::new();
+        let plan = fixture
+            .factory
+            .plan(LEASE, fixture.owner("full", &"a".repeat(40)), false)
+            .unwrap();
+        fixture.factory.write_records(&plan).unwrap();
+        for (path, value) in &plan.records {
+            let info = fs::symlink_metadata(path).unwrap();
+            assert_eq!(info.mode() & 0o777, 0o440);
+            assert_eq!(info.gid(), fixture.factory.config.exec_gid);
+            let written: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+            assert_eq!(&written, value);
+        }
+        assert!(fixture.factory.write_records(&plan).is_err());
+    }
+    #[test]
+    fn an_export_is_copied_only_when_its_size_digest_and_bound_match() {
+        let fixture = Fixture::new();
+        let mount = fixture.mount();
+        fs::create_dir_all(&mount).unwrap();
+        let cancelled = AtomicBool::new(false);
+        let export = fixture.export(b"bundle bytes");
+        let mut wrong = export.clone();
+        wrong.digest = "0".repeat(64);
+        let error = fixture
+            .factory
+            .copy_export(&mount, &wrong, &cancelled)
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        fs::remove_file(mount.join("snapshot.bundle")).unwrap();
+        let mut short = export.clone();
+        short.bytes -= 1;
+        assert!(
+            fixture
+                .factory
+                .copy_export(&mount, &short, &cancelled)
+                .is_err()
+        );
+        let mut large = fixture.export(&[b'x'; 65]);
+        assert!(
+            fixture
+                .factory
+                .copy_export(&mount, &large, &cancelled)
+                .is_err()
+        );
+        large.id = "../escape".into();
+        assert!(
+            fixture
+                .factory
+                .copy_export(&mount, &large, &cancelled)
+                .is_err()
+        );
+        let export = fixture.export(b"bundle bytes");
+        cancelled.store(true, Ordering::SeqCst);
+        let error = fixture
+            .factory
+            .copy_export(&mount, &export, &cancelled)
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Interrupted);
+        fs::remove_file(mount.join("snapshot.bundle")).unwrap();
+        cancelled.store(false, Ordering::SeqCst);
+        fixture
+            .factory
+            .copy_baseline(&mount, &export, &cancelled)
+            .unwrap();
+        let copied = mount.join("baseline.bundle");
+        assert_eq!(fs::read(&copied).unwrap(), b"bundle bytes");
+        assert_eq!(fs::metadata(&copied).unwrap().mode() & 0o777, 0o440);
+        assert!(
+            fixture
+                .factory
+                .copy_baseline(&mount, &export, &cancelled)
+                .is_err()
+        );
+    }
 }

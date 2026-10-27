@@ -1,0 +1,19 @@
+[package]
+name = "sandcrab-daemon"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+fixture = []
+
+[dependencies]
+sandcrab-core = { path = "../sandcrab-core" }
+base64.workspace = true
+rustix = { workspace = true, features = ["net", "time"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+ed25519-dalek = { version = "=2.2.0", features = ["pem"] }
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"

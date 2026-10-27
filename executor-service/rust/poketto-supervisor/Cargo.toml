@@ -7,10 +7,11 @@ license.workspace = true
 publish = false
 
 [features]
-fixture = []
+fixture = ["sandcrab-daemon/fixture"]
 
 [dependencies]
 sandcrab-core = { path = "../sandcrab-core" }
+sandcrab-daemon = { path = "../sandcrab-daemon" }
 base64.workspace = true
 rustix = { workspace = true, features = ["net", "time"] }
 serde_json = { workspace = true, features = ["raw_value"] }

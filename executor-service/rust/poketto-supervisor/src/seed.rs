@@ -234,3 +234,163 @@ impl Store {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    const WORKSPACE: &str = "30000000-0000-4000-8000-000000000003";
+    /// A root-owned pool root whose ancestors other accounts cannot write; tests run as root.
+    struct Root(PathBuf);
+    impl Root {
+        fn new() -> Self {
+            assert!(
+                rustix::process::geteuid().is_root(),
+                "seed tests need root-owned directories"
+            );
+            let path = Path::new("/var/lib/poketto-seed-tests").join(crate::new_uuid().unwrap());
+            DirBuilder::new()
+                .recursive(true)
+                .mode(0o755)
+                .create(&path)
+                .unwrap();
+            for directory in [path.parent().unwrap(), &path] {
+                fs::set_permissions(directory, fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            create_private(&path.join("seeds")).unwrap();
+            Self(path)
+        }
+        fn seed(&self, commit: &str, age: Duration) -> PathBuf {
+            let parent = self.0.join("seeds").join(WORKSPACE).join("full");
+            for directory in [parent.parent().unwrap(), &parent] {
+                create_private(directory).unwrap();
+            }
+            let path = parent.join(commit);
+            create_private(&path).unwrap();
+            let time = SystemTime::now() - age;
+            File::open(&path)
+                .unwrap()
+                .set_times(FileTimes::new().set_accessed(time).set_modified(time))
+                .unwrap();
+            path
+        }
+    }
+    impl Drop for Root {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    fn commit(digit: char) -> String {
+        digit.to_string().repeat(40)
+    }
+    #[test]
+    fn a_claim_validates_its_key_and_refreshes_an_existing_seed() {
+        let root = Root::new();
+        let store = Store::new(&root.0).unwrap();
+        assert!(
+            store
+                .claim(WORKSPACE, "full", &commit('a'))
+                .unwrap()
+                .is_none()
+        );
+        for (workspace, scope, commit) in [
+            ("not-a-workspace", "full", commit('a')),
+            (WORKSPACE, "private", commit('a')),
+            (WORKSPACE, "full", "A".repeat(40)),
+        ] {
+            assert!(store.claim(workspace, scope, &commit).is_err());
+        }
+        let path = root.seed(&commit('a'), GRACE * 2);
+        let before = fs::metadata(&path).unwrap().modified().unwrap();
+        assert_eq!(
+            store.claim(WORKSPACE, "full", &commit('a')).unwrap(),
+            Some(path.clone())
+        );
+        assert!(fs::metadata(&path).unwrap().modified().unwrap() > before);
+    }
+    #[test]
+    fn a_seed_other_accounts_could_read_is_refused() {
+        let root = Root::new();
+        let store = Store::new(&root.0).unwrap();
+        let path = root.seed(&commit('a'), Duration::ZERO);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o750)).unwrap();
+        assert!(store.claim(WORKSPACE, "full", &commit('a')).is_err());
+        assert!(
+            store
+                .populate(&root.0.join("copy"), WORKSPACE, "full", &commit('a'))
+                .is_err()
+        );
+    }
+    #[test]
+    fn pruning_keeps_the_two_newest_and_every_seed_inside_the_grace_period() {
+        let root = Root::new();
+        let store = Store::new(&root.0).unwrap();
+        let newest = root.seed(&commit('a'), GRACE / 4);
+        let second = root.seed(&commit('b'), GRACE / 2);
+        let third = root.seed(&commit('c'), GRACE * 3 / 4);
+        let expired = root.seed(&commit('d'), GRACE * 2);
+        let oldest = root.seed(&commit('e'), GRACE * 3);
+        let parent = newest.parent().unwrap().to_owned();
+        store.prune(&parent, SystemTime::now()).unwrap();
+        assert!(newest.exists() && second.exists() && third.exists());
+        assert!(!expired.exists() && !oldest.exists());
+        store
+            .prune(&parent, SystemTime::now() + GRACE * 10)
+            .unwrap();
+        assert!(newest.exists() && second.exists());
+        assert!(!third.exists());
+    }
+    #[test]
+    fn interrupted_captures_are_collected_and_unexpected_entries_stop_collection() {
+        let root = Root::new();
+        let store = Store::new(&root.0).unwrap();
+        let seed = root.seed(&commit('a'), Duration::ZERO);
+        let stage = seed
+            .parent()
+            .unwrap()
+            .join(format!(".creating-{}", crate::new_uuid().unwrap()));
+        create_private(&stage).unwrap();
+        fs::write(stage.join("partial"), b"incomplete").unwrap();
+        store.collect_staging().unwrap();
+        assert!(!stage.exists());
+        assert!(seed.exists());
+        create_private(&seed.parent().unwrap().join("unexpected")).unwrap();
+        assert!(store.collect_staging().is_err());
+    }
+    #[test]
+    fn population_needs_a_protected_target_and_an_existing_seed() {
+        let root = Root::new();
+        let store = Store::new(&root.0).unwrap();
+        let target = root.0.join("copy");
+        create_private(&target).unwrap();
+        assert!(
+            !store
+                .populate(&target, WORKSPACE, "full", &commit('a'))
+                .unwrap()
+        );
+        assert!(
+            store
+                .populate(Path::new("relative/copy"), WORKSPACE, "full", &commit('a'))
+                .is_err()
+        );
+        assert!(
+            store
+                .populate(&root.0.join("absent"), WORKSPACE, "full", &commit('a'))
+                .is_err()
+        );
+    }
+    #[test]
+    fn capturing_an_existing_seed_leaves_it_unchanged() {
+        let root = Root::new();
+        let store = Store::new(&root.0).unwrap();
+        let seed = root.seed(&commit('a'), Duration::ZERO);
+        fs::write(seed.join("marker"), b"original").unwrap();
+        let source = root.0.join("copy");
+        create_private(&source).unwrap();
+        store
+            .capture(&source, WORKSPACE, "full", &commit('a'))
+            .unwrap();
+        assert_eq!(fs::read(seed.join("marker")).unwrap(), b"original");
+        assert_eq!(fs::read_dir(seed.parent().unwrap()).unwrap().count(), 1);
+    }
+}
