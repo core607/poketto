@@ -1,10 +1,9 @@
-//! Shared framed server; only the configured application UID may reach the signed service.
-use crate::{MAX_FRAME, Service, failed, parse};
+//! Shared HTTP server; only the configured application UID may reach the signed service.
+use crate::{MAX_FRAME, Service, failed, http, parse};
 use rustix::fs::{Gid, Uid, chown};
 use serde_json::Value;
 use std::{
-    fs,
-    io::{self, Read, Write},
+    fs, io,
     os::unix::{
         fs::{FileTypeExt, MetadataExt, PermissionsExt},
         net::{UnixListener, UnixStream},
@@ -32,28 +31,28 @@ fn response_bytes(response: &Value) -> Vec<u8> {
 fn exchange(stream: &mut UnixStream, service: &Service, app_uid: Uid) -> io::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
-    let response = (|| -> Result<Value, ()> {
-        if rustix::net::sockopt::socket_peercred(&*stream)
-            .map_err(|_| ())?
-            .uid
-            != app_uid
-        {
-            return Err(());
-        }
-        let mut prefix = [0; 4];
-        stream.read_exact(&mut prefix).map_err(|_| ())?;
-        let length = u32::from_be_bytes(prefix) as usize;
-        if length == 0 || length > MAX_FRAME {
-            return Err(());
-        }
-        let mut body = vec![0; length];
-        stream.read_exact(&mut body).map_err(|_| ())?;
-        Ok(service.handle(parse(&body).map_err(|_| ())?))
-    })()
-    .unwrap_or_else(|_| failed("INVALID_FRAME"));
-    let body = response_bytes(&response);
-    stream.write_all(&(body.len() as u32).to_be_bytes())?;
-    stream.write_all(&body)
+    let peer = rustix::net::sockopt::socket_peercred(&*stream).map(|c| c.uid);
+    let (status, response) = if peer.ok() != Some(app_uid) {
+        (403, failed("PEER_REJECTED"))
+    } else {
+        route(stream, service)
+    };
+    http::write(stream, status, &response_bytes(&response))
+}
+/// `GET /v1/hello` answers the handshake; `POST /v1/requests` carries one signed request.
+fn route(stream: &mut UnixStream, service: &Service) -> (u16, Value) {
+    let request = match http::read(stream, MAX_FRAME) {
+        Ok(request) => request,
+        Err(code) => return (400, failed(code)),
+    };
+    match (request.method.as_str(), request.path.as_str()) {
+        ("GET", "/v1/hello") => (200, service.hello()),
+        ("POST", "/v1/requests") => match parse(&request.body) {
+            Ok(envelope) => (200, service.handle(envelope)),
+            Err(_) => (400, failed("INVALID_BODY")),
+        },
+        _ => (404, failed("NOT_FOUND")),
+    }
 }
 struct Work {
     stream: UnixStream,

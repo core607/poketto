@@ -34,7 +34,7 @@ replay and lease processing in the interpreter.
 ## Consequences
 
 The privileged compiled surface needs independent evidence. `executorRustCheck`
-and `executorServiceTests` cover code and differential Unix/FIFO frames; native
+and `executorServiceTests` cover code and differential socket requests and FIFO frames; native
 adapter/client fixtures execute the installed binary. Fixture injection is a
 separate binary absent from installations. Microbenchmarks establish neither HTTP
 latency nor capacity; protected full-window comparisons remain necessary.

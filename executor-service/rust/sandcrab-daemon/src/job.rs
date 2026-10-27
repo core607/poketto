@@ -372,7 +372,7 @@ mod tests {
             let service = Arc::new(
                 Service::new(settings, key.verifying_key(), None, Box::new(jobs)).unwrap(),
             );
-            let hello = service.handle(json!({"version":1,"operation":"HELLO"}));
+            let hello = service.hello();
             Self {
                 boot: hello["workerBootId"].as_str().unwrap().into(),
                 service,
@@ -432,9 +432,7 @@ mod tests {
     #[test]
     fn a_replayed_job_returns_its_one_result_and_releases_admission() {
         let fixture = Fixture::new(1);
-        let hello = fixture
-            .service
-            .handle(json!({"version":1,"operation":"HELLO"}));
+        let hello = fixture.service.hello();
         assert_eq!(hello["jobProtocol"], 1);
         let request = fixture.job(&json!({}));
         fixture.release.send(Ok(Ok(json!({"step":1})))).unwrap();

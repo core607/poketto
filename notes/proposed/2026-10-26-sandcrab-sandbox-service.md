@@ -6,7 +6,7 @@ Date: 2026-10-26
 
 Repository execution and games run on the static Rust daemon ([Rust repository supervisor](../implemented/2026-10-21-rust-repository-supervisor.md), [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md)), and every path starts sandboxes through the Rust launcher of the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases with its own TypeScript client.
 
-The [daemon](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still serves Poketto's copy operations through an extension and keeps Poketto's signed frame schema, so it is not reusable alone.
+The [daemon](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still serves Poketto's copy operations through an extension and keeps Poketto's signed request schema, so it is not reusable alone.
 
 No maintained sandbox service fits the default two-core, 4 GB deployment target ([continuous delivery](../implemented/2026-09-03-continuous-delivery.md)), whose current production host exposes no KVM device. E2B and microsandbox need KVM, OpenSandbox needs Docker or Kubernetes, and bubblewrap, nsjail, Anthropic's sandbox-runtime and the hakoniwa crate offer no service interface.
 
@@ -41,10 +41,10 @@ Poketto composes copies, seeds, publication checks, saves, moves and journals in
 
 ### Phases
 
-0. Validation, without production code. Check that the OpenSandbox Kotlin SDK reaches execd through the daemon over loopback. Map saves, moves and bridge requests onto the primitives and count the operations that need extensions. Measure the specification changes from 1.1.0 to 1.2.0. Benchmark one signed frame against one keep-alive HTTP request.
-1. In-repository split, shipped as the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md), which also lists its outstanding native acceptance.
+0. Validation without production code, recorded below.
+1. In-repository split, shipped as the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md).
 2. Finite jobs, shipped as [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md).
-3. Repository operations move to the primitives until the daemon contains no Poketto code.
+3. Repository operations move to the primitives until the daemon contains no Poketto code, step by step: HTTP on the Unix socket ([wire reference](../../executor-service/README.md#wire-version-1)), shipped; the operation map's extension families in the order snapshot, apply, frozen job, volumes, host calls; finally labels, identity fields and the unit name check become caller metadata and profile settings, and the Poketto extension crate is removed.
 4. Extraction. Move the crates to their own repository with history, publish releases with checksums and benchmarks, and pin a release in Poketto. This phase starts only after phases 1 to 3 have shipped and four weeks have passed without a change that crosses the boundary.
 
 ### Phase 0 findings

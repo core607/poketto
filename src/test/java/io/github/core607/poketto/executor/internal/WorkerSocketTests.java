@@ -41,7 +41,6 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
@@ -2129,20 +2128,17 @@ class WorkerSocketTests {
             try (connection;
                     var input = Channels.newInputStream(connection);
                     var output = new DataOutputStream(Channels.newOutputStream(connection))) {
-                byte[] prefix = input.readNBytes(4);
-                if (prefix.length == 0) {
+                var exchange = WorkerHttp.read(input);
+                if (exchange == null) {
                     // A client exchange closes its socket without writing when its deadline elapses
                     // or its thread is interrupted, which executor shutdown does to renewals still
                     // in flight, before this peer is closed. That connection carries no request and
-                    // nothing to answer. A prefix that arrives short is a truncated frame and fails.
+                    // nothing to answer. A request that arrives short is truncated and fails.
                     return;
                 }
-                assertThat(prefix).as("worker frame length prefix").hasSize(4);
-                int length = ByteBuffer.wrap(prefix).getInt();
-                assertThat(length).isBetween(1, WorkerClient.MAX_FRAME);
-                JsonNode envelope = json.readTree(input.readNBytes(length));
+                assertThat(exchange.body().length).isLessThanOrEqualTo(WorkerClient.MAX_FRAME);
                 Object response;
-                if (envelope.path("operation").asString("").equals("HELLO")) {
+                if (exchange.hello()) {
                     if (assertOnHelloShutdown) {
                         openEntered.countDown();
                         try {
@@ -2155,8 +2151,7 @@ class WorkerSocketTests {
                         return;
                     }
                     if (oversizedHello) {
-                        output.writeInt(WorkerClient.MAX_FRAME + 1);
-                        output.flush();
+                        WorkerHttp.write(output, WorkerClient.MAX_FRAME + 1, new byte[0]);
                         return;
                     }
                     var hello = new LinkedHashMap<String, Object>(Map.of(
@@ -2187,6 +2182,8 @@ class WorkerSocketTests {
                     hello.put("seedProtocol", 1);
                     response = hello;
                 } else {
+                    assertThat(exchange.method() + " " + exchange.path()).isEqualTo("POST /v1/requests");
+                    JsonNode envelope = json.readTree(exchange.body());
                     byte[] payload = Base64.getUrlDecoder()
                             .decode(envelope.path("payload").stringValue());
                     Signature verifier = Signature.getInstance("Ed25519");
@@ -2216,9 +2213,7 @@ class WorkerSocketTests {
                 }
                 byte[] bytes = json.writeValueAsBytes(response);
                 try {
-                    output.writeInt(bytes.length);
-                    output.write(bytes);
-                    output.flush();
+                    WorkerHttp.write(output, bytes);
                 } catch (IOException disconnected) {
                     // A stale-boot poll can reject first and cancel the simultaneous EXEC socket.
                     // Only that obsolete reply may lose its receiver; parsing and assertions still fail.

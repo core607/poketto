@@ -103,16 +103,14 @@ def main():
              '-p', f'ExecStopPost={root}/poketto-supervisor --config {config_path} --cleanup',
              str(root / 'poketto-supervisor'), '--config', str(config_path)])
         deadline = time.monotonic() + 10
-        hello = '''import json,socket,struct,sys
+        hello = '''import json,socket,sys
 with socket.socket(socket.AF_UNIX) as connection:
  connection.settimeout(2)
  connection.connect(sys.argv[1])
- payload=b'{"operation":"HELLO","version":1}'
- connection.sendall(struct.pack('>I',len(payload))+payload)
- stream=connection.makefile('rb')
- length,=struct.unpack('>I',stream.read(4))
- assert 0<length<=1048576
- response=json.loads(stream.read(length))
+ connection.sendall(b'GET /v1/hello HTTP/1.1\\r\\nHost: sandcrab\\r\\n\\r\\n')
+ head,_,body=connection.makefile('rb').read(65536).partition(b'\\r\\n\\r\\n')
+ assert head.startswith(b'HTTP/1.1 200 ')
+ response=json.loads(body)
  assert response['ok'] is True and response['version']==1
 '''
         while time.monotonic() < deadline:

@@ -1,11 +1,10 @@
-"""Differential signed frames, identity and admission checks; no sandbox execution."""
+"""Differential signed requests, identity and admission checks; no sandbox execution."""
 import argparse
 import base64
 import json
 from pathlib import Path
 import select
 import socket
-import struct
 import subprocess
 import sys
 import tempfile
@@ -20,7 +19,7 @@ parser.add_argument('--rust', required=True)
 args = parser.parse_args()
 sys.path.insert(0, args.source)
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from worker import Service, Session, json_read, recv_exact
+from worker import Service, Session, json_read
 
 
 def uid():
@@ -64,14 +63,32 @@ def envelope(key, value=None, raw=None):
     return json.dumps({'payload': b64(raw), 'signature': b64(key.sign(raw))}, separators=(',', ':')).encode()
 
 
-def exchange(path, raw, declared=None):
+def http(path, method, target, raw=b'', declared=None):
+    """One HTTP/1.1 exchange on its own connection; returns the status and the JSON body."""
+    length = len(raw) if declared is None else declared
+    head = f'{method} {target} HTTP/1.1\r\nHost: sandcrab\r\n'
+    if length:
+        head += f'Content-Length: {length}\r\n'
     with socket.socket(socket.AF_UNIX) as stream:
         stream.settimeout(7)
         stream.connect(path)
-        stream.sendall(struct.pack('!I', len(raw) if declared is None else declared) + raw)
-        count, = struct.unpack('!I', recv_exact(stream, 4))
-        assert count <= 1048576
-        return json.loads(recv_exact(stream, count))
+        stream.sendall(head.encode() + b'\r\n' + raw)
+        response = b''
+        while True:
+            part = stream.recv(65536)
+            if not part:
+                break
+            response += part
+    head, _, body = response.partition(b'\r\n\r\n')
+    lines = head.decode('ascii').split('\r\n')
+    status = int(lines[0].split(' ')[1])
+    fields = dict(line.split(': ', 1) for line in lines[1:])
+    assert int(fields['Content-Length']) == len(body) <= 1048576 and fields['Connection'] == 'close'
+    return status, json.loads(body)
+
+
+def exchange(path, raw, declared=None):
+    return http(path, 'POST', '/v1/requests', raw, declared)[1]
 
 
 class RustServer:
@@ -122,7 +139,7 @@ def differential():
                 try:
                     expected = service.handle(json_read(raw))
                 except Exception:
-                    expected = {'ok': False, 'code': 'INVALID_FRAME'}
+                    expected = {'ok': False, 'code': 'INVALID_BODY'}
                 actual = exchange(path, raw)
                 assert actual == expected, (name, actual, expected)
                 count += 1
@@ -166,8 +183,8 @@ def differential():
             check('invalid-signature-length', json.dumps(raw).encode())
             other = Ed25519PrivateKey.generate()
             check('wrong-key', envelope(other, payload(settings)))
-            assert exchange(path, b'', 0) == {'ok': False, 'code': 'INVALID_FRAME'}
-            assert exchange(path, b'', 1048577) == {'ok': False, 'code': 'INVALID_FRAME'}
+            assert http(path, 'POST', '/v1/requests') == (400, {'ok': False, 'code': 'INVALID_HTTP'})
+            assert http(path, 'POST', '/v1/requests', b'', 1048577) == (400, {'ok': False, 'code': 'INVALID_HTTP'})
             count += 2
             original = payload(settings)
             raw = envelope(key, original)

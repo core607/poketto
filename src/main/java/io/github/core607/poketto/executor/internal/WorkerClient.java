@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
@@ -20,15 +21,20 @@ import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** One bounded Unix-socket exchange per operation; EXEC is never replayed after an uncertain response. */
+/**
+ * One bounded HTTP/1.1 exchange per Unix-socket connection: {@code GET /v1/hello} for the handshake and
+ * {@code POST /v1/requests} for each signed request. EXEC is never replayed after an uncertain response.
+ */
 final class WorkerClient {
     private static final Logger log = LoggerFactory.getLogger(WorkerClient.class);
     /**
-     * The wire-version-1 frame ceiling from the worker reference, applied to both directions. The
-     * handshake refuses a worker that advertises anything else, because a larger frame on one side
-     * would be silently truncated by the other.
+     * The body ceiling from the worker reference, applied to both directions. The handshake refuses
+     * a worker that advertises anything else, because a larger body on one side would be refused by
+     * the other.
      */
     static final int MAX_FRAME = 1024 * 1024;
+    /** The response status line and headers together. */
+    private static final int MAX_HEAD = 8192;
 
     private final Path socket;
     private final PrivateKey signingKey;
@@ -54,7 +60,7 @@ final class WorkerClient {
     }
 
     Hello hello() {
-        JsonNode response = exchange(new WorkerRequests.Hello(), Duration.ofSeconds(3));
+        JsonNode response = exchange("GET", "/v1/hello", null, Duration.ofSeconds(3));
         try {
             var handshake = WorkerResponses.read(response, WorkerResponses.Handshake.class);
             return new Hello(handshake.bootId(), handshake.leaseSeconds(), handshake.renewAfterSeconds());
@@ -68,7 +74,7 @@ final class WorkerClient {
     }
 
     Hello gameHello() {
-        JsonNode response = exchange(new WorkerRequests.Hello(), Duration.ofSeconds(3));
+        JsonNode response = exchange("GET", "/v1/hello", null, Duration.ofSeconds(3));
         var handshake = WorkerResponses.read(response, IsolatedGameRunner.Handshake.class);
         return new Hello(handshake.workerBootId(), handshake.leaseSeconds(), handshake.renewAfterSeconds());
     }
@@ -151,7 +157,7 @@ final class WorkerClient {
     }
 
     JsonNode send(PreparedRequest request, Duration timeout) {
-        JsonNode response = exchange(request.envelope(), timeout);
+        JsonNode response = exchange("POST", "/v1/requests", json.writeValueAsBytes(request.envelope()), timeout);
         require(response.path("requestId")
                 .asString("")
                 .equals(request.requestId().toString()));
@@ -160,7 +166,7 @@ final class WorkerClient {
 
     record PreparedRequest(UUID requestId, Envelope envelope) {}
 
-    /** The signed wrapper. Its two fields are the complete frame; the worker rejects any other key. */
+    /** The signed wrapper. Its two fields are the complete body; the worker rejects any other key. */
     record Envelope(String payload, String signature) {}
 
     /**
@@ -182,10 +188,16 @@ final class WorkerClient {
             UUID leaseId,
             WorkerRequests.Data data) {}
 
-    private JsonNode exchange(Object request, Duration timeout) {
+    private JsonNode exchange(String method, String path, byte[] body, Duration timeout) {
         verifySocket.run();
-        byte[] bytes = json.writeValueAsBytes(request);
-        require(bytes.length > 0 && bytes.length <= MAX_FRAME);
+        byte[] bytes = body == null ? new byte[0] : body;
+        require(bytes.length <= MAX_FRAME);
+        byte[] request = (method + " " + path + " HTTP/1.1\r\nHost: sandcrab\r\n"
+                        + (bytes.length > 0
+                                ? "Content-Type: application/json\r\nContent-Length: " + bytes.length + "\r\n"
+                                : "")
+                        + "Connection: close\r\n\r\n")
+                .getBytes(StandardCharsets.US_ASCII);
         long deadline = System.nanoTime() + timeout.toNanos();
         String phase = "connect";
         try (SocketChannel channel = SocketChannel.open(StandardProtocolFamily.UNIX);
@@ -199,8 +211,8 @@ final class WorkerClient {
             phase = "peer-verification";
             verifyPeer.accept(channel);
             phase = "request-write";
-            ByteBuffer output = ByteBuffer.allocate(4 + bytes.length)
-                    .putInt(bytes.length)
+            ByteBuffer output = ByteBuffer.allocate(request.length + bytes.length)
+                    .put(request)
                     .put(bytes)
                     .flip();
             while (output.hasRemaining()) {
@@ -210,15 +222,20 @@ final class WorkerClient {
                 }
             }
             phase = "response-header";
-            ByteBuffer prefix = ByteBuffer.allocate(4);
-            read(channel, selector, prefix, deadline);
-            int length = prefix.flip().getInt();
-            require(length > 0 && length <= MAX_FRAME);
+            ByteBuffer head = ByteBuffer.allocate(MAX_HEAD + 4);
+            int end;
+            while ((end = headEnd(head)) < 0) {
+                require(head.hasRemaining());
+                readSome(channel, selector, head, deadline);
+            }
+            int length = contentLength(new String(head.array(), 0, end, StandardCharsets.US_ASCII));
             phase = "response-body";
-            ByteBuffer body = ByteBuffer.allocate(length);
-            read(channel, selector, body, deadline);
+            int received = head.position() - end - 4;
+            require(received <= length);
+            ByteBuffer reply = ByteBuffer.allocate(length).put(head.array(), end + 4, received);
+            read(channel, selector, reply, deadline);
             phase = "response-decode";
-            return json.readTree(body.array());
+            return json.readTree(reply.array());
         } catch (IOException | RuntimeException exception) {
             log.warn(
                     "Worker exchange failed during {} ({})",
@@ -228,17 +245,63 @@ final class WorkerClient {
         }
     }
 
-    private static void read(SocketChannel channel, Selector selector, ByteBuffer body, long deadline)
+    /** The offset of the blank line ending the response head, or -1 before it has arrived. */
+    private static int headEnd(ByteBuffer response) {
+        byte[] bytes = response.array();
+        for (int index = 0; index + 3 < response.position(); index++) {
+            if (bytes[index] == '\r'
+                    && bytes[index + 1] == '\n'
+                    && bytes[index + 2] == '\r'
+                    && bytes[index + 3] == '\n') {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    /** A {@code 200} status with exactly one bounded {@code Content-Length}; any other response is refused. */
+    private static int contentLength(String head) {
+        String[] lines = head.split("\r\n", -1);
+        require(lines[0].startsWith("HTTP/1.1 200 "));
+        Integer length = null;
+        for (int index = 1; index < lines.length; index++) {
+            int colon = lines[index].indexOf(':');
+            require(colon > 0);
+            String name = lines[index].substring(0, colon);
+            String value = lines[index].substring(colon + 1).strip();
+            if (name.equalsIgnoreCase("Content-Length")) {
+                require(length == null
+                        && !value.isEmpty()
+                        && value.length() <= 7
+                        && value.chars().allMatch(Character::isDigit));
+                length = Integer.parseInt(value);
+            } else {
+                require(!name.equalsIgnoreCase("Transfer-Encoding"));
+            }
+        }
+        require(length != null && length > 0 && length <= MAX_FRAME);
+        return length;
+    }
+
+    private static void readSome(SocketChannel channel, Selector selector, ByteBuffer body, long deadline)
             throws IOException {
-        while (body.hasRemaining()) {
+        while (true) {
             deadline(deadline);
             int read = channel.read(body);
             if (read < 0) {
-                throw new IOException("incomplete worker frame");
+                throw new IOException("incomplete worker response");
             }
-            if (read == 0) {
-                ready(channel, selector, SelectionKey.OP_READ, deadline);
+            if (read > 0) {
+                return;
             }
+            ready(channel, selector, SelectionKey.OP_READ, deadline);
+        }
+    }
+
+    private static void read(SocketChannel channel, Selector selector, ByteBuffer body, long deadline)
+            throws IOException {
+        while (body.hasRemaining()) {
+            readSome(channel, selector, body, deadline);
         }
     }
 
