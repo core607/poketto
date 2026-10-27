@@ -37,4 +37,6 @@ Installations install the matching updater before deploying the new file set ([d
 
 The [launcher comparison receipt](../../executor-native/evidence/2026-10-27-sandcrab-launcher-comparison.json) from the production host found identical snapshots and toolkit results for the Python and Rust launchers, both refusing tampered tools. Median startup CPU fell to 0.57 of the Python launcher's; memory and task ratios were 1.13 and 1.0.
 
-Named gap: the native adapter probe, the game scenario, and the 50-agent round before and after with CPU split by application container, supervisor and sandbox units have not run for this change.
+The [native probe receipt](../../executor-native/evidence/2026-10-27-sandcrab-native-probe.json) records the adapter and game scenarios passing on the same host.
+
+Named gap: the 50-agent round before and after, with CPU split by application container, supervisor and sandbox units, has not run for this change.

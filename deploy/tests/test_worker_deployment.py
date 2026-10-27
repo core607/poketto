@@ -7,7 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from worker_release import BINARIES, DeploymentError, PAYLOAD, SOURCES, WorkerRelease, read_bundle, sha, validate_config
+from worker_release import (BINARIES, LAUNCHER, PYTHON_LAUNCHER, DeploymentError, PAYLOAD, SOURCES, WorkerRelease,
+                            read_bundle, sha, validate_config)
 
 
 REVISION = "a" * 40
@@ -161,6 +162,39 @@ class WorkerDeploymentTests(unittest.TestCase):
         self.assertEqual((self.image / "bin/poketto").read_bytes(), (selected / "bin/poketto").read_bytes())
         self.assertFalse((selected / "cli.py").exists())
         self.assertEqual(0o555, (selected / "bin/poketto").stat().st_mode & 0o777)
+
+    def test_python_launcher_generation_upgrades_and_remains_the_rollback_target(self):
+        old = {name: (self.root / name).read_bytes() for name in SOURCES | BINARIES if name != LAUNCHER}
+        old[PYTHON_LAUNCHER] = b"VALUE = 'previous Python launcher'\n"
+        previous = self.worker._stage(old)
+        self.worker._select(previous)
+        (self.root / LAUNCHER).unlink()
+        for name in self.worker._aliases(old):
+            target = self.root / name
+            target.unlink(missing_ok=True)
+            target.symlink_to("releases/current/" + name)
+        plan = self.worker.prepare("image", REVISION)
+        self.assertEqual(previous, plan["previousRelease"])
+        self.fail_start = True
+        with self.assertRaisesRegex(DeploymentError, "previous sources restored"):
+            self.worker.install(plan)
+        self.assertEqual(old[PYTHON_LAUNCHER], (self.root / PYTHON_LAUNCHER).read_bytes())
+        self.worker.install(plan)
+        self.worker.verify(plan)
+        self.assertEqual((self.image / LAUNCHER).read_bytes(), (self.root / LAUNCHER).read_bytes())
+
+    def test_first_adoption_accepts_a_manual_install_with_the_python_launcher(self):
+        (self.root / LAUNCHER).unlink()
+        (self.root / PYTHON_LAUNCHER).write_text("VALUE = 'old'\n")
+        plan = self.worker.prepare("image", REVISION)
+        stored = self.worker._sources(self.worker.store / plan["previousRelease"])
+        self.assertIn(PYTHON_LAUNCHER, stored)
+        self.assertNotIn(LAUNCHER, stored)
+        self.worker.install(plan)
+        self.worker.verify(plan)
+        (self.worker.store / plan["previousRelease"] / PYTHON_LAUNCHER).unlink()
+        with self.assertRaisesRegex(DeploymentError, "lacks its supervisor or launcher"):
+            self.worker._sources(self.worker.store / plan["previousRelease"])
 
     def test_program_integrity_and_execute_permissions_are_required(self):
         binary = self.image / "poketto-supervisor"

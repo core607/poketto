@@ -22,6 +22,8 @@ SOURCES = frozenset(("resource_pool.py",))
 SUPERVISOR = "poketto-supervisor"
 # The supervisor runs the launcher installed beside it in the same generation.
 LAUNCHER = "poketto-launch"
+# Generations before the Rust launcher ran this one; they remain valid previous and rollback releases.
+PYTHON_LAUNCHER = "launcher.py"
 BINARIES = frozenset(("bin/poketto", "bin/poketto-shell", "bin/poketto-syncfs", SUPERVISOR, LAUNCHER))
 PAYLOAD = SOURCES | BINARIES
 
@@ -176,8 +178,10 @@ class WorkerRelease:
         data = {}
         # Rollback preserves the exact managed generation, including a program removed by
         # a later release. None of those old files enters the new image's fixed payload.
-        names = SOURCES | BINARIES
-        if path != self.root:
+        if path == self.root:
+            # First adoption takes the regular files an earlier manual install actually has.
+            names = {name for name in SOURCES | BINARIES | {PYTHON_LAUNCHER} if (path / name).exists()}
+        else:
             names = set()
             for file in path.iterdir():
                 if file.name == "__pycache__":
@@ -193,8 +197,8 @@ class WorkerRelease:
                     names.add(file.name)
                 else:
                     raise DeploymentError("stored worker release contains an unexpected file")
-            if SUPERVISOR not in names or LAUNCHER not in names:
-                raise DeploymentError("stored worker release is incomplete")
+        if SUPERVISOR not in names or not names & {LAUNCHER, PYTHON_LAUNCHER}:
+            raise DeploymentError("worker release lacks its supervisor or launcher")
         for name in names:
             file = path / name
             protected(file)
