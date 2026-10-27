@@ -18,7 +18,7 @@ No maintained sandbox service fits the default two-core, 4 GB deployment target 
 
 Sandcrab is an Apache-2.0 Rust service: one static binary that runs as the daemon and as its CLI, on x64 Linux with cgroup v2 and systemd, without KVM or a container runtime. Each sandbox is a systemd transient unit with bubblewrap, the pinned seccomp filter and the resource limits of the [direct sandbox launch](../implemented/2026-10-18-direct-sandbox-launch.md). It shares the host kernel. Its threat model states that it is weaker than a microVM and targets trusted or semi-trusted code on small hosts.
 
-Integration never requires Rust. The contract is an OpenAPI document served over HTTP/1.1 on a Unix socket, with optional loopback TCP and a token for clients that cannot use a socket. Operators define profiles in a TOML file: mounts, limits, execution account, tools and network policy, which is "none" in the first release. **A caller names a profile and cannot choose a UID, a host path or weaker isolation.**
+Integration never requires Rust. The contract is an OpenAPI document served over HTTP/1.1 on a Unix socket for the CLI and clients that can use one, and on loopback TCP with a token for the OpenSandbox SDKs, which need it (phase 0 findings below). Operators define profiles in a TOML file: mounts, limits, execution account, tools and network policy, which is "none" in the first release. **A caller names a profile and cannot choose a UID, a host path or weaker isolation.**
 
 ### Primitives
 
@@ -33,7 +33,7 @@ Today captures and media transfers move 64 KiB of base64 per signed request, eac
 
 ### Compatibility
 
-Sandcrab implements a pinned subset of the OpenSandbox [lifecycle](https://github.com/alibaba/OpenSandbox/blob/main/specs/sandbox-lifecycle.yml) and [execd](https://github.com/alibaba/OpenSandbox/blob/main/specs/execd-api.yaml) specifications: create, get, list, delete, renew and endpoint lookup; commands with SSE output; sessions; files and directories. Its endpoints are served by path from the daemon itself. `image.uri` names a profile, requests for container images or caller-selected UIDs are rejected, and unimplemented features return an explicit unsupported error. Volumes, host calls and freezing live under a separate extension prefix. An MCP endpoint is optional and disabled by default.
+Sandcrab implements a pinned subset of the OpenSandbox [lifecycle](https://github.com/alibaba/OpenSandbox/blob/main/specs/sandbox-lifecycle.yml) and [execd](https://github.com/alibaba/OpenSandbox/blob/main/specs/execd-api.yaml) specifications: create, get, list, delete, renew and endpoint lookup; commands with SSE output; sessions; files and directories. Its endpoints are served by path from the daemon itself. `image.uri` names a profile, requests for container images or caller-selected UIDs are rejected, and unimplemented features return an explicit unsupported error. Volumes, frozen snapshots, atomic apply, frozen jobs and host calls live under a separate extension prefix. An MCP endpoint is optional and disabled by default.
 
 Peer UID checks on the Unix socket authenticate callers by default. Ed25519-signed requests remain available, and Poketto keeps them because its application runs in a container that does not share the supervisor's UID.
 
@@ -48,6 +48,28 @@ Poketto composes copies, seeds, publication checks, saves, moves and journals in
 2. Finite jobs. Games and the QA corpus command run as jobs; game_worker.py retires, and worker.py loses its production role.
 3. Repository operations move to the primitives until the daemon contains no Poketto code.
 4. Extraction. Move the crates to their own repository with history, publish releases with checksums and benchmarks, and pin a release in Poketto. This phase starts only after phases 1 to 3 have shipped and four weeks have passed without a change that crosses the boundary.
+
+### Phase 0 findings
+
+Recorded on 2026-10-27 against OpenSandbox `main` and the tags `release-1.1.0` and `release-1.2.0-rc.2`.
+
+**SDK reachability.** The Kotlin SDK builds the execd base URL as `protocol://endpoint` from the endpoint lookup and sends the endpoint's headers with every execd request, so a daemon answering `127.0.0.1:<port>/sandboxes/<id>/port/44772` with a token header needs no SDK change. It uses OkHttp and accepts only a connection pool from the caller, so it cannot use a Unix socket. The Python SDK accepts a caller-supplied httpx transport and can.
+
+**Operation map.** Of the 28 operations Poketto sends the supervisor today, five map onto the OpenSandbox subset: HELLO, EXEC as a session run, RENEW, CLOSE, and REVOKE as a metadata-filtered list followed by deletes. Twenty-one need five extension families, none of which carries Poketto semantics:
+
+| Extension | Replaces |
+|---|---|
+| Volumes: create from an uploaded bundle or by reflink clone, exclusive attach, delete, quota | OPEN, ATTACH, DISCARD |
+| Frozen snapshot: listed files with sizes and SHA-256, streamed as tar | the five CAPTURE operations, ARTIFACT_CREATE |
+| Atomic apply: writes, deletions and renames with SHA-256 or absence preconditions, applied while frozen, rolled back on failure, idempotent by receipt | the four MATERIALIZE and five MOVE operations |
+| Frozen job: a run under another profile on the session's volume while the session is frozen | BASELINE |
+| Host calls | BRIDGE_POLL, BRIDGE_COMPLETE |
+
+ARTIFACT_READ and ARTIFACT_REMOVE move to Poketto, which keeps artifact bytes after the snapshot. Each streamed extension replaces a begin, chunk and commit sequence with one request. OpenSandbox compatibility therefore serves outside users; Poketto relies on the extensions.
+
+**Specification changes.** Between 1.1.0 and 1.2.0-rc.2, OpenSandbox merged 754 commits and added five lifecycle and ten execd paths outside the subset. Of the 22 operations in the subset, 18 are unchanged. `POST /command` and `POST /session/{sessionId}/run` gained an `error` field, and `POST /sandboxes` gained optional `lifecycle` hooks and changed `networkPolicy`, which Sandcrab rejects as unsupported.
+
+**Benchmark.** The [transport benchmark](../../experiments/sandcrab-transport/README.md) ran in a two-CPU Linux container on a developer machine ([result](../../acceptance/evidence/2026-10-27-sandcrab-transport-benchmark.json)). A signed frame on a new connection took a median 173 µs, an HTTP request on a kept-alive connection 88 µs, and one on a new connection 137 µs; signing alone was 20 µs. Both are negligible beside a command's half second, so HTTP adds no round-trip cost. The transfer shape matters instead: 800 requests of 64 KiB took 97 ms over kept-alive HTTP, and one streamed 50 MiB body took 9 ms.
 
 ## Acceptance criteria
 
