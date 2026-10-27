@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-27",
+  "kernel": "6.18.33.2-microsoft-standard-WSL2",
+  "python": "3.12.14",
+  "warmup": 200,
+  "signed_frame_bytes": 831,
+  "http_body_bytes": 537,
+  "results": {
+    "signed_frame_new_connection": {
+      "median_us": 172.7,
+      "p95_us": 262.8,
+      "mean_us": 188.5,
+      "n": 2000
+    },
+    "http_keepalive": {
+      "median_us": 87.9,
+      "p95_us": 130.3,
+      "mean_us": 94.9,
+      "n": 2000
+    },
+    "http_new_connection": {
+      "median_us": 136.7,
+      "p95_us": 225.3,
+      "mean_us": 155.1,
+      "n": 2000
+    },
+    "client_ed25519_sign_only": {
+      "median_us": 20.3,
+      "p95_us": 24.0,
+      "mean_us": 22.1,
+      "n": 2000
+    },
+    "upload_50MiB": {
+      "chunked_800x64KiB_keepalive_s": 0.0971,
+      "single_stream_50MiB_s": 0.0091,
+      "signed_frames_estimate_s": 0.1382
+    }
+  },
+  "scope": "Sandcrab phase 0: signed supervisor frames against the protocol fixture versus HTTP/1.1 over a Unix socket to a minimal Rust server; Python client for both; container limited to 2 CPUs.",
+  "sourceRevision": "origin/main 8457f1ae",
+  "limitations": [
+    "Developer machine under WSL2 (Docker Desktop), not the production host; compare scenarios with each other, not with production latency.",
+    "The fixture serves RENEW without sandbox work; the HTTP server parses the same JSON and checks a token instead of a signature.",
+    "The signed-frame upload figure is a lower bound: 800 times the control-request median, without base64 or 64 KiB payloads."
+  ],
+  "containerCpus": 2
+}
