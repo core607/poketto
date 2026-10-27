@@ -1,76 +1,100 @@
-"""Replays the application's own request frames through this worker.
+"""Replays the application's own request bodies through the Rust supervisor.
 
 `java-frames.json` is written by the Java `WorkerFrameContractTests` from the records that build
-every outgoing frame. Validating those exact bytes here is what keeps the two sides honest: a field
-renamed, added or dropped on the Java side fails against the real dispatch rather than against a
-second copy of the same assumption.
+every outgoing request. Validating those exact bytes against the supervisor fixture keeps the two
+sides honest: a field renamed, added or dropped on the Java side fails against the real dispatch
+rather than against a second copy of the same assumption.
 
-The positive case asserts only that a frame is not rejected as `INVALID_REQUEST`, because most
-operations then fail for an unrelated reason: this suite establishes one session and never runs a
-real command, so a mismatched execution id or an absent transfer is the expected next outcome. The
-negative cases carry the real weight. Adding a key proves the application does not send a subset of
-what the worker accepts, and removing one proves it does not send a superset.
-
-The session is put into RUNNING with a live bridge because several operations check their field set
-only after the session is ready; without that, their frames would never reach the check being
-tested. Like the rest of this suite, it runs on Linux.
+The positive case asserts only that a request is not rejected as `INVALID_REQUEST`, because most
+operations then fail for an unrelated reason: the fixture serves one lease with a running execution
+and a live mailbox but no sandbox or copy, so a mismatched execution or an absent volume is the
+expected next outcome. The negative cases carry the real weight. Adding a key proves the
+application does not send a subset of what the supervisor accepts, and removing one proves it does
+not send a superset.
 """
 
+import base64
 import json
 import os
+from pathlib import Path
+import socket
+import subprocess
 import tempfile
+import time
 import unittest
 import uuid
-from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
-from bridge import LeaseBridge
-from test_worker import Backend, b64
-from worker import Service
 
 SUITE = Path(__file__).parent
 FRAMES = json.loads((SUITE / 'java-frames.json').read_text(encoding='utf-8'))
 
-# CLOSE is the one operation whose field is optional: the worker reads an absent reason as
-# 'session_closed', so dropping it leaves a valid frame rather than an invalid one.
+# CLOSE is the one operation whose field is optional: an absent reason reads as 'session_closed',
+# so dropping it leaves a valid request rather than an invalid one.
 OPTIONAL_FIELD_OPERATIONS = {'CLOSE'}
 
 
+def b64(value):
+    return base64.urlsafe_b64encode(value).decode().rstrip('=')
+
+
+def post(path, body):
+    head = f'POST /v1/requests HTTP/1.1\r\nHost: sandcrab\r\nContent-Length: {len(body)}\r\n\r\n'
+    with socket.socket(socket.AF_UNIX) as stream:
+        stream.settimeout(10)
+        stream.connect(path)
+        stream.sendall(head.encode() + body)
+        response = b''
+        while part := stream.recv(65536):
+            response += part
+    return json.loads(response.partition(b'\r\n\r\n')[2])
+
+
 class JavaFrameTests(unittest.TestCase):
-    def setUp(self):
-        self.key = Ed25519PrivateKey.generate()
-        self.backend = Backend()
-        self.now = 1000
-        self.service = Service(self.key.public_key(), self.backend,
-                               {'leaseSeconds': 15, 'renewAfterSeconds': 5, 'maxRequests': 1000,
-                                'maxSessions': 4, 'maxBundleBytes': 1 << 20, 'maxTimeoutMillis': 60000,
-                                'maxExecutionsPerSession': 1000},
-                               lambda: self.now)
-        self.identity = {'principalId': str(uuid.uuid4()), 'accountId': str(uuid.uuid4()),
-                         'workspaceId': str(uuid.uuid4()), 'serverSessionHash': 'a' * 64,
-                         'appBootId': str(uuid.uuid4()), 'leaseId': str(uuid.uuid4())}
-        self.assertTrue(self.send('OPEN', FRAMES['OPEN'])['ok'])
-        session = self.service.sessions[self.identity['leaseId']]
-        session.state, session.execution_id, session.unit = 'RUNNING', str(uuid.uuid4()), 'owned-unit'
-        self.directory = tempfile.TemporaryDirectory()
-        session.bridge = LeaseBridge(Path(self.directory.name) / 'bridge', os.getgid())
-        self.addCleanup(self.directory.cleanup)
-        self.addCleanup(session.bridge.close)
+    @classmethod
+    def setUpClass(cls):
+        cls.key = Ed25519PrivateKey.generate()
+        cls.directory = tempfile.TemporaryDirectory()
+        root = Path(cls.directory.name)
+        cls.socket = str(root / 'supervisor.sock')
+        cls.identity = {'principalId': str(uuid.uuid4()), 'accountId': str(uuid.uuid4()),
+                        'workspaceId': str(uuid.uuid4()), 'serverSessionHash': 'a' * 64,
+                        'appBootId': str(uuid.uuid4()), 'leaseId': str(uuid.uuid4())}
+        cls.boot = str(uuid.uuid4())
+        fixture = {'fixtureOnly': True, 'publicKey': b64(cls.key.public_key().public_bytes_raw()),
+                   'workerBootId': cls.boot, 'maxRequests': 100000, 'maxConnections': 16,
+                   'sessions': [{**cls.identity, 'deadline': time.time() + 3600,
+                                 'executionId': str(uuid.uuid4()), 'bridgePath': str(root / 'bridge'),
+                                 'execGid': os.getgid()}]}
+        cls.process = subprocess.Popen([str(SUITE / 'poketto-supervisor-fixture'), cls.socket, 'threads'],
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        cls.process.stdin.write(json.dumps(fixture) + '\n')
+        cls.process.stdin.flush()
+        assert json.loads(cls.process.stdout.readline())['ready'] is True
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.process.stdin.write('stop\n')
+        cls.process.stdin.flush()
+        cls.process.wait(10)
+        cls.directory.cleanup()
 
     def send(self, operation, data):
-        payload = {**self.identity, 'version': 1, 'operation': operation,
-                   'requestId': str(uuid.uuid4()), 'workerBootId': self.service.boot,
-                   'issuedAt': self.now, 'expiresAt': self.now + 15, 'data': data}
+        issued = int(time.time())
+        payload = {**self.identity, 'version': 1, 'operation': operation, 'requestId': str(uuid.uuid4()),
+                   'workerBootId': self.boot, 'issuedAt': issued, 'expiresAt': issued + 15, 'data': data}
         raw = json.dumps(payload).encode()
-        return self.service.handle({'payload': b64(raw), 'signature': b64(self.key.sign(raw))})
+        envelope = {'payload': b64(raw), 'signature': b64(self.key.sign(raw))}
+        return post(self.socket, json.dumps(envelope).encode())
 
     def test_every_frame_is_accepted_by_the_real_dispatch(self):
         for operation, data in FRAMES.items():
+            if operation in ('CLOSE', 'REVOKE'):
+                continue  # Either would end the fixture's only lease; their fields are checked below.
             with self.subTest(operation=operation):
                 result = self.send(operation, data)
                 self.assertNotEqual('INVALID_REQUEST', result.get('code'),
-                                    f'{operation} frame {data} was rejected as malformed')
+                                    f'{operation} request {data} was rejected as malformed')
 
     def test_an_added_field_is_rejected(self):
         for operation, data in FRAMES.items():
@@ -88,7 +112,7 @@ class JavaFrameTests(unittest.TestCase):
                     reduced = {key: value for key, value in data.items() if key != field}
                     result = self.send(operation, reduced)
                     self.assertEqual('INVALID_REQUEST', result.get('code'),
-                                     f'{operation} accepted a frame without {field}')
+                                     f'{operation} accepted a request without {field}')
 
     def test_the_fixture_covers_every_operation_the_reference_documents(self):
         documented = set()
