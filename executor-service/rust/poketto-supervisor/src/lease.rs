@@ -30,6 +30,38 @@ pub struct Lease {
     lock: Option<File>,
     mounted: bool,
 }
+/// A claimed copy as the daemon's volume; `owner` identifies it when an uninitialized copy
+/// is discarded.
+pub struct CopyVolume {
+    pub lease: Lease,
+    pub owner: Description,
+}
+impl sandcrab_daemon::runtime::Volume for CopyVolume {
+    fn sync_path(&self) -> &Path {
+        self.lease.sync_path()
+    }
+    fn released(&self) -> bool {
+        self.lease.released()
+    }
+    fn release(&mut self, discard: bool) -> io::Result<()> {
+        if discard {
+            self.lease.discard_uninitialized(&self.owner)
+        } else {
+            self.lease.release()
+        }
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+}
+impl CopyVolume {
+    pub fn git_commit(&self) -> io::Result<Option<String>> {
+        self.lease.git_commit()
+    }
+}
 fn invalid() -> io::Error {
     io::Error::other("Copy lease unavailable")
 }
@@ -209,16 +241,6 @@ impl Lease {
         }
         Ok(lease)
     }
-    pub fn acquire(
-        description: &Description,
-        mount: &Path,
-        unit: &str,
-        cgroup: &Path,
-    ) -> io::Result<Self> {
-        let mut lease = Self::claim(description, mount, unit, cgroup, true)?;
-        lease.prepare(description)?;
-        Ok(lease)
-    }
     pub fn prepare(&mut self, description: &Description) -> io::Result<()> {
         let mount = &self.mount;
         if self.mounted {
@@ -239,7 +261,7 @@ impl Lease {
                 Err(error) => return Err(error),
             }
         }
-        for name in ["baseline.bundle", ".git-baseline.pending"] {
+        for name in crate::baseline::STAGING {
             match fs::remove_file(self.source.join(name)) {
                 Ok(()) => (),
                 Err(e) if e.kind() == io::ErrorKind::NotFound => (),

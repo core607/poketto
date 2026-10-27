@@ -1,10 +1,11 @@
 //! Installed CLI configuration, protected public key and application-owned socket access.
-use crate::{Service, Settings, lease, provision, server};
+use crate::{Repository, lease, provision};
 use ed25519_dalek::{VerifyingKey, pkcs8::DecodePublicKey};
 use rustix::{
     fs::OFlags,
     process::{Resource, getrlimit, setrlimit},
 };
+use sandcrab_daemon::{Service, Settings, server};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use signal_hook::{
@@ -104,8 +105,6 @@ impl Limits {
             #[cfg(feature = "fixture")]
             max_connections: self.max_connections,
             runtime_root: Some(runtime_root),
-            #[cfg(feature = "fixture")]
-            backend: None,
             max_sessions: self.max_sessions,
             max_timeout_millis: self.max_timeout_millis,
             max_executions_per_session: self.max_executions_per_session,
@@ -287,11 +286,13 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let settings = config
         .limits
         .settings(config.backend.runtime_root.clone())?;
-    let service = Arc::new(Service::from_parts(
+    let service = Arc::new(Service::new(
         settings,
         key,
         Some(root_lock),
-        Some(factory),
+        Box::new(Repository {
+            factory: Some(factory),
+        }),
     )?);
     let mut limit = getrlimit(Resource::Nofile);
     limit.current = limit.maximum;
@@ -307,7 +308,7 @@ pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         rustix::fs::Uid::from_raw(config.backend.app_uid),
         Some(config.backend.app_gid),
     )?;
-    crate::emit(json!({"ready":true,"fixtureOnly":false}));
+    sandcrab_daemon::emit(json!({"ready":true,"fixtureOnly":false}));
     while !terminated.load(Ordering::SeqCst) && !server.failed() {
         thread::sleep(Duration::from_millis(100));
     }

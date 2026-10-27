@@ -1,7 +1,7 @@
 //! Host-planned moves keep local fingerprints, rollback evidence and protected completion receipts.
-use crate::transfer::{self, Error, Incoming};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use rustix::fs::OFlags;
+use sandcrab_core::transfer::{self, Error, Incoming};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -624,6 +624,15 @@ fn ensure_parent(
         }
     }
     Ok(())
+}
+
+impl sandcrab_daemon::files::Staged for IncomingMove {
+    fn close(&mut self) -> io::Result<()> {
+        IncomingMove::close(self)
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 #[cfg(test)]

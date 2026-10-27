@@ -1,12 +1,12 @@
 //! Native command execution under a fixed supervisor-owned sandbox launch description.
-use crate::{
+use sandcrab_core::{
     command::{Channel, EndReason},
     mailbox::Mailbox,
+    unit::{Maintenance, checked, empty_group, verify_resource_pool},
 };
-use sandcrab_core::unit::{Maintenance, checked, empty_group, stop_launch, verify_resource_pool};
-use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
+    any::Any,
     fs, io,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
@@ -17,8 +17,8 @@ use std::{
     },
     time::{Duration, Instant},
 };
-#[derive(Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// The fixed shell unit of one lease and the files the daemon owns for it.
+#[derive(Clone)]
 pub struct Description {
     pub command: Vec<String>,
     pub unit: String,
@@ -26,9 +26,26 @@ pub struct Description {
     pub resource_pool: PathBuf,
     pub mount: PathBuf,
     pub sync_program: PathBuf,
-    pub lease: crate::lease::Description,
-    #[serde(default)]
+    /// The execution account that owns installed files.
+    pub exec_uid: u32,
+    pub exec_gid: u32,
+    /// The revision label EXEC results report.
+    pub commit: String,
+    /// Names below the mount that a stopped helper may leave behind and that are removed.
+    pub transient_files: &'static [&'static str],
     pub owned_files: Vec<PathBuf>,
+}
+/// Exclusive ownership of the storage mounted for one lease.
+pub trait Volume: Send {
+    /// The path that filesystem synchronization flushes.
+    fn sync_path(&self) -> &Path;
+    /// Ownership has already been given up.
+    fn released(&self) -> bool;
+    /// Unmount and give up ownership; `discard` also removes storage whose initialization
+    /// never completed.
+    fn release(&mut self, discard: bool) -> io::Result<()>;
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 pub enum InitError {
     Code(&'static str),
@@ -45,23 +62,25 @@ pub struct Request<'a> {
     pub command: &'a str,
     pub timeout: Duration,
 }
+/// A lease's volume, host-call mailbox, helper units and persistent shell. An extension
+/// provisions the volume and mailbox before the first command.
 pub struct Runtime {
     description: Description,
     channel: Option<Channel>,
-    bridge: Option<Arc<Mailbox>>,
+    pub bridge: Option<Arc<Mailbox>>,
     launch_attempted: bool,
-    lease: Option<crate::lease::Lease>,
-    maintenance: Option<Maintenance>,
-    discard_uninitialized: bool,
+    pub volume: Option<Box<dyn Volume>>,
+    pub maintenance: Option<Maintenance>,
+    pub discard_uninitialized: bool,
     files: Arc<crate::files::Shared>,
 }
 fn unavailable() -> io::Error {
     io::Error::other("Execution runtime unavailable")
 }
-pub(crate) fn verify_program(path: &Path) -> io::Result<()> {
+pub fn verify_program(path: &Path) -> io::Result<()> {
     verify_trusted_file(path, true)
 }
-pub(crate) fn verify_trusted_file(path: &Path, executable: bool) -> io::Result<()> {
+pub fn verify_trusted_file(path: &Path, executable: bool) -> io::Result<()> {
     if !path.is_absolute() {
         return Err(unavailable());
     }
@@ -78,7 +97,7 @@ pub(crate) fn verify_trusted_file(path: &Path, executable: bool) -> io::Result<(
     Ok(())
 }
 impl Runtime {
-    fn validate(description: &Description) -> io::Result<()> {
+    pub fn validate(description: &Description) -> io::Result<()> {
         if description.command.first().map(String::as_str) != Some("systemd-run")
             || !description.unit.starts_with("poketto-exec-")
             || description.unit.len() > 220
@@ -99,41 +118,15 @@ impl Runtime {
         Self::verify_pool(description)?;
         Ok(())
     }
-    pub fn claim(description: &Description) -> io::Result<crate::lease::Lease> {
-        Self::validate(description)?;
-        crate::lease::Lease::acquire(
-            &description.lease,
-            &description.mount,
-            &description.unit,
-            &description.cgroup,
-        )
-    }
-    pub fn new(
-        description: Description,
-        bridge: Arc<Mailbox>,
-        lease: crate::lease::Lease,
-    ) -> io::Result<Self> {
-        let runtime = Self {
-            files: Arc::new(crate::files::Shared::new(description.clone(), true)),
-            description,
-            channel: None,
-            bridge: Some(bridge),
-            launch_attempted: false,
-            lease: Some(lease),
-            maintenance: None,
-            discard_uninitialized: false,
-        };
-        runtime.files.state.lock().unwrap().prepare_artifacts()?;
-        Ok(runtime)
-    }
-    pub fn pending(description: Description) -> Self {
+    /// A runtime whose volume, mailbox and records the extension has yet to prepare.
+    pub fn pending(description: Description, tree: crate::transfer::Tree) -> Self {
         Self {
-            files: Arc::new(crate::files::Shared::new(description.clone(), false)),
+            files: Arc::new(crate::files::Shared::new(description.clone(), tree, false)),
             description,
             channel: None,
             bridge: None,
             launch_attempted: false,
-            lease: None,
+            volume: None,
             maintenance: None,
             discard_uninitialized: false,
         }
@@ -143,6 +136,9 @@ impl Runtime {
     }
     pub fn files(&self) -> Arc<crate::files::Shared> {
         self.files.clone()
+    }
+    pub fn description(&self) -> &Description {
+        &self.description
     }
     pub fn execute(
         &mut self,
@@ -238,7 +234,7 @@ impl Runtime {
         }
         file_guard.release_command_files()?;
         let release_ms = releasing.elapsed().as_millis() as u64;
-        let mut response = json!({"commit":self.description.lease.commit,"exitCode":result.exit_code,
+        let mut response = json!({"commit":self.description.commit,"exitCode":result.exit_code,
             "terminationReason":termination,"timedOut":result.reason==Some(EndReason::Timeout),"freshSandbox":fresh,
             "artifacts":{},"artifactErrors":{},"timings":{"roomMs":0,"lockMs":0,"prepareMs":prepare_ms,
                 "runMs":run_ms,"readyMs":result.ready_ms,"releaseMs":release_ms,"flushMs":0}});
@@ -359,30 +355,23 @@ impl Runtime {
         if let Some(bridge) = &self.bridge {
             bridge.close()?;
         }
-        if self
-            .lease
-            .as_ref()
-            .is_none_or(crate::lease::Lease::released)
-        {
+        if self.volume.as_deref().is_none_or(Volume::released) {
             file_guard.mounted = false;
             return self.remove_owned_files();
         }
         self.sync_copy()?;
         self.remove_owned_files()?;
-        if self.discard_uninitialized {
-            self.lease
-                .as_mut()
-                .unwrap()
-                .discard_uninitialized(&self.description.lease)?;
-        } else {
-            self.lease.as_mut().unwrap().release()?;
-        }
+        self.volume
+            .as_mut()
+            .unwrap()
+            .release(self.discard_uninitialized)?;
         file_guard.mounted = false;
         Ok(())
     }
-    fn sync_copy(&self) -> io::Result<()> {
+    /// Flush the volume through the protected synchronization helper.
+    pub fn sync_copy(&self) -> io::Result<()> {
         verify_program(&self.description.sync_program)?;
-        let path = self.lease.as_ref().ok_or_else(unavailable)?.sync_path();
+        let path = self.volume.as_ref().ok_or_else(unavailable)?.sync_path();
         checked(
             &[
                 self.description.sync_program.to_string_lossy().into(),
@@ -395,145 +384,16 @@ impl Runtime {
     fn remove_owned_files(&self) -> io::Result<()> {
         remove_owned_records(&self.description, &self.description.owned_files)
     }
-    fn stop_maintenance(&mut self) -> io::Result<()> {
+    pub fn stop_maintenance(&mut self) -> io::Result<()> {
         if let Some(maintenance) = &mut self.maintenance {
             maintenance.stop()?;
             self.maintenance = None;
         }
         Ok(())
     }
-    pub fn prepare_dynamic(
-        &mut self,
-        plan: &crate::provision::Plan,
-        factory: &crate::provision::Factory,
-        source: Option<&crate::provision::Source>,
-        cancelled: &AtomicBool,
-        on_start: impl FnOnce() -> io::Result<()>,
-    ) -> Result<Arc<Mailbox>, InitError> {
-        let initialize = source.is_some();
-        Self::validate(&self.description)?;
-        if cancelled.load(Ordering::SeqCst) {
-            return Err(InitError::Code("SESSION_CLOSED"));
-        }
-        if initialize {
-            factory.pool.create(&self.description.lease)?;
-        }
-        let ownership = crate::lease::Lease::claim(
-            &self.description.lease,
-            &self.description.mount,
-            &self.description.unit,
-            &self.description.cgroup,
-            !initialize,
-        )
-        .map_err(|error| {
-            if error.kind() == io::ErrorKind::WouldBlock {
-                InitError::Code("COPY_BUSY")
-            } else if !initialize {
-                InitError::Code("COPY_UNAVAILABLE")
-            } else {
-                InitError::Io(error)
-            }
-        })?;
-        self.lease = Some(ownership);
-        if matches!(source, Some(crate::provision::Source::Seed)) {
-            let owner = &self.description.lease;
-            let target = owner.pool_root.join("copies").join(&owner.copy_id);
-            if !factory.pool.seeds()?.populate(
-                &target,
-                &owner.workspace_id,
-                &owner.scope,
-                &owner.commit,
-            )? {
-                self.discard_uninitialized = true;
-                return Err(InitError::Code("SEED_ABSENT"));
-            }
-        }
-
-        self.lease
-            .as_mut()
-            .unwrap()
-            .prepare(&self.description.lease)?;
-        {
-            let mut files = self.files.state.lock().unwrap();
-            files.mounted = true;
-            files.prepare_artifacts()?;
-        }
-        let bridge = Arc::new(Mailbox::create(
-            &self.description.mount.join("bridge"),
-            self.description.lease.exec_gid,
-            crate::BRIDGE_OPERATIONS,
-        )?);
-        self.bridge = Some(bridge.clone());
-        if cancelled.load(Ordering::SeqCst) {
-            return Err(InitError::Code("SESSION_CLOSED"));
-        }
-        factory.write_records(plan)?;
-        if let Some(crate::provision::Source::Export(export)) = source {
-            factory
-                .copy_export(&self.description.mount, export, cancelled)
-                .map_err(|error| match error.kind() {
-                    io::ErrorKind::InvalidData => InitError::Code("INVALID_EXPORT"),
-                    io::ErrorKind::Interrupted => InitError::Code("SESSION_CLOSED"),
-                    _ => InitError::Io(error),
-                })?;
-            on_start()?;
-            if cancelled.load(Ordering::SeqCst) {
-                return Err(InitError::Code("SESSION_CLOSED"));
-            }
-            let launch = plan.initialize.as_ref().ok_or_else(unavailable)?.clone();
-            self.maintenance = Some(Maintenance {
-                launch: launch.clone(),
-                child: None,
-            });
-            let args = &launch.command;
-            let child = Command::new(&args[0])
-                .args(&args[1..])
-                .stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()?;
-            self.maintenance.as_mut().unwrap().child = Some(child);
-            let result = crate::raw::collect(
-                self.maintenance.as_mut().unwrap().child.as_mut().unwrap(),
-                Duration::from_millis(factory.config.init_timeout_millis),
-                cancelled,
-                || stop_launch(&launch),
-            );
-            self.stop_maintenance()?;
-            if !result?.success() {
-                return Err(InitError::Code(if cancelled.load(Ordering::SeqCst) {
-                    "SESSION_CLOSED"
-                } else {
-                    "INITIALIZATION_FAILED"
-                }));
-            }
-            self.sync_copy()?;
-            self.lease.as_ref().unwrap().mark_initialized()?;
-            if !cancelled.load(Ordering::SeqCst) {
-                let owner = &self.description.lease;
-                let original = owner.pool_root.join("copies").join(&owner.copy_id);
-                let _ = factory.pool.seeds().and_then(|store| {
-                    store.capture(&original, &owner.workspace_id, &owner.scope, &owner.commit)
-                });
-            }
-        } else if matches!(source, Some(crate::provision::Source::Seed)) {
-            self.sync_copy()?;
-            self.lease.as_ref().unwrap().mark_initialized()?;
-        }
-        if cancelled.load(Ordering::SeqCst) {
-            return Err(InitError::Code("SESSION_CLOSED"));
-        }
-        Ok(bridge)
-    }
-    pub fn git_commit(&self) -> io::Result<Option<String>> {
-        self.lease.as_ref().ok_or_else(unavailable)?.git_commit()
-    }
 }
 
-pub(crate) fn remove_owned_records(
-    description: &Description,
-    owned_files: &[PathBuf],
-) -> io::Result<()> {
+pub fn remove_owned_records(description: &Description, owned_files: &[PathBuf]) -> io::Result<()> {
     let records = description
         .mount
         .parent()
