@@ -1,12 +1,13 @@
 //! An attached copy keeps its exclusive lock until containment and unmount succeed.
 use rustix::fs::{FlockOperation, Gid, OFlags, Uid, chown, flock};
+use sandcrab_core::fs::{mounted, normal, protected_directory, protected_file};
 use serde::Deserialize;
 use serde_json::Value;
 use std::{
     fs::{self, DirBuilder, File, OpenOptions},
-    io::{self, Read},
+    io,
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -33,51 +34,7 @@ fn invalid() -> io::Error {
     io::Error::other("Copy lease unavailable")
 }
 fn checked(args: &[String]) -> io::Result<std::process::Output> {
-    crate::runtime::checked(args, Duration::from_secs(15))
-}
-pub(crate) fn normal(path: &Path) -> bool {
-    path.is_absolute()
-        && path
-            .components()
-            .all(|part| matches!(part, Component::RootDir | Component::Normal(_)))
-        && path
-            .as_os_str()
-            .as_encoded_bytes()
-            .iter()
-            .all(|b| b.is_ascii_alphanumeric() || b"/_.-".contains(b))
-        && path.to_str().is_some_and(|text| {
-            text.split('/')
-                .skip(1)
-                .all(|part| !part.is_empty() && part != "." && part != "..")
-        })
-}
-pub(crate) fn protected_directory(path: &Path) -> io::Result<()> {
-    if !normal(path) {
-        return Err(invalid());
-    }
-    for ancestor in path.ancestors() {
-        let metadata = fs::symlink_metadata(ancestor)?;
-        if !metadata.is_dir() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {
-            return Err(invalid());
-        }
-    }
-    Ok(())
-}
-pub(crate) fn protected_file(path: &Path, limit: usize) -> io::Result<Vec<u8>> {
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags((OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
-        .open(path)?;
-    let info = file.metadata()?;
-    if !info.is_file() || info.uid() != 0 || info.mode() & 0o077 != 0 || info.len() > limit as u64 {
-        return Err(invalid());
-    }
-    let mut bytes = Vec::new();
-    file.take(limit as u64 + 1).read_to_end(&mut bytes)?;
-    if bytes.len() > limit {
-        return Err(invalid());
-    }
-    Ok(bytes)
+    sandcrab_core::unit::checked(args, Duration::from_secs(15))
 }
 pub fn runtime_lock(root: &Path) -> io::Result<File> {
     protected_directory(root)?;
@@ -131,12 +88,6 @@ pub(crate) fn project_attributes(text: &str, project: u64) -> io::Result<()> {
         return Err(invalid());
     }
     Ok(())
-}
-pub(crate) fn mounted(path: &Path) -> io::Result<bool> {
-    let target = path.to_str().ok_or_else(invalid)?;
-    Ok(fs::read_to_string("/proc/self/mountinfo")?
-        .lines()
-        .any(|line| line.split_whitespace().nth(4) == Some(target)))
 }
 impl Lease {
     pub fn claim(
@@ -244,7 +195,7 @@ impl Lease {
         // stopping its unit. The lock precedes cleanup; no copy bytes change first.
         if cgroup.exists() {
             checked(&["systemctl".into(), "stop".into(), unit.into()])?;
-            crate::runtime::empty_group(cgroup)?;
+            sandcrab_core::unit::empty_group(cgroup)?;
             let _ = checked(&["systemctl".into(), "reset-failed".into(), unit.into()]);
         }
         let lease = Self {

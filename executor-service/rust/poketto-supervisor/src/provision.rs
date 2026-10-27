@@ -1,9 +1,5 @@
 //! Fixed sandbox launch plans and bounded exports for signed OPEN/ATTACH requests.
-use crate::{
-    lease::{self, Description},
-    pool::Pool,
-    runtime,
-};
+use crate::{lease::Description, pool::Pool, runtime};
 use rustix::fs::{Gid, OFlags, chown, fchown};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -51,7 +47,7 @@ pub struct Factory {
 pub struct Plan {
     pub description: runtime::Description,
     pub records: Vec<(PathBuf, Value)>,
-    pub initialize: Option<runtime::Launch>,
+    pub initialize: Option<sandcrab_core::unit::Launch>,
 }
 #[derive(Clone)]
 pub struct Export {
@@ -67,7 +63,7 @@ fn invalid() -> io::Error {
     io::Error::other("Provisioning unavailable")
 }
 fn checked(args: &[String]) -> io::Result<std::process::Output> {
-    runtime::checked(args, Duration::from_secs(15))
+    sandcrab_core::unit::checked(args, Duration::from_secs(15))
 }
 fn name(value: &str) -> bool {
     !value.is_empty()
@@ -83,7 +79,7 @@ fn directory(path: &Path, gid: u32, mode: u32) -> io::Result<()> {
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => (),
         Err(e) => return Err(e),
     }
-    lease::protected_directory(path)?;
+    sandcrab_core::fs::protected_directory(path)?;
     chown(path, None, Some(Gid::from_raw(gid)))?;
     fs::set_permissions(path, fs::Permissions::from_mode(mode))
 }
@@ -141,7 +137,7 @@ impl Factory {
         cleanup_runtime(&config)?;
         config.launcher = config.launcher.canonicalize()?;
         runtime::verify_trusted_file(&config.launcher, false)?;
-        lease::protected_directory(&config.tools_root)?;
+        sandcrab_core::fs::protected_directory(&config.tools_root)?;
         let programs = config.launcher.parent().ok_or_else(invalid)?.join("bin");
         for program in ["poketto", "poketto-shell", "poketto-syncfs"] {
             runtime::verify_program(&programs.join(program))?;
@@ -149,7 +145,7 @@ impl Factory {
         if fs::read_dir(&programs)?.count() != 3 {
             return Err(invalid());
         }
-        lease::protected_directory(config.export_root.parent().ok_or_else(invalid)?)?;
+        sandcrab_core::fs::protected_directory(config.export_root.parent().ok_or_else(invalid)?)?;
         let info = fs::symlink_metadata(&config.export_root)?;
         if !info.is_dir() || info.uid() != config.app_uid || info.mode() & 0o077 != 0 {
             return Err(invalid());
@@ -171,13 +167,13 @@ impl Factory {
             .map_err(|_| invalid())?
             .trim();
         if !group.starts_with('/')
-            || !lease::normal(Path::new(group))
+            || !sandcrab_core::fs::normal(Path::new(group))
             || group.rsplit('/').next() != Some(config.resource_slice.as_str())
         {
             return Err(invalid());
         }
         let resource_pool = Path::new("/sys/fs/cgroup").join(group.trim_start_matches('/'));
-        runtime::verify_resource_pool(&resource_pool)?;
+        sandcrab_core::unit::verify_resource_pool(&resource_pool)?;
         Ok(Self {
             config,
             pool,
@@ -189,7 +185,7 @@ impl Factory {
         mount: &Path,
         mode: &str,
         commit: &str,
-    ) -> io::Result<(runtime::Launch, Vec<(PathBuf, Value)>)> {
+    ) -> io::Result<(sandcrab_core::unit::Launch, Vec<(PathBuf, Value)>)> {
         let config = &self.config;
         let operation = crate::new_uuid()?;
         let record = config
@@ -303,7 +299,7 @@ impl Factory {
             );
         }
         Ok((
-            runtime::Launch {
+            sandcrab_core::unit::Launch {
                 cgroup: self.resource_pool.join(format!("{unit}.service")),
                 unit,
                 command,
@@ -397,7 +393,7 @@ impl Factory {
         &self,
         mount: &Path,
         commit: &str,
-    ) -> io::Result<(runtime::Launch, Vec<(PathBuf, Value)>)> {
+    ) -> io::Result<(sandcrab_core::unit::Launch, Vec<(PathBuf, Value)>)> {
         if !crate::hex(commit, 40)
             || mount.parent() != Some(self.config.runtime_root.join("sessions").as_path())
             || !mount
@@ -492,7 +488,7 @@ impl Factory {
 }
 
 pub(crate) fn runtime_directories(config: &Config) -> io::Result<()> {
-    lease::protected_directory(&config.runtime_root)?;
+    sandcrab_core::fs::protected_directory(&config.runtime_root)?;
     directory(&config.runtime_root, config.exec_gid, 0o751)?;
     for sub in ["sessions", "records"] {
         directory(&config.runtime_root.join(sub), config.exec_gid, 0o750)?;
@@ -545,7 +541,7 @@ pub(crate) fn cleanup_runtime(config: &Config) -> io::Result<()> {
             .filter(|value| !value.is_empty())
             .map(|value| {
                 let path = Path::new(value);
-                if !lease::normal(path)
+                if !sandcrab_core::fs::normal(path)
                     || path.file_name().and_then(|v| v.to_str()) != Some(unit)
                     || path
                         .parent()
@@ -560,7 +556,7 @@ pub(crate) fn cleanup_runtime(config: &Config) -> io::Result<()> {
             .transpose()?;
         let stopped = checked(&["systemctl".into(), "stop".into(), unit.into()]);
         if let Some(group) = &group {
-            runtime::empty_group(group)?;
+            sandcrab_core::unit::empty_group(group)?;
         }
         if stopped.is_err() {
             let load = checked(&[
@@ -584,8 +580,8 @@ pub(crate) fn cleanup_runtime(config: &Config) -> io::Result<()> {
         if !crate::uuid(id) {
             return Err(invalid());
         }
-        lease::protected_directory(&entry.path())?;
-        if lease::mounted(&entry.path())? {
+        sandcrab_core::fs::protected_directory(&entry.path())?;
+        if sandcrab_core::fs::mounted(&entry.path())? {
             checked(&["umount".into(), entry.path().to_string_lossy().into()])?;
         }
         fs::remove_dir(entry.path())?;

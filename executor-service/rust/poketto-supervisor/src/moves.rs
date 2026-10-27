@@ -38,7 +38,7 @@ fn sha(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 fn path(value: &str) -> Result<()> {
-    transfer::selected(&json!([value]), &json!([])).map(|_| ())
+    transfer::selected(crate::REPOSITORY, &json!([value]), &json!([])).map(|_| ())
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,7 +57,7 @@ pub struct IncomingMove {
 impl IncomingMove {
     pub fn begin(root: &Path, data: &Value) -> Result<Self> {
         Ok(Self {
-            transfer: Incoming::move_plan(root, data)?,
+            transfer: Incoming::move_plan(root, crate::REPOSITORY, data)?,
             root: root.into(),
             local: None,
             receipt: None,
@@ -361,11 +361,11 @@ impl LocalMove {
         })
     }
     fn repository(&self) -> Result<PathBuf> {
-        transfer::repository(&self.root)?;
+        crate::REPOSITORY.open(&self.root)?;
         Ok(self.root.join("work/repository"))
     }
     fn inspect(&self, path: &str, flag: &AtomicBool) -> Result<(Option<String>, u32)> {
-        let mut parent = transfer::repository(&self.root)?;
+        let mut parent = crate::REPOSITORY.open(&self.root)?;
         let parts: Vec<_> = path.split('/').collect();
         for part in &parts[..parts.len() - 1] {
             parent = match transfer::dir(&parent, part) {
@@ -376,7 +376,7 @@ impl LocalMove {
         transfer::current(&parent, parts.last().unwrap(), flag)
     }
     fn exists(&self, path: &str) -> Result<bool> {
-        let mut parent = transfer::repository(&self.root)?;
+        let mut parent = crate::REPOSITORY.open(&self.root)?;
         let parts: Vec<_> = path.split('/').collect();
         for part in &parts[..parts.len() - 1] {
             parent = match transfer::dir(&parent, part) {

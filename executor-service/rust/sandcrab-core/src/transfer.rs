@@ -47,7 +47,24 @@ impl From<rustix::io::Errno> for Error {
         io::Error::from(error).into()
     }
 }
-pub fn selected(writes: &Value, deletes: &Value) -> Result<(Vec<String>, Vec<String>)> {
+/// The directory a lease's transfers address, as components below the lease mount, and
+/// the path component no request may name.
+#[derive(Clone, Copy, Debug)]
+pub struct Tree {
+    pub directories: &'static [&'static str],
+    pub reserved: &'static str,
+}
+impl Tree {
+    /// Open the tree one component at a time, never following a link.
+    pub fn open(&self, root: &Path) -> io::Result<File> {
+        let mut parent = root_file(root)?;
+        for name in self.directories {
+            parent = dir(&parent, name)?;
+        }
+        Ok(parent)
+    }
+}
+pub fn selected(tree: Tree, writes: &Value, deletes: &Value) -> Result<(Vec<String>, Vec<String>)> {
     let writes = writes
         .as_array()
         .ok_or_else(|| rejected("INVALID_ARGUMENTS"))?;
@@ -75,7 +92,7 @@ pub fn selected(writes: &Value, deletes: &Value) -> Result<(Vec<String>, Vec<Str
             .to_lowercase()
             .nfc()
             .collect::<String>();
-        if key.split('/').any(|p| p == ".git") || !seen.insert(key) {
+        if key.split('/').any(|p| p == tree.reserved) || !seen.insert(key) {
             return Err(rejected("PATH_COLLISION"));
         }
         all.push(path.to_string());
@@ -83,11 +100,11 @@ pub fn selected(writes: &Value, deletes: &Value) -> Result<(Vec<String>, Vec<Str
     let deleted = all.split_off(writes.len());
     Ok((all, deleted))
 }
-fn one(path: &Value) -> Result<String> {
-    let (mut paths, _) = selected(&json!([path]), &json!([]))?;
+fn one(tree: Tree, path: &Value) -> Result<String> {
+    let (mut paths, _) = selected(tree, &json!([path]), &json!([]))?;
     Ok(paths.remove(0))
 }
-pub(crate) fn dir(parent: &File, name: &str) -> io::Result<File> {
+pub fn dir(parent: &File, name: &str) -> io::Result<File> {
     Ok(File::from(openat(
         parent,
         name,
@@ -100,9 +117,6 @@ fn root_file(root: &Path) -> io::Result<File> {
         .read(true)
         .custom_flags((OFlags::DIRECTORY | OFlags::NOFOLLOW).bits() as i32)
         .open(root)
-}
-pub(crate) fn repository(root: &Path) -> io::Result<File> {
-    dir(&dir(&root_file(root)?, "work")?, "repository")
 }
 fn regular(parent: &File, name: &str) -> io::Result<File> {
     Ok(File::from(openat(
@@ -222,11 +236,18 @@ pub struct Snapshot {
     absent: Vec<String>,
 }
 impl Snapshot {
-    pub fn capture(root: &Path, operation: &str, data: &Value, flag: &AtomicBool) -> Result<Self> {
-        Self::capture_bounded(root, operation, data, flag, BINARY_BYTES)
+    pub fn capture(
+        root: &Path,
+        tree: Tree,
+        operation: &str,
+        data: &Value,
+        flag: &AtomicBool,
+    ) -> Result<Self> {
+        Self::capture_bounded(root, tree, operation, data, flag, BINARY_BYTES)
     }
     pub fn capture_binary(
         root: &Path,
+        tree: Tree,
         path: &Value,
         maximum: u64,
         flag: &AtomicBool,
@@ -234,21 +255,29 @@ impl Snapshot {
         if maximum > BINARY_BYTES {
             return Err(rejected("INVALID_ARGUMENTS"));
         }
-        Self::capture_bounded(root, "CAPTURE_BINARY", &json!({"path":path}), flag, maximum)
+        Self::capture_bounded(
+            root,
+            tree,
+            "CAPTURE_BINARY",
+            &json!({"path":path}),
+            flag,
+            maximum,
+        )
     }
     fn capture_bounded(
         root: &Path,
+        tree: Tree,
         operation: &str,
         data: &Value,
         flag: &AtomicBool,
         binary_maximum: u64,
     ) -> Result<Self> {
         let (paths, deletes) = if operation == "CAPTURE_BEGIN" {
-            selected(&data["writes"], &data["deletes"])?
+            selected(tree, &data["writes"], &data["deletes"])?
         } else {
-            (vec![one(&data["path"])?], vec![])
+            (vec![one(tree, &data["path"])?], vec![])
         };
-        let repository = repository(root)?;
+        let repository = tree.open(root)?;
         let mut captured = Self {
             id: crate::new_uuid()?,
             entries: Vec::new(),
@@ -422,6 +451,7 @@ fn digest(value: &Value, optional: bool) -> Result<Option<String>> {
 pub struct Incoming {
     pub id: String,
     root: PathBuf,
+    tree: Tree,
     path: String,
     size: u64,
     digest: String,
@@ -434,8 +464,8 @@ pub struct Incoming {
     result: Option<Value>,
 }
 impl Incoming {
-    pub fn begin(root: &Path, data: &Value) -> Result<Self> {
-        let path = one(&data["path"])?;
+    pub fn begin(root: &Path, tree: Tree, data: &Value) -> Result<Self> {
+        let path = one(tree, &data["path"])?;
         let digest = digest(&data["sha256"], false)?.unwrap();
         let expected = digest_value(&data["expectedSha256"])?;
         let size = data["bytes"]
@@ -467,6 +497,7 @@ impl Incoming {
         Ok(Self {
             id,
             root: root.into(),
+            tree,
             path,
             size,
             digest,
@@ -479,7 +510,7 @@ impl Incoming {
             result: None,
         })
     }
-    pub fn move_plan(root: &Path, data: &Value) -> Result<Self> {
+    pub fn move_plan(root: &Path, tree: Tree, data: &Value) -> Result<Self> {
         if !data["bytes"]
             .as_u64()
             .is_some_and(|v| (1..=64 * 1024 * 1024).contains(&v))
@@ -488,6 +519,7 @@ impl Incoming {
         }
         Self::begin(
             root,
+            tree,
             &json!({"path":"__move_plan__","bytes":data["bytes"],"sha256":data["sha256"],"expectedSha256":null,"delete":false,"allowIdentical":false}),
         )
     }
@@ -559,7 +591,7 @@ impl Incoming {
         self.verify(flag)?;
         cancelled(flag)?;
         let root = root_file(&self.root)?;
-        let mut parent = repository(&self.root)?;
+        let mut parent = self.tree.open(&self.root)?;
         let parts: Vec<_> = self.path.split('/').collect();
         for part in &parts[..parts.len() - 1] {
             parent = match dir(&parent, part) {
@@ -625,11 +657,7 @@ impl Incoming {
 fn digest_value(value: &Value) -> Result<Option<String>> {
     digest(value, true)
 }
-pub(crate) fn current(
-    parent: &File,
-    name: &str,
-    flag: &AtomicBool,
-) -> Result<(Option<String>, u32)> {
+pub fn current(parent: &File, name: &str, flag: &AtomicBool) -> Result<(Option<String>, u32)> {
     let mut file = match regular(parent, name) {
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok((None, 0o600)),
         other => other?,
@@ -662,6 +690,10 @@ pub(crate) fn current(
 #[cfg(test)]
 mod tests {
     use super::*;
+    const TREE: Tree = Tree {
+        directories: &["work", "repository"],
+        reserved: ".git",
+    };
     use std::os::unix::fs::{PermissionsExt, symlink};
     struct Fixture {
         root: PathBuf,
@@ -683,7 +715,7 @@ mod tests {
             delete: bool,
             identical: bool,
         ) -> Incoming {
-            let mut incoming = Incoming::begin(&self.root, &json!({"path":path,"bytes":bytes.len(),"sha256":hash(bytes),"expectedSha256":expected,"delete":delete,"allowIdentical":identical})).unwrap();
+            let mut incoming = Incoming::begin(&self.root, TREE, &json!({"path":path,"bytes":bytes.len(),"sha256":hash(bytes),"expectedSha256":expected,"delete":delete,"allowIdentical":identical})).unwrap();
             for (index, part) in bytes.chunks(CHUNK_BYTES).enumerate() {
                 incoming
                     .append(&json!({"offset":index*CHUNK_BYTES,"data":STANDARD.encode(part)}))
@@ -714,7 +746,10 @@ mod tests {
             ".git/config",
             "x/.GIT/config",
         ] {
-            assert!(selected(&json!([path]), &json!([])).is_err(), "{path:?}");
+            assert!(
+                selected(TREE, &json!([path]), &json!([])).is_err(),
+                "{path:?}"
+            );
         }
         for (writes, deletes, reason) in [
             (json!([]), json!([]), "SELECTION_LIMIT"),
@@ -723,9 +758,12 @@ mod tests {
             (json!([1]), json!([]), "INVALID_PATH"),
             (json!(false), json!([]), "INVALID_ARGUMENTS"),
         ] {
-            assert_eq!(selected(&writes, &deletes).unwrap_err().reason, reason);
+            assert_eq!(
+                selected(TREE, &writes, &deletes).unwrap_err().reason,
+                reason
+            );
         }
-        assert!(selected(&json!(["private/猫.md"]), &json!(["removed.md"])).is_ok());
+        assert!(selected(TREE, &json!(["private/猫.md"]), &json!(["removed.md"])).is_ok());
     }
     #[test]
     fn text_capture_preserves_bytes_explicit_deletions_and_optional_absence() {
@@ -735,6 +773,7 @@ mod tests {
         fs::write(fixture.repository.join("note.md"), bytes).unwrap();
         let snapshot = Snapshot::capture(
             &fixture.root,
+            TREE,
             "CAPTURE_BEGIN",
             &json!({"writes":["note.md"],"deletes":["deleted.md"]}),
             &flag,
@@ -752,6 +791,7 @@ mod tests {
         );
         let absent = Snapshot::capture(
             &fixture.root,
+            TREE,
             "CAPTURE_OPTIONAL",
             &json!({"path":"absent/child"}),
             &flag,
@@ -762,6 +802,7 @@ mod tests {
         assert_eq!(
             Snapshot::capture(
                 &fixture.root,
+                TREE,
                 "CAPTURE_OPTIONAL",
                 &json!({"path":"invalid"}),
                 &flag
@@ -775,6 +816,7 @@ mod tests {
         assert!(
             Snapshot::capture(
                 &fixture.root,
+                TREE,
                 "CAPTURE_BEGIN",
                 &json!({"writes":["limit"],"deletes":[]}),
                 &flag
@@ -784,6 +826,7 @@ mod tests {
         assert_eq!(
             Snapshot::capture(
                 &fixture.root,
+                TREE,
                 "CAPTURE_BEGIN",
                 &json!({"writes":["limit","note.md"],"deletes":[]}),
                 &flag
@@ -801,6 +844,7 @@ mod tests {
         fs::write(fixture.repository.join("data"), &bytes).unwrap();
         let mut snapshot = Snapshot::capture(
             &fixture.root,
+            TREE,
             "CAPTURE_BINARY",
             &json!({"path":"data"}),
             &AtomicBool::new(false),
@@ -859,6 +903,7 @@ mod tests {
             assert!(
                 Snapshot::capture(
                     &fixture.root,
+                    TREE,
                     "CAPTURE_BINARY",
                     &json!({"path":path}),
                     &AtomicBool::new(false)
@@ -876,6 +921,7 @@ mod tests {
         assert!(
             Snapshot::capture(
                 &fixture.root,
+                TREE,
                 "CAPTURE_OPTIONAL",
                 &json!({"path":"missing"}),
                 &AtomicBool::new(false)
@@ -915,7 +961,7 @@ mod tests {
     #[test]
     fn corrupt_or_incomplete_staging_cannot_install_and_abort_removes_it() {
         let fixture = Fixture::new();
-        let mut partial=Incoming::begin(&fixture.root,&json!({"path":"note","bytes":4,"sha256":hash(b"data"),"expectedSha256":null,"delete":false,"allowIdentical":false})).unwrap();
+        let mut partial=Incoming::begin(&fixture.root, TREE, &json!({"path":"note","bytes":4,"sha256":hash(b"data"),"expectedSha256":null,"delete":false,"allowIdentical":false})).unwrap();
         partial
             .append(&json!({"offset":0,"data":STANDARD.encode(b"da")}))
             .unwrap();

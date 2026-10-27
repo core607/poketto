@@ -1,3 +1,4 @@
+//! Strict request JSON: unique object keys, bounded nesting and preserved number tokens.
 use serde::{
     Deserialize, Deserializer,
     de::{self, MapAccess, SeqAccess, Visitor},
@@ -52,7 +53,7 @@ fn expand(raw: &RawValue, depth: usize) -> Result<Value, &'static str> {
     }
 }
 
-pub(crate) fn parse(bytes: &[u8]) -> Result<Value, &'static str> {
+pub fn parse(bytes: &[u8]) -> Result<Value, &'static str> {
     let mut deserializer = serde_json::Deserializer::from_slice(bytes);
     let raw = <&RawValue>::deserialize(&mut deserializer).map_err(|_| "INVALID_REQUEST")?;
     deserializer.end().map_err(|_| "INVALID_REQUEST")?;

@@ -21,22 +21,6 @@ use std::{
 };
 
 const MAX_FRAME: usize = 512 * 1024;
-const OPERATIONS: [&str; 14] = [
-    "status",
-    "edit",
-    "create",
-    "save",
-    "recover",
-    "sync",
-    "media_fetch",
-    "media_import",
-    "media_link",
-    "media_list",
-    "artifact_create",
-    "artifact_remove",
-    "move",
-    "export",
-];
 
 fn invalid(message: &'static str) -> io::Error {
     io::Error::other(message)
@@ -69,6 +53,7 @@ struct Reader {
 }
 pub struct Mailbox {
     path: PathBuf,
+    operations: &'static [&'static str],
     gid: u32,
     waker: Mutex<Option<OwnedFd>>,
     state: Mutex<State>,
@@ -76,7 +61,8 @@ pub struct Mailbox {
     closer: Mutex<()>,
 }
 impl Mailbox {
-    pub fn create(path: &Path, gid: u32) -> io::Result<Self> {
+    /// Create the mailbox files; requests naming an operation outside `operations` are refused.
+    pub fn create(path: &Path, gid: u32, operations: &'static [&'static str]) -> io::Result<Self> {
         DirBuilder::new().mode(0o750).create(path)?;
         let directory = File::open(path)?;
         fchown(&directory, None, Some(Gid::from_raw(gid)))?;
@@ -105,6 +91,7 @@ impl Mailbox {
         let (wake, waker) = pipe_with(PipeFlags::NONBLOCK | PipeFlags::CLOEXEC)?;
         Ok(Self {
             path: path.into(),
+            operations,
             gid,
             waker: Mutex::new(Some(waker)),
             state: Mutex::default(),
@@ -214,7 +201,9 @@ impl Mailbox {
             }
             return Ok(None);
         }
-        if object.len() != 4 || !OPERATIONS.contains(&operation) || !value["arguments"].is_object()
+        if object.len() != 4
+            || !self.operations.contains(&operation)
+            || !value["arguments"].is_object()
         {
             return Err(invalid("Invalid bridge request"));
         }
@@ -395,8 +384,14 @@ mod tests {
         fn new(name: &str) -> Self {
             let path =
                 std::env::temp_dir().join(format!("rust-mailbox-{}-{name}", std::process::id()));
-            let bridge =
-                Arc::new(Mailbox::create(&path, rustix::process::getgid().as_raw()).unwrap());
+            let bridge = Arc::new(
+                Mailbox::create(
+                    &path,
+                    rustix::process::getgid().as_raw(),
+                    &["status", "save"],
+                )
+                .unwrap(),
+            );
             Self { path, bridge }
         }
         fn send(&self, value: Value) {

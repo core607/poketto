@@ -1,6 +1,7 @@
 //! Persistent XFS project allocation. Published copies are never allocation staging.
-use crate::lease::{Description, protected_directory, protected_file};
+use crate::lease::Description;
 use rustix::fs::{FlockOperation, OFlags, flock};
+use sandcrab_core::fs::{protected_directory, protected_file};
 use serde_json::json;
 use std::{
     fs::{self, DirBuilder, File, OpenOptions},
@@ -22,7 +23,7 @@ fn sync(path: &Path) -> io::Result<()> {
     File::open(path)?.sync_all()
 }
 fn checked(args: &[String]) -> io::Result<std::process::Output> {
-    crate::runtime::checked(args, Duration::from_secs(15))
+    sandcrab_core::unit::checked(args, Duration::from_secs(15))
 }
 fn directory(path: &Path, mode: u32) -> io::Result<()> {
     match DirBuilder::new().mode(mode).create(path) {
@@ -117,7 +118,7 @@ impl Pool {
                     return Err(invalid());
                 }
                 protected_directory(&entry.path())?;
-                if crate::lease::mounted(&entry.path())? {
+                if sandcrab_core::fs::mounted(&entry.path())? {
                     return Err(invalid());
                 }
                 fs::remove_dir_all(entry.path())?;

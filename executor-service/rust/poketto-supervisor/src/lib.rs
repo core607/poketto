@@ -2,22 +2,16 @@
 //! Signed repository leases and privileged lifecycle ownership for the native supervisor.
 
 mod admission;
-mod artifacts;
-mod command;
 mod files;
 mod lease;
-mod mailbox;
 mod moves;
 mod pool;
 mod production;
-mod protocol_json;
-use protocol_json::parse;
 mod provision;
-mod raw;
 mod runtime;
 mod seed;
 mod server;
-mod transfer;
+use sandcrab_core::{artifacts, command, hex, mailbox, new_uuid, parse, raw, transfer, uuid};
 
 use base64::{
     Engine, alphabet,
@@ -29,7 +23,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
-    io::{self, Read, Write},
+    io::{self, Write},
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -40,6 +34,28 @@ use std::{
 };
 
 const MAX_FRAME: usize = 1_048_576;
+/// Captures, installs, artifacts and moves address the copy's Git work tree and never its metadata.
+const REPOSITORY: transfer::Tree = transfer::Tree {
+    directories: &["work", "repository"],
+    reserved: ".git",
+};
+/// Bridge requests the sandbox CLI may send; the application authorizes each one.
+const BRIDGE_OPERATIONS: &[&str] = &[
+    "status",
+    "edit",
+    "create",
+    "save",
+    "recover",
+    "sync",
+    "media_fetch",
+    "media_import",
+    "media_link",
+    "media_list",
+    "artifact_create",
+    "artifact_remove",
+    "move",
+    "export",
+];
 const FIELDS: [&str; 13] = [
     "version",
     "workerBootId",
@@ -85,37 +101,6 @@ fn failed(code: &str) -> Value {
 }
 fn string<'a>(v: &'a Value, key: &str) -> Result<&'a str, &'static str> {
     v.get(key).and_then(Value::as_str).ok_or("INVALID_REQUEST")
-}
-fn uuid(v: &str) -> bool {
-    v.len() == 36
-        && v.bytes().enumerate().all(|(i, b)| {
-            if [8, 13, 18, 23].contains(&i) {
-                b == b'-'
-            } else {
-                b.is_ascii_digit() || (b'a'..=b'f').contains(&b)
-            }
-        })
-}
-fn hex(text: &str, size: usize) -> bool {
-    text.len() == size
-        && text
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
-fn new_uuid() -> io::Result<String> {
-    let mut bytes = [0u8; 16];
-    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
-    bytes[6] = bytes[6] & 0x0f | 0x40;
-    bytes[8] = bytes[8] & 0x3f | 0x80;
-    let text = bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
-    Ok(format!(
-        "{}-{}-{}-{}-{}",
-        &text[..8],
-        &text[8..12],
-        &text[12..16],
-        &text[16..20],
-        &text[20..]
-    ))
 }
 fn decode(v: &Value) -> Result<Vec<u8>, &'static str> {
     let text = v.as_str().ok_or("INVALID_REQUEST")?;
@@ -336,7 +321,11 @@ impl Service {
             let bridge = if let Some(path) = value["bridgePath"].as_str() {
                 assert!(PathBuf::from(path).is_absolute());
                 let gid = value["execGid"].as_u64().ok_or("bridge gid")?.try_into()?;
-                let bridge = Arc::new(mailbox::Mailbox::create(std::path::Path::new(path), gid)?);
+                let bridge = Arc::new(mailbox::Mailbox::create(
+                    std::path::Path::new(path),
+                    gid,
+                    BRIDGE_OPERATIONS,
+                )?);
                 bridge.reset(&execution)?;
                 Some(bridge)
             } else {
@@ -1011,7 +1000,7 @@ impl Service {
                     return Err("MATERIALIZE_IN_PROGRESS");
                 }
                 let root = files.mount().to_owned();
-                transfer::Incoming::begin(&root, data).map(|incoming| {
+                transfer::Incoming::begin(&root, REPOSITORY, data).map(|incoming| {
                     let result = json!({"transferId":incoming.id});
                     files.incoming = Some(incoming);
                     result

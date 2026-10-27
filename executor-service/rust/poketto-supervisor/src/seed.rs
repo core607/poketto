@@ -1,6 +1,6 @@
 //! Supervisor-private pristine snapshots. Live copies never depend on a seed's lifetime.
-use crate::lease::{normal, protected_directory};
 use rustix::fs::{FlockOperation, OFlags, flock};
+use sandcrab_core::fs::{normal, protected_directory};
 use std::{
     fs::{self, DirBuilder, File, FileTimes, OpenOptions},
     io,
@@ -98,7 +98,7 @@ impl Store {
         Ok(seed)
     }
     fn reflink(sources: &Path, target: &Path) -> io::Result<()> {
-        crate::runtime::checked(
+        sandcrab_core::unit::checked(
             &[
                 "cp".into(),
                 "-a".into(),
