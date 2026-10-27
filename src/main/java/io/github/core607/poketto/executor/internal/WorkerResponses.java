@@ -107,7 +107,7 @@ final class WorkerResponses {
             workerBootId = ProtocolValues.uuid(workerBootId, "workerBootId");
             require(version == 1, "version", "must be 1");
             require(maxFrameBytes == WorkerClient.MAX_FRAME, "maxFrameBytes", "must be " + WorkerClient.MAX_FRAME);
-            require(codeActProtocol == 2, "codeActProtocol", "must be 2");
+            require(codeActProtocol == 3, "codeActProtocol", "must be 3");
             require(artifactProtocol == 1, "artifactProtocol", "must be 1");
             require(moveProtocol == 1, "moveProtocol", "must be 1");
             require(exportProtocol == 1, "exportProtocol", "must be 1");
@@ -184,21 +184,6 @@ final class WorkerResponses {
             ProtocolValues.boundedText(path, 4096, "path");
             require(bytes >= 0, "bytes", "must not be negative");
             ProtocolValues.hex(sha256, 64, "sha256");
-        }
-    }
-
-    /** One page of a capture. Its index and offset are echoes, so the caller compares them. */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    record CaptureChunk(String captureId, int index, long offset, String data) {
-        CaptureChunk {
-            captureId = ProtocolValues.uuid(captureId, "captureId");
-            require(index >= 0, "index", "must not be negative");
-            require(offset >= 0, "offset", "must not be negative");
-            require(data != null, "data", "must be present");
-        }
-
-        byte[] decoded() {
-            return WorkerResponses.decode(data);
         }
     }
 

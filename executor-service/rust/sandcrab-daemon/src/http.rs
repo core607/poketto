@@ -102,6 +102,18 @@ pub fn read(stream: &mut impl Read, max_body: usize) -> Result<Request, &'static
 
 /// Write a complete JSON response and announce that the connection closes.
 pub fn write(stream: &mut impl Write, status: u16, body: &[u8]) -> io::Result<()> {
+    write_head(stream, status, "application/json", body.len() as u64)?;
+    stream.write_all(body)?;
+    stream.flush()
+}
+
+/// Write the status line and headers of a response whose `length` body bytes follow.
+pub fn write_head(
+    stream: &mut impl Write,
+    status: u16,
+    content_type: &str,
+    length: u64,
+) -> io::Result<()> {
     let reason = match status {
         200 => "OK",
         400 => "Bad Request",
@@ -110,12 +122,9 @@ pub fn write(stream: &mut impl Write, status: u16, body: &[u8]) -> io::Result<()
         _ => "Error",
     };
     let head = format!(
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        body.len()
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n"
     );
-    stream.write_all(head.as_bytes())?;
-    stream.write_all(body)?;
-    stream.flush()
+    stream.write_all(head.as_bytes())
 }
 
 #[cfg(test)]

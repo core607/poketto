@@ -32,26 +32,50 @@ fn exchange(stream: &mut UnixStream, service: &Service, app_uid: Uid) -> io::Res
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
     let peer = rustix::net::sockopt::socket_peercred(&*stream).map(|c| c.uid);
-    let (status, response) = if peer.ok() != Some(app_uid) {
-        (403, failed("PEER_REJECTED"))
+    let reply = if peer.ok() != Some(app_uid) {
+        Some((403, failed("PEER_REJECTED")))
     } else {
         route(stream, service)
     };
-    http::write(stream, status, &response_bytes(&response))
+    match reply {
+        Some((status, response)) => http::write(stream, status, &response_bytes(&response)),
+        None => Ok(()),
+    }
 }
-/// `GET /v1/hello` answers the handshake; `POST /v1/requests` carries one signed request.
-fn route(stream: &mut UnixStream, service: &Service) -> (u16, Value) {
+/// `GET /v1/hello` answers the handshake; `POST /v1/requests` carries one signed request and
+/// `POST /v1/snapshots` one signed `SNAPSHOT`, answered with an archive when it succeeds.
+/// `None` means the response has been written.
+fn route(stream: &mut UnixStream, service: &Service) -> Option<(u16, Value)> {
     let request = match http::read(stream, MAX_FRAME) {
         Ok(request) => request,
-        Err(code) => return (400, failed(code)),
+        Err(code) => return Some((400, failed(code))),
     };
-    match (request.method.as_str(), request.path.as_str()) {
-        ("GET", "/v1/hello") => (200, service.hello()),
-        ("POST", "/v1/requests") => match parse(&request.body) {
-            Ok(envelope) => (200, service.handle(envelope)),
-            Err(_) => (400, failed("INVALID_BODY")),
-        },
-        _ => (404, failed("NOT_FOUND")),
+    let snapshot = match (request.method.as_str(), request.path.as_str()) {
+        ("GET", "/v1/hello") => return Some((200, service.hello())),
+        ("POST", "/v1/requests") => false,
+        ("POST", "/v1/snapshots") => true,
+        _ => return Some((404, failed("NOT_FOUND"))),
+    };
+    let Ok(envelope) = parse(&request.body) else {
+        return Some((400, failed("INVALID_BODY")));
+    };
+    let answer = service.handle(envelope, snapshot);
+    if !snapshot || answer["ok"] != true {
+        return Some((200, answer));
+    }
+    let mut writer = stream.try_clone().ok()?;
+    let streamed = service.stream_snapshot(
+        &answer,
+        |length| http::write_head(&mut writer, 200, "application/x-tar", length),
+        stream,
+    );
+    match streamed {
+        Ok(true) | Err(_) => None,
+        Ok(false) => {
+            let mut refused = failed("CAPTURE_NOT_FOUND");
+            refused["requestId"] = answer["requestId"].clone();
+            Some((200, refused))
+        }
     }
 }
 struct Work {

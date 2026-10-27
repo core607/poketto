@@ -5,8 +5,8 @@ import static io.github.core607.poketto.executor.internal.SessionWorker.requireO
 
 import io.github.core607.poketto.content.ContentLimits;
 import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
@@ -34,62 +34,60 @@ final class SessionFileTransfers {
     }
 
     WorkspaceSynchronization.Local captureSyncFile(ExecutionSession session, String executionId, String path) {
-        JsonNode manifest = io.request(
-                session, "CAPTURE_BINARY", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(8));
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            String reason = manifest.path("reason").asString("");
-            if (reason.equals("NOT_FOUND")) {
-                return new WorkspaceSynchronization.Local(null, null, false);
-            }
-            if (reason.equals("NOT_REGULAR_FILE") || reason.equals("BINARY_LIMIT")) {
-                return new WorkspaceSynchronization.Local(null, null, true);
-            }
-            throw InvalidSelectionException.capture(reason);
-        }
-        requireOk(manifest, session);
-        var captured = WorkerResponses.read(manifest, WorkerResponses.BinaryCaptureManifest.class);
-        try {
-            var file = captured.writes().getFirst();
-            if (!file.path().equals(path)) {
-                throw new WorkerUnavailableException();
-            }
-            String text = file.bytes() <= ContentLimits.MAX_DOCUMENT_BYTES
-                    ? capturedSyncText(session, executionId, captured.captureId(), file)
-                    : null;
-            return new WorkspaceSynchronization.Local(file.sha256(), text, false);
-        } finally {
-            requireOk(
-                    io.request(
-                            session,
-                            "CAPTURE_RELEASE",
-                            new WorkerRequests.CaptureRelease(executionId, captured.captureId()),
-                            Duration.ofSeconds(3)),
-                    session);
-        }
+        return io.snapshot(
+                session,
+                WorkerRequests.Snapshot.one(executionId, "binary", path),
+                Duration.ofSeconds(8),
+                new WorkerClient.SnapshotReader<>() {
+                    @Override
+                    public WorkspaceSynchronization.Local refused(JsonNode answer) {
+                        String reason = rejection(answer, session);
+                        if (reason.equals("NOT_FOUND")) {
+                            return new WorkspaceSynchronization.Local(null, null, false);
+                        }
+                        if (reason.equals("NOT_REGULAR_FILE") || reason.equals("BINARY_LIMIT")) {
+                            return new WorkspaceSynchronization.Local(null, null, true);
+                        }
+                        throw InvalidSelectionException.capture(reason);
+                    }
+
+                    @Override
+                    public WorkspaceSynchronization.Local read(JsonNode manifest, SnapshotArchive archive)
+                            throws IOException {
+                        requireOk(manifest, session);
+                        var file = WorkerResponses.read(manifest, WorkerResponses.BinaryCaptureManifest.class)
+                                .writes()
+                                .getFirst();
+                        if (!file.path().equals(path)) {
+                            throw new WorkerUnavailableException();
+                        }
+                        // A larger file needs only its digest; leaving the archive unread ends the stream.
+                        String text = file.bytes() <= ContentLimits.MAX_DOCUMENT_BYTES
+                                ? syncText(session, archive, file)
+                                : null;
+                        return new WorkspaceSynchronization.Local(file.sha256(), text, false);
+                    }
+                });
     }
 
-    private String capturedSyncText(
-            ExecutionSession session, String executionId, String captureId, WorkerResponses.CapturedFile file) {
+    /** The reason of a capture refusal; any other answer without an archive is a failed exchange. */
+    private static String rejection(JsonNode answer, ExecutionSession session) {
+        if (answer.path("code").asString("").equals("CAPTURE_REJECTED")) {
+            return answer.path("reason").asString("");
+        }
+        requireOk(answer, session);
+        throw new WorkerUnavailableException();
+    }
+
+    private String syncText(ExecutionSession session, SnapshotArchive archive, WorkerResponses.CapturedFile file)
+            throws IOException {
         if (file.bytes() == 0) {
             if (!file.sha256().equals(hash(""))) {
                 throw new WorkerUnavailableException();
             }
             return "";
         }
-        try (var input = new CapturedBinaryInput(file.bytes(), file.sha256(), (offset, limit) -> {
-            io.authorize(session);
-            JsonNode chunk = io.request(
-                    session,
-                    "CAPTURE_READ",
-                    new WorkerRequests.CaptureRead(executionId, captureId, 0, offset, limit),
-                    Duration.ofSeconds(3));
-            requireOk(chunk, session);
-            var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
-            if (!captureId.equals(page.captureId()) || page.index() != 0 || page.offset() != offset) {
-                throw new WorkerUnavailableException();
-            }
-            return page.decoded();
-        })) {
+        try (var input = verified(io, session, archive.file(file.bytes()), file.bytes(), file.sha256())) {
             byte[] bytes = input.readNBytes((int) file.bytes());
             try {
                 String text = StandardCharsets.UTF_8
@@ -102,112 +100,108 @@ final class SessionFileTransfers {
             } catch (CharacterCodingException binary) {
                 return null;
             }
-        } catch (IOException failure) {
-            throw new WorkerUnavailableException(failure);
         }
+    }
+
+    /**
+     * A snapshot file read in 64 KiB pages, checking the lease's authorization before each page
+     * and the digest at its end.
+     */
+    static CapturedBinaryInput verified(
+            SessionWorker io, ExecutionSession session, InputStream source, long size, String sha256) {
+        return new CapturedBinaryInput(size, sha256, (offset, limit) -> {
+            io.authorize(session);
+            return source.readNBytes(limit);
+        });
     }
 
     Map<String, String> capture(
             ExecutionSession session, String executionId, List<String> writes, List<String> deletes) {
-        JsonNode manifest = io.request(
+        return io.snapshot(
                 session,
-                "CAPTURE_BEGIN",
-                new WorkerRequests.CaptureBegin(executionId, writes, deletes),
-                Duration.ofSeconds(5));
-        return readCapture(session, executionId, manifest, writes, deletes);
+                new WorkerRequests.Snapshot(executionId, "text", writes, deletes),
+                Duration.ofSeconds(5),
+                new WorkerClient.SnapshotReader<>() {
+                    @Override
+                    public Map<String, String> refused(JsonNode answer) {
+                        throw InvalidSelectionException.capture(rejection(answer, session));
+                    }
+
+                    @Override
+                    public Map<String, String> read(JsonNode manifest, SnapshotArchive archive) throws IOException {
+                        return readText(session, manifest, archive, writes, deletes);
+                    }
+                });
     }
 
-    private Map<String, String> readCapture(
+    private Map<String, String> readText(
             ExecutionSession session,
-            String executionId,
             JsonNode manifest,
+            SnapshotArchive archive,
             List<String> writes,
-            List<String> deletes) {
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
-        }
+            List<String> deletes)
+            throws IOException {
         requireOk(manifest, session);
         var captured = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class);
-        String captureId = captured.captureId();
-        var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
-        try {
-            // The manifest is well formed by construction; these compare it against this request.
-            if (captured.writes().size() != writes.size() || !captured.deletes().equals(deletes)) {
-                throw new WorkerUnavailableException();
-            }
-            var result = new LinkedHashMap<String, String>();
-            for (int index = 0; index < captured.writes().size(); index++) {
-                var file = captured.writes().get(index);
-                String path = file.path();
-                if (!path.equals(writes.get(index)) || result.containsKey(path)) {
-                    throw new WorkerUnavailableException();
-                }
-                result.put(path, readCapturedText(session, executionId, captureId, index, file));
-            }
-            return result;
-        } finally {
-            requireOk(io.request(session, "CAPTURE_RELEASE", reference, Duration.ofSeconds(3)), session);
-        }
-    }
-
-    private String readCapturedText(
-            ExecutionSession session,
-            String executionId,
-            String captureId,
-            int index,
-            WorkerResponses.CapturedFile file) {
-        long size = file.bytes();
-        var bytes = new ByteArrayOutputStream((int) size);
-        while (bytes.size() < size) {
-            io.authorize(session);
-            int limit = (int) Math.min(65536, size - bytes.size());
-            JsonNode chunk = io.request(
-                    session,
-                    "CAPTURE_READ",
-                    new WorkerRequests.CaptureRead(executionId, captureId, index, bytes.size(), limit),
-                    Duration.ofSeconds(3));
-            requireOk(chunk, session);
-            var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
-            if (!captureId.equals(page.captureId()) || page.index() != index || page.offset() != bytes.size()) {
-                throw new WorkerUnavailableException();
-            }
-            byte[] block = page.decoded();
-            if (block.length != limit) {
-                throw new WorkerUnavailableException();
-            }
-            bytes.writeBytes(block);
-        }
-        byte[] content = bytes.toByteArray();
-        if (!hash(content).equals(file.sha256())) {
+        // The manifest is well formed by construction; these compare it against this request.
+        if (captured.writes().size() != writes.size() || !captured.deletes().equals(deletes)) {
             throw new WorkerUnavailableException();
         }
-        try {
-            return StandardCharsets.UTF_8
-                    .newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(content))
-                    .toString();
-        } catch (CharacterCodingException invalid) {
-            throw new WorkerUnavailableException(invalid);
+        var result = new LinkedHashMap<String, String>();
+        for (int index = 0; index < captured.writes().size(); index++) {
+            var file = captured.writes().get(index);
+            if (!file.path().equals(writes.get(index)) || result.containsKey(file.path())) {
+                throw new WorkerUnavailableException();
+            }
+            io.authorize(session);
+            byte[] content = archive.file(file.bytes()).readNBytes((int) file.bytes());
+            if (content.length != file.bytes() || !hash(content).equals(file.sha256())) {
+                throw new WorkerUnavailableException();
+            }
+            try {
+                result.put(
+                        file.path(),
+                        StandardCharsets.UTF_8
+                                .newDecoder()
+                                .onMalformedInput(CodingErrorAction.REPORT)
+                                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                                .decode(ByteBuffer.wrap(content))
+                                .toString());
+            } catch (CharacterCodingException invalid) {
+                throw new WorkerUnavailableException(invalid);
+            }
         }
+        return result;
     }
 
     Optional<String> captureOptional(ExecutionSession session, String executionId, String path) {
-        JsonNode manifest = io.request(
-                session, "CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(executionId, path), Duration.ofSeconds(5));
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
-        }
-        requireOk(manifest, session);
-        List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
-                .absent();
-        if (!absent.isEmpty() && !absent.equals(List.of(path))) {
-            throw new WorkerUnavailableException();
-        }
-        return Optional.ofNullable(
-                readCapture(session, executionId, manifest, absent.isEmpty() ? List.of(path) : List.of(), List.of())
-                        .get(path));
+        return io.snapshot(
+                session,
+                WorkerRequests.Snapshot.one(executionId, "optional", path),
+                Duration.ofSeconds(5),
+                new WorkerClient.SnapshotReader<>() {
+                    @Override
+                    public Optional<String> refused(JsonNode answer) {
+                        throw InvalidSelectionException.capture(rejection(answer, session));
+                    }
+
+                    @Override
+                    public Optional<String> read(JsonNode manifest, SnapshotArchive archive) throws IOException {
+                        requireOk(manifest, session);
+                        List<String> absent = WorkerResponses.read(manifest, WorkerResponses.CaptureManifest.class)
+                                .absent();
+                        if (!absent.isEmpty() && !absent.equals(List.of(path))) {
+                            throw new WorkerUnavailableException();
+                        }
+                        return Optional.ofNullable(readText(
+                                        session,
+                                        manifest,
+                                        archive,
+                                        absent.isEmpty() ? List.of(path) : List.of(),
+                                        List.of())
+                                .get(path));
+                    }
+                });
     }
 
     boolean materialize(

@@ -33,8 +33,7 @@ final class WorkerRequests {
 
     /**
      * One signed operation's payload. The operation name stays a separate argument because several
-     * operations share a payload shape: five transfer operations carry only their slot, and two
-     * capture operations carry only a path.
+     * operations share a payload shape: five transfer operations carry only their slot.
      */
     sealed interface Data
             permits Baseline,
@@ -43,10 +42,6 @@ final class WorkerRequests {
                     ArtifactRemove,
                     BridgeComplete,
                     BridgePoll,
-                    CaptureBegin,
-                    CapturePath,
-                    CaptureRead,
-                    CaptureRelease,
                     Close,
                     DiskCopy,
                     Exec,
@@ -57,6 +52,7 @@ final class WorkerRequests {
                     Renew,
                     Revoke,
                     SeededOpen,
+                    Snapshot,
                     Transfer,
                     TransferChunk {}
 
@@ -171,36 +167,24 @@ final class WorkerRequests {
         }
     }
 
-    record CaptureBegin(String executionId, List<String> writes, List<String> deletes) implements Data {
-        CaptureBegin {
+    /**
+     * A frozen snapshot. {@code text} captures the listed UTF-8 files and reports the listed
+     * deletions; {@code optional} and {@code binary} capture one path, which {@code optional} may lack.
+     */
+    record Snapshot(String executionId, String kind, List<String> writes, List<String> deletes) implements Data {
+        Snapshot {
             executionId = execution(executionId);
+            require(
+                    kind != null && List.of("text", "optional", "binary").contains(kind),
+                    "kind",
+                    "must be text, optional or binary");
             writes = paths(writes, 64, "writes");
             deletes = paths(deletes, 64, "deletes");
+            require(kind.equals("text") || (writes.size() == 1 && deletes.isEmpty()), "writes", "must name one file");
         }
-    }
 
-    /** Shared by {@code CAPTURE_OPTIONAL} and {@code CAPTURE_BINARY}, which take the same two fields. */
-    record CapturePath(String executionId, String path) implements Data {
-        CapturePath {
-            executionId = execution(executionId);
-            boundedText(path, 4096, "path");
-        }
-    }
-
-    record CaptureRead(String executionId, String captureId, int index, long offset, int limit) implements Data {
-        CaptureRead {
-            executionId = execution(executionId);
-            captureId = uuid(captureId, "captureId");
-            require(index >= 0, "index", "must not be negative");
-            require(offset >= 0, "offset", "must not be negative");
-            inRange(limit, 1, 65536, "limit");
-        }
-    }
-
-    record CaptureRelease(String executionId, String captureId) implements Data {
-        CaptureRelease {
-            executionId = execution(executionId);
-            captureId = uuid(captureId, "captureId");
+        static Snapshot one(String executionId, String kind, String path) {
+            return new Snapshot(executionId, kind, List.of(path), List.of());
         }
     }
 

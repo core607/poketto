@@ -416,7 +416,7 @@ mod tests {
         }
         fn start(&self, envelope: Value) -> thread::JoinHandle<Value> {
             let service = self.service.clone();
-            let handle = thread::spawn(move || service.handle(envelope));
+            let handle = thread::spawn(move || service.handle(envelope, false));
             self.entered.recv_timeout(Duration::from_secs(3)).unwrap();
             handle
         }
@@ -436,9 +436,9 @@ mod tests {
         assert_eq!(hello["jobProtocol"], 1);
         let request = fixture.job(&json!({}));
         fixture.release.send(Ok(Ok(json!({"step":1})))).unwrap();
-        let first = fixture.service.handle(request.clone());
+        let first = fixture.service.handle(request.clone(), false);
         assert_eq!(first["step"], 1);
-        assert_eq!(fixture.service.handle(request), first);
+        assert_eq!(fixture.service.handle(request, false), first);
         assert!(fixture.entered.try_recv().is_ok());
         assert!(fixture.entered.try_recv().is_err());
         assert_eq!(fixture.jobs(), 0);
@@ -456,7 +456,7 @@ mod tests {
         ] {
             let reply = fixture
                 .service
-                .handle(fixture.envelope(operation, json!({}), &json!({})));
+                .handle(fixture.envelope(operation, json!({}), &json!({})), false);
             assert_eq!(reply["code"], "INVALID_REQUEST", "{operation}");
         }
         assert!(fixture.entered.try_recv().is_err());
@@ -467,20 +467,20 @@ mod tests {
         let request = fixture.job(&json!({}));
         let identity = Fixture::payload(&request);
         let running = fixture.start(request);
-        let revoked = fixture.service.handle(fixture.revoke(&identity));
+        let revoked = fixture.service.handle(fixture.revoke(&identity), false);
         assert_eq!(revoked["state"], "CLOSING");
         assert!(fixture.finish(Ok(Ok(json!({})))));
         assert_eq!(running.join().unwrap()["code"], "JOB_EXPIRED");
-        let refused = fixture.service.handle(fixture.job(&identity));
+        let refused = fixture.service.handle(fixture.job(&identity), false);
         assert_eq!(refused["code"], "AUTH_REVOKED");
-        let revoked = fixture.service.handle(fixture.revoke(&identity));
+        let revoked = fixture.service.handle(fixture.revoke(&identity), false);
         assert_eq!(revoked["state"], "CLOSED");
     }
     #[test]
     fn capacity_is_finite_and_an_unconfirmed_cleanup_keeps_its_slot() {
         let fixture = Fixture::new(1);
         let running = fixture.start(fixture.job(&json!({})));
-        let refused = fixture.service.handle(fixture.job(&json!({})));
+        let refused = fixture.service.handle(fixture.job(&json!({})), false);
         assert_eq!(refused["code"], "JOB_CAPACITY");
         assert!(!fixture.finish(Ok(Ok(json!({"done":true})))));
         assert_eq!(running.join().unwrap()["done"], true);
@@ -490,10 +490,10 @@ mod tests {
         fixture.finish(Err(io::Error::other("descendants remain")));
         assert_eq!(leaked.join().unwrap()["code"], "EXECUTOR_FAILED");
         assert_eq!(fixture.jobs(), 1);
-        let refused = fixture.service.handle(fixture.job(&json!({})));
+        let refused = fixture.service.handle(fixture.job(&json!({})), false);
         assert_eq!(refused["code"], "JOB_CAPACITY");
         // Revocation never reports an unconfirmed job as closed.
-        let revoked = fixture.service.handle(fixture.revoke(&identity));
+        let revoked = fixture.service.handle(fixture.revoke(&identity), false);
         assert_eq!(revoked["state"], "CLOSING");
     }
     #[test]
@@ -505,7 +505,7 @@ mod tests {
         let mut payload = Fixture::payload(&fixture.job(&json!({})));
         payload["leaseId"] = lease;
         let second = fixture.sign(&payload);
-        assert_eq!(fixture.service.handle(second)["code"], "JOB_BUSY");
+        assert_eq!(fixture.service.handle(second, false)["code"], "JOB_BUSY");
         fixture.finish(Ok(Ok(json!({"done":true}))));
         assert_eq!(running.join().unwrap()["done"], true);
     }
@@ -518,7 +518,7 @@ mod tests {
         while !fixture.service.shutdown_started.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(5));
         }
-        let refused = fixture.service.handle(fixture.job(&json!({})));
+        let refused = fixture.service.handle(fixture.job(&json!({})), false);
         assert_eq!(refused["code"], "WORKER_STOPPING");
         thread::sleep(Duration::from_millis(50));
         assert!(!stopping.is_finished());

@@ -61,11 +61,7 @@ pub const LEASE_OPERATIONS: &[&str] = &[
     "ARTIFACT_CREATE",
     "ARTIFACT_READ",
     "ARTIFACT_REMOVE",
-    "CAPTURE_BEGIN",
-    "CAPTURE_OPTIONAL",
-    "CAPTURE_BINARY",
-    "CAPTURE_READ",
-    "CAPTURE_RELEASE",
+    "SNAPSHOT",
     "MATERIALIZE_BEGIN",
     "MATERIALIZE_CHUNK",
     "MATERIALIZE_COMMIT",
@@ -379,7 +375,12 @@ impl Service {
             shutdown_started: AtomicBool::new(false),
         })
     }
-    fn validate(&self, envelope: &Value) -> Result<(Value, [u8; 32]), &'static str> {
+    /// `snapshot` is the snapshot route, which serves `SNAPSHOT` and nothing else.
+    fn validate(
+        &self,
+        envelope: &Value,
+        snapshot: bool,
+    ) -> Result<(Value, [u8; 32]), &'static str> {
         let object = envelope.as_object().ok_or("INVALID_REQUEST")?;
         if object.len() != 2 || !object.contains_key("payload") || !object.contains_key("signature")
         {
@@ -443,6 +444,7 @@ impl Service {
         if !(self.extension.lease_operations().contains(&operation)
             || self.extension.operations().contains(&operation))
             || !payload["data"].is_object()
+            || (operation == "SNAPSHOT") != snapshot
         {
             return Err("INVALID_REQUEST");
         }
@@ -460,9 +462,11 @@ impl Service {
         reply.insert("renewAfterSeconds".into(), self.renew_after_seconds.into());
         reply.into()
     }
-    /// One signed request, answered once and replayed for the same request ID.
-    fn handle(&self, envelope: Value) -> Value {
-        let (payload, digest) = match self.validate(&envelope) {
+    /// One signed request, answered once and replayed for the same request ID. On the
+    /// snapshot route a successful answer is the manifest of a capture the caller then streams
+    /// with [`Service::stream_snapshot`].
+    fn handle(&self, envelope: Value, snapshot: bool) -> Value {
+        let (payload, digest) = match self.validate(&envelope, snapshot) {
             Ok(v) => v,
             Err(code) => return failed(code),
         };
@@ -510,9 +514,8 @@ impl Service {
             "REVOKE" => self.revoke(payload),
             "EXEC" => self.execute(payload),
             "ARTIFACT_CREATE" | "ARTIFACT_READ" | "ARTIFACT_REMOVE" => self.artifact(payload),
-            "CAPTURE_BEGIN" | "CAPTURE_OPTIONAL" | "CAPTURE_BINARY" | "CAPTURE_READ"
-            | "CAPTURE_RELEASE" | "MATERIALIZE_BEGIN" | "MATERIALIZE_CHUNK"
-            | "MATERIALIZE_COMMIT" | "MATERIALIZE_ABORT" => self.file_operation(payload),
+            "SNAPSHOT" | "MATERIALIZE_BEGIN" | "MATERIALIZE_CHUNK" | "MATERIALIZE_COMMIT"
+            | "MATERIALIZE_ABORT" => self.file_operation(payload),
             "BRIDGE_POLL" | "BRIDGE_COMPLETE" => self.bridge_request(payload),
             _ => self.extension.handle(self, payload),
         }
@@ -575,10 +578,7 @@ impl Service {
         let operation = payload["operation"].as_str().unwrap();
         let data = &payload["data"];
         let fields: &[&str] = match operation {
-            "CAPTURE_BEGIN" => &["executionId", "writes", "deletes"],
-            "CAPTURE_OPTIONAL" | "CAPTURE_BINARY" => &["executionId", "path"],
-            "CAPTURE_READ" => &["executionId", "captureId", "index", "offset", "limit"],
-            "CAPTURE_RELEASE" => &["executionId", "captureId"],
+            "SNAPSHOT" => &["executionId", "kind", "writes", "deletes"],
             "MATERIALIZE_BEGIN" => &[
                 "executionId",
                 "path",
@@ -591,41 +591,36 @@ impl Service {
             "MATERIALIZE_CHUNK" => &["executionId", "transferId", "offset", "data"],
             _ => &["executionId", "transferId"],
         };
-        let capture = operation.starts_with("CAPTURE_");
+        let capture = operation == "SNAPSHOT";
         self.execution_files(
             payload,
             fields,
             capture,
             |files, cancelled| {
                 Ok(match operation {
-                    "CAPTURE_BEGIN" | "CAPTURE_OPTIONAL" | "CAPTURE_BINARY" => {
+                    "SNAPSHOT" => {
+                        // `text` captures listed UTF-8 files and reports listed deletions;
+                        // `optional` and `binary` capture one path, which `optional` may lack.
+                        let single = || -> Result<Value, &'static str> {
+                            match (data["writes"].as_array(), data["deletes"].as_array()) {
+                                (Some(writes), Some(deletes))
+                                    if writes.len() == 1 && deletes.is_empty() =>
+                                {
+                                    Ok(json!({"path": writes[0]}))
+                                }
+                                _ => Err("INVALID_REQUEST"),
+                            }
+                        };
+                        let (kind, request) = match data["kind"].as_str() {
+                            Some("text") => ("CAPTURE_BEGIN", data.clone()),
+                            Some("optional") => ("CAPTURE_OPTIONAL", single()?),
+                            Some("binary") => ("CAPTURE_BINARY", single()?),
+                            _ => return Err("INVALID_REQUEST"),
+                        };
                         if files.capture.is_some() {
                             return Err("CAPTURE_IN_PROGRESS");
                         }
-                        files.begin_capture(operation, data, cancelled)
-                    }
-                    "CAPTURE_READ" | "CAPTURE_RELEASE" => {
-                        if !files
-                            .capture
-                            .as_ref()
-                            .is_some_and(|v| data["captureId"] == v.id)
-                        {
-                            return Err("CAPTURE_NOT_FOUND");
-                        }
-                        if operation == "CAPTURE_READ" {
-                            files.capture.as_ref().unwrap().chunk(data)
-                        } else {
-                            let closed = files
-                                .capture
-                                .as_mut()
-                                .unwrap()
-                                .close()
-                                .map_err(transfer::Error::from);
-                            if closed.is_ok() {
-                                files.capture = None;
-                            }
-                            closed.map(|_| json!({}))
-                        }
+                        files.begin_capture(kind, &request, cancelled)
                     }
                     "MATERIALIZE_BEGIN" => {
                         if files.incoming.is_some() || files.staged.is_some() {
@@ -1011,6 +1006,42 @@ impl Service {
         let mut answer = Self::response(session, &payload["leaseId"]);
         answer["result"] = result;
         Ok(answer)
+    }
+    /// Write the capture a snapshot answer names as one archive and release it, whether or not
+    /// the caller read it all. `head` receives the archive length before any byte is written.
+    /// `Ok(false)` means the capture no longer exists, as for a replayed snapshot request.
+    fn stream_snapshot(
+        &self,
+        answer: &Value,
+        head: impl FnOnce(u64) -> io::Result<()>,
+        out: &mut impl Write,
+    ) -> io::Result<bool> {
+        let files = {
+            let state = self.state.lock().unwrap();
+            let Some(files) = answer["leaseId"]
+                .as_str()
+                .and_then(|lease| state.sessions.get(lease))
+                .and_then(|session| session.files.clone())
+            else {
+                return Ok(false);
+            };
+            files
+        };
+        let mut files = files.state.lock().unwrap();
+        if !files
+            .capture
+            .as_ref()
+            .is_some_and(|capture| answer["captureId"] == capture.id)
+        {
+            return Ok(false);
+        }
+        let manifest = serde_json::to_vec(answer).map_err(io::Error::other)?;
+        let capture = files.capture.as_mut().unwrap();
+        let written =
+            head(capture.tar_length(&manifest)).and_then(|()| capture.write_tar(&manifest, out));
+        capture.close()?;
+        files.capture = None;
+        written.map(|()| true)
     }
     pub fn finish_cancelled(&self, lease: &str) {
         let (bridge, runtime) = {

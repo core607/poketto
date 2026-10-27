@@ -5,6 +5,7 @@ import base64
 import concurrent.futures
 from configparser import ConfigParser
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ import socket
 import stat
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 import uuid
@@ -103,10 +105,10 @@ def main():
             except OSError:
                 time.sleep(.1)
         raise RuntimeError('Worker startup failed')
-    def rpc(envelope):
+    def rpc(envelope, route=b'/v1/requests', raw_reply=False):
         """One HTTP exchange: the handshake for None, otherwise one signed envelope."""
         raw = b'' if envelope is None else json.dumps(envelope).encode()
-        head = b'GET /v1/hello' if envelope is None else b'POST /v1/requests'
+        head = b'GET /v1/hello' if envelope is None else b'POST ' + route
         head += b' HTTP/1.1\r\nHost: sandcrab\r\n'
         if raw:
             head += b'Content-Length: %d\r\n' % len(raw)
@@ -115,12 +117,13 @@ def main():
             client.connect(config['socketPath'])
             client.sendall(head + b'\r\n' + raw)
             response = b''
-            while len(response) <= 1048576 + 8192:
+            while len(response) <= 136 * 1048576:
                 part = client.recv(65536)
                 if not part:
                     break
                 response += part
-        return json.loads(response.partition(b'\r\n\r\n')[2])
+        head, _, body = response.partition(b'\r\n\r\n')
+        return (head, body) if raw_reply else json.loads(body)
     def signed(p):
         raw = json.dumps(p).encode()
         return {'payload': b64(raw), 'signature': b64(key.sign(raw))}
@@ -131,6 +134,16 @@ def main():
                 'requestId': str(uuid.uuid4()), 'issuedAt': now, 'expiresAt': now + 15, 'data': data or {}}
     def send(identity, operation, data=None):
         return rpc(signed(request(identity, operation, data)))
+    def snapshot(identity, data):
+        """A snapshot's manifest and file contents, or its JSON refusal and no files."""
+        head, body = rpc(signed(request(identity, 'SNAPSHOT', data)), b'/v1/snapshots', raw_reply=True)
+        if b'application/x-tar' not in head:
+            return json.loads(body), []
+        with tarfile.open(fileobj=io.BytesIO(body), format=tarfile.USTAR_FORMAT) as archive:
+            names = archive.getnames()
+            assert names == ['manifest.json'] + [f'files/{n}' for n in range(len(names) - 1)], names
+            return (json.loads(archive.extractfile('manifest.json').read()),
+                    [archive.extractfile(name).read() for name in names[1:]])
     def new_session(principal=None):
         identity = {'principalId': principal or str(uuid.uuid4()), 'accountId': str(uuid.uuid4()),
             'workspaceId': workspace, 'serverSessionHash': uuid.uuid4().hex * 2,
@@ -277,12 +290,10 @@ def main():
         assert second['exitCode'] == 0 and second['stdout'] == 'state' and not second['freshSandbox'], second
         assert units()[0].split()[0] == unit
         passed('lease-shell-cwd-environment-function-alias-tmp-and-background-persist', idleMemoryBytes=memory)
-        captured = send(identity, 'CAPTURE_BEGIN', {'executionId': '', 'writes': ['capture.md'], 'deletes': []})
-        assert captured.get('ok'), captured
-        reference = {'executionId': '', 'captureId': captured['captureId']}
-        chunk = send(identity, 'CAPTURE_READ', {**reference, 'index': 0, 'offset': 0, 'limit': 65536})
-        assert chunk.get('ok') and base64.b64decode(chunk['data']) == b'captured', chunk
-        assert send(identity, 'CAPTURE_RELEASE', reference).get('ok')
+        captured, files = snapshot(identity, {'executionId': '', 'kind': 'text', 'writes': ['capture.md'],
+                                              'deletes': []})
+        assert captured.get('ok') and files == [b'captured'], captured
+        assert captured['writes'][0]['sha256'] == hashlib.sha256(b'captured').hexdigest()
         assert (group / 'cgroup.freeze').read_text().strip() == '0'
         passed('frozen-capture-between-commands')
         timings = []

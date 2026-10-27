@@ -994,7 +994,7 @@ class WorkerSocketTests {
         var exports = exports();
         try (var peer = new Peer();
                 var executor = executor(fullAuth(), exports, peer)) {
-            peer.codeActProtocol = 1;
+            peer.codeActProtocol = 2;
             assertThatThrownBy(() -> client.execute(
                             executor,
                             principal(),
@@ -1011,9 +1011,9 @@ class WorkerSocketTests {
             assertThat(peer.operations("EXEC")).isEmpty();
             verify(exports, never()).create(any(), any(), any());
             verify(exports, never()).createPublic(any(), any());
-            peer.codeActProtocol = 3;
+            peer.codeActProtocol = 4;
             assertThatThrownBy(() -> peer.client().hello()).isInstanceOf(WorkerUnavailableException.class);
-            peer.codeActProtocol = 2;
+            peer.codeActProtocol = 3;
             peer.artifactProtocol = 0;
             assertThatThrownBy(() -> peer.client().hello()).isInstanceOf(WorkerUnavailableException.class);
             peer.artifactProtocol = 1;
@@ -1034,10 +1034,10 @@ class WorkerSocketTests {
                 var executor = executor(fullAuth(), exports, peer)) {
             var health = new ExecutorHealthIndicator(Optional.of(executor));
             assertThat(health.health().getStatus().getCode()).isEqualTo("UP");
-            peer.codeActProtocol = 1;
+            peer.codeActProtocol = 2;
             assertThat(health.health().getStatus().getCode()).isEqualTo("DOWN");
             assertThat(health.health().getDetails()).isEmpty();
-            peer.codeActProtocol = 2;
+            peer.codeActProtocol = 3;
             assertThat(health.health().getStatus().getCode()).isEqualTo("UP");
             peer.dropHello = true;
             assertThat(health.health().getStatus().getCode()).isEqualTo("DOWN");
@@ -2058,7 +2058,7 @@ class WorkerSocketTests {
         private volatile boolean assertOnHelloShutdown;
         private volatile boolean dropExec;
         private volatile boolean oversizedHello;
-        private volatile int codeActProtocol = 2;
+        private volatile int codeActProtocol = 3;
         private volatile int artifactProtocol = 1;
         private volatile String artifactLease = "";
         private final AtomicBoolean holdFirstExec = new AtomicBoolean();

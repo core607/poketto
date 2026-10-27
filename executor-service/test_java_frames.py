@@ -38,8 +38,8 @@ def b64(value):
     return base64.urlsafe_b64encode(value).decode().rstrip('=')
 
 
-def post(path, body):
-    head = f'POST /v1/requests HTTP/1.1\r\nHost: sandcrab\r\nContent-Length: {len(body)}\r\n\r\n'
+def post(path, body, route='/v1/requests'):
+    head = f'POST {route} HTTP/1.1\r\nHost: sandcrab\r\nContent-Length: {len(body)}\r\n\r\n'
     with socket.socket(socket.AF_UNIX) as stream:
         stream.settimeout(10)
         stream.connect(path)
@@ -85,7 +85,8 @@ class JavaFrameTests(unittest.TestCase):
                    'workerBootId': self.boot, 'issuedAt': issued, 'expiresAt': issued + 15, 'data': data}
         raw = json.dumps(payload).encode()
         envelope = {'payload': b64(raw), 'signature': b64(self.key.sign(raw))}
-        return post(self.socket, json.dumps(envelope).encode())
+        route = '/v1/snapshots' if operation == 'SNAPSHOT' else '/v1/requests'
+        return post(self.socket, json.dumps(envelope).encode(), route)
 
     def test_every_frame_is_accepted_by_the_real_dispatch(self):
         for operation, data in FRAMES.items():

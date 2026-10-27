@@ -19,7 +19,7 @@ The baseline installer uses standard-library Python; [requirements.txt](requirem
 
 Package Python sources with LF endings; CRLF breaks executable shebangs. Gradle builds the [pinned Rust workspace](rust/Cargo.toml) through Docker. The updater delivers sources and programs together. Each repository sandbox mounts the selected release's executable-only `bin/` read-only, sharing file pages. Record revision and hashes, verify installed files and run `poketto --help` through the deployed connector after restart.
 
-Before exporting content or opening a lease, HELLO requires `codeActProtocol: 2` for execution-bound polls; `artifactProtocol`, `moveProtocol`, `exportProtocol`, `diskCopyProtocol`, `gitBaselineProtocol`, `workspaceSyncProtocol`, `leaseSandboxProtocol` and `seedProtocol` must equal 1. Other values reject execution. Install and restart the matching worker before deploying the application. A restart ends existing leases and their artifacts; account copies remain on disk.
+Before exporting content or opening a lease, HELLO requires `codeActProtocol: 3` for execution-bound polls and snapshots; `artifactProtocol`, `moveProtocol`, `exportProtocol`, `diskCopyProtocol`, `gitBaselineProtocol`, `workspaceSyncProtocol`, `leaseSandboxProtocol` and `seedProtocol` must equal 1. Other values reject execution. Install and restart the matching worker before deploying the application. A restart ends existing leases and their artifacts; account copies remain on disk.
 
 Install [resource_pool.py](resource_pool.py) at `/opt/poketto-executor/resource_pool.py`, and the [slice](poketto-executor.slice) and service in `/etc/systemd/system/`. Files and parents must be root-owned and unwritable by application, execution and deployment accounts. Before startup, set finite `MemoryMax`, `MemorySwapMax`, `TasksMax` and `CPUQuota` in a private slice drop-in and run `systemctl daemon-reload`; checked-in values are examples. The slice bounds supervision, sandboxes and helpers, including copying, cache and temporary pages; unit limits add constraints and disk is bounded separately. Missing, unlimited or misplaced pools reject startup and OPEN/ATTACH/EXEC; startup cleanup, CLOSE, revocation and `--cleanup` remain available.
 
@@ -149,11 +149,7 @@ The worker rejects `data` with a missing or extra field; [java-frames.json](java
 | `RENEW` | Extends an unexpired lease in any live state, UPDATING included, to `expiresAt`. Nothing else renews. |
 | `BRIDGE_POLL` | Requires `executionId`; claims one CLI request only from that command. Returns null within the poll interval when idle or unmatched. Never takes the command lock or cancels on contention. |
 | `BRIDGE_COMPLETE` | Publishes one bounded reply to that pending request of that running execution. |
-| `CAPTURE_BEGIN` | Captures up to 64 selected UTF-8 files and 4 MiB plus explicit deletions; returns a capture ID and an ordered path/length/SHA-256 manifest. |
-| `CAPTURE_OPTIONAL` | Captures one text file, or its absence, for synchronization. |
-| `CAPTURE_BINARY` | Captures one regular, single-link file of up to 128 MiB. |
-| `CAPTURE_READ` | Returns up to 65536 bytes of a captured file, never a fresh worktree read. |
-| `CAPTURE_RELEASE` | Drops the capture. |
+| `SNAPSHOT` | Sent to `POST /v1/snapshots` and copies files while the sandbox is frozen: `kind` `text` takes up to 64 selected UTF-8 files and 4 MiB plus explicit deletions, `optional` one text file or its absence, `binary` one regular, single-link file of up to 128 MiB. Success is one ustar archive: `manifest.json` (lease fields, capture ID, ordered path/length/SHA-256 list), then `files/0`, `files/1` and so on. The capture is released once the archive is written or the reader disconnects; a refusal is JSON. |
 | `MATERIALIZE_BEGIN` | Opens a transfer of up to 1 GiB to `path`, or a deletion, with precondition `expectedSha256` (null means absent); `allowIdentical` accepts an identical existing file. |
 | `MATERIALIZE_CHUNK` | Appends at most 65536 decoded bytes at the exact next offset, staged outside sandbox-readable paths. |
 | `MATERIALIZE_COMMIT` | Verifies length and hash, then with the cgroup frozen checks the precondition and atomically replaces or deletes the target. A repeat returns the retained receipt without touching newer edits. |
