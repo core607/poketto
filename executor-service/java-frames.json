@@ -48,29 +48,11 @@
       "ok" : true
     }
   },
-  "CAPTURE_BEGIN" : {
+  "SNAPSHOT" : {
     "executionId" : "22222222-2222-4222-8222-222222222222",
+    "kind" : "text",
     "writes" : [ "notes/a.md" ],
     "deletes" : [ ]
-  },
-  "CAPTURE_OPTIONAL" : {
-    "executionId" : "22222222-2222-4222-8222-222222222222",
-    "path" : "notes/a.md"
-  },
-  "CAPTURE_BINARY" : {
-    "executionId" : "22222222-2222-4222-8222-222222222222",
-    "path" : "notes/a.png"
-  },
-  "CAPTURE_READ" : {
-    "executionId" : "22222222-2222-4222-8222-222222222222",
-    "captureId" : "33333333-3333-4333-8333-333333333333",
-    "index" : 0,
-    "offset" : 0,
-    "limit" : 65536
-  },
-  "CAPTURE_RELEASE" : {
-    "executionId" : "22222222-2222-4222-8222-222222222222",
-    "captureId" : "33333333-3333-4333-8333-333333333333"
   },
   "MATERIALIZE_BEGIN" : {
     "executionId" : "22222222-2222-4222-8222-222222222222",

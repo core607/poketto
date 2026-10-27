@@ -49,6 +49,15 @@ final class SessionWorker {
     }
 
     /** Signs a request for a live lease; when the lease has stopped this fails and nothing is sent. */
+    /** One frozen snapshot, read by {@code reader} while the archive streams in. */
+    <T> T snapshot(
+            ExecutionSession session,
+            WorkerRequests.Snapshot data,
+            Duration timeout,
+            WorkerClient.SnapshotReader<T> reader) {
+        return worker.snapshot(prepare(session, "SNAPSHOT", data), timeout, Duration.ofSeconds(5), reader);
+    }
+
     WorkerClient.PreparedRequest prepare(ExecutionSession session, String operation, WorkerRequests.Data data) {
         synchronized (session) {
             requireLive(session);

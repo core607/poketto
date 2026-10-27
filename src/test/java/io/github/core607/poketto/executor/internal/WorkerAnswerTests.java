@@ -93,11 +93,6 @@ class WorkerAnswerTests {
                 .describedAs("an artifact page without an offset")
                 .isInstanceOf(WorkerUnavailableException.class);
         assertThatThrownBy(() -> WorkerResponses.read(
-                        json("{\"captureId\":\"" + UUID + "\",\"offset\":0,\"data\":\"YWJj\"}"),
-                        WorkerResponses.CaptureChunk.class))
-                .describedAs("a capture page without an index")
-                .isInstanceOf(WorkerUnavailableException.class);
-        assertThatThrownBy(() -> WorkerResponses.read(
                         json(
                                 "{\"stdout\":\"\",\"stderr\":\"\",\"stdoutTruncated\":false,"
                                         + "\"stderrTruncated\":false,\"timedOut\":false,\"freshSandbox\":false,\"terminationReason\":\"normal\"}"),
@@ -161,11 +156,6 @@ class WorkerAnswerTests {
      */
     @Test
     void aPageWhoseContentIsNotBase64IsAlsoAnUnavailableWorker() {
-        assertThatThrownBy(() -> WorkerResponses.read(
-                                json("{\"captureId\":\"" + UUID + "\",\"index\":0,\"offset\":0,\"data\":\"!!\"}"),
-                                WorkerResponses.CaptureChunk.class)
-                        .decoded())
-                .isInstanceOf(WorkerUnavailableException.class);
         assertThatThrownBy(() -> WorkerResponses.read(
                                 json("{\"offset\":0,\"data\":\"!!\"}"), WorkerResponses.ArtifactPage.class)
                         .decoded())

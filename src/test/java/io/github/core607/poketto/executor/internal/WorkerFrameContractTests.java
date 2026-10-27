@@ -30,7 +30,6 @@ class WorkerFrameContractTests {
     private static final ObjectMapper JSON = JsonMapper.builder().build();
     private static final UUID EXPORT = UUID.fromString("11111111-1111-4111-8111-111111111111");
     private static final String EXECUTION = "22222222-2222-4222-8222-222222222222";
-    private static final String CAPTURE = "33333333-3333-4333-8333-333333333333";
     private static final String TRANSFER = "44444444-4444-4444-8444-444444444444";
     private static final String ARTIFACT = "55555555-5555-4555-8555-555555555555";
     private static final String BRIDGE_REQUEST = "66666666-6666-4666-8666-666666666666";
@@ -50,11 +49,7 @@ class WorkerFrameContractTests {
         frames.put("REVOKE", new WorkerRequests.Revoke(Set.of(EXPORT), Set.of(EXPORT)));
         frames.put("BRIDGE_POLL", new WorkerRequests.BridgePoll(EXECUTION));
         frames.put("BRIDGE_COMPLETE", new WorkerRequests.BridgeComplete(EXECUTION, BRIDGE_REQUEST, Map.of("ok", true)));
-        frames.put("CAPTURE_BEGIN", new WorkerRequests.CaptureBegin(EXECUTION, List.of("notes/a.md"), List.of()));
-        frames.put("CAPTURE_OPTIONAL", new WorkerRequests.CapturePath(EXECUTION, "notes/a.md"));
-        frames.put("CAPTURE_BINARY", new WorkerRequests.CapturePath(EXECUTION, "notes/a.png"));
-        frames.put("CAPTURE_READ", new WorkerRequests.CaptureRead(EXECUTION, CAPTURE, 0, 0, 65536));
-        frames.put("CAPTURE_RELEASE", new WorkerRequests.CaptureRelease(EXECUTION, CAPTURE));
+        frames.put("SNAPSHOT", new WorkerRequests.Snapshot(EXECUTION, "text", List.of("notes/a.md"), List.of()));
         frames.put(
                 "MATERIALIZE_BEGIN",
                 new WorkerRequests.MaterializeBegin(EXECUTION, "notes/a.md", 6, DIGEST, null, false, true));
@@ -119,8 +114,10 @@ class WorkerFrameContractTests {
         assertThatThrownBy(() -> new WorkerRequests.Exec("not-a-uuid", COMMIT, "x", 1))
                 .hasMessageContaining("executionId");
         assertThatThrownBy(() -> new WorkerRequests.Close("elsewhere")).hasMessageContaining("reason");
-        assertThatThrownBy(() -> new WorkerRequests.CaptureRead(EXECUTION, CAPTURE, 0, 0, 65537))
-                .hasMessageContaining("limit");
+        assertThatThrownBy(() -> new WorkerRequests.Snapshot(EXECUTION, "binary", List.of("a", "b"), List.of()))
+                .hasMessageContaining("writes");
+        assertThatThrownBy(() -> new WorkerRequests.Snapshot(EXECUTION, "all", List.of("a"), List.of()))
+                .hasMessageContaining("kind");
         assertThatThrownBy(() -> new WorkerRequests.MoveBegin(EXECUTION, 0, DIGEST))
                 .hasMessageContaining("bytes");
         assertThatThrownBy(() -> new WorkerRequests.ArtifactRead("not-a-uuid", 0, 1))

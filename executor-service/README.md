@@ -149,11 +149,7 @@ The worker rejects `data` with a missing or extra field; [java-frames.json](java
 | `RENEW` | Extends an unexpired lease in any live state, UPDATING included, to `expiresAt`. Nothing else renews. |
 | `BRIDGE_POLL` | Requires `executionId`; claims one CLI request only from that command. Returns null within the poll interval when idle or unmatched. Never takes the command lock or cancels on contention. |
 | `BRIDGE_COMPLETE` | Publishes one bounded reply to that pending request of that running execution. |
-| `CAPTURE_BEGIN` | Captures up to 64 selected UTF-8 files and 4 MiB plus explicit deletions; returns a capture ID and an ordered path/length/SHA-256 manifest. |
-| `CAPTURE_OPTIONAL` | Captures one text file, or its absence, for synchronization. |
-| `CAPTURE_BINARY` | Captures one regular, single-link file of up to 128 MiB. |
-| `CAPTURE_READ` | Returns up to 65536 bytes of a captured file, never a fresh worktree read. |
-| `CAPTURE_RELEASE` | Drops the capture. |
+| `SNAPSHOT` | Sent to `POST /v1/snapshots` and copies files while the sandbox is frozen: `kind` `text` takes up to 64 selected UTF-8 files and 4 MiB plus explicit deletions, `optional` one text file or its absence, `binary` one regular, single-link file of up to 128 MiB. Success is one ustar archive: `manifest.json` (lease fields, capture ID, ordered path/length/SHA-256 list), then `files/0`, `files/1` and so on. The capture is released once the archive is written or the reader disconnects; a refusal is JSON. |
 | `MATERIALIZE_BEGIN` | Opens a transfer of up to 1 GiB to `path`, or a deletion, with precondition `expectedSha256` (null means absent); `allowIdentical` accepts an identical existing file. |
 | `MATERIALIZE_CHUNK` | Appends at most 65536 decoded bytes at the exact next offset, staged outside sandbox-readable paths. |
 | `MATERIALIZE_COMMIT` | Verifies length and hash, then with the cgroup frozen checks the precondition and atomically replaces or deletes the target. A repeat returns the retained receipt without touching newer edits. |

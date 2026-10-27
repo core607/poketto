@@ -187,21 +187,6 @@ final class WorkerResponses {
         }
     }
 
-    /** One page of a capture. Its index and offset are echoes, so the caller compares them. */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    record CaptureChunk(String captureId, int index, long offset, String data) {
-        CaptureChunk {
-            captureId = ProtocolValues.uuid(captureId, "captureId");
-            require(index >= 0, "index", "must not be negative");
-            require(offset >= 0, "offset", "must not be negative");
-            require(data != null, "data", "must be present");
-        }
-
-        byte[] decoded() {
-            return WorkerResponses.decode(data);
-        }
-    }
-
     /**
      * One page of an artifact. The base64 bound is the largest encoding of the protocol's 64 KiB
      * page, so a longer string is an answer this application will not decode.

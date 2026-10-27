@@ -196,68 +196,61 @@ final class SessionMediaCommands {
         if (!availableMediaPath(session, local, path, mediaType)) {
             return BridgeReplies.failed("MEDIA_PATH_COLLIDES_WITH_GIT");
         }
-        JsonNode manifest = io.request(
-                session, "CAPTURE_BINARY", new WorkerRequests.CapturePath(executionId, file), Duration.ofSeconds(8));
-        if (manifest.path("code").asString("").equals("CAPTURE_REJECTED")) {
-            throw InvalidSelectionException.capture(manifest.path("reason").asString(""));
+        record Imported(ManagedAsset asset, BridgeReplies.Reply refusal) {}
+        Imported imported = io.snapshot(
+                session,
+                WorkerRequests.Snapshot.one(executionId, "binary", file),
+                Duration.ofSeconds(8),
+                new WorkerClient.SnapshotReader<>() {
+                    @Override
+                    public Imported refused(JsonNode answer) {
+                        if (answer.path("code").asString("").equals("CAPTURE_REJECTED")) {
+                            throw InvalidSelectionException.capture(
+                                    answer.path("reason").asString(""));
+                        }
+                        requireOk(answer, session);
+                        throw new WorkerUnavailableException();
+                    }
+
+                    @Override
+                    public Imported read(JsonNode manifest, SnapshotArchive archive) throws java.io.IOException {
+                        requireOk(manifest, session);
+                        var captured = WorkerResponses.read(manifest, WorkerResponses.BinaryCaptureManifest.class);
+                        // One file was selected, so exactly that file must come back.
+                        if (!captured.writes().getFirst().path().equals(file)) {
+                            throw new WorkerUnavailableException();
+                        }
+                        long size = captured.writes().getFirst().bytes();
+                        String digest = captured.writes().getFirst().sha256();
+                        var previous = index.files().get(path);
+                        if (!replace
+                                && previous != null
+                                && (previous.size() != size
+                                        || !previous.revision().equals(digest)
+                                        || !previous.mediaType().equals(mediaType))) {
+                            return new Imported(null, BridgeReplies.failed("MEDIA_PATH_EXISTS"));
+                        }
+                        return new Imported(
+                                uploadCapturedMedia(session, archive.file(size), path, key, mediaType, size, digest),
+                                null);
+                    }
+                });
+        if (imported.refusal() != null) {
+            return imported.refusal();
         }
-        requireOk(manifest, session);
-        var captured = WorkerResponses.read(manifest, WorkerResponses.BinaryCaptureManifest.class);
-        String captureId = captured.captureId();
-        var reference = new WorkerRequests.CaptureRelease(executionId, captureId);
-        ManagedAsset asset;
-        try {
-            // One file was selected, so exactly that file must come back.
-            if (captured.writes().size() != 1
-                    || !captured.writes().getFirst().path().equals(file)) {
-                throw new WorkerUnavailableException();
-            }
-            long size = captured.writes().getFirst().bytes();
-            String digest = captured.writes().getFirst().sha256();
-            var previous = index.files().get(path);
-            if (!replace
-                    && previous != null
-                    && (previous.size() != size
-                            || !previous.revision().equals(digest)
-                            || !previous.mediaType().equals(mediaType))) {
-                return BridgeReplies.failed("MEDIA_PATH_EXISTS");
-            }
-            asset = uploadCapturedMedia(session, executionId, captureId, path, key, mediaType, size, digest);
-        } finally {
-            try {
-                io.request(session, "CAPTURE_RELEASE", reference, Duration.ofSeconds(3));
-            } catch (RuntimeException cleanupFailure) {
-                log.warn(
-                        "Binary capture release was not acknowledged; command cleanup will release its staging file",
-                        cleanupFailure);
-            }
-        }
+        ManagedAsset asset = imported.asset();
         return indexMedia(session, executionId, path, asset, local, replace);
     }
 
     private ManagedAsset uploadCapturedMedia(
             ExecutionSession session,
-            String executionId,
-            String captureId,
+            java.io.InputStream source,
             String path,
             String key,
             String mediaType,
             long size,
             String digest) {
-        try (var input = new CapturedBinaryInput(size, digest, (offset, limit) -> {
-            io.authorize(session);
-            JsonNode chunk = io.request(
-                    session,
-                    "CAPTURE_READ",
-                    new WorkerRequests.CaptureRead(executionId, captureId, 0, offset, limit),
-                    Duration.ofSeconds(3));
-            requireOk(chunk, session);
-            var page = WorkerResponses.read(chunk, WorkerResponses.CaptureChunk.class);
-            if (!captureId.equals(page.captureId()) || page.index() != 0 || page.offset() != offset) {
-                throw new WorkerUnavailableException();
-            }
-            return page.decoded();
-        })) {
+        try (var input = SessionFileTransfers.verified(io, session, source, size, digest)) {
             ManagedAsset asset = media.upload(session.principal, session.key.workspace(), key, mediaType, input);
             session.saveState.acknowledgeImport(importReceipt(path, asset, false));
             if (!input.verified()
