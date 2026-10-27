@@ -11,8 +11,7 @@ use std::{
         Mutex,
         atomic::{AtomicBool, Ordering},
     },
-    thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 pub struct Shared {
@@ -23,7 +22,7 @@ pub struct Shared {
 pub struct Files {
     description: runtime::Description,
     pub mounted: bool,
-    maintenance: Option<runtime::Maintenance>,
+    maintenance: Option<sandcrab_core::unit::Maintenance>,
     records: Vec<PathBuf>,
     pub fenced: bool,
     pub capture: Option<crate::transfer::Snapshot>,
@@ -53,38 +52,6 @@ impl Shared {
 fn unavailable() -> io::Error {
     io::Error::other("File operation unavailable")
 }
-pub fn frozen<T>(
-    cgroup: &Path,
-    cancelled: &AtomicBool,
-    action: impl FnOnce() -> io::Result<T>,
-) -> io::Result<T> {
-    let freeze = cgroup.join("cgroup.freeze");
-    let result = (|| {
-        fs::write(&freeze, b"1")?;
-        let deadline = Instant::now() + Duration::from_secs(2);
-        loop {
-            if cancelled.load(Ordering::SeqCst) {
-                return Err(io::ErrorKind::Interrupted.into());
-            }
-            if Instant::now() >= deadline {
-                return Err(unavailable());
-            }
-            if fs::read_to_string(cgroup.join("cgroup.events"))?
-                .lines()
-                .any(|line| line == "frozen 1")
-            {
-                break;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-        action()
-    })();
-    if fs::write(&freeze, b"0").is_err() {
-        cancelled.store(true, Ordering::SeqCst);
-        return Err(unavailable());
-    }
-    result
-}
 impl Files {
     pub fn usable(&self) -> io::Result<()> {
         if !self.mounted || self.fenced || self.maintenance.is_some() {
@@ -97,8 +64,10 @@ impl Files {
         &self.description.mount
     }
     pub fn prepare_artifacts(&mut self) -> io::Result<()> {
-        self.artifacts =
-            Some(crate::artifacts::Store::new(&self.description.mount).map_err(io::Error::other)?);
+        self.artifacts = Some(
+            crate::artifacts::Store::new(&self.description.mount, crate::REPOSITORY)
+                .map_err(io::Error::other)?,
+        );
         Ok(())
     }
     pub fn close_artifacts(&mut self) -> io::Result<()> {
@@ -115,7 +84,7 @@ impl Files {
     ) -> Result<serde_json::Value, &'static str> {
         let mut result = None;
         let store = self.artifacts.as_mut().ok_or("SESSION_NOT_READY")?;
-        frozen(&self.description.cgroup, cancelled, || {
+        sandcrab_core::unit::frozen(&self.description.cgroup, cancelled, || {
             result = Some(store.capture(&data["path"], &data["mediaType"], cancelled));
             Ok(())
         })
@@ -144,7 +113,13 @@ impl Files {
         cancelled: &AtomicBool,
     ) -> Result<serde_json::Value, crate::transfer::Error> {
         let snapshot = quiescent(&self.description.cgroup, cancelled, || {
-            crate::transfer::Snapshot::capture(&self.description.mount, operation, data, cancelled)
+            crate::transfer::Snapshot::capture(
+                &self.description.mount,
+                crate::REPOSITORY,
+                operation,
+                data,
+                cancelled,
+            )
         })?;
         let manifest = snapshot.manifest();
         self.capture = Some(snapshot);
@@ -219,12 +194,12 @@ impl Files {
         cancelled: &AtomicBool,
     ) -> Result<(), &'static str> {
         self.usable().map_err(|_| "SESSION_CLOSED")?;
-        runtime::verify_resource_pool(&self.description.resource_pool)
+        sandcrab_core::unit::verify_resource_pool(&self.description.resource_pool)
             .map_err(|_| "BASELINE_UNAVAILABLE")?;
         let cgroup = self.description.cgroup.clone();
         let mut action = || self.install_baseline(shared, factory, export, commit, cancelled);
         let result = if shared.unit_active.load(Ordering::SeqCst) {
-            frozen(&cgroup, cancelled, action)
+            sandcrab_core::unit::frozen(&cgroup, cancelled, action)
         } else {
             action()
         };
@@ -264,7 +239,7 @@ impl Files {
         if cancelled.load(Ordering::SeqCst) {
             return Err(unavailable());
         }
-        self.maintenance = Some(runtime::Maintenance {
+        self.maintenance = Some(sandcrab_core::unit::Maintenance {
             launch: launch.clone(),
             child: None,
         });
@@ -281,7 +256,7 @@ impl Files {
             self.maintenance.as_mut().unwrap().child.as_mut().unwrap(),
             Duration::from_millis(factory.config.init_timeout_millis),
             cancelled,
-            || runtime::stop_launch(&launch),
+            || sandcrab_core::unit::stop_launch(&launch),
         );
         // Confirm containment before changing root metadata or permitting the parent to continue.
         if self.stop_helper(shared).is_err() {
@@ -316,7 +291,7 @@ fn quiescent<T>(
     action: impl FnOnce() -> Result<T, crate::transfer::Error>,
 ) -> Result<T, crate::transfer::Error> {
     let mut result = None;
-    frozen(cgroup, cancelled, || {
+    sandcrab_core::unit::frozen(cgroup, cancelled, || {
         result = Some(action());
         Ok(())
     })?;

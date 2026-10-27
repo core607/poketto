@@ -50,6 +50,7 @@ struct Entry {
 }
 pub struct Store {
     root: PathBuf,
+    tree: crate::transfer::Tree,
     directory: PathBuf,
     entries: HashMap<String, Entry>,
     clock: Clock,
@@ -61,10 +62,16 @@ fn unavailable<T>(_: T) -> &'static str {
     "ARTIFACT_UNAVAILABLE"
 }
 impl Store {
-    pub fn new(root: &Path) -> Result<Self> {
-        Self::configured(root, Arc::new(Instant::now), MAX_TOTAL, MAX_COUNT)
+    pub fn new(root: &Path, tree: crate::transfer::Tree) -> Result<Self> {
+        Self::configured(root, tree, Arc::new(Instant::now), MAX_TOTAL, MAX_COUNT)
     }
-    fn configured(root: &Path, clock: Clock, maximum: u64, count: usize) -> Result<Self> {
+    fn configured(
+        root: &Path,
+        tree: crate::transfer::Tree,
+        clock: Clock,
+        maximum: u64,
+        count: usize,
+    ) -> Result<Self> {
         if maximum == 0 || maximum > MAX_TOTAL || count == 0 || count > MAX_COUNT {
             return Err("ARTIFACT_CAPACITY");
         }
@@ -75,6 +82,7 @@ impl Store {
             .map_err(unavailable)?;
         Ok(Self {
             root: root.into(),
+            tree,
             directory,
             entries: HashMap::new(),
             clock,
@@ -150,9 +158,10 @@ impl Store {
         cancelled: &AtomicBool,
     ) -> Result<Value> {
         let maximum = self.admit(media_type, 0)?;
-        let mut snapshot =
-            crate::transfer::Snapshot::capture_binary(&self.root, path, maximum, cancelled)
-                .map_err(unavailable)?;
+        let mut snapshot = crate::transfer::Snapshot::capture_binary(
+            &self.root, self.tree, path, maximum, cancelled,
+        )
+        .map_err(unavailable)?;
         let identifier = snapshot.id.clone();
         let destination = self.directory.join(&identifier);
         if self.entries.contains_key(&identifier) || fs::symlink_metadata(&destination).is_ok() {
@@ -310,6 +319,10 @@ mod tests {
             let base = Instant::now();
             let store = Store::configured(
                 &root,
+                crate::transfer::Tree {
+                    directories: &["work", "repository"],
+                    reserved: ".git",
+                },
                 Arc::new(move || base + Duration::from_secs(ticks.load(Ordering::SeqCst))),
                 maximum,
                 count,

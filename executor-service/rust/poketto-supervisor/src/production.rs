@@ -1,5 +1,5 @@
 //! Installed CLI configuration, protected public key and application-owned socket access.
-use crate::{Service, Settings, lease, provision, runtime, server};
+use crate::{Service, Settings, lease, provision, server};
 use ed25519_dalek::{VerifyingKey, pkcs8::DecodePublicKey};
 use rustix::{
     fs::OFlags,
@@ -37,7 +37,7 @@ fn text<'a>(value: &'a Value, key: &str) -> io::Result<&'a str> {
 }
 fn path(value: &Value, key: &str) -> io::Result<PathBuf> {
     let path = PathBuf::from(text(value, key)?);
-    if !lease::normal(&path) {
+    if !sandcrab_core::fs::normal(&path) {
         return Err(invalid());
     }
     Ok(path)
@@ -51,7 +51,7 @@ fn name(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
 }
 fn account_id(user: &str, kind: &str) -> io::Result<u32> {
-    let output = runtime::checked(
+    let output = sandcrab_core::unit::checked(
         &["id".into(), kind.into(), user.into()],
         Duration::from_secs(15),
     )?;
@@ -127,8 +127,9 @@ struct Config {
 }
 impl Config {
     fn load(file: &Path) -> io::Result<Self> {
-        lease::protected_directory(file.parent().ok_or_else(invalid)?)?;
-        let value = crate::parse(&lease::protected_file(file, 65536)?).map_err(|_| invalid())?;
+        sandcrab_core::fs::protected_directory(file.parent().ok_or_else(invalid)?)?;
+        let value = crate::parse(&sandcrab_core::fs::protected_file(file, 65536)?)
+            .map_err(|_| invalid())?;
         Self::from_value(&value)
     }
     fn from_value(value: &Value) -> io::Result<Self> {
@@ -175,7 +176,7 @@ impl Config {
             .ok_or_else(invalid)?;
         let exec_uid = account_id(&exec_user, "-u")?;
         let exec_gid = account_id(&exec_user, "-g")?;
-        let groups = runtime::checked(
+        let groups = sandcrab_core::unit::checked(
             &["id".into(), "-G".into(), exec_user.clone()],
             Duration::from_secs(15),
         )?;
@@ -222,7 +223,7 @@ impl Config {
     }
 }
 fn load_key(path: &Path) -> io::Result<VerifyingKey> {
-    lease::protected_directory(path.parent().ok_or_else(invalid)?)?;
+    sandcrab_core::fs::protected_directory(path.parent().ok_or_else(invalid)?)?;
     let file = OpenOptions::new()
         .read(true)
         .custom_flags((OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
@@ -252,7 +253,7 @@ fn root_lock(config: &provision::Config) -> io::Result<File> {
             .skip(1)
             .find(|v| v.exists())
             .ok_or_else(invalid)?;
-        lease::protected_directory(ancestor)?;
+        sandcrab_core::fs::protected_directory(ancestor)?;
         DirBuilder::new()
             .recursive(true)
             .mode(0o750)
