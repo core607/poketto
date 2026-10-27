@@ -77,16 +77,6 @@ final class WorkerRequests {
         return uuid(executionId, "executionId");
     }
 
-    /**
-     * The unsigned handshake, the only request not wrapped in a signed envelope and the only one
-     * carrying its own operation name.
-     */
-    record Hello(String operation, int version) {
-        Hello() {
-            this("HELLO", 1);
-        }
-    }
-
     record Open(UUID copyId, String scope, UUID exportId, String bundleSha256, long bundleBytes, String commit)
             implements Data {
         Open {

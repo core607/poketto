@@ -47,7 +47,8 @@ export class Worker {
     private store: Store,
     private manifest: CorpusManifest,
   ) {}
-  private async rpc(value: object): Promise<Json> {
+  /** One HTTP exchange: the handshake for `null`, otherwise one signed envelope. */
+  private async rpc(value: object | null): Promise<Json> {
     const parent = await lstat(dirname(this.config.workerSocket));
     const socketInfo = await lstat(this.config.workerSocket);
     if (
@@ -60,9 +61,14 @@ export class Worker {
       throw new Error(
         "Executor socket is not in a protected root-owned directory",
       );
-    const bytes = Buffer.from(JSON.stringify(value));
+    const bytes = Buffer.from(value === null ? "" : JSON.stringify(value));
     if (bytes.length > frameLimit)
-      throw new Error("Executor request exceeds frame bound");
+      throw new Error("Executor request exceeds body bound");
+    const head =
+      (value === null ? "GET /v1/hello" : "POST /v1/requests") +
+      " HTTP/1.1\r\nHost: sandcrab\r\n" +
+      (bytes.length ? `Content-Length: ${bytes.length}\r\n` : "") +
+      "\r\n";
     return new Promise((resolve, reject) => {
       const socket = connect(this.config.workerSocket);
       let buffer = Buffer.alloc(0);
@@ -71,22 +77,36 @@ export class Worker {
         125_000,
       );
       socket.on("connect", () => {
-        const header = Buffer.alloc(4);
-        header.writeUInt32BE(bytes.length);
-        socket.write(Buffer.concat([header, bytes]));
+        socket.write(Buffer.concat([Buffer.from(head, "ascii"), bytes]));
       });
       socket.on("data", (chunk) => {
         buffer = Buffer.concat([buffer, chunk]);
-        if (buffer.length < 4) return;
-        const length = buffer.readUInt32BE();
-        if (length > frameLimit || length === 0) {
-          socket.destroy(new Error("Invalid executor frame"));
+        const end = buffer.indexOf("\r\n\r\n");
+        if (end < 0) {
+          if (buffer.length > 8192)
+            socket.destroy(new Error("Invalid executor response"));
           return;
         }
-        if (buffer.length >= 4 + length) {
+        const lines = buffer.subarray(0, end).toString("ascii").split("\r\n");
+        const declared = lines
+          .slice(1)
+          .map((line) => /^content-length:\s*(\d{1,7})$/i.exec(line))
+          .filter((match) => match !== null);
+        const length = declared.length === 1 ? Number(declared[0]![1]) : -1;
+        if (
+          !lines[0]!.startsWith("HTTP/1.1 200 ") ||
+          length <= 0 ||
+          length > frameLimit
+        ) {
+          socket.destroy(new Error("Invalid executor response"));
+          return;
+        }
+        if (buffer.length >= end + 4 + length) {
           try {
             resolve(
-              JSON.parse(buffer.subarray(4, 4 + length).toString("utf8")),
+              JSON.parse(
+                buffer.subarray(end + 4, end + 4 + length).toString("utf8"),
+              ),
             );
           } catch {
             reject(new Error("Malformed executor response"));
@@ -104,7 +124,7 @@ export class Worker {
   private async initialize() {
     if (!this.key)
       this.key = createPrivateKey(await readFile(this.config.signingKey));
-    this.hello = await this.rpc({ version: 1, operation: "HELLO" });
+    this.hello = await this.rpc(null);
     if (
       !this.hello.ok ||
       this.hello.version !== 1 ||

@@ -6,6 +6,7 @@
 
 mod admission;
 pub mod files;
+pub mod http;
 pub mod install;
 pub mod job;
 pub mod runtime;
@@ -447,22 +448,20 @@ impl Service {
         }
         Ok((payload, Sha256::digest(&raw).into()))
     }
+    /// The unsigned handshake: protocol versions, boot identity and lease timing.
+    fn hello(&self) -> Value {
+        let mut reply = serde_json::Map::new();
+        reply.insert("ok".into(), true.into());
+        reply.insert("version".into(), 1.into());
+        reply.extend(self.extension.hello());
+        reply.insert("workerBootId".into(), self.boot.clone().into());
+        reply.insert("maxFrameBytes".into(), MAX_FRAME.into());
+        reply.insert("leaseSeconds".into(), self.lease_seconds.into());
+        reply.insert("renewAfterSeconds".into(), self.renew_after_seconds.into());
+        reply.into()
+    }
+    /// One signed request, answered once and replayed for the same request ID.
     fn handle(&self, envelope: Value) -> Value {
-        if envelope.as_object().is_some_and(|o| o.len() == 2)
-            && envelope["operation"] == "HELLO"
-            && (envelope["version"].as_f64() == Some(1.0)
-                || envelope["version"] == Value::Bool(true))
-        {
-            let mut reply = serde_json::Map::new();
-            reply.insert("ok".into(), true.into());
-            reply.insert("version".into(), 1.into());
-            reply.extend(self.extension.hello());
-            reply.insert("workerBootId".into(), self.boot.clone().into());
-            reply.insert("maxFrameBytes".into(), MAX_FRAME.into());
-            reply.insert("leaseSeconds".into(), self.lease_seconds.into());
-            reply.insert("renewAfterSeconds".into(), self.renew_after_seconds.into());
-            return reply.into();
-        }
         let (payload, digest) = match self.validate(&envelope) {
             Ok(v) => v,
             Err(code) => return failed(code),

@@ -128,7 +128,7 @@ with the application's group, and the signing key
 is application-owned mode 0600, none of them shared with the executor. Existing
 installations set the same application properties in their own Compose file; their
 settings channel accepts no host-prerequisite keys, as with the executor.
-The root supervisor verifies signed frames and launches code under a separate
+The root supervisor verifies signed requests and launches code under a separate
 unprivileged game account. The application needs only its signing key and access to
 the root-owned game socket, never root privileges or a Docker socket.
 

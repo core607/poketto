@@ -31,7 +31,6 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
@@ -689,16 +688,15 @@ class PublicCopyRefreshTests {
             try (connection;
                     var input = Channels.newInputStream(connection);
                     var output = new DataOutputStream(Channels.newOutputStream(connection))) {
-                byte[] prefix = input.readNBytes(4);
-                if (prefix.length == 0) {
+                var exchange = WorkerHttp.read(input);
+                if (exchange == null) {
                     return;
                 }
-                JsonNode envelope =
-                        json.readTree(input.readNBytes(ByteBuffer.wrap(prefix).getInt()));
                 Object response;
-                if (envelope.path("operation").asString("").equals("HELLO")) {
+                if (exchange.hello()) {
                     response = hello();
                 } else {
+                    JsonNode envelope = json.readTree(exchange.body());
                     JsonNode request = json.readTree(Base64.getUrlDecoder()
                             .decode(envelope.path("payload").stringValue()));
                     requests.add(request);
@@ -711,9 +709,7 @@ class PublicCopyRefreshTests {
                 }
                 byte[] bytes = json.writeValueAsBytes(response);
                 try {
-                    output.writeInt(bytes.length);
-                    output.write(bytes);
-                    output.flush();
+                    WorkerHttp.write(output, bytes);
                 } catch (IOException disconnected) {
                     // EXEC can finish before its poll replies; shutdown then closes that receiver.
                     // Parsing, handler failures and writes for every other operation still fail.

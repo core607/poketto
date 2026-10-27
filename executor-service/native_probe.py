@@ -13,7 +13,6 @@ import shlex
 import signal
 import socket
 import stat
-import struct
 import subprocess
 import sys
 import threading
@@ -22,7 +21,6 @@ import uuid
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from worker import recv_exact
 from native_pool import NativePool
 from resource_pool import check_service, properties
 
@@ -101,18 +99,28 @@ def main():
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             try:
-                return rpc({'version': 1, 'operation': 'HELLO'})
+                return rpc(None)
             except OSError:
                 time.sleep(.1)
         raise RuntimeError('Worker startup failed')
     def rpc(envelope):
+        """One HTTP exchange: the handshake for None, otherwise one signed envelope."""
+        raw = b'' if envelope is None else json.dumps(envelope).encode()
+        head = b'GET /v1/hello' if envelope is None else b'POST /v1/requests'
+        head += b' HTTP/1.1\r\nHost: sandcrab\r\n'
+        if raw:
+            head += b'Content-Length: %d\r\n' % len(raw)
         with socket.socket(socket.AF_UNIX) as client:
             client.settimeout(40)
             client.connect(config['socketPath'])
-            raw = json.dumps(envelope).encode()
-            client.sendall(struct.pack('!I', len(raw)) + raw)
-            size, = struct.unpack('!I', recv_exact(client, 4))
-            return json.loads(recv_exact(client, size))
+            client.sendall(head + b'\r\n' + raw)
+            response = b''
+            while len(response) <= 1048576 + 8192:
+                part = client.recv(65536)
+                if not part:
+                    break
+                response += part
+        return json.loads(response.partition(b'\r\n\r\n')[2])
     def signed(p):
         raw = json.dumps(p).encode()
         return {'payload': b64(raw), 'signature': b64(key.sign(raw))}
@@ -409,7 +417,7 @@ def main():
         wait_until(lambda: events()['oom_kill'] > before['oom_kill'], 'Parent pool OOM was not observed')
         assert events(local=True)['oom'] > before_local['oom']
         assert int(properties(supervisor + '.service')['MainPID']) == main_pid
-        assert rpc({'version': 1, 'operation': 'HELLO'})['workerBootId'] == boot
+        assert rpc(None)['workerBootId'] == boot
         parent_lines = journal_scope('/' + group.relative_to('/sys/fs/cgroup').as_posix())
         for stop in (first_stop, second_stop):
             stop.set()
@@ -432,8 +440,8 @@ def main():
                 connections.append(client)
                 try:
                     client.connect(config['socketPath'])
-                    client.sendall(struct.pack('!I', 1048576))
-                    # Hold real native frame buffers before parsing, within the frame ceiling.
+                    client.sendall(b'POST /v1/requests HTTP/1.1\r\nContent-Length: 1048576\r\n\r\n')
+                    # Hold real native body buffers before parsing, within the body ceiling.
                     for _ in range(15):
                         client.sendall(b'x' * 65536)
                     client.sendall(b'x' * 65535)

@@ -1,4 +1,4 @@
-"""Protocol consumers exercise the independently built supervisor through Unix frames."""
+"""Protocol consumers exercise the independently built supervisor through HTTP on its Unix socket."""
 import base64
 import json
 from pathlib import Path
@@ -23,14 +23,14 @@ class RustSupervisorTests(unittest.TestCase):
         self.assertEqual('PASS', result['result'])
         self.assertEqual(expected, result[count_key])
 
-    def test_signed_frames_replay_identity_capacity_and_revocation(self):
+    def test_signed_requests_replay_identity_capacity_and_revocation(self):
         self.probe('compare.py', 'differentialCases', 72)
 
     def test_bridge_and_concurrent_control_use_real_fifo_files(self):
         self.probe('full-control-check.py', 'bridgeAndControlChecks', 48)
 
     def test_handshake_and_configured_lease_are_not_replay_entries(self):
-        self.probe('handshake-check.py', 'handshakeAndConfiguredLeaseChecks', 42)
+        self.probe('handshake-check.py', 'handshakeAndConfiguredLeaseChecks', 30)
 
     def test_installed_program_does_not_accept_the_fixture_entry(self):
         root = Path(__file__).resolve().parent
