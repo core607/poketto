@@ -35,8 +35,4 @@ Installations install the matching updater before deploying the new file set ([d
 
 `executorRustCheck` runs the launcher tests on real root-owned files, the provisioning, seed and baseline tests, and the translation of each worker mode's policy in [policies.json](../../executor-service/rust/poketto-launch/testdata/policies.json). [test_launcher.py](../../executor-service/test_launcher.py) keeps that fixture equal to the Python workers' policies.
 
-The [launcher comparison receipt](../../executor-native/evidence/2026-10-27-sandcrab-launcher-comparison.json) from the production host found identical snapshots and toolkit results for the Python and Rust launchers, both refusing tampered tools. Median startup CPU fell to 0.57 of the Python launcher's; memory and task ratios were 1.13 and 1.0.
-
-The [native probe receipt](../../executor-native/evidence/2026-10-27-sandcrab-native-probe.json) records the adapter and game scenarios passing on the same host.
-
-Named gap: the 50-agent round before and after, with CPU split by application container, supervisor and sandbox units, has not run for this change.
+Production-host receipts: the [launcher comparison](../../executor-native/evidence/2026-10-27-sandcrab-launcher-comparison.json) found identical snapshots and toolkit results and refused tampered tools; startup CPU, memory and task ratios were 0.57, 1.13 and 1.0; the [native probes](../../executor-native/evidence/2026-10-27-sandcrab-native-probe.json) passed the adapter and game scenarios. The [50-agent rounds](../../acceptance/evidence/2026-10-27-sandcrab-50-agent-rounds.json) with unchanged bounds kept goodput, lowered p95 from 0.56 s to 0.41 s and refusals from 78 to 67, and reduced supervisor and sandbox CPU; application CPU, with no application change, rose only while the application was warming up after a restart.
