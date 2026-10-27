@@ -44,7 +44,7 @@ Poketto composes copies, seeds, publication checks, saves, moves and journals in
 0. Validation without production code, recorded below.
 1. In-repository split, shipped as the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md).
 2. Finite jobs, shipped as [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md).
-3. Repository operations move to the primitives until the daemon contains no Poketto code, step by step: HTTP on the Unix socket ([wire reference](../../executor-service/README.md#wire-version-1)), shipped; the operation map's extension families in the order snapshot, apply, frozen job, volumes, host calls; finally labels, identity fields and the unit name check become caller metadata and profile settings, and the Poketto extension crate is removed.
+3. Repository operations move to the primitives until the daemon contains no Poketto code, step by step: HTTP on the Unix socket ([wire reference](../../executor-service/README.md#wire-version-1)), shipped; the operation map's extension families in the order snapshot (captures shipped), apply, frozen job, volumes, host calls; finally labels, identity fields and the unit name check become caller metadata and profile settings, and the Poketto extension crate is removed.
 4. Extraction. Move the crates to their own repository with history, publish releases with checksums and benchmarks, and pin a release in Poketto. This phase starts only after phases 1 to 3 have shipped and four weeks have passed without a change that crosses the boundary.
 
 ### Phase 0 findings
