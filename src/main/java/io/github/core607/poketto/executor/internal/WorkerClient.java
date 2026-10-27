@@ -240,14 +240,7 @@ final class WorkerClient {
 
     private <T> T exchange(String method, String path, byte[] body, Duration timeout, Duration idle, Body<T> reader) {
         verifySocket.run();
-        byte[] bytes = body == null ? new byte[0] : body;
-        require(bytes.length <= MAX_FRAME);
-        byte[] request = (method + " " + path + " HTTP/1.1\r\nHost: sandcrab\r\n"
-                        + (bytes.length > 0
-                                ? "Content-Type: application/json\r\nContent-Length: " + bytes.length + "\r\n"
-                                : "")
-                        + "Connection: close\r\n\r\n")
-                .getBytes(StandardCharsets.US_ASCII);
+        ByteBuffer output = request(method, path, body == null ? new byte[0] : body);
         long deadline = System.nanoTime() + timeout.toNanos();
         String phase = "connect";
         boolean reading = false;
@@ -262,10 +255,6 @@ final class WorkerClient {
             phase = "peer-verification";
             verifyPeer.accept(channel);
             phase = "request-write";
-            ByteBuffer output = ByteBuffer.allocate(request.length + bytes.length)
-                    .put(request)
-                    .put(bytes)
-                    .flip();
             while (output.hasRemaining()) {
                 deadline(deadline);
                 if (channel.write(output) == 0) {
@@ -273,48 +262,67 @@ final class WorkerClient {
                 }
             }
             phase = "response-header";
-            ByteBuffer head = ByteBuffer.allocate(MAX_HEAD + 4);
-            int end;
-            while ((end = headEnd(head)) < 0) {
-                require(head.hasRemaining());
-                var input = new ChannelInput(channel, selector, deadline, 0, head.remaining(), null, 0, 0);
-                int read = input.read(head.array(), head.position(), head.remaining());
-                if (read < 0) {
-                    throw new IOException("incomplete worker response");
-                }
-                head.position(head.position() + read);
-            }
-            Head parsed = head(new String(head.array(), 0, end, StandardCharsets.US_ASCII));
-            int received = head.position() - end - 4;
-            require(received <= parsed.length());
+            Response response = response(channel, selector, deadline, idle.toNanos());
             phase = "response-body";
-            var input = new ChannelInput(
-                    channel, selector, deadline, idle.toNanos(), parsed.length(), head.array(), end + 4, received);
             reading = true;
-            return reader.read(parsed, input);
-        } catch (IOException exception) {
-            log.warn(
-                    "Worker exchange failed during {} ({})",
-                    phase,
-                    exception.getClass().getSimpleName());
-            throw new WorkerUnavailableException(exception);
-        } catch (WorkerUnavailableException unavailable) {
-            log.warn(
-                    "Worker exchange failed during {} ({})",
-                    phase,
-                    unavailable.getClass().getSimpleName());
-            throw unavailable;
+            return reader.read(response.head(), response.body());
+        } catch (IOException | WorkerUnavailableException exception) {
+            throw unavailable(phase, exception);
         } catch (RuntimeException exception) {
             if (reading) {
                 // A reader's own refusal, such as an invalid selection, keeps its meaning.
                 throw exception;
             }
-            log.warn(
-                    "Worker exchange failed during {} ({})",
-                    phase,
-                    exception.getClass().getSimpleName());
-            throw new WorkerUnavailableException(exception);
+            throw unavailable(phase, exception);
         }
+    }
+
+    private static WorkerUnavailableException unavailable(String phase, Exception exception) {
+        log.warn(
+                "Worker exchange failed during {} ({})",
+                phase,
+                exception.getClass().getSimpleName());
+        return exception instanceof WorkerUnavailableException unavailable
+                ? unavailable
+                : new WorkerUnavailableException(exception);
+    }
+
+    private static ByteBuffer request(String method, String path, byte[] body) {
+        require(body.length <= MAX_FRAME);
+        byte[] head = (method + " " + path + " HTTP/1.1\r\nHost: sandcrab\r\n"
+                        + (body.length > 0
+                                ? "Content-Type: application/json\r\nContent-Length: " + body.length + "\r\n"
+                                : "")
+                        + "Connection: close\r\n\r\n")
+                .getBytes(StandardCharsets.US_ASCII);
+        return ByteBuffer.allocate(head.length + body.length)
+                .put(head)
+                .put(body)
+                .flip();
+    }
+
+    private record Response(Head head, InputStream body) {}
+
+    /** The response head and its declared body, beginning with the bytes that arrived with the head. */
+    private static Response response(SocketChannel channel, Selector selector, long deadline, long idle)
+            throws IOException {
+        ByteBuffer head = ByteBuffer.allocate(MAX_HEAD + 4);
+        int end;
+        while ((end = headEnd(head)) < 0) {
+            require(head.hasRemaining());
+            var input = new ChannelInput(channel, selector, deadline, 0, head.remaining(), null, 0, 0);
+            int read = input.read(head.array(), head.position(), head.remaining());
+            if (read < 0) {
+                throw new IOException("incomplete worker response");
+            }
+            head.position(head.position() + read);
+        }
+        Head parsed = head(new String(head.array(), 0, end, StandardCharsets.US_ASCII));
+        int received = head.position() - end - 4;
+        require(received <= parsed.length());
+        return new Response(
+                parsed,
+                new ChannelInput(channel, selector, deadline, idle, parsed.length(), head.array(), end + 4, received));
     }
 
     /** The offset of the blank line ending the response head, or -1 before it has arrived. */
