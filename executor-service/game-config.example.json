@@ -3,7 +3,6 @@
   "socketPath": "/run/poketto-games/control.sock",
   "publicKey": "/etc/poketto-games/public.pem",
   "toolsRoot": "/opt/poketto-executor/tools",
-  "launcher": "/opt/poketto-games/poketto-launch",
   "execUser": "poketto-game",
   "repositoryExecUser": "poketto-exec",
   "repositoryRuntimeRoot": "/run/poketto-executor",

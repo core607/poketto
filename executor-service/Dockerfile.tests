@@ -20,6 +20,7 @@ COPY --from=rust-build /source/target/x86_64-unknown-linux-musl/release/poketto-
 COPY --from=rust-build /source/target/x86_64-unknown-linux-musl/release/poketto-syncfs /poketto-syncfs
 COPY --from=rust-build /source/target/x86_64-unknown-linux-musl/release/poketto-supervisor /poketto-supervisor
 COPY --from=rust-build /source/target/x86_64-unknown-linux-musl/release/poketto-launch /poketto-launch
+COPY --from=rust-build /source/target/x86_64-unknown-linux-musl/release/poketto-games /poketto-games
 
 FROM scratch AS fixture-binary
 COPY --from=supervisor-fixture /source/target/x86_64-unknown-linux-musl/release/poketto-supervisor-fixture /poketto-supervisor-fixture

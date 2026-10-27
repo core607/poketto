@@ -107,12 +107,17 @@ Games are disabled unless `poketto.games.enabled=true`. Configure
 Disabled games have no active marker or execution entrance; stored saves remain in
 PostgreSQL. This switch is independent of plaza interactions.
 
-`./gradlew stageGameWorker` stages the worker sources and the exact browser rule
-runtime. Use [the worker example](../executor-service/game-config.example.json),
+`./gradlew stageGameWorker` stages the static Rust `poketto-games` supervisor, its
+`poketto-launch` and the exact browser rule runtime (`game-entry.mjs`,
+`game-runtime.mjs`). Install them in one root-owned directory; the supervisor uses only
+the launcher and runtime beside itself. Use [the configuration
+example](../executor-service/game-config.example.json),
 [service](../executor-service/poketto-games.service) and
 [slice](../executor-service/pokettogames.slice) with the existing pinned sandbox
-toolchain described in the [worker reference](../executor-service/README.md).
-Replace example paths and IDs with operator configuration outside the repository.
+toolchain described in the [worker reference](../executor-service/README.md). The
+configuration file must be root-owned mode 0600 in a root-owned directory no other
+account can write. Replace example paths and IDs with operator configuration outside
+the repository.
 
 With the bundled deployment entrance, set `POKETTO_GAMES_ENABLED=true`,
 `POKETTO_GAMES_RUNTIME_DIR_HOST`, `POKETTO_GAMES_SIGNING_KEY_HOST` and optionally
@@ -132,12 +137,15 @@ prefix and resource slice from the repository worker. Startup rejects overlappin
 runtime directories, matching execution accounts or shared slice names. The game
 protocol offers only jobs and revocation, without repository exports, retained
 copies or a command bridge. No containment failure falls back to a host process.
+A cancelled or expired job returns `GAME_EXPIRED`, and a job whose output is not one
+JSON step returns `INVALID_GAME_OUTPUT`.
 
 The example allows two jobs, each bounded to five seconds, 128 MiB RAM, 48 tasks,
 50% CPU, 2 MiB temporary storage and 96 KiB output. Tasks include bubblewrap and Node's own
 threads; configurations with fewer than 48 tasks per job are rejected. The independent slice caps aggregate use
 at 384 MiB, 128 tasks and 100% CPU with swap disabled. Failed containment retains
-admission until supervisor recovery confirms cleanup. Separate limits protect
+admission, and revocation reports that job as closing, until a supervisor restart
+confirms cleanup. Separate limits protect
 repository admission; shared host CPU can still increase latency.
 
 ## Verification
@@ -153,7 +161,7 @@ conflicts and browser/agent handoff; DOM tests do not prove browser isolation.
 For the authenticated HTTP/MCP path, stage the acceptance runtime and manifest as
 described in [client acceptance](../acceptance/clients/README.md). Keep
 `executor-native/game_fixture.py` beside its staged probe tree. Add `--games` to
-`native-host.py` to seed the example and start its separate game worker, then run
+`native-host.py` to seed the example and start its separate game supervisor, then run
 `games-http.py --fixture FIXTURE_ROOT` on that host. Require `gamesHttp: PASS` and
 the controller's cleanup result. This verifies real account services, saves and
 native jobs, but does not execute the browser iframe. `--origin` can select a

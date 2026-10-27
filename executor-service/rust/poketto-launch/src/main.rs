@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
 //! Poketto's sandbox launcher. Each systemd unit runs it as the execution account with the
 //! launch record and policy the supervisor wrote; it chooses the fixed command for the
-//! record's mode and replaces itself with bubblewrap. Supervisors call `--verify` (with the
-//! sandbox program directory) or `--verify-tools` (games) before serving.
+//! record's mode and replaces itself with bubblewrap. `--verify` checks the tools and the
+//! sandbox program directory without launching.
 use sandcrab_launch::{
     Error, enter_bootstrap, exec, sandbox_arguments, verify_programs, verify_tools,
 };
@@ -122,7 +122,6 @@ fn run(args: &[String]) -> Result<(), Error> {
             verify_tools(Path::new(tools))?;
             verify_programs(&program_directory()?, &PROGRAMS)
         }
-        [flag, tools] if flag == "--verify-tools" => verify_tools(Path::new(tools)).map(|_| ()),
         [record] if !record.starts_with('-') => {
             if rustix::process::geteuid().is_root() {
                 return Err(Error("Dedicated unprivileged account required".into()));
@@ -131,7 +130,7 @@ fn run(args: &[String]) -> Result<(), Error> {
             Err(exec(&arguments, &environment))
         }
         _ => Err(Error(
-            "Usage: poketto-launch RECORD | --verify TOOLS | --verify-tools TOOLS".into(),
+            "Usage: poketto-launch RECORD | --verify TOOLS".into(),
         )),
     }
 }
@@ -203,7 +202,7 @@ mod tests {
         ] {
             assert!(plan(&record).is_err(), "{record}");
         }
-        assert!(run(&["--verify-tools".into(), "/nonexistent-tools".into()]).is_err());
+        assert!(run(&["--verify".into(), "/nonexistent-tools".into()]).is_err());
         assert!(run(&["--bogus".into()]).is_err());
         assert!(run(&[]).is_err());
     }

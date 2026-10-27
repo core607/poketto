@@ -4,9 +4,7 @@ Date: 2026-10-26
 
 ## Problem
 
-Poketto dispatches sandboxed work through three implementations. Repository execution uses the static Rust supervisor ([Rust repository supervisor](../implemented/2026-10-21-rust-repository-supervisor.md)). Games use [game_worker.py](../../executor-service/game_worker.py), which builds its service, session, systemd backend and server from classes in [worker.py](../../executor-service/worker.py). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases with its own TypeScript client. Every path starts sandboxes through the Rust launcher of the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md). A further consumer, a corpus command for [creator QA](../implemented/2026-10-09-creator-qa.md), would need a fourth path or another Python service.
-
-The duplication reaches verification. Most executor-service Python tests import the Python modules the game supervisor runs, while the Rust crates are covered by their unit tests, the differential frame comparisons in [test_supervisor.py](../../executor-service/test_supervisor.py) and the native probes.
+Repository execution and games run on the static Rust daemon ([Rust repository supervisor](../implemented/2026-10-21-rust-repository-supervisor.md), [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md)), and every path starts sandboxes through the Rust launcher of the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases with its own TypeScript client.
 
 The [daemon](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still serves Poketto's copy operations through an extension and keeps Poketto's signed frame schema, so it is not reusable alone.
 
@@ -45,7 +43,7 @@ Poketto composes copies, seeds, publication checks, saves, moves and journals in
 
 0. Validation, without production code. Check that the OpenSandbox Kotlin SDK reaches execd through the daemon over loopback. Map saves, moves and bridge requests onto the primitives and count the operations that need extensions. Measure the specification changes from 1.1.0 to 1.2.0. Benchmark one signed frame against one keep-alive HTTP request.
 1. In-repository split, shipped as the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md), which also lists its outstanding native acceptance.
-2. Finite jobs. Games and the QA corpus command run as jobs; game_worker.py retires, and worker.py loses its production role.
+2. Finite jobs, shipped as [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md).
 3. Repository operations move to the primitives until the daemon contains no Poketto code.
 4. Extraction. Move the crates to their own repository with history, publish releases with checksums and benchmarks, and pin a release in Poketto. This phase starts only after phases 1 to 3 have shipped and four weeks have passed without a change that crosses the boundary.
 
@@ -73,10 +71,9 @@ ARTIFACT_READ and ARTIFACT_REMOVE move to Poketto, which keeps artifact bytes af
 
 ## Acceptance criteria
 
-- Phases 2 and 3:
-  - The native adapter probe, the toolkit acceptance, the game worker's tests and the `load` lane pass.
+- Phase 3:
+  - The native adapter probe, the toolkit acceptance, the game supervisor's tests and the `load` lane pass.
   - A 50-agent round on one host with unchanged bounds, before and after, reports goodput, p95 latency, refusals and CPU split by application container, supervisor and sandbox units, and none gets worse.
-- Phase 2 runs the native games scenario through the Rust daemon and removes game_worker.py.
 - Phase 4 publishes the OpenAPI document, the threat model and a conformance run of the OpenSandbox Python and Kotlin SDKs against the supported subset.
 
 ## Alternatives

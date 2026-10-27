@@ -68,23 +68,6 @@ fn invalid() -> io::Error {
 fn checked(args: &[String]) -> io::Result<std::process::Output> {
     sandcrab_core::unit::checked(args, Duration::from_secs(15))
 }
-pub fn runtime_lock(root: &Path) -> io::Result<File> {
-    protected_directory(root)?;
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .custom_flags((OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
-        .open(root.join(".supervisor.lock"))?;
-    let info = file.metadata()?;
-    if !info.is_file() || info.uid() != 0 || info.mode() & 0o077 != 0 {
-        return Err(invalid());
-    }
-    flock(&file, FlockOperation::NonBlockingLockExclusive)?;
-    Ok(file)
-}
 pub(crate) fn identity(value: &Value, expected: &Description) -> io::Result<u64> {
     let object = value.as_object().ok_or_else(invalid)?;
     let fields = [

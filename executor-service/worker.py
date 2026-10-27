@@ -57,9 +57,9 @@ def program_directory(launcher):
     return Path(launcher).resolve(strict=True).parent / 'bin'
 
 
-def verify_launch(launcher, tools, programs=True):
-    """Ask the installed Rust launcher to verify the tools and, for repositories, the programs."""
-    result = subprocess.run([str(launcher), '--verify' if programs else '--verify-tools', str(tools)],
+def verify_launch(launcher, tools):
+    """Ask the installed Rust launcher to verify the tools and the sandbox programs."""
+    result = subprocess.run([str(launcher), '--verify', str(tools)],
                             stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=15,
                             env={'PATH': '/usr/bin:/bin'})
     if result.returncode:

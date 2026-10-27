@@ -1,11 +1,11 @@
 //! Installed CLI configuration, protected public key and application-owned socket access.
-use crate::{Repository, lease, provision};
-use ed25519_dalek::{VerifyingKey, pkcs8::DecodePublicKey};
-use rustix::{
-    fs::OFlags,
-    process::{Resource, getrlimit, setrlimit},
+use crate::{Repository, provision};
+use rustix::process::{Resource, getrlimit, setrlimit};
+use sandcrab_daemon::{
+    Service, Settings,
+    install::{execution_account, load_key, runtime_lock, unit_name as name},
+    server,
 };
-use sandcrab_daemon::{Service, Settings, server};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use signal_hook::{
@@ -13,9 +13,9 @@ use signal_hook::{
     flag,
 };
 use std::{
-    fs::{DirBuilder, File, OpenOptions},
-    io::{self, Read},
-    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
+    fs::{DirBuilder, File},
+    io,
+    os::unix::fs::DirBuilderExt,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -42,25 +42,6 @@ fn path(value: &Value, key: &str) -> io::Result<PathBuf> {
         return Err(invalid());
     }
     Ok(path)
-}
-fn name(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 240
-        && value.as_bytes()[0].is_ascii_alphanumeric()
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
-}
-fn account_id(user: &str, kind: &str) -> io::Result<u32> {
-    let output = sandcrab_core::unit::checked(
-        &["id".into(), kind.into(), user.into()],
-        Duration::from_secs(15),
-    )?;
-    std::str::from_utf8(&output.stdout)
-        .map_err(|_| invalid())?
-        .trim()
-        .parse()
-        .map_err(|_| invalid())
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -173,21 +154,7 @@ impl Config {
             .as_u64()
             .and_then(|v| u32::try_from(v).ok())
             .ok_or_else(invalid)?;
-        let exec_uid = account_id(&exec_user, "-u")?;
-        let exec_gid = account_id(&exec_user, "-g")?;
-        let groups = sandcrab_core::unit::checked(
-            &["id".into(), "-G".into(), exec_user.clone()],
-            Duration::from_secs(15),
-        )?;
-        if exec_uid == 0
-            || exec_uid == app_uid
-            || std::str::from_utf8(&groups.stdout)
-                .map_err(|_| invalid())?
-                .split_whitespace()
-                .any(|v| v.parse::<u32>().ok() == Some(app_gid))
-        {
-            return Err(invalid());
-        }
+        let (exec_uid, exec_gid) = execution_account(&exec_user, app_uid, app_gid)?;
         let backend = provision::Config {
             runtime_root,
             export_root: path(value, "exportRoot")?,
@@ -222,29 +189,6 @@ impl Config {
         })
     }
 }
-fn load_key(path: &Path) -> io::Result<VerifyingKey> {
-    sandcrab_core::fs::protected_directory(path.parent().ok_or_else(invalid)?)?;
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags((OFlags::NOFOLLOW | OFlags::NONBLOCK).bits() as i32)
-        .open(path)?;
-    let info = file.metadata()?;
-    if !info.is_file()
-        || info.uid() != 0
-        || info.mode() & 0o022 != 0
-        || info.len() > 16384
-        || info.nlink() != 1
-    {
-        return Err(invalid());
-    }
-    let mut bytes = Vec::new();
-    file.take(16385).read_to_end(&mut bytes)?;
-    if bytes.len() > 16384 {
-        return Err(invalid());
-    }
-    let pem = std::str::from_utf8(&bytes).map_err(|_| invalid())?;
-    VerifyingKey::from_public_key_pem(pem).map_err(|_| invalid())
-}
 fn root_lock(config: &provision::Config) -> io::Result<File> {
     if !config.runtime_root.exists() {
         let ancestor = config
@@ -259,7 +203,7 @@ fn root_lock(config: &provision::Config) -> io::Result<File> {
             .mode(0o750)
             .create(&config.runtime_root)?;
     }
-    lease::runtime_lock(&config.runtime_root)
+    runtime_lock(&config.runtime_root)
 }
 pub fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     if rustix::process::geteuid().as_raw() != 0 {

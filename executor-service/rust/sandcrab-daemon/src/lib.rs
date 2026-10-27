@@ -6,6 +6,8 @@
 
 mod admission;
 pub mod files;
+pub mod install;
+pub mod job;
 pub mod runtime;
 pub mod server;
 use sandcrab_core::{artifacts, mailbox, transfer, uuid};
@@ -47,8 +49,8 @@ const FIELDS: [&str; 13] = [
     "leaseId",
     "data",
 ];
-/// Signed operations the daemon serves itself; an extension adds its own.
-const OPERATIONS: [&str; 18] = [
+/// Signed lease operations the daemon serves itself; an extension may serve fewer and adds its own.
+pub const LEASE_OPERATIONS: &[&str] = &[
     "RENEW",
     "CLOSE",
     "REVOKE",
@@ -89,6 +91,11 @@ const ENCODING: GeneralPurpose = GeneralPurpose::new(
 pub trait Extension: Send + Sync {
     /// Signed operations the extension accepts in addition to the daemon's own.
     fn operations(&self) -> &'static [&'static str];
+    /// The daemon's own signed operations this service accepts; a service of finite jobs
+    /// keeps only `REVOKE`.
+    fn lease_operations(&self) -> &'static [&'static str] {
+        LEASE_OPERATIONS
+    }
     /// Protocol fields of the unsigned HELLO reply, between its version and worker fields.
     fn hello(&self) -> serde_json::Map<String, Value>;
     /// The directory below each lease mount that captures, installs and artifacts address.
@@ -162,6 +169,31 @@ pub struct Settings {
     #[serde(default)]
     pub revoked_accounts: Vec<(String, String)>,
 }
+impl Settings {
+    /// Installed settings with the default limits, which callers then override.
+    pub fn new(worker_boot_id: String, max_requests: usize) -> Self {
+        Self {
+            #[cfg(feature = "fixture")]
+            public_key: String::new(),
+            worker_boot_id,
+            sessions: vec![],
+            max_requests,
+            lease_seconds: default_lease_seconds(),
+            renew_after_seconds: default_renew_after_seconds(),
+            #[cfg(feature = "fixture")]
+            max_connections: 1,
+            runtime_root: None,
+            max_sessions: default_sessions(),
+            max_timeout_millis: default_timeout(),
+            max_executions_per_session: default_executions(),
+            max_live_units: default_live_units(),
+            max_starting_units: default_starting_units(),
+            idle_unit_seconds: default_idle_seconds(),
+            revoked_keys: vec![],
+            revoked_accounts: vec![],
+        }
+    }
+}
 fn default_lease_seconds() -> u64 {
     15
 }
@@ -187,8 +219,10 @@ fn default_live_units() -> usize {
     224
 }
 /// One lease. `commit`, `git_commit` and `scope` are labels the extension sets; the daemon
-/// compares `commit` with each EXEC request and returns the labels unchanged.
+/// compares `commit` with each EXEC request and returns the labels unchanged. A finite job's
+/// lease (`job`) is closed and removed by the handler that runs it, never by cancellation.
 pub struct Session {
+    pub job: bool,
     pub identity: Vec<String>,
     pub deadline: f64,
     pub cancelled: Arc<AtomicBool>,
@@ -302,6 +336,7 @@ impl Service {
             state.sessions.insert(
                 lease.into(),
                 Session {
+                    job: false,
                     identity,
                     deadline: value["deadline"].as_f64().ok_or("deadline")?,
                     cancelled: Arc::new(AtomicBool::new(false)),
@@ -404,7 +439,8 @@ impl Service {
             return Err("LEASE_EXPIRED");
         }
         let operation = string(&payload, "operation")?;
-        if !(OPERATIONS.contains(&operation) || self.extension.operations().contains(&operation))
+        if !(self.extension.lease_operations().contains(&operation)
+            || self.extension.operations().contains(&operation))
             || !payload["data"].is_object()
         {
             return Err("INVALID_REQUEST");
@@ -983,7 +1019,10 @@ impl Service {
             let Some(session) = state.sessions.get(lease) else {
                 return;
             };
-            if !session.cancelled.load(Ordering::SeqCst) || session.status == "CLOSED" {
+            if !session.cancelled.load(Ordering::SeqCst)
+                || session.status == "CLOSED"
+                || session.job
+            {
                 return;
             }
             (session.bridge.clone(), session.runtime.clone())
