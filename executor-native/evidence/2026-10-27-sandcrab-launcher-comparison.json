@@ -1,0 +1,338 @@
+{
+  "measurements": [
+    {
+      "path": "reference",
+      "iteration": 0,
+      "startupCpuUsec": 93349,
+      "memoryBytes": 1626112,
+      "idleTasks": 6,
+      "readyMs": 139,
+      "commandMs": 0
+    },
+    {
+      "path": "direct",
+      "iteration": 0,
+      "startupCpuUsec": 56532,
+      "memoryBytes": 1957888,
+      "idleTasks": 6,
+      "readyMs": 100,
+      "commandMs": 31
+    },
+    {
+      "path": "reference",
+      "iteration": 1,
+      "startupCpuUsec": 84295,
+      "memoryBytes": 1576960,
+      "idleTasks": 6,
+      "readyMs": 143,
+      "commandMs": 2
+    },
+    {
+      "path": "direct",
+      "iteration": 1,
+      "startupCpuUsec": 43076,
+      "memoryBytes": 1490944,
+      "idleTasks": 6,
+      "readyMs": 59,
+      "commandMs": 2
+    },
+    {
+      "path": "reference",
+      "iteration": 2,
+      "startupCpuUsec": 88062,
+      "memoryBytes": 1814528,
+      "idleTasks": 6,
+      "readyMs": 155,
+      "commandMs": 0
+    },
+    {
+      "path": "direct",
+      "iteration": 2,
+      "startupCpuUsec": 50405,
+      "memoryBytes": 1839104,
+      "idleTasks": 6,
+      "readyMs": 81,
+      "commandMs": 2
+    }
+  ],
+  "medians": {
+    "reference": {
+      "startupCpuUsec": 88062,
+      "memoryBytes": 1626112,
+      "idleTasks": 6,
+      "readyMs": 143
+    },
+    "direct": {
+      "startupCpuUsec": 50405,
+      "memoryBytes": 1839104,
+      "idleTasks": 6,
+      "readyMs": 81
+    }
+  },
+  "snapshots": {
+    "reference": {
+      "assertions": [
+        "host-read-denied:/etc/passwd",
+        "host-read-denied:/root",
+        "host-read-denied:/home",
+        "host-read-denied:/srv",
+        "host-read-denied:$FIXTURE/host-canary",
+        "host-read-denied:$FIXTURE/sessions",
+        "host-sysfs-hidden",
+        "read-mount-readonly:$TOOLS",
+        "read-grant-not-writable:$TOOLS",
+        "read-mount-readonly:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bootstrap",
+        "read-grant-not-writable:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bootstrap",
+        "read-mount-readonly:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/responses",
+        "read-grant-not-writable:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/responses",
+        "read-mount-readonly:/usr",
+        "read-grant-not-writable:/usr",
+        "read-mount-readonly:/",
+        "read-grant-not-writable:/",
+        "write-mount-writable:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/work",
+        "write-grant:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/work",
+        "write-mount-writable:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/home",
+        "write-grant:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/home",
+        "write-mount-writable:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/requests",
+        "write-grant:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/requests",
+        "write-mount-writable:/tmp",
+        "write-grant:/tmp",
+        "unix-socket-blocked",
+        "io-uring-blocked:425",
+        "io-uring-blocked:426",
+        "io-uring-blocked:427",
+        "network-blocked:1.1.1.1",
+        "network-blocked:127.0.0.1",
+        "capabilities-empty",
+        "no-new-privileges",
+        "seccomp-active",
+        "unprivileged-uid",
+        "outer-processes-hidden",
+        "pid-one-trace-denied"
+      ],
+      "security": {
+        "CapInh": "0000000000000000",
+        "CapPrm": "0000000000000000",
+        "CapEff": "0000000000000000",
+        "CapBnd": "000001ffffffffff",
+        "CapAmb": "0000000000000000",
+        "NoNewPrivs": "1",
+        "Seccomp": "2"
+      },
+      "processes": [
+        {
+          "pid": 1,
+          "comm": "apply-seccomp"
+        },
+        {
+          "pid": 2,
+          "comm": "poketto-shell"
+        },
+        {
+          "pid": 3,
+          "comm": "bash"
+        },
+        {
+          "pid": 4,
+          "comm": "python3"
+        }
+      ],
+      "environmentNames": [
+        "GIT_CONFIG_GLOBAL",
+        "GIT_CONFIG_NOSYSTEM",
+        "HOME",
+        "LC_CTYPE",
+        "NODE_COMPILE_CACHE",
+        "PATH",
+        "POKETTO_BRIDGE",
+        "POKETTO_EXECUTION_ID",
+        "PWD",
+        "SANDBOX_RUNTIME",
+        "SHLVL",
+        "TMPDIR",
+        "_"
+      ],
+      "temporaryDirectory": "/tmp",
+      "mounts": [
+        "785 784 0:69 /newroot / ro,nosuid,nodev,relatime - tmpfs tmpfs rw,uid=991,gid=976,inode64",
+        "786 785 253:3 /usr /usr ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "787 785 253:3 /etc/ld.so.cache /etc/ld.so.cache ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "788 785 253:3 $TOOLS $TOOLS ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "789 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bootstrap $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bootstrap ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "790 785 253:3 $PROGRAMS $PROGRAMS ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "791 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/lock $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/lock ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "792 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/state $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/state ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "793 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/responses $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/responses ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "794 785 253:3 $REFERENCE_PROGRAMS $REFERENCE_PROGRAMS ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "795 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/work $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/work rw,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "796 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/home $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/home rw,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "797 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/requests $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/requests rw,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "798 785 0:68 / /tmp rw,nosuid,nodev - tmpfs tmpfs rw,size=8192k,nr_inodes=1024,inode64",
+        "799 785 0:70 / /dev rw,nosuid,nodev,relatime - tmpfs tmpfs rw,mode=755,uid=991,gid=976,inode64",
+        "800 799 0:7 /null /dev/null rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "801 799 0:7 /zero /dev/zero rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "802 799 0:7 /full /dev/full rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "803 799 0:7 /random /dev/random rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "804 799 0:7 /urandom /dev/urandom rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "805 799 0:7 /tty /dev/tty rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "806 799 0:72 / /dev/pts rw,nosuid,noexec,relatime - devpts devpts rw,mode=620,ptmxmode=666",
+        "807 785 0:96 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw",
+        "808 807 0:98 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw"
+      ],
+      "toolkit": {
+        "result": "PASS",
+        "checks": [
+          "image-font-webp",
+          "html-xml",
+          "docx",
+          "xlsx",
+          "pdf-copy-render",
+          "zip",
+          "awk",
+          "git"
+        ]
+      }
+    },
+    "direct": {
+      "assertions": [
+        "host-read-denied:/etc/passwd",
+        "host-read-denied:/root",
+        "host-read-denied:/home",
+        "host-read-denied:/srv",
+        "host-read-denied:$FIXTURE/host-canary",
+        "host-read-denied:$FIXTURE/sessions",
+        "host-sysfs-hidden",
+        "read-mount-readonly:$TOOLS",
+        "read-grant-not-writable:$TOOLS",
+        "read-mount-readonly:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bootstrap",
+        "read-grant-not-writable:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bootstrap",
+        "read-mount-readonly:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/responses",
+        "read-grant-not-writable:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/responses",
+        "read-mount-readonly:/usr",
+        "read-grant-not-writable:/usr",
+        "read-mount-readonly:/",
+        "read-grant-not-writable:/",
+        "write-mount-writable:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/work",
+        "write-grant:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/work",
+        "write-mount-writable:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/home",
+        "write-grant:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/home",
+        "write-mount-writable:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/requests",
+        "write-grant:$FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/requests",
+        "write-mount-writable:/tmp",
+        "write-grant:/tmp",
+        "unix-socket-blocked",
+        "io-uring-blocked:425",
+        "io-uring-blocked:426",
+        "io-uring-blocked:427",
+        "network-blocked:1.1.1.1",
+        "network-blocked:127.0.0.1",
+        "capabilities-empty",
+        "no-new-privileges",
+        "seccomp-active",
+        "unprivileged-uid",
+        "outer-processes-hidden",
+        "pid-one-trace-denied"
+      ],
+      "security": {
+        "CapInh": "0000000000000000",
+        "CapPrm": "0000000000000000",
+        "CapEff": "0000000000000000",
+        "CapBnd": "000001ffffffffff",
+        "CapAmb": "0000000000000000",
+        "NoNewPrivs": "1",
+        "Seccomp": "2"
+      },
+      "processes": [
+        {
+          "pid": 1,
+          "comm": "apply-seccomp"
+        },
+        {
+          "pid": 2,
+          "comm": "poketto-shell"
+        },
+        {
+          "pid": 3,
+          "comm": "bash"
+        },
+        {
+          "pid": 4,
+          "comm": "python3"
+        }
+      ],
+      "environmentNames": [
+        "GIT_CONFIG_GLOBAL",
+        "GIT_CONFIG_NOSYSTEM",
+        "HOME",
+        "LC_CTYPE",
+        "NODE_COMPILE_CACHE",
+        "PATH",
+        "POKETTO_BRIDGE",
+        "POKETTO_EXECUTION_ID",
+        "PWD",
+        "SANDBOX_RUNTIME",
+        "SHLVL",
+        "TMPDIR",
+        "_"
+      ],
+      "temporaryDirectory": "/tmp",
+      "mounts": [
+        "785 784 0:69 /newroot / ro,nosuid,nodev,relatime - tmpfs tmpfs rw,uid=991,gid=976,inode64",
+        "786 785 253:3 /usr /usr ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "787 785 253:3 /etc/ld.so.cache /etc/ld.so.cache ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "788 785 253:3 $TOOLS $TOOLS ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "789 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bootstrap $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bootstrap ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "790 785 253:3 $PROGRAMS $PROGRAMS ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "791 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/lock $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/lock ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "792 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/state $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/state ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "793 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/responses $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/responses ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "794 785 253:3 $REFERENCE_PROGRAMS $REFERENCE_PROGRAMS ro,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "795 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/work $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/work rw,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "796 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/home $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/home rw,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "797 785 253:3 $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/requests $FIXTURE/sessions/02792ecf-3887-48fb-9a99-2811ab7674c9/bridge/requests rw,nosuid,nodev,relatime - ext4 /dev/vda3 rw",
+        "798 785 0:68 / /tmp rw,nosuid,nodev - tmpfs tmpfs rw,size=8192k,nr_inodes=1024,inode64",
+        "799 785 0:70 / /dev rw,nosuid,nodev,relatime - tmpfs tmpfs rw,mode=755,uid=991,gid=976,inode64",
+        "800 799 0:7 /null /dev/null rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "801 799 0:7 /zero /dev/zero rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "802 799 0:7 /full /dev/full rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "803 799 0:7 /random /dev/random rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "804 799 0:7 /urandom /dev/urandom rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "805 799 0:7 /tty /dev/tty rw,nosuid - devtmpfs devtmpfs rw,size=3055380k,nr_inodes=763845,mode=755,inode64",
+        "806 799 0:72 / /dev/pts rw,nosuid,noexec,relatime - devpts devpts rw,mode=620,ptmxmode=666",
+        "807 785 0:96 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw",
+        "808 807 0:98 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw"
+      ],
+      "toolkit": {
+        "result": "PASS",
+        "checks": [
+          "image-font-webp",
+          "html-xml",
+          "docx",
+          "xlsx",
+          "pdf-copy-render",
+          "zip",
+          "awk",
+          "git"
+        ]
+      }
+    }
+  },
+  "sourceHashes": {
+    "reference": "705c0f6abc8e573a2bd935542f2c089cf6cca94ef789ae740acd27ff6432ef85",
+    "direct": "39c56115caccd4673f4e12dc387d60a43009421d8d870928a1420c6d3cf2da39"
+  },
+  "programHashes": {
+    "poketto": "38f5400062010264b5ddad206ea91b97b749535b44d221ad2436b12adc4f562f",
+    "poketto-shell": "305d9ce920f6347af160f71e34c5f3d8f4096a13903238fbf29b4ada9007ceff",
+    "poketto-syncfs": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233"
+  },
+  "referenceDriverSha256": null,
+  "probeSha256": "1e72ace14819186893b39bebd9837adacd614a2249a202c1d8d38056bb4b7232",
+  "snapshotSha256": "4b38078bd9877b259afe3af8fa6977eeea41f56bdef9fbe5e19fd5fa6bfd969f",
+  "scope": "Serial fresh shell true and idle cgroup charges; 50 percent CPU quota; not HTTP capacity.",
+  "ratios": {
+    "startupCpuUsec": 0.5723808226022575,
+    "memoryBytes": 1.1309823677581865,
+    "idleTasks": 1.0
+  }
+}

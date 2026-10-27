@@ -35,4 +35,6 @@ Installations install the matching updater before deploying the new file set ([d
 
 `executorRustCheck` runs the launcher tests on real root-owned files, the provisioning, seed and baseline tests, and the translation of each worker mode's policy in [policies.json](../../executor-service/rust/poketto-launch/testdata/policies.json). [test_launcher.py](../../executor-service/test_launcher.py) keeps that fixture equal to the Python workers' policies.
 
-Named gap: the proposal's native acceptance has not run for this change: the launcher comparison against the previous Python launcher with its resource ratio, the native adapter probe, the toolkit acceptance, the game scenario, and the 50-agent round before and after with CPU split by application container, supervisor and sandbox units.
+The [launcher comparison receipt](../../executor-native/evidence/2026-10-27-sandcrab-launcher-comparison.json) from the production host found identical snapshots and toolkit results for the Python and Rust launchers, both refusing tampered tools. Median startup CPU fell to 0.57 of the Python launcher's; memory and task ratios were 1.13 and 1.0.
+
+Named gap: the native adapter probe, the game scenario, and the 50-agent round before and after with CPU split by application container, supervisor and sandbox units have not run for this change.
