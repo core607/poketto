@@ -1,6 +1,6 @@
 //! Native command execution under a fixed supervisor-owned sandbox launch description.
 use sandcrab_core::{
-    command::{Channel, EndReason},
+    command::{Channel, EndReason, Request as CommandRequest},
     mailbox::Mailbox,
     unit::{Maintenance, checked, empty_group, verify_resource_pool},
 };
@@ -181,7 +181,16 @@ impl Runtime {
         let running = Instant::now();
         let channel = self.channel.as_mut().ok_or_else(unavailable)?;
         let _was_ready = channel.ready();
-        let result = channel.execute(execution, command, timeout, cancelled, on_ready);
+        let result = channel.execute(
+            CommandRequest {
+                execution,
+                command,
+                timeout,
+                output_limit: 4 * 1024 * 1024,
+            },
+            cancelled,
+            on_ready,
+        );
         let run_ms = running.elapsed().as_millis() as u64;
         let termination = match result.reason {
             None => "normal".into(),
