@@ -4,20 +4,21 @@ Date: 2026-10-27
 
 ## Problem
 
-Phase 1 of the [sandcrab proposal](../proposed/2026-10-26-sandcrab-sandbox-service.md) needs the sandbox mechanisms usable without Poketto. The supervisor library mixed generic leases, execution, artifacts and admission with Poketto's seeds, Git baselines, moves and bundle provisioning. The launcher was a Python module that both Python supervisors imported and the Rust supervisor ran through the system interpreter. Seed, baseline and provisioning code had no unit test.
+Phase 1 of the [sandcrab proposal](../proposed/2026-10-26-sandcrab-sandbox-service.md) needs the sandbox mechanisms usable without Poketto. The supervisor mixed leases, execution, artifacts and admission with Poketto's seeds, Git baselines, moves and bundle provisioning. Both Python supervisors imported the Python launcher; the Rust supervisor invoked it through the system interpreter. Seed, baseline and provisioning code lacked unit tests.
 
 ## Decision
 
 The [Rust workspace](../../executor-service/rust/Cargo.toml) separates generic crates from Poketto's:
 
 - `sandcrab-core`: strict JSON, identifiers, protected paths, systemd units and cgroups, the shell channel, the host-call mailbox, captures, installs and artifacts. Poketto's bridge operations and its `work/repository` tree, with `.git` reserved, are parameters.
+- `sandcrab-shell`: the persistent bash driver; consumers select the command-correlation variable.
 - `sandcrab-launch`: tool verification (root-owned, unwritable binaries and ancestors without symlinks; the `apply-seccomp` SHA-256 pin; bubblewrap 0.6.1 or newer), policy translation and the exec into bubblewrap.
 - `sandcrab-daemon`: signed requests and replay, leases, execution, host calls, captures, installs, artifacts, admission and the socket server. Product operations arrive through an `Extension`; the runtime holds mounted storage through a `Volume` and an extension's staged transfer through `Staged`.
 - `poketto-supervisor`: provisioning from bundle exports or seeds, Git baselines, discards and moves. `poketto-launch` maps a record's mode to its fixed command; the baseline installer stays a Python program run inside the sandbox.
 
 Records and policies keep their format, so both launchers run the same record in the [launcher comparison](../../executor-native/README.md#launcher-comparison). The Rust supervisor verifies the tools and programs before serving and runs the `poketto-launch` of its own release generation; configuration cannot name another.
 
-The traits are an interim seam that phase 3 removes; the proposal's rejection of trait integration still governs the final interface. Until then the daemon keeps the signed frame schema, the `commit`, `gitCommit` and `scope` labels it returns, and the `poketto-exec-` unit name check.
+Phase 3 removes the traits; the proposal still rejects trait integration for the public interface. Until then the daemon keeps the signed frame schema, the `commit`, `gitCommit` and `scope` labels it returns, and the `poketto-exec-` unit name check.
 
 ## Alternatives
 
