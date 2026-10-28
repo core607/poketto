@@ -1,0 +1,1071 @@
+{
+  "date": "2026-10-28",
+  "scope": "Deterministic native volume, CLI, lifecycle, quota and fault evidence; synthetic files only. No production cutover, model-directed volume evaluation, SDK conformance or capacity benchmark.",
+  "baseRevision": "767f18a993f3f3e0d7ac82c367418df281bed93a",
+  "sourceSha256": {
+    "executor-service/rust/Cargo.lock": "717dfab2540ab314ea0513908007ed245e76fbaf5b7165684a05192eee0b28d7",
+    "executor-service/rust/sandcrab-core/src/unit.rs": "e4d37c6a18fe8e01dfc43a7b49ded7828e6d0f7af2855ffb470a2631b9a67a0e",
+    "executor-service/rust/sandcrab/Cargo.toml": "f653960057f8e7bab72e19345e00c8e5cb51ed413e654ef4ca4fdf7adadc0b3e",
+    "executor-service/rust/sandcrab/openapi.json": "3e0443163704bb1030a5f57f517c309f8368e1b217666af94f910282a7e8af88",
+    "executor-service/rust/sandcrab/config.example.toml": "5b70c3ff18c7742b2adf70343ee9688cc81f9e25307efeb648907f74bec8ca78",
+    "executor-service/rust/sandcrab/native_probe.py": "9b29ab59d3f6be3e4d8c54c78522ff059570d81bee4fe3de88f60acc12377941",
+    "executor-service/rust/sandcrab/volume_probe.py": "0ab72042d48bafb0c904496891f9d243ce55fcd8c7930220752746f01d941025",
+    "evals/native.py": "b92fc786fa55aaf296a5d0b9cab21ea3dbe4a2772e11a5501a58764fd3b344c9",
+    "evals/sandcrab.py": "8b02547797471e5754a9e4ded7254cf9cfd15b31a3a17ea719dcec3a2d1df880",
+    "evals/report.py": "13afbd8917f9ff95df62364d11eb55c003641d8532e2fe858b17bf8eb3db4f8e",
+    ".github/workflows/evals.yml": "ad4df3461c933295821563a2e8db874460b9e49821c5029609e9806c25fccc55",
+    "executor-service/rust/sandcrab/src/client.rs": "8e6b6616c500f1509f20d182567945cfe698f40013768aee59b339294ea6e109",
+    "executor-service/rust/sandcrab/src/config.rs": "17dd344f8cd8fe7f742efbc09e34064020dda4e1e6efc33e2efd5f8898059c2f",
+    "executor-service/rust/sandcrab/src/main.rs": "7cddf0da482fe3dbf5d97225b56cc1c0055585b883b217ee3c984b469f729836",
+    "executor-service/rust/sandcrab/src/runtime.rs": "23a4c6fb71c2ae36f3a5cd10684e6732f01327162466c07fcd6c200073aca576",
+    "executor-service/rust/sandcrab/src/server.rs": "d56ae000b1972a454c36e07355e98c1f06be478a8d00510f7d0085ba765dda25",
+    "executor-service/rust/sandcrab/src/service.rs": "adbc2a3044c7ecc7c65be736e2b4d65f2da7186adb335588b52becb9e65bfe23",
+    "executor-service/rust/sandcrab/src/sessions.rs": "2a51649db1f79b3ed84b18378b0345278d3ad27eae36d940d60339d9c75f1762",
+    "executor-service/rust/sandcrab/src/spec.rs": "43cc75dbc052b398b8b292838eec00d819a706fcb3ed2e933799ee2d979313c9",
+    "executor-service/rust/sandcrab/src/storage.rs": "6bff66d7ddef3aa115ffaa73fbe7206991a4b5c65975d0217d4ae2f86af4b0e7",
+    "executor-service/rust/sandcrab/src/volumes.rs": "e0b43c5b30d06bc1a3836dd004187883dde3b332a84cc25df016433793a2a1cd"
+  },
+  "limits": {
+    "volumeFilesystemBytes": 536870912,
+    "sliceMemoryBytes": 402653184,
+    "sandboxMemoryBytes": 67108864,
+    "sandboxCpuQuotaPercent": 50,
+    "maximumVolumes": 4,
+    "maximumVolumeRecords": 12
+  },
+  "volumeAttempts": [
+    {
+      "attempt": 1,
+      "classification": "implementation",
+      "interpretation": "The service PATH did not contain xfsprogs; explicit helper paths were required.",
+      "receipt": {
+        "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+        "binarySha256": "78809217e62e68c6a28b884023d2dfb2cf9b52ebd5bcc9b712f9b70aea6471cf",
+        "probeSha256": "19c346912d6d5d6f3df6e7eb1419784dec1932f92fa8efaf82fc57632652d820",
+        "checks": [],
+        "cleanup": "PASS",
+        "volumeProbeSha256": "edeb7e456e996abcbc041422bb1cc568294d35f5d3069ef5586869582b3cfa89",
+        "result": "FAIL",
+        "failureType": "AssertionError"
+      }
+    },
+    {
+      "attempt": 2,
+      "classification": "implementation",
+      "interpretation": "xfs_info was a shell wrapper with an indirect PATH dependency; query xfs_spaceman directly.",
+      "receipt": {
+        "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+        "binarySha256": "409acb4827cc0d59524cc06112626a3c11dd84f465dc96d88c7d00b8eea539b3",
+        "probeSha256": "19c346912d6d5d6f3df6e7eb1419784dec1932f92fa8efaf82fc57632652d820",
+        "checks": [],
+        "cleanup": "PASS",
+        "volumeProbeSha256": "cd3a1d3698b20cd31505c846b18c2b03d550b7df94b226bbc4e2ddc48a38483e",
+        "result": "FAIL",
+        "failureType": "AssertionError"
+      }
+    },
+    {
+      "attempt": 3,
+      "classification": "fixture",
+      "interpretation": "XFS project quota returned ENOSPC. The fixture accepts ENOSPC or EDQUOT and independently verifies that the enclosing pool has free space.",
+      "receipt": {
+        "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+        "binarySha256": "49cc2e7c9bb067d60999c254bc7e6c038d76f08176ce537d6412b3ef459a8127",
+        "probeSha256": "19c346912d6d5d6f3df6e7eb1419784dec1932f92fa8efaf82fc57632652d820",
+        "checks": [
+          {
+            "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-exclusive-attachment-and-closed-session-persistence",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "volumeProbeSha256": "cd3a1d3698b20cd31505c846b18c2b03d550b7df94b226bbc4e2ddc48a38483e",
+        "result": "FAIL",
+        "failureType": "AssertionError"
+      }
+    },
+    {
+      "attempt": 4,
+      "classification": "pass",
+      "interpretation": "Initial eight-check volume path passed before additional failure coverage.",
+      "receipt": {
+        "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+        "binarySha256": "137b6f3955a6faf300f300293f390dd058d39e2047b4501241791152a00059f3",
+        "probeSha256": "19c346912d6d5d6f3df6e7eb1419784dec1932f92fa8efaf82fc57632652d820",
+        "checks": [
+          {
+            "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-exclusive-attachment-and-closed-session-persistence",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-block-and-inode-quotas-apply-to-untrusted-writes",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-supervisor-loss-retains-published-data-and-durable-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-cli-creates-attaches-lists-deletes-and-forgets",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-explicit-deletion-tombstone-and-record-release",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "volumeProbeSha256": "0a7bd678b7904d21aa2c9f6b59f5289662270e2b92278aa461b147798df18eb5",
+        "result": "PASS"
+      }
+    },
+    {
+      "attempt": 5,
+      "classification": "fixture",
+      "interpretation": "Namespace-change input violated the existing supervisor/prefix pairing rule before reaching store ownership; change both consistently.",
+      "receipt": {
+        "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+        "binarySha256": "137b6f3955a6faf300f300293f390dd058d39e2047b4501241791152a00059f3",
+        "probeSha256": "c03587b0686c41871c20923fbccbe68687c4e3a24dbfd2bb6376170d519d01c7",
+        "checks": [
+          {
+            "name": "volume-bootstrap-refuses-preexisting-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-exclusive-attachment-and-closed-session-persistence",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-block-and-inode-quotas-apply-to-untrusted-writes",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-supervisor-loss-retains-published-data-and-durable-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-holds-source-and-the-single-storage-slot",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-interrupted-clone-recovers-only-unpublished-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-publication-failure-fences-mutations-until-recovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-attachment-survives-unconfirmed-session-cleanup",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "volumeProbeSha256": "5e695ef61c5e68282c2a36b2640988fdb993af85b15b9f05b537df6e89a71f59",
+        "result": "FAIL",
+        "failureType": "AssertionError"
+      }
+    },
+    {
+      "attempt": 6,
+      "classification": "pass",
+      "interpretation": "Expanded sixteen-check volume path passed. Later review added a regression for deleting a clone while its source is attached.",
+      "receipt": {
+        "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+        "binarySha256": "137b6f3955a6faf300f300293f390dd058d39e2047b4501241791152a00059f3",
+        "probeSha256": "9b29ab59d3f6be3e4d8c54c78522ff059570d81bee4fe3de88f60acc12377941",
+        "checks": [
+          {
+            "name": "volume-bootstrap-refuses-preexisting-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-exclusive-attachment-and-closed-session-persistence",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-block-and-inode-quotas-apply-to-untrusted-writes",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-supervisor-loss-retains-published-data-and-durable-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-holds-source-and-the-single-storage-slot",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-interrupted-clone-recovers-only-unpublished-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-publication-failure-fences-mutations-until-recovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-attachment-survives-unconfirmed-session-cleanup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-namespace-change-preserves-data-and-refuses-startup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-live-and-durable-record-capacity-with-ordered-discovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-data-pool-exhaustion-leaves-deletion-metadata-writable",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-cli-creates-attaches-lists-deletes-and-forgets",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-explicit-deletion-tombstone-and-record-release",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "volumeProbeSha256": "844c99492e4d37a11db3ca815047120e1b0028b79ba9d942b5f8588e88f93953",
+        "result": "PASS"
+      }
+    },
+    {
+      "attempt": 7,
+      "classification": "pass",
+      "interpretation": "Ownership release regression and quota identity verification passed.",
+      "receipt": {
+        "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+        "binarySha256": "d3006f5126b416a55c62d68dee045292de78f40d30f538d7d4270c4a64b830ed",
+        "probeSha256": "9b29ab59d3f6be3e4d8c54c78522ff059570d81bee4fe3de88f60acc12377941",
+        "checks": [
+          {
+            "name": "volume-bootstrap-refuses-preexisting-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-exclusive-attachment-and-closed-session-persistence",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-block-and-inode-quotas-apply-to-untrusted-writes",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-supervisor-loss-retains-published-data-and-durable-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-holds-source-and-the-single-storage-slot",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-interrupted-clone-recovers-only-unpublished-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-publication-failure-fences-mutations-until-recovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-attachment-survives-unconfirmed-session-cleanup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-namespace-change-preserves-data-and-refuses-startup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-live-and-durable-record-capacity-with-ordered-discovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-data-pool-exhaustion-leaves-deletion-metadata-writable",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-cli-creates-attaches-lists-deletes-and-forgets",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-explicit-deletion-tombstone-and-record-release",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "volumeProbeSha256": "76e79cf2b323373ea07db4c8eef77cd39192e864950e135692577a7b1547d26e",
+        "result": "PASS"
+      }
+    },
+    {
+      "attempt": 8,
+      "classification": "pass",
+      "interpretation": "Final source also propagates startup directory-read errors and verifies refusal of unowned control metadata.",
+      "receipt": {
+        "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+        "binarySha256": "71b119c47eb4043a9d6eda19e3aaac6f272e01cb67ed22440ca8a904b0921b0b",
+        "probeSha256": "9b29ab59d3f6be3e4d8c54c78522ff059570d81bee4fe3de88f60acc12377941",
+        "checks": [
+          {
+            "name": "volume-bootstrap-refuses-preexisting-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-exclusive-attachment-and-closed-session-persistence",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-block-and-inode-quotas-apply-to-untrusted-writes",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-supervisor-loss-retains-published-data-and-durable-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-holds-source-and-the-single-storage-slot",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-interrupted-clone-recovers-only-unpublished-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-publication-failure-fences-mutations-until-recovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-attachment-survives-unconfirmed-session-cleanup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-namespace-change-preserves-data-and-refuses-startup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-live-and-durable-record-capacity-with-ordered-discovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-data-pool-exhaustion-leaves-deletion-metadata-writable",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-cli-creates-attaches-lists-deletes-and-forgets",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-explicit-deletion-tombstone-and-record-release",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "volumeProbeSha256": "4cb940745cb20bd264bb0c6fa1fd7c1622b8c30cb4a2d08c5369a89a8ef6802f",
+        "result": "PASS"
+      }
+    },
+    {
+      "attempt": 9,
+      "classification": "pass",
+      "interpretation": "Canonical LF OpenAPI source was rebuilt and both native probes rerun so recorded source hashes match committed file bytes.",
+      "receipt": {
+        "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+        "binarySha256": "e125e4d9d6ce2dceacfa1c375be33521c647b2c086b5aab319cc3fdf10284d7f",
+        "probeSha256": "9b29ab59d3f6be3e4d8c54c78522ff059570d81bee4fe3de88f60acc12377941",
+        "checks": [
+          {
+            "name": "volume-bootstrap-refuses-preexisting-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-exclusive-attachment-and-closed-session-persistence",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-block-and-inode-quotas-apply-to-untrusted-writes",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-supervisor-loss-retains-published-data-and-durable-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-holds-source-and-the-single-storage-slot",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-interrupted-clone-recovers-only-unpublished-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-publication-failure-fences-mutations-until-recovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-attachment-survives-unconfirmed-session-cleanup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-namespace-change-preserves-data-and-refuses-startup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-live-and-durable-record-capacity-with-ordered-discovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-data-pool-exhaustion-leaves-deletion-metadata-writable",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-cli-creates-attaches-lists-deletes-and-forgets",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-explicit-deletion-tombstone-and-record-release",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "volumeProbeSha256": "4cb940745cb20bd264bb0c6fa1fd7c1622b8c30cb4a2d08c5369a89a8ef6802f",
+        "result": "PASS"
+      }
+    },
+    {
+      "attempt": 10,
+      "classification": "pass",
+      "interpretation": "The final probe additionally measures each capability document through HTTP with the actual Inspect response wrapper; all fit its 20000-character tool-output budget.",
+      "receipt": {
+        "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+        "binarySha256": "e125e4d9d6ce2dceacfa1c375be33521c647b2c086b5aab319cc3fdf10284d7f",
+        "probeSha256": "9b29ab59d3f6be3e4d8c54c78522ff059570d81bee4fe3de88f60acc12377941",
+        "checks": [
+          {
+            "name": "volume-bootstrap-refuses-preexisting-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-capability-discovery-fits-model-tool-output",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-exclusive-attachment-and-closed-session-persistence",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-block-and-inode-quotas-apply-to-untrusted-writes",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-supervisor-loss-retains-published-data-and-durable-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-holds-source-and-the-single-storage-slot",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-interrupted-clone-recovers-only-unpublished-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-publication-failure-fences-mutations-until-recovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-attachment-survives-unconfirmed-session-cleanup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-namespace-change-preserves-data-and-refuses-startup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-live-and-durable-record-capacity-with-ordered-discovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-data-pool-exhaustion-leaves-deletion-metadata-writable",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-cli-creates-attaches-lists-deletes-and-forgets",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-explicit-deletion-tombstone-and-record-release",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "volumeProbeSha256": "0ab72042d48bafb0c904496891f9d243ce55fcd8c7930220752746f01d941025",
+        "result": "PASS"
+      }
+    }
+  ],
+  "lifecycleAttempts": [
+    {
+      "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+      "binarySha256": "d3006f5126b416a55c62d68dee045292de78f40d30f538d7d4270c4a64b830ed",
+      "probeSha256": "9b29ab59d3f6be3e4d8c54c78522ff059570d81bee4fe3de88f60acc12377941",
+      "checks": [
+        {
+          "name": "independent-cli",
+          "result": "PASS"
+        },
+        {
+          "name": "cli-outcome-survives-forget-failure",
+          "result": "PASS"
+        },
+        {
+          "name": "profile-identity-workspace-and-replay",
+          "result": "PASS"
+        },
+        {
+          "name": "request-authority-and-profile-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "host-network-and-unix-socket-denial",
+          "result": "PASS"
+        },
+        {
+          "name": "exit-timeout-and-output-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "workspace-quota-and-descendant-cleanup",
+          "result": "PASS"
+        },
+        {
+          "name": "admission-and-cancellation",
+          "result": "PASS"
+        },
+        {
+          "name": "bounded-results-and-release",
+          "result": "PASS"
+        },
+        {
+          "name": "peer-refusal-before-request",
+          "result": "PASS"
+        },
+        {
+          "name": "abrupt-loss-cleanup-and-stale-epoch",
+          "result": "PASS"
+        },
+        {
+          "name": "session-build-repair-state-isolation-and-descendant-cleanup",
+          "result": "PASS"
+        },
+        {
+          "name": "session-cli-reconnects-and-explicit-lifecycle",
+          "result": "PASS"
+        },
+        {
+          "name": "session-shared-admission-exclusive-command-and-replay",
+          "result": "PASS"
+        },
+        {
+          "name": "session-results-share-the-global-retention-bound",
+          "result": "PASS"
+        },
+        {
+          "name": "session-sigkill-and-exit-137-are-not-memory-evidence",
+          "result": "PASS"
+        },
+        {
+          "name": "session-timeout-output-memory-and-shell-exit-end-the-session",
+          "result": "PASS"
+        },
+        {
+          "name": "session-renewal-and-expiry-cancel-an-active-command",
+          "result": "PASS"
+        },
+        {
+          "name": "session-command-cancellation-closes-the-whole-session",
+          "result": "PASS"
+        },
+        {
+          "name": "session-supervisor-loss-cleans-units-and-invalidates-the-epoch",
+          "result": "PASS"
+        },
+        {
+          "name": "independent-build-test-example",
+          "result": "PASS"
+        },
+        {
+          "name": "session-unconfirmed-cleanup-holds-capacity-until-restart",
+          "result": "PASS"
+        },
+        {
+          "name": "cancellation-before-unit-registration",
+          "result": "PASS"
+        },
+        {
+          "name": "session-close-before-unit-registration",
+          "result": "PASS"
+        }
+      ],
+      "cleanup": "PASS",
+      "exampleSha256": "48512f23c91d749b2860770974b907bae28b152f945d4c6ef656505a271a4517",
+      "startupCancellation": {
+        "initialKillExitCode": 1,
+        "killAttempts": 2,
+        "seconds": 0.585,
+        "state": "cancelled",
+        "limitSeconds": 3
+      },
+      "sessionStartupCancellation": {
+        "initialKillExitCode": 1,
+        "killAttempts": 2,
+        "seconds": 0.488,
+        "state": "closed",
+        "limitSeconds": 3
+      },
+      "result": "PASS"
+    },
+    {
+      "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+      "binarySha256": "71b119c47eb4043a9d6eda19e3aaac6f272e01cb67ed22440ca8a904b0921b0b",
+      "probeSha256": "9b29ab59d3f6be3e4d8c54c78522ff059570d81bee4fe3de88f60acc12377941",
+      "checks": [
+        {
+          "name": "independent-cli",
+          "result": "PASS"
+        },
+        {
+          "name": "cli-outcome-survives-forget-failure",
+          "result": "PASS"
+        },
+        {
+          "name": "profile-identity-workspace-and-replay",
+          "result": "PASS"
+        },
+        {
+          "name": "request-authority-and-profile-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "host-network-and-unix-socket-denial",
+          "result": "PASS"
+        },
+        {
+          "name": "exit-timeout-and-output-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "workspace-quota-and-descendant-cleanup",
+          "result": "PASS"
+        },
+        {
+          "name": "admission-and-cancellation",
+          "result": "PASS"
+        },
+        {
+          "name": "bounded-results-and-release",
+          "result": "PASS"
+        },
+        {
+          "name": "peer-refusal-before-request",
+          "result": "PASS"
+        },
+        {
+          "name": "abrupt-loss-cleanup-and-stale-epoch",
+          "result": "PASS"
+        },
+        {
+          "name": "session-build-repair-state-isolation-and-descendant-cleanup",
+          "result": "PASS"
+        },
+        {
+          "name": "session-cli-reconnects-and-explicit-lifecycle",
+          "result": "PASS"
+        },
+        {
+          "name": "session-shared-admission-exclusive-command-and-replay",
+          "result": "PASS"
+        },
+        {
+          "name": "session-results-share-the-global-retention-bound",
+          "result": "PASS"
+        },
+        {
+          "name": "session-sigkill-and-exit-137-are-not-memory-evidence",
+          "result": "PASS"
+        },
+        {
+          "name": "session-timeout-output-memory-and-shell-exit-end-the-session",
+          "result": "PASS"
+        },
+        {
+          "name": "session-renewal-and-expiry-cancel-an-active-command",
+          "result": "PASS"
+        },
+        {
+          "name": "session-command-cancellation-closes-the-whole-session",
+          "result": "PASS"
+        },
+        {
+          "name": "session-supervisor-loss-cleans-units-and-invalidates-the-epoch",
+          "result": "PASS"
+        },
+        {
+          "name": "independent-build-test-example",
+          "result": "PASS"
+        },
+        {
+          "name": "session-unconfirmed-cleanup-holds-capacity-until-restart",
+          "result": "PASS"
+        },
+        {
+          "name": "cancellation-before-unit-registration",
+          "result": "PASS"
+        },
+        {
+          "name": "session-close-before-unit-registration",
+          "result": "PASS"
+        }
+      ],
+      "cleanup": "PASS",
+      "exampleSha256": "48512f23c91d749b2860770974b907bae28b152f945d4c6ef656505a271a4517",
+      "startupCancellation": {
+        "initialKillExitCode": 1,
+        "killAttempts": 2,
+        "seconds": 0.604,
+        "state": "cancelled",
+        "limitSeconds": 3
+      },
+      "sessionStartupCancellation": {
+        "initialKillExitCode": 1,
+        "killAttempts": 2,
+        "seconds": 0.506,
+        "state": "closed",
+        "limitSeconds": 3
+      },
+      "result": "PASS"
+    },
+    {
+      "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+      "binarySha256": "e125e4d9d6ce2dceacfa1c375be33521c647b2c086b5aab319cc3fdf10284d7f",
+      "probeSha256": "9b29ab59d3f6be3e4d8c54c78522ff059570d81bee4fe3de88f60acc12377941",
+      "checks": [
+        {
+          "name": "independent-cli",
+          "result": "PASS"
+        },
+        {
+          "name": "cli-outcome-survives-forget-failure",
+          "result": "PASS"
+        },
+        {
+          "name": "profile-identity-workspace-and-replay",
+          "result": "PASS"
+        },
+        {
+          "name": "request-authority-and-profile-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "host-network-and-unix-socket-denial",
+          "result": "PASS"
+        },
+        {
+          "name": "exit-timeout-and-output-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "workspace-quota-and-descendant-cleanup",
+          "result": "PASS"
+        },
+        {
+          "name": "admission-and-cancellation",
+          "result": "PASS"
+        },
+        {
+          "name": "bounded-results-and-release",
+          "result": "PASS"
+        },
+        {
+          "name": "peer-refusal-before-request",
+          "result": "PASS"
+        },
+        {
+          "name": "abrupt-loss-cleanup-and-stale-epoch",
+          "result": "PASS"
+        },
+        {
+          "name": "session-build-repair-state-isolation-and-descendant-cleanup",
+          "result": "PASS"
+        },
+        {
+          "name": "session-cli-reconnects-and-explicit-lifecycle",
+          "result": "PASS"
+        },
+        {
+          "name": "session-shared-admission-exclusive-command-and-replay",
+          "result": "PASS"
+        },
+        {
+          "name": "session-results-share-the-global-retention-bound",
+          "result": "PASS"
+        },
+        {
+          "name": "session-sigkill-and-exit-137-are-not-memory-evidence",
+          "result": "PASS"
+        },
+        {
+          "name": "session-timeout-output-memory-and-shell-exit-end-the-session",
+          "result": "PASS"
+        },
+        {
+          "name": "session-renewal-and-expiry-cancel-an-active-command",
+          "result": "PASS"
+        },
+        {
+          "name": "session-command-cancellation-closes-the-whole-session",
+          "result": "PASS"
+        },
+        {
+          "name": "session-supervisor-loss-cleans-units-and-invalidates-the-epoch",
+          "result": "PASS"
+        },
+        {
+          "name": "independent-build-test-example",
+          "result": "PASS"
+        },
+        {
+          "name": "session-unconfirmed-cleanup-holds-capacity-until-restart",
+          "result": "PASS"
+        },
+        {
+          "name": "cancellation-before-unit-registration",
+          "result": "PASS"
+        },
+        {
+          "name": "session-close-before-unit-registration",
+          "result": "PASS"
+        }
+      ],
+      "cleanup": "PASS",
+      "exampleSha256": "48512f23c91d749b2860770974b907bae28b152f945d4c6ef656505a271a4517",
+      "startupCancellation": {
+        "initialKillExitCode": 1,
+        "killAttempts": 2,
+        "seconds": 0.573,
+        "state": "cancelled",
+        "limitSeconds": 3
+      },
+      "sessionStartupCancellation": {
+        "initialKillExitCode": 1,
+        "killAttempts": 2,
+        "seconds": 0.54,
+        "state": "closed",
+        "limitSeconds": 3
+      },
+      "result": "PASS"
+    }
+  ],
+  "legacyRegression": {
+    "adapterAll": {
+      "summary": {
+        "nativeCombined": "PASS",
+        "sourceLayout": "flat",
+        "runtimeManifestSha256": "d5793601203efd6743c1dbd49a4cae1ef7df44fe588f1c85f6be48c99de51491",
+        "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+        "nativePoolSha256": "94ff8dd3d4cfac0222defab0b9eb71b1f9af3cd732f4d7b32eb2f7a1839e5f47",
+        "supervisorKind": "rust",
+        "workerSha256": "2772711aafc554dc7018fd70d85312c1c151b38270fdc439181eb87ec66f9e02",
+        "launcherSha256": "5093662e99f599cfe060844ce391590895b54edcfd2056db9e07f8a0d01d3bbe",
+        "shellLoopSha256": "ea7d36e9c3034301d41e8f4f6131ff0f05655141834fd97a3400162d63298a3a",
+        "syncProgramSha256": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233",
+        "cliSha256": "38f5400062010264b5ddad206ea91b97b749535b44d221ad2436b12adc4f562f",
+        "nativeScriptSha256": "65cd8aef8b975b834263c1630fc15f49a089ff1a6a29c57d4d1447b485d9dd26",
+        "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
+        "games": null,
+        "source": "synthetic-only",
+        "scenario": "all",
+        "processCase": null
+      },
+      "checks": [],
+      "cleanup": "PASS"
+    },
+    "games": {
+      "summary": {
+        "nativeCombined": "PASS",
+        "sourceLayout": "flat",
+        "runtimeManifestSha256": "d5793601203efd6743c1dbd49a4cae1ef7df44fe588f1c85f6be48c99de51491",
+        "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+        "nativePoolSha256": "94ff8dd3d4cfac0222defab0b9eb71b1f9af3cd732f4d7b32eb2f7a1839e5f47",
+        "supervisorKind": "rust",
+        "workerSha256": "2772711aafc554dc7018fd70d85312c1c151b38270fdc439181eb87ec66f9e02",
+        "launcherSha256": "5093662e99f599cfe060844ce391590895b54edcfd2056db9e07f8a0d01d3bbe",
+        "shellLoopSha256": "ea7d36e9c3034301d41e8f4f6131ff0f05655141834fd97a3400162d63298a3a",
+        "syncProgramSha256": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233",
+        "cliSha256": "38f5400062010264b5ddad206ea91b97b749535b44d221ad2436b12adc4f562f",
+        "nativeScriptSha256": "65cd8aef8b975b834263c1630fc15f49a089ff1a6a29c57d4d1447b485d9dd26",
+        "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
+        "games": {
+          "supervisorSha256": "b3a58ce357e20c4a3217ed325830cfdb6323a0d1fe538cb5e76a0c5e9a59e20d",
+          "runtimeSha256": "8ee28e17266d6fce9f157fbc53252573150219f30a08defd0814fa064dbed1e8",
+          "entrySha256": "111c875956ba96850013fe6d2ede2e89463d73384ec028a8d466f894565c0c84",
+          "exampleSha256": "7d02464c5858e80f4d45d93234d911113de28b28abbf0715103d20cb42fb57e2",
+          "fixtureSha256": "0a95ce7ccc28bc790d5f46616d56a54291e4a3887a99d71fc164934baab748d6"
+        },
+        "source": "synthetic-only",
+        "scenario": "games",
+        "processCase": null
+      },
+      "checks": [],
+      "cleanup": "PASS"
+    },
+    "supervisor": {
+      "summary": {
+        "summary": "PASS",
+        "tests": 24,
+        "source": "synthetic-only",
+        "runtimeParent": "/run",
+        "supervisorUmask": "0077",
+        "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+        "nativePoolSha256": "94ff8dd3d4cfac0222defab0b9eb71b1f9af3cd732f4d7b32eb2f7a1839e5f47",
+        "supervisorKind": "rust",
+        "workerSha256": "2772711aafc554dc7018fd70d85312c1c151b38270fdc439181eb87ec66f9e02",
+        "shellLoopSha256": "ea7d36e9c3034301d41e8f4f6131ff0f05655141834fd97a3400162d63298a3a",
+        "syncProgramSha256": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233",
+        "probeSha256": "52c3e61fe9ae8adac26ee3d3f584e9bff773330175d83b9363d87abc1de0d2d3",
+        "launcherSha256": "5093662e99f599cfe060844ce391590895b54edcfd2056db9e07f8a0d01d3bbe"
+      },
+      "checks": [
+        {
+          "summary": "PASS",
+          "tests": 24,
+          "source": "synthetic-only",
+          "runtimeParent": "/run",
+          "supervisorUmask": "0077",
+          "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+          "nativePoolSha256": "94ff8dd3d4cfac0222defab0b9eb71b1f9af3cd732f4d7b32eb2f7a1839e5f47",
+          "supervisorKind": "rust",
+          "workerSha256": "2772711aafc554dc7018fd70d85312c1c151b38270fdc439181eb87ec66f9e02",
+          "shellLoopSha256": "ea7d36e9c3034301d41e8f4f6131ff0f05655141834fd97a3400162d63298a3a",
+          "syncProgramSha256": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233",
+          "probeSha256": "52c3e61fe9ae8adac26ee3d3f584e9bff773330175d83b9363d87abc1de0d2d3",
+          "launcherSha256": "5093662e99f599cfe060844ce391590895b54edcfd2056db9e07f8a0d01d3bbe"
+        }
+      ],
+      "cleanup": "PASS"
+    }
+  },
+  "stagingFailure": {
+    "result": "FAIL",
+    "classification": "packaging",
+    "detail": "The first direct-supervisor stage lacked executable bits after Windows packaging. Cleanup was completed explicitly after restoring executable modes, confirming stopped processes, removing the fixture mount/user/runtime, and using a fresh correctly permissioned stage for the passing run.",
+    "reconciledCleanup": "PASS"
+  },
+  "localChecks": [
+    "appImageIdentityCheck",
+    "executorRustCheck",
+    "executorServiceTests (176 passed)",
+    "linuxStorageTest (300 passed)",
+    "repoCheck",
+    "Inspect unit tests (16 passed)"
+  ]
+}
