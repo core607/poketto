@@ -44,7 +44,7 @@ Repeated failures, or repeated help reads at the same step, mark a tool or messa
 
 ### Where it runs
 
-The stack is the disposable Spring, PostgreSQL and sandbox set that [`native-host.py`](../../acceptance/clients/native-host.py) already starts with synthetic accounts and Git authority. It needs the real executor, so the runner must provide cgroup v2, systemd, root, bubblewrap and unprivileged user namespaces ([sandbox verification](../../executor-native/README.md)).
+The stack is the disposable Spring, PostgreSQL and sandbox set that [`native-host.py`](../../acceptance/clients/native-host.py) already starts with synthetic accounts and Git authority. It needs the real executor, so the runner must meet the worker's [host requirements](../../executor-service/README.md#runtime) and grant root.
 
 **A run never targets production.** Production holds user content and shared limits, and it cannot run an unmerged branch.
 
