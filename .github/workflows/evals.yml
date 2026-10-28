@@ -23,22 +23,23 @@ jobs:
           python-version: "3.12.14"
       - name: Install evaluation dependencies
         run: |
-          python -m venv "$RUNNER_TEMP/eval-python"
-          "$RUNNER_TEMP/eval-python/bin/python" -m pip install --disable-pip-version-check -r evals/requirements.txt
+          sudo install -d -m 755 /var/lib/sandcrab-evals
+          sudo install -d -m 755 -o "$(id -u)" -g "$(id -g)" /var/lib/sandcrab-evals/python
+          python -m venv /var/lib/sandcrab-evals/python
+          /var/lib/sandcrab-evals/python/bin/python -m pip install --disable-pip-version-check -r evals/requirements.txt
       - name: Check independent grading and failure reports
         run: |
-          "$RUNNER_TEMP/eval-python/bin/python" -m unittest discover -s evals -p 'test_*.py' -v
+          /var/lib/sandcrab-evals/python/bin/python -m unittest discover -s evals -p 'test_*.py' -v
       - name: Build the native binary
         run: ./gradlew buildExecutorRust --no-daemon
       - name: Prepare the disposable native host
         run: |
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          sudo install -d -m 755 /var/lib/sandcrab-evals
           sudo bash executor-service/prepare-tools.sh /var/lib/sandcrab-evals/tools
       - name: Run three scripted trials per case through Inspect
         run: |
           sudo python3 evals/native.py --binary build/executor-service/bin/sandcrab \
-            --tools /var/lib/sandcrab-evals/tools --python "$RUNNER_TEMP/eval-python/bin/python" \
+            --tools /var/lib/sandcrab-evals/tools --python /var/lib/sandcrab-evals/python/bin/python \
             --output /var/lib/sandcrab-evals/results
       - name: Publish the readable summary
         if: always()

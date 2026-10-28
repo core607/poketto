@@ -80,6 +80,7 @@ sudo python3 evals/native.py --binary build/executor-service/bin/sandcrab \
   --output /var/lib/sandcrab-evals/results
 ```
 
-The output directory must be new and its ancestors readable by the `daemon`
-client account. Keep every attempt in a separate directory. The harness never
+The output directory must be new. Its ancestors and the virtual environment must
+be readable by the `daemon` client account; source files are copied into the
+root-owned fixture. Keep every attempt in a separate directory. The harness never
 falls back to an unrestricted host subprocess for a sandbox command.

@@ -5,6 +5,7 @@ import importlib.util
 import os
 from pathlib import Path
 import pwd
+import shutil
 import signal
 import subprocess
 
@@ -38,13 +39,23 @@ def main():
         client_home = fixture.root / 'client'
         client_home.mkdir(mode=0o750)
         os.chown(client_home, client.pw_uid, client.pw_gid)
+        staged = fixture.root / 'evals'
+        for origin in (source / 'evals').rglob('*'):
+            if origin.is_symlink():
+                raise ValueError('Evaluation source must not contain symlinks')
+            if not origin.is_file() or origin.suffix not in {'.py', '.yaml'}:
+                continue
+            target = staged / origin.relative_to(source / 'evals')
+            target.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+            shutil.copyfile(origin, target)
+            target.chmod(0o644)
         # Do not pass root's provider credentials, SSH configuration or environment to Inspect.
         child_env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': str(client_home), 'PYTHONUTF8': '1',
-                     'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'safe.directory', 'GIT_CONFIG_VALUE_0': str(source)}
+                     'LD_LIBRARY_PATH': str(args.python.resolve().parent.parent / 'lib')}
         # Preserve the venv path: resolving its python symlink selects the base interpreter.
-        child = subprocess.Popen([str(args.python.absolute()), str(source / 'evals/run.py'),
+        child = subprocess.Popen([str(args.python.absolute()), str(staged / 'run.py'),
                                   '--endpoint', str(fixture.socket), '--output', str(output), '--revision', revision],
-                                 cwd=source, env=child_env, start_new_session=True,
+                                 cwd=staged, env=child_env, start_new_session=True,
                                  user=client.pw_uid, group=client.pw_gid, extra_groups=[client.pw_gid])
         try:
             returncode = child.wait(timeout=600)
