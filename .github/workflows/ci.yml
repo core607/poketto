@@ -373,9 +373,14 @@ jobs:
   # verification failed, which is why an edit verifies again instead of reusing an earlier result.
   # A lane the change cannot affect is skipped, never assumed to have passed, so this job names the
   # lanes each classification requires rather than tolerating any skipped lane.
+  evals:
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'false'
+    uses: ./.github/workflows/evals.yml
+
   verify:
     name: verify
-    needs: [changes, docs, java, database, web, image, stack, load, retrieval-lab]
+    needs: [changes, docs, java, database, web, image, stack, load, retrieval-lab, evals]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -392,6 +397,7 @@ jobs:
           STACK: ${{ needs.stack.result }}
           LOAD: ${{ needs.load.result }}
           RETRIEVAL_LAB: ${{ needs.retrieval-lab.result }}
+          EVALS: ${{ needs.evals.result }}
         run: |
           if [ "$CLASSIFICATION" != success ]; then
             echo "change classification reported $CLASSIFICATION"
@@ -400,7 +406,7 @@ jobs:
           if [ "$DOCS_ONLY" = true ]; then
             required="docs=$DOCS"
           else
-            required="java=$JAVA database=$DATABASE web=$WEB image=$IMAGE stack=$STACK load=$LOAD retrieval-lab=$RETRIEVAL_LAB"
+            required="java=$JAVA database=$DATABASE web=$WEB image=$IMAGE stack=$STACK load=$LOAD retrieval-lab=$RETRIEVAL_LAB evals=$EVALS"
           fi
           failed=0
           for lane in $required; do

@@ -16,6 +16,8 @@ Every one of these needs an agent or an engineer to stage a host, run the script
 
 ## Proposal
 
+The [Inspect entrance](../../evals/README.md) validates scripted Sandcrab cases only.
+
 ### One entrance, plain cases
 
 An `evals/` directory holds every suite. The first two are `agent-tasks` and `qa`; games may follow. Each case is one small YAML file that the owner can edit in the GitHub web editor. It contains:
