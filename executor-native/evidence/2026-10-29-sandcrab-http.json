@@ -1,0 +1,322 @@
+{
+  "date": "2026-10-29",
+  "scope": "Deterministic HTTP framing, connection reuse and CLI recovery on real isolated Linux sandboxes, with existing session, volume and Java adapter regression checks. Synthetic fixtures only; no model-directed evaluation, file-transfer API, SDK conformance, capacity comparison or production cutover.",
+  "baseRevision": "fd9c205acd64f06976de5154bc220b4c88daa7fa",
+  "sourceSha256": {
+    "evals/README.md": "23ea07307bb89ffb196ef14fcc22ee04971c81ebad547da2e65c1b0d1c916ae6",
+    "evals/native.py": "14165495f39aa68da64a07c7999cc3b2684d93b4f7349376a0461c6fc088a07a",
+    "executor-service/rust/sandcrab-core/src/http.rs": "e84ad2cb7b350270ce27aa47d87a4e34df2e74a5bd67c1b89bcc3a7052273201",
+    "executor-service/rust/sandcrab-core/src/lib.rs": "e9cc1fa37f8baba68c0319b3ad90f3f7f6f35c2c879d96da540f26ece2d2e5c1",
+    "executor-service/rust/sandcrab-daemon/src/lib.rs": "a5e6a1e6c267a738b04401dea658eaac1c7d4f07bf2e52a3bc4113a09ef96665",
+    "executor-service/rust/sandcrab-daemon/src/server.rs": "2b990858729eb840d681476b2e68d013fe1a011ef8ff902ab7b9cb09ecd6d6e9",
+    "executor-service/rust/sandcrab/README.md": "ea38924cc55608490351f04d7ff970bc3d410f6984c6aa9434cb7046aa04b685",
+    "executor-service/rust/sandcrab/native_probe.py": "94f836162ae01f739050c3f6272f5e7c87c760bdf829f9f548ba3eb09d74b2b4",
+    "executor-service/rust/sandcrab/openapi.json": "ab5c09cd9239368f7a1f75112167fff7e887550d8568742596efe0d7ec4208e1",
+    "executor-service/rust/sandcrab/src/client.rs": "b2d8f080e061a5cfb9818b3ba8362d7604e69eb2d741142c9df23a6453f19ada",
+    "executor-service/rust/sandcrab/src/server.rs": "df348d10b99142a6586af8aa5febee835b43bcf195e4e89689321e0877d0bf4b",
+    "executor-service/rust/Cargo.lock": "717dfab2540ab314ea0513908007ed245e76fbaf5b7165684a05192eee0b28d7"
+  },
+  "removedPaths": [
+    "executor-service/rust/sandcrab-daemon/src/http.rs"
+  ],
+  "standardCheckAttempts": [
+    {
+      "attempt": 1,
+      "result": "NOT_RUN",
+      "classification": "environment",
+      "detail": "The Windows Docker daemon was unavailable; validation moved to an isolated Linux checkout."
+    },
+    {
+      "attempt": 2,
+      "result": "FAIL",
+      "classification": "environment",
+      "detail": "The cold executorRustCheck build reached its existing ten-minute task limit during Clippy; the full check was rerun without changing its timeout or contents."
+    },
+    {
+      "attempt": 3,
+      "result": "PARTIAL",
+      "classification": "invocation",
+      "checks": {
+        "executorRustCheck": "PASS",
+        "executorServiceTests": "FAIL"
+      },
+      "detail": "The Linux protocol suite ran as root: 175 tests passed and its ordinary-user permission check failed. All 176 tests were rerun under an ordinary user."
+    },
+    {
+      "attempt": 4,
+      "result": "PASS",
+      "checks": {
+        "executorServiceTests": 176,
+        "appImageIdentityCheck": "PASS",
+        "stageExecutorNativeTest": "PASS",
+        "stageExecutorWorker": "PASS",
+        "stageGameWorker": "PASS"
+      }
+    }
+  ],
+  "localChecks": {
+    "repoCheck": "PASS",
+    "inspectUnitTests": 16
+  },
+  "nativeAttempts": [
+    {
+      "attempt": 1,
+      "receipt": {
+        "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+        "binarySha256": "c944153100d95fe447c8e47665feefbf7fb736e6dbf72dd8c39f223bdc7db894",
+        "probeSha256": "94f836162ae01f739050c3f6272f5e7c87c760bdf829f9f548ba3eb09d74b2b4",
+        "checks": [
+          {
+            "name": "http-sequential-reuse-body-boundary-and-declared-close",
+            "result": "PASS"
+          },
+          {
+            "name": "http-invalid-framing-closes-without-dispatch",
+            "result": "PASS"
+          },
+          {
+            "name": "http-deadline-does-not-reset-on-progress",
+            "result": "PASS"
+          },
+          {
+            "name": "independent-cli",
+            "result": "PASS"
+          },
+          {
+            "name": "cli-outcome-survives-forget-failure",
+            "result": "PASS"
+          },
+          {
+            "name": "cli-reuses-connection-and-does-not-replay-incomplete-response",
+            "result": "PASS"
+          },
+          {
+            "name": "profile-identity-workspace-and-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "request-authority-and-profile-bounds",
+            "result": "PASS"
+          },
+          {
+            "name": "host-network-and-unix-socket-denial",
+            "result": "PASS"
+          },
+          {
+            "name": "exit-timeout-and-output-bounds",
+            "result": "PASS"
+          },
+          {
+            "name": "workspace-quota-and-descendant-cleanup",
+            "result": "PASS"
+          },
+          {
+            "name": "admission-and-cancellation",
+            "result": "PASS"
+          },
+          {
+            "name": "bounded-results-and-release",
+            "result": "PASS"
+          },
+          {
+            "name": "peer-refusal-before-request",
+            "result": "PASS"
+          },
+          {
+            "name": "abrupt-loss-cleanup-and-stale-epoch",
+            "result": "PASS"
+          },
+          {
+            "name": "session-build-repair-state-isolation-and-descendant-cleanup",
+            "result": "PASS"
+          },
+          {
+            "name": "session-cli-reconnects-and-explicit-lifecycle",
+            "result": "PASS"
+          },
+          {
+            "name": "session-shared-admission-exclusive-command-and-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "session-results-share-the-global-retention-bound",
+            "result": "PASS"
+          },
+          {
+            "name": "session-sigkill-and-exit-137-are-not-memory-evidence",
+            "result": "PASS"
+          },
+          {
+            "name": "session-timeout-output-memory-and-shell-exit-end-the-session",
+            "result": "PASS"
+          },
+          {
+            "name": "session-renewal-and-expiry-cancel-an-active-command",
+            "result": "PASS"
+          },
+          {
+            "name": "session-command-cancellation-closes-the-whole-session",
+            "result": "PASS"
+          },
+          {
+            "name": "session-supervisor-loss-cleans-units-and-invalidates-the-epoch",
+            "result": "PASS"
+          },
+          {
+            "name": "independent-build-test-example",
+            "result": "PASS"
+          },
+          {
+            "name": "session-unconfirmed-cleanup-holds-capacity-until-restart",
+            "result": "PASS"
+          },
+          {
+            "name": "cancellation-before-unit-registration",
+            "result": "PASS"
+          },
+          {
+            "name": "session-close-before-unit-registration",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "slowRequestDeadlineSeconds": 5.011,
+        "exampleSha256": "48512f23c91d749b2860770974b907bae28b152f945d4c6ef656505a271a4517",
+        "startupCancellation": {
+          "initialKillExitCode": 1,
+          "killAttempts": 2,
+          "seconds": 0.654,
+          "state": "cancelled",
+          "limitSeconds": 3
+        },
+        "sessionStartupCancellation": {
+          "initialKillExitCode": 1,
+          "killAttempts": 2,
+          "seconds": 0.56,
+          "state": "closed",
+          "limitSeconds": 3
+        },
+        "result": "PASS"
+      }
+    }
+  ],
+  "volumeAttempts": [
+    {
+      "attempt": 1,
+      "receipt": {
+        "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+        "binarySha256": "c944153100d95fe447c8e47665feefbf7fb736e6dbf72dd8c39f223bdc7db894",
+        "probeSha256": "94f836162ae01f739050c3f6272f5e7c87c760bdf829f9f548ba3eb09d74b2b4",
+        "checks": [
+          {
+            "name": "volume-bootstrap-refuses-preexisting-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-capability-discovery-fits-model-tool-output",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-exclusive-attachment-and-closed-session-persistence",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-block-and-inode-quotas-apply-to-untrusted-writes",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-supervisor-loss-retains-published-data-and-durable-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-clone-holds-source-and-the-single-storage-slot",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-interrupted-clone-recovers-only-unpublished-data",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-publication-failure-fences-mutations-until-recovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-attachment-survives-unconfirmed-session-cleanup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-namespace-change-preserves-data-and-refuses-startup",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-live-and-durable-record-capacity-with-ordered-discovery",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-data-pool-exhaustion-leaves-deletion-metadata-writable",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-cli-creates-attaches-lists-deletes-and-forgets",
+            "result": "PASS"
+          },
+          {
+            "name": "volume-explicit-deletion-tombstone-and-record-release",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "volumeProbeSha256": "0ab72042d48bafb0c904496891f9d243ce55fcd8c7930220752746f01d941025",
+        "result": "PASS"
+      }
+    }
+  ],
+  "adapterAttempts": [
+    {
+      "attempt": 1,
+      "summary": {
+        "summary": "PASS",
+        "authentication": "synthetic-stub-not-PG-or-MCP-acceptance",
+        "nativeProbeClassSha256": "67c50bc9b7867d079e05aba7949fc7016a105be81fa9f6ccfae263b9174f59d3",
+        "adapterClassSha256": "b8da2dbb5dc80ffeef0fc92e10a33f9463c5fb4cc34aa3777673b175087811d7",
+        "tests": 40
+      },
+      "processLoss": {
+        "test": "java-process-loss-expires-real-worker-lease",
+        "result": "PASS"
+      },
+      "combined": {
+        "nativeCombined": "PASS",
+        "sourceLayout": "flat",
+        "runtimeManifestSha256": "d5793601203efd6743c1dbd49a4cae1ef7df44fe588f1c85f6be48c99de51491",
+        "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+        "nativePoolSha256": "94ff8dd3d4cfac0222defab0b9eb71b1f9af3cd732f4d7b32eb2f7a1839e5f47",
+        "supervisorKind": "rust",
+        "workerSha256": "6206d00081f43aae32068b290a1ed32190f97b6465b8412db2a7564c88caea43",
+        "launcherSha256": "5093662e99f599cfe060844ce391590895b54edcfd2056db9e07f8a0d01d3bbe",
+        "shellLoopSha256": "ea7d36e9c3034301d41e8f4f6131ff0f05655141834fd97a3400162d63298a3a",
+        "syncProgramSha256": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233",
+        "cliSha256": "38f5400062010264b5ddad206ea91b97b749535b44d221ad2436b12adc4f562f",
+        "nativeScriptSha256": "65cd8aef8b975b834263c1630fc15f49a089ff1a6a29c57d4d1447b485d9dd26",
+        "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
+        "games": null,
+        "source": "synthetic-only",
+        "scenario": "all",
+        "processCase": null
+      },
+      "cleanup": "PASS"
+    }
+  ]
+}

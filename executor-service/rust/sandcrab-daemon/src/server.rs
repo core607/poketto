@@ -1,6 +1,7 @@
 //! Shared HTTP server; only the configured application UID may reach the signed service.
-use crate::{MAX_FRAME, Service, failed, http, parse};
+use crate::{MAX_FRAME, Service, failed, parse};
 use rustix::fs::{Gid, Uid, chown};
+use sandcrab_core::http;
 use serde_json::Value;
 use std::{
     fs, io,

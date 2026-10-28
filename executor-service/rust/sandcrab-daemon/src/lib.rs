@@ -6,7 +6,6 @@
 
 mod admission;
 pub mod files;
-pub mod http;
 pub mod install;
 pub mod job;
 pub mod runtime;
