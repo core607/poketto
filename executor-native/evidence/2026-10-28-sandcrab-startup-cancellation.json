@@ -1,0 +1,308 @@
+{
+  "schemaVersion": 1,
+  "scope": "Deterministic delayed-registration regression and CLI outcome reporting, plus native game-consumer regression; no model or capacity benchmark",
+  "sourceBase": "30dc0cf205766cc2e5618e9c70c85417b64e2ced",
+  "sourceHashEncoding": "UTF-8 with CRLF normalized to LF; individual probe receipts also retain their executed script byte hash",
+  "sourceSha256": {
+    "executor-service/rust/sandcrab-daemon/src/job.rs": "658468823e10146212fe0c910cf585c88036206933f77c88bee84c6bc26a601f",
+    "executor-service/rust/sandcrab-core/src/unit.rs": "56e0290ccd0627a07ba2c0745989244d32113019fccd5a56f2c93c47c2bb4495",
+    "executor-service/rust/sandcrab/src/client.rs": "9eb81c7326e47ea090af867bf6ff013b086d6ca113ac542ae2f4eb505a34847f",
+    "executor-service/rust/sandcrab/src/runtime.rs": "b730ca5adeb7b841d52f17e0a40c622a2a759205a95e1ef54bec5425ddd8b3eb",
+    "executor-service/rust/sandcrab/native_probe.py": "1e780b87b842f4247f04aef85453761c2e4ed1cdfa6b6f0d4b7430af5ad1fbf8",
+    "evals/native.py": "4272b0bdd3cb18f4b91d6890d601436270e2add734e9f63830929675511fd23c",
+    "executor-service/rust/Cargo.lock": "85d01437aa43d34acf5023a9d0380d6d280a56dc6515069eb09900e6677cc275"
+  },
+  "discovery": {
+    "workflow": "https://github.com/core607/poketto/actions/runs/40620735905",
+    "cancelSeconds": [
+      0.249,
+      0.249,
+      10.486
+    ],
+    "note": "This scripted baseline exposed a startup race; the controlled native probe below holds unit registration until the first real systemctl kill fails."
+  },
+  "attempts": [
+    {
+      "kind": "before-fix",
+      "receipt": {
+        "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+        "binarySha256": "0fdc894941828895bb7bb7556024b7573578b6feedf41567f7c37bf90a43b636",
+        "probeSha256": "b5fc3109973a5e723a216db628db825f50d8168839f6062f9d837c2a9dfbd2fa",
+        "checks": [
+          {
+            "name": "independent-cli",
+            "result": "PASS"
+          },
+          {
+            "name": "profile-identity-workspace-and-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "request-authority-and-profile-bounds",
+            "result": "PASS"
+          },
+          {
+            "name": "host-network-and-unix-socket-denial",
+            "result": "PASS"
+          },
+          {
+            "name": "exit-timeout-and-output-bounds",
+            "result": "PASS"
+          },
+          {
+            "name": "workspace-quota-and-descendant-cleanup",
+            "result": "PASS"
+          },
+          {
+            "name": "admission-and-cancellation",
+            "result": "PASS"
+          },
+          {
+            "name": "bounded-results-and-release",
+            "result": "PASS"
+          },
+          {
+            "name": "peer-refusal-before-request",
+            "result": "PASS"
+          },
+          {
+            "name": "abrupt-loss-cleanup-and-stale-epoch",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "startupCancellation": {
+          "initialKillExitCode": 1,
+          "killAttempts": 1,
+          "seconds": 10.424,
+          "state": "cancelled",
+          "limitSeconds": 3
+        },
+        "result": "FAIL",
+        "failureType": "AssertionError"
+      }
+    },
+    {
+      "kind": "after-fix",
+      "receipt": {
+        "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+        "binarySha256": "cd2fe4441fd97a86718dcb248b06a4eb019cbd94b0b972aeedcade3a9f077aef",
+        "probeSha256": "055fef0f1d67b2c41df42513119b24554f06546945baf2d66e398790f37aaeba",
+        "checks": [
+          {
+            "name": "independent-cli",
+            "result": "PASS"
+          },
+          {
+            "name": "cli-outcome-survives-forget-failure",
+            "result": "PASS"
+          },
+          {
+            "name": "profile-identity-workspace-and-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "request-authority-and-profile-bounds",
+            "result": "PASS"
+          },
+          {
+            "name": "host-network-and-unix-socket-denial",
+            "result": "PASS"
+          },
+          {
+            "name": "exit-timeout-and-output-bounds",
+            "result": "PASS"
+          },
+          {
+            "name": "workspace-quota-and-descendant-cleanup",
+            "result": "PASS"
+          },
+          {
+            "name": "admission-and-cancellation",
+            "result": "PASS"
+          },
+          {
+            "name": "bounded-results-and-release",
+            "result": "PASS"
+          },
+          {
+            "name": "peer-refusal-before-request",
+            "result": "PASS"
+          },
+          {
+            "name": "abrupt-loss-cleanup-and-stale-epoch",
+            "result": "PASS"
+          },
+          {
+            "name": "cancellation-before-unit-registration",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "startupCancellation": {
+          "initialKillExitCode": 1,
+          "killAttempts": 2,
+          "seconds": 0.685,
+          "state": "cancelled",
+          "limitSeconds": 3
+        },
+        "result": "PASS"
+      }
+    },
+    {
+      "kind": "after-probe-publication-guard",
+      "receipt": {
+        "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+        "binarySha256": "cd2fe4441fd97a86718dcb248b06a4eb019cbd94b0b972aeedcade3a9f077aef",
+        "probeSha256": "1e780b87b842f4247f04aef85453761c2e4ed1cdfa6b6f0d4b7430af5ad1fbf8",
+        "checks": [
+          {
+            "name": "independent-cli",
+            "result": "PASS"
+          },
+          {
+            "name": "cli-outcome-survives-forget-failure",
+            "result": "PASS"
+          },
+          {
+            "name": "profile-identity-workspace-and-replay",
+            "result": "PASS"
+          },
+          {
+            "name": "request-authority-and-profile-bounds",
+            "result": "PASS"
+          },
+          {
+            "name": "host-network-and-unix-socket-denial",
+            "result": "PASS"
+          },
+          {
+            "name": "exit-timeout-and-output-bounds",
+            "result": "PASS"
+          },
+          {
+            "name": "workspace-quota-and-descendant-cleanup",
+            "result": "PASS"
+          },
+          {
+            "name": "admission-and-cancellation",
+            "result": "PASS"
+          },
+          {
+            "name": "bounded-results-and-release",
+            "result": "PASS"
+          },
+          {
+            "name": "peer-refusal-before-request",
+            "result": "PASS"
+          },
+          {
+            "name": "abrupt-loss-cleanup-and-stale-epoch",
+            "result": "PASS"
+          },
+          {
+            "name": "cancellation-before-unit-registration",
+            "result": "PASS"
+          }
+        ],
+        "cleanup": "PASS",
+        "startupCancellation": {
+          "initialKillExitCode": 1,
+          "killAttempts": 2,
+          "seconds": 0.575,
+          "state": "cancelled",
+          "limitSeconds": 3
+        },
+        "result": "PASS"
+      }
+    }
+  ],
+  "gameConsumer": {
+    "scope": "Synthetic game and repository fixtures on the same Linux host; production services unchanged",
+    "observations": [
+      {
+        "result": "PASS",
+        "observation": {
+          "requestBytes": 0,
+          "accepted": true
+        },
+        "test": "root-owned-socket-rejects-non-root-peer"
+      },
+      {
+        "test": "native-game-shared-example-and-complete-utf8-save",
+        "result": "PASS",
+        "repositoryBaselineMillis": null,
+        "repositoryWithGameMillis": null
+      },
+      {
+        "test": "native-game-denies-host-files-credentials-tcp-unix-and-bridge",
+        "result": "PASS",
+        "repositoryBaselineMillis": null,
+        "repositoryWithGameMillis": null
+      },
+      {
+        "test": "native-game-output-memory-descendants-and-readmission",
+        "result": "PASS",
+        "repositoryBaselineMillis": null,
+        "repositoryWithGameMillis": null
+      },
+      {
+        "test": "native-game-admission-does-not-consume-repository-capacity",
+        "result": "PASS",
+        "repositoryBaselineMillis": 217.003384,
+        "repositoryWithGameMillis": 77.140519
+      },
+      {
+        "test": "native-game-account-revocation-terminates-active-job",
+        "result": "PASS",
+        "repositoryBaselineMillis": null,
+        "repositoryWithGameMillis": null
+      },
+      {
+        "test": "native-game-supervisor-loss-cleans-jobs-before-readmission",
+        "result": "PASS",
+        "repositoryBaselineMillis": null,
+        "repositoryWithGameMillis": null
+      },
+      {
+        "gameNative": "PASS"
+      },
+      {
+        "test": "selected-scenario-closes-worker-leases",
+        "result": "PASS"
+      },
+      {
+        "nativeCombined": "PASS",
+        "sourceLayout": "flat",
+        "runtimeManifestSha256": "d5793601203efd6743c1dbd49a4cae1ef7df44fe588f1c85f6be48c99de51491",
+        "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+        "nativePoolSha256": "94ff8dd3d4cfac0222defab0b9eb71b1f9af3cd732f4d7b32eb2f7a1839e5f47",
+        "supervisorKind": "rust",
+        "workerSha256": "4f4df72fc4cb55ff3f072276b554c2563ba0077a7a7fc36dd17aee26bf2d468d",
+        "launcherSha256": "5093662e99f599cfe060844ce391590895b54edcfd2056db9e07f8a0d01d3bbe",
+        "shellLoopSha256": "305d9ce920f6347af160f71e34c5f3d8f4096a13903238fbf29b4ada9007ceff",
+        "syncProgramSha256": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233",
+        "cliSha256": "38f5400062010264b5ddad206ea91b97b749535b44d221ad2436b12adc4f562f",
+        "nativeScriptSha256": "65cd8aef8b975b834263c1630fc15f49a089ff1a6a29c57d4d1447b485d9dd26",
+        "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
+        "games": {
+          "supervisorSha256": "73ed85f465f12d6a2ffc107df0c45e456b31cb1e04d304f97f30f32d49c231ba",
+          "runtimeSha256": "8ee28e17266d6fce9f157fbc53252573150219f30a08defd0814fa064dbed1e8",
+          "entrySha256": "111c875956ba96850013fe6d2ede2e89463d73384ec028a8d466f894565c0c84",
+          "exampleSha256": "7d02464c5858e80f4d45d93234d911113de28b28abbf0715103d20cb42fb57e2",
+          "fixtureSha256": "0a95ce7ccc28bc790d5f46616d56a54291e4a3887a99d71fc164934baab748d6"
+        },
+        "source": "synthetic-only",
+        "scenario": "games",
+        "processCase": null
+      },
+      {
+        "cleanup": "PASS"
+      }
+    ]
+  },
+  "limitations": [
+    "The reported timing is a fault-reproduction deadline, not an application latency benchmark.",
+    "No real model, SDK conformance, or complete service adoption is established by these runs."
+  ]
+}
