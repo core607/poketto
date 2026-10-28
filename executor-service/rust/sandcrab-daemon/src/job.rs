@@ -104,20 +104,26 @@ fn watch(
     let mut output = [Vec::new(), Vec::new()];
     let mut truncated = false;
     let mut end = End::Normal;
-    let mut killed = false;
+    let mut next_kill = started;
     let mut kill = |reason: End, end: &mut End| {
-        if !killed {
+        if *end == End::Normal {
             *end = reason;
-            killed = true;
+        }
+        // systemd-run can still be registering the unit. Neither a failed kill nor a
+        // successful kill of an activating unit proves its future processes are gone.
+        if Instant::now() >= next_kill {
             let _ = systemctl(
                 &["kill", "--kill-who=all", "--signal=KILL"],
                 &launch.unit,
                 5,
             );
+            next_kill = Instant::now() + Duration::from_millis(100);
         }
     };
     while open[0] || open[1] {
-        if cancelled.load(Ordering::SeqCst) {
+        if end != End::Normal {
+            kill(end, &mut end);
+        } else if cancelled.load(Ordering::SeqCst) {
             kill(End::Cancelled, &mut end);
         } else if started.elapsed() > timeout {
             kill(End::Timeout, &mut end);
