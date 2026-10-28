@@ -34,6 +34,7 @@ RUN python -m venv /venv && /venv/bin/python -I -m pip --isolated --require-virt
     --index-url https://pypi.org/simple --timeout 30 --retries 2 -r /suite/requirements.txt
 # The build context is the Gradle-staged suite (stageExecutorServiceTests), so it holds only suite files.
 COPY . /suite/
+COPY --from=rust-build /source/target/x86_64-unknown-linux-musl/release/sandcrab /suite/bin/sandcrab
 COPY --from=rust-build /source/target/x86_64-unknown-linux-musl/release/poketto /suite/bin/poketto
 COPY --from=rust-build /source/target/x86_64-unknown-linux-musl/release/poketto-shell /suite/bin/poketto-shell
 COPY --from=rust-build /source/target/x86_64-unknown-linux-musl/release/poketto-syncfs /suite/bin/poketto-syncfs

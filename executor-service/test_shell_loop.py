@@ -15,11 +15,15 @@ from testdata.shell_loop_reference import MAX_RETAINED_STREAMS
 
 
 class ShellLoopTests(unittest.TestCase):
+    program = ('bin/poketto-shell',)
+    execution_variable = 'POKETTO_EXECUTION_ID'
+
     def setUp(self):
         self.root = tempfile.TemporaryDirectory()
         self.addCleanup(self.root.cleanup)
         self.process = subprocess.Popen(
-            [str(Path(__file__).with_name('bin') / 'poketto-shell'), self.root.name],
+            [str(Path(__file__).parent / self.program[0]), *self.program[1:], self.root.name],
+            env={k: v for k, v in os.environ.items() if k not in ('POKETTO_EXECUTION_ID', 'SANDBOX_EXECUTION_ID')},
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             start_new_session=True)
         self.addCleanup(self.close)
@@ -65,6 +69,15 @@ class ShellLoopTests(unittest.TestCase):
                 return frame, {stream: bytes(value) for stream, value in output.items()}
             self.assertEqual('output', frame['kind'])
             output[frame['stream']].extend(base64.b64decode(frame['data'], validate=True))
+
+    def test_each_command_exports_its_consumers_execution_identity(self):
+        for _ in range(2):
+            result, output = self.execute('printf "%s" "$' + self.execution_variable + '"')
+            self.assertEqual(result['executionId'].encode(), output['stdout'])
+        other = 'SANDBOX_EXECUTION_ID' if self.execution_variable == 'POKETTO_EXECUTION_ID' else 'POKETTO_EXECUTION_ID'
+        result, output = self.execute('printf "%s" "${' + other + '-}"')
+        self.assertEqual(b'', output['stdout'])
+        self.assertEqual(0, result['exitCode'])
 
     def test_working_directory_environment_functions_aliases_and_background_survive(self):
         result, output = self.execute(
@@ -149,6 +162,11 @@ class ShellLoopTests(unittest.TestCase):
         self.assertNotEqual(0, self.process.wait(timeout=3))
         self.assertIn(b'Invalid command identity', self.process.stderr.read())
         self.assertFalse((Path(self.root.name) / 'must-not-exist').exists())
+
+
+class NativeShellLoopTests(ShellLoopTests):
+    program = ('bin/sandcrab', '__shell')
+    execution_variable = 'SANDBOX_EXECUTION_ID'
 
 
 if __name__ == '__main__':

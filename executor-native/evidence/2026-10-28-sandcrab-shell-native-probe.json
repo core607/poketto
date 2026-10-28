@@ -1,0 +1,62 @@
+{
+  "recordedOn": "2026-10-28",
+  "scope": "Disposable fixture on a native Linux systemd/cgroup v2 host; synthetic authority and content. No production service or data was changed.",
+  "sourceBase": "96db6ee5586f70827ae31dfc2c726c17d348a7fd",
+  "sourceHashEncoding": "UTF-8 with LF line endings",
+  "sourceSha256": {
+    "executor-service/rust/sandcrab-shell/src/lib.rs": "9e58a833710d4a7401d427a7f37e6a5cf6a92394aeba266b6e328a436124897e",
+    "executor-service/rust/poketto-shell/src/main.rs": "2528490d855ed9bbad7a147eedd88d8c23fa561a6ffb82b7f371e29ae68429a4",
+    "executor-service/rust/sandcrab/src/main.rs": "7fe128446c464d0e1af42c6e4901a4d7ecf3ced4ba1b9c4f6ee5310aacd8a985",
+    "executor-service/rust/Cargo.lock": "b83cba8d5e5a20db8c3e2dda131b353d2ae3e4efa22ed38d5274276ba143716e",
+    "executor-service/test_shell_loop.py": "687cdbaf504667dd9df361a22d534e9bb4180846068bbe62b583aeacef130ee2"
+  },
+  "checks": [
+    {
+      "source": "synthetic-only",
+      "test": "account-state-produce",
+      "result": "PASS"
+    },
+    {
+      "source": "synthetic-only",
+      "test": "account-state-consume",
+      "result": "PASS"
+    },
+    {
+      "result": "PASS",
+      "test": "timeout-preserves-local-work-and-explicit-discard-allows-a-fresh-copy",
+      "source": "synthetic-only"
+    },
+    {
+      "test": "selected-scenario-closes-worker-leases",
+      "result": "PASS"
+    },
+    {
+      "nativeCombined": "PASS",
+      "sourceLayout": "flat",
+      "runtimeManifestSha256": "d5793601203efd6743c1dbd49a4cae1ef7df44fe588f1c85f6be48c99de51491",
+      "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+      "nativePoolSha256": "94ff8dd3d4cfac0222defab0b9eb71b1f9af3cd732f4d7b32eb2f7a1839e5f47",
+      "supervisorKind": "rust",
+      "workerSha256": "4f4df72fc4cb55ff3f072276b554c2563ba0077a7a7fc36dd17aee26bf2d468d",
+      "launcherSha256": "5093662e99f599cfe060844ce391590895b54edcfd2056db9e07f8a0d01d3bbe",
+      "shellLoopSha256": "ea7d36e9c3034301d41e8f4f6131ff0f05655141834fd97a3400162d63298a3a",
+      "syncProgramSha256": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233",
+      "cliSha256": "38f5400062010264b5ddad206ea91b97b749535b44d221ad2436b12adc4f562f",
+      "nativeScriptSha256": "65cd8aef8b975b834263c1630fc15f49a089ff1a6a29c57d4d1447b485d9dd26",
+      "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
+      "games": null,
+      "source": "synthetic-only",
+      "scenario": "ephemeral-lifecycle",
+      "processCase": null
+    },
+    {
+      "cleanup": "PASS"
+    }
+  ],
+  "exclusions": [
+    "Native persistent session HTTP API",
+    "OpenSandbox SDK conformance",
+    "Model-directed session usability",
+    "Production capacity or performance comparison"
+  ]
+}
