@@ -6,7 +6,7 @@ Date: 2026-10-26
 
 Repository execution and games share Rust mechanisms ([in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md), [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md)). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases through TypeScript.
 
-The [daemon](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still requires Poketto's identity fields, revision labels and signed request schema. Its generic crates cannot yet serve another project without a compiled product extension. Reproducing every existing repository operation as an extension would preserve that dependency in the public interface.
+The [retained-session service](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still requires Poketto identities, revisions and signed requests. [Native finite runs](../../executor-service/rust/sandcrab/README.md) are independent, but sessions, files and consumer adoption remain unfinished. Reproducing every repository operation as an extension would preserve product coupling.
 
 The service must fit the default two-core, 4 GB deployment target ([continuous delivery](../implemented/2026-09-03-continuous-delivery.md)) without requiring KVM or a container runtime. Other projects need a usable execution service without adopting Poketto's content model.
 
@@ -48,7 +48,7 @@ Poketto owns repositories, publication, writes and recovery. It may redesign cop
 0. Validation without production code, recorded below.
 1. In-repository split, shipped as the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md).
 2. Finite jobs, shipped as [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md).
-3. Public service and adoption. HTTP and streamed captures are shipped. Build native API, profiles, CLI, independent examples, evals, OpenAPI and the OpenSandbox adapter. Adapt Poketto, remove its compiled extension and product fields, and retire the old protocol without shims. The operation map inventories migration, not mandatory public operations.
+3. Public service and adoption. HTTP, streamed captures and native finite runs with profiles, CLI and OpenAPI are shipped. Complete sessions, files, independent examples, evals and the OpenSandbox adapter. Adapt Poketto, remove its compiled extension and product fields, and retire the old protocol without shims. The operation map inventories migration, not mandatory public operations.
 4. Extraction. Move generic crates with history, publish checksums, threat model, examples and evals, then pin a release in Poketto. Phases 1 to 3 must ship before four consecutive weeks without cross-boundary changes. Record the last deployed change; another restarts the interval. The operator selects repository identity, visibility and initial release version before publication.
 
 ### Phase 0 findings
@@ -57,7 +57,7 @@ Recorded on 2026-10-27 against OpenSandbox `main` and the tags `release-1.1.0` a
 
 **SDK reachability.** Kotlin constructs `protocol://endpoint` and forwards endpoint headers, allowing path-routed execd and token authentication. Its OkHttp integration exposes a connection pool, not Unix transport. Python accepts an httpx transport. Neither observation proves SDK conformance.
 
-**Operation map.** Before streamed captures, Poketto's 28 operations suggested five common lifecycle operations and five extension families. This inventory records the extraction candidates, not the final API:
+**Operation map.** The original protocol suggested these extraction candidates, not mandatory public operations:
 
 | Extension | Replaces |
 |---|---|
@@ -78,7 +78,7 @@ Artifact retention belongs to the consumer after download. Streaming removes chu
 - Phase 3:
   - A fresh installation runs documented CLI and HTTP examples without Poketto configuration, identifiers, Git content or a compiled extension. A batch code runner and a build/test agent exercise the same public service as Poketto.
   - Contract, lifecycle, failure-injection and native isolation tests verify the public entry paths and cleanup. A sandbox failure never falls back to an unrestricted subprocess. Protocol fixtures alone do not prove containment.
-  - Agent evals use fixed clients/models, repeated natural-language tasks and independent output/file/state grading. Cover generic execution, sessions, files, cancellation and recovery. Record configuration, code/corpus revisions, failures, calls, latency, usage and known/unknown costs; retain every attempt in the denominator. Separate scripted and model-directed results. Estimate and bound paid batches; exclude private content and credentials from published evidence.
+  - [Inspect](https://inspect.aisi.org.uk/) runs agent evals through the [shared entrance](2026-10-28-agent-evaluation-entrance.md), with an independent Sandcrab suite using native interfaces. Use fixed clients/models, repeated natural-language tasks and independent output/file/state grading. Cover execution, sessions, files, cancellation and recovery. Record configuration, code/corpus revisions, failures, calls, latency, usage and known/unknown costs, retaining all attempts. Separate scripted and model-directed results. Estimate and bound paid batches; publish no private content or credentials.
   - The native adapter probe, the toolkit acceptance, the game supervisor's tests and the `load` lane pass.
   - A 50-agent round on one host with unchanged bounds, before and after, reports goodput, p95 latency, refusals and CPU split by application container, supervisor and sandbox units, and none gets worse.
   - Fix warm-up, repetition and comparison rules before collecting the load comparison; retain every round and both client and server timings. Do not replace a failed metric with another or rerun selectively for a passing sample.

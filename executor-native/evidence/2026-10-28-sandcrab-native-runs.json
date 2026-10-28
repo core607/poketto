@@ -1,0 +1,203 @@
+{
+  "scope": "Standalone native Sandcrab CLI and HTTP against real Linux systemd, cgroup v2, bubblewrap and seccomp in a disposable bounded service; no Poketto application or model calls",
+  "sourceBase": "ea212329131ee954d57e8fc7d0c6fbbc60fa9d6e",
+  "sourceSha256": {
+    "executor-service/rust/Cargo.lock": "85d01437aa43d34acf5023a9d0380d6d280a56dc6515069eb09900e6677cc275",
+    "executor-service/rust/Cargo.toml": "728f8f3829e6df32529a649630ccc01d5841cf6452e8619bf6be7ba2f4fb62b2",
+    "executor-service/Dockerfile.tests": "f2b82be1da1c418277732f36ae959aacd4d4e484c93a427ff9a707e326e68c51",
+    "gradle/executor-service.gradle.kts": "05905eeeba2584dc95a45a2d192650a5a085f775f97faf1e6ebf1ad73515a7c2",
+    "executor-service/rust/sandcrab-daemon/src/job.rs": "cb119e803cf4e318eeb321c38576b2d04ad17e64109000af866b56b7a188c447",
+    "executor-service/rust/sandcrab-core/src/unit.rs": "56e0290ccd0627a07ba2c0745989244d32113019fccd5a56f2c93c47c2bb4495",
+    "executor-service/rust/sandcrab-launch/src/lib.rs": "40fbbb0613e1810f9607e3d60844a5eb059d024b2253f9a5c6a05d71db3a932c",
+    "executor-service/rust/sandcrab/src/client.rs": "7c5e53b8fc112d8e3d18df6e380112a021e7277b4c521a1ac80410e4ab62e4b7",
+    "executor-service/rust/sandcrab/src/config.rs": "67c591f81d8e3a03cf0b5736c800c597050fc43068312487be5017e4a9627537",
+    "executor-service/rust/sandcrab/src/main.rs": "d732aca649dfe1c74c10cad710a5aeb9a5779059d9dd1c00723cb4bcb47b84ff",
+    "executor-service/rust/sandcrab/src/runtime.rs": "9931cabccb508f9d14aaa7aa4dc8395ea242c4f48a39d5b3408b78397f1c1b0a",
+    "executor-service/rust/sandcrab/src/server.rs": "d243f5fe313d4324ae01d17d9768a6e77973f3645361473a1dfe62bbce46662e",
+    "executor-service/rust/sandcrab/src/service.rs": "f69bd303749c31564800a60cea3a43cee87915afea353c6c36fee35f0ce79818",
+    "executor-service/rust/sandcrab/Cargo.toml": "b601ee2c79b946d43101a9ca26dc0cae91248bb55960ab4984ed044498c709c6",
+    "executor-service/rust/sandcrab/config.example.toml": "2177e31be0496127ff832e9bfce156603e6981c459ccdae0d464b5398c356e81",
+    "executor-service/rust/sandcrab/native_probe.py": "08496f3b63540c3bdca554efb1e7ebb0d102ab85a1e897c4d177776c9fd793cc",
+    "executor-service/rust/sandcrab/openapi.json": "47f2722d4cdc37340be55e94b30b7c6dbb1a25f99ca6d4b7ba68b59c689c8bce"
+  },
+  "attempts": [
+    {
+      "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+      "binarySha256": "3642dd754e79d0dc43ae60c4699e699117ee24d050581da8e3f91ce00cedaf0c",
+      "probeSha256": "ff14c85a734bb66b8d0966bc944a19c2eba0699d33fff69f54fde57ed8fab7b6",
+      "checks": [],
+      "cleanup": "PASS",
+      "result": "FAIL",
+      "failureType": "CalledProcessError"
+    },
+    {
+      "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+      "binarySha256": "3642dd754e79d0dc43ae60c4699e699117ee24d050581da8e3f91ce00cedaf0c",
+      "probeSha256": "2185c1c7e1a91d380f27a833b6191f2471d7c6472b9e0f4e9f8debdda905c15f",
+      "checks": [],
+      "cleanup": "PASS",
+      "result": "FAIL",
+      "failureType": "CalledProcessError"
+    },
+    {
+      "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+      "binarySha256": "7f3073acf5ffe56ae374658c908de18e99a1f39405a7c07096e8dd3f96ce952d",
+      "probeSha256": "5e342464babadbb8926db5d1f28e3a47bdccd026d6e1de5dfcd505642da2a235",
+      "checks": [
+        {
+          "name": "independent-cli",
+          "result": "PASS"
+        },
+        {
+          "name": "profile-identity-workspace-and-replay",
+          "result": "PASS"
+        },
+        {
+          "name": "request-authority-and-profile-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "host-network-and-unix-socket-denial",
+          "result": "PASS"
+        },
+        {
+          "name": "exit-timeout-and-output-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "workspace-quota-and-descendant-cleanup",
+          "result": "PASS"
+        },
+        {
+          "name": "admission-and-cancellation",
+          "result": "PASS"
+        },
+        {
+          "name": "bounded-results-and-release",
+          "result": "PASS"
+        },
+        {
+          "name": "peer-refusal-before-request",
+          "result": "PASS"
+        },
+        {
+          "name": "abrupt-loss-cleanup-and-stale-epoch",
+          "result": "PASS"
+        }
+      ],
+      "cleanup": "PASS",
+      "result": "PASS"
+    },
+    {
+      "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+      "binarySha256": "4f9bfd45f3be6674132fd3b5cf054863c3c13600c0f9eea53ebc0910bb4c7f26",
+      "probeSha256": "466798b6cd96ee005d4f7b3a1e77c9b43fe183ec349cc2710cff7f5293dc1e08",
+      "checks": [
+        {
+          "name": "independent-cli",
+          "result": "PASS"
+        },
+        {
+          "name": "profile-identity-workspace-and-replay",
+          "result": "PASS"
+        },
+        {
+          "name": "request-authority-and-profile-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "host-network-and-unix-socket-denial",
+          "result": "PASS"
+        },
+        {
+          "name": "exit-timeout-and-output-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "workspace-quota-and-descendant-cleanup",
+          "result": "PASS"
+        },
+        {
+          "name": "admission-and-cancellation",
+          "result": "PASS"
+        },
+        {
+          "name": "bounded-results-and-release",
+          "result": "PASS"
+        },
+        {
+          "name": "peer-refusal-before-request",
+          "result": "PASS"
+        },
+        {
+          "name": "abrupt-loss-cleanup-and-stale-epoch",
+          "result": "PASS"
+        }
+      ],
+      "cleanup": "PASS",
+      "result": "PASS"
+    },
+    {
+      "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+      "binarySha256": "0fdc894941828895bb7bb7556024b7573578b6feedf41567f7c37bf90a43b636",
+      "probeSha256": "08496f3b63540c3bdca554efb1e7ebb0d102ab85a1e897c4d177776c9fd793cc",
+      "checks": [
+        {
+          "name": "independent-cli",
+          "result": "PASS"
+        },
+        {
+          "name": "profile-identity-workspace-and-replay",
+          "result": "PASS"
+        },
+        {
+          "name": "request-authority-and-profile-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "host-network-and-unix-socket-denial",
+          "result": "PASS"
+        },
+        {
+          "name": "exit-timeout-and-output-bounds",
+          "result": "PASS"
+        },
+        {
+          "name": "workspace-quota-and-descendant-cleanup",
+          "result": "PASS"
+        },
+        {
+          "name": "admission-and-cancellation",
+          "result": "PASS"
+        },
+        {
+          "name": "bounded-results-and-release",
+          "result": "PASS"
+        },
+        {
+          "name": "peer-refusal-before-request",
+          "result": "PASS"
+        },
+        {
+          "name": "abrupt-loss-cleanup-and-stale-epoch",
+          "result": "PASS"
+        }
+      ],
+      "cleanup": "PASS",
+      "result": "PASS"
+    }
+  ],
+  "repair": "Attempts 1 and 2 exposed a workspace bind after root remount-readonly. Attempt 3 fixes that order and passes ten groups. Attempt 4 also verifies OpenAPI, strict control bodies and a non-root client distinct from the execution user. Attempt 5 verifies canonical profile mounts cannot expose runtime storage. All attempts passed cleanup.",
+  "limits": {
+    "poolMemoryMiB": 384,
+    "poolCpuPercent": 50,
+    "maxConcurrentRuns": 2,
+    "commandMemoryMiB": 64,
+    "workspaceMiB": 8
+  },
+  "limitations": [
+    "Deterministic native acceptance, not agent-usability or Inspect evidence.",
+    "No persistent sessions, file transfer, SSE, TCP, OpenSandbox SDK conformance or Poketto adapter adoption.",
+    "These fixture limits do not establish production capacity."
+  ]
+}

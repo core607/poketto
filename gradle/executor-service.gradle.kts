@@ -58,7 +58,7 @@ tasks.register<Sync>("stageExecutorWorker") {
         exclude("test_*.py", "run_tests.py")
     }
     from(executorBinaries) {
-        exclude("poketto-supervisor", "poketto-launch", "poketto-games")
+        exclude("poketto-supervisor", "poketto-launch", "poketto-games", "sandcrab")
         into("bin")
     }
     from(executorBinaries.map { it.file("poketto-supervisor") })
