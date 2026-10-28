@@ -42,9 +42,10 @@ def main():
         child_env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': str(client_home), 'PYTHONUTF8': '1',
                      'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'safe.directory', 'GIT_CONFIG_VALUE_0': str(source)}
         # Preserve the venv path: resolving its python symlink selects the base interpreter.
-        child = subprocess.Popen(['runuser', '-u', client.pw_name, '--preserve-environment', '--', str(args.python.absolute()), str(source / 'evals/run.py'),
+        child = subprocess.Popen([str(args.python.absolute()), str(source / 'evals/run.py'),
                                   '--endpoint', str(fixture.socket), '--output', str(output), '--revision', revision],
-                                 cwd=source, env=child_env, start_new_session=True)
+                                 cwd=source, env=child_env, start_new_session=True,
+                                 user=client.pw_uid, group=client.pw_gid, extra_groups=[client.pw_gid])
         try:
             returncode = child.wait(timeout=600)
         finally:
