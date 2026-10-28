@@ -4,82 +4,91 @@ Date: 2026-10-26
 
 ## Problem
 
-Repository execution and games run on the static Rust daemon ([Rust repository supervisor](../implemented/2026-10-21-rust-repository-supervisor.md), [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md)), and every path starts sandboxes through the Rust launcher of the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases with its own TypeScript client.
+Repository execution and games share Rust mechanisms ([in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md), [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md)). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases through TypeScript.
 
-The [daemon](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still serves Poketto's copy operations through an extension and keeps Poketto's signed request schema, so it is not reusable alone.
+The [daemon](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still requires Poketto's identity fields, revision labels and signed request schema. Its generic crates cannot yet serve another project without a compiled product extension. Reproducing every existing repository operation as an extension would preserve that dependency in the public interface.
 
-No maintained sandbox service fits the default two-core, 4 GB deployment target ([continuous delivery](../implemented/2026-09-03-continuous-delivery.md)), whose current production host exposes no KVM device. E2B and microsandbox need KVM, OpenSandbox needs Docker or Kubernetes, and bubblewrap, nsjail, Anthropic's sandbox-runtime and the hakoniwa crate offer no service interface.
+The service must fit the default two-core, 4 GB deployment target ([continuous delivery](../implemented/2026-09-03-continuous-delivery.md)) without requiring KVM or a container runtime. Other projects need a usable execution service without adopting Poketto's content model.
 
 ## Proposal
 
 ### Scope and boundary
 
-Sandcrab is an Apache-2.0 Rust service: one static binary that runs as the daemon and as its CLI, on x64 Linux with cgroup v2 and systemd, without KVM or a container runtime. Each sandbox is a systemd transient unit with bubblewrap, the pinned seccomp filter and the resource limits of the [direct sandbox launch](../implemented/2026-10-18-direct-sandbox-launch.md). It shares the host kernel. Its threat model states that it is weaker than a microVM and targets trusted or semi-trusted code on small hosts.
+**Sandcrab defines its public contract; Poketto adapts.** Independent consumers and extensibility govern the interface, not preservation of Poketto's operations, journals or copy behavior. Every primitive needs a use outside Poketto.
 
-Integration never requires Rust. The contract is an OpenAPI document served over HTTP/1.1 on a Unix socket for the CLI and clients that can use one, and on loopback TCP with a token for the OpenSandbox SDKs, which need it (phase 0 findings below). Operators define profiles in a TOML file: mounts, limits, execution account, tools and network policy, which is "none" in the first release. **A caller names a profile and cannot choose a UID, a host path or weaker isolation.**
+Sandcrab is an Apache-2.0 Rust daemon and CLI in one static x64 Linux binary, using cgroup v2, systemd and [direct sandbox launch](../implemented/2026-10-18-direct-sandbox-launch.md). Its same-kernel boundary targets trusted or semi-trusted code and is weaker than a microVM.
+
+Integration requires neither Rust nor product identifiers. Native HTTP, CLI and OpenAPI share lifecycle, errors and ownership. Unix sockets authenticate peer UIDs; loopback TCP uses tokens. Operator-owned TOML profiles set mounts, limits, accounts, tools and network policy, initially "none". Callers select allowed profiles, never host paths, UIDs or weaker isolation. Labels grant no authority.
 
 ### Primitives
 
 - `run`: one command in a fresh sandbox, destroyed afterwards.
 - Sessions: a persistent shell with open, execute, renew and close.
-- Volumes: quota-bounded directories that can be cloned by reflink and mounted into sessions.
+- Volumes: quota-bounded directories, empty or populated from ordinary file archives, which can be cloned by reflink and exclusively attached to sessions. Git bundle interpretation belongs to a consumer's initialization job.
 - Files: uploads and downloads as raw or tar streams.
 - Host calls: a program inside the sandbox sends an opaque request that the daemon relays to the caller and answers with the caller's reply; the daemon interprets neither.
 - Freeze: a flag on a file or capture request. The daemon freezes the unit for that request only, so a caller that fails mid-operation cannot leave a session frozen.
 
-Today captures and media transfers move 64 KiB of base64 per signed request, each preceded by an authorization check ([SessionFileTransfers](../../src/main/java/io/github/core607/poketto/executor/internal/SessionFileTransfers.java)), so a 50 MB file takes 800 requests. Sandcrab streams bodies instead. Command output and host calls arrive as server-sent events on one response, replacing `BRIDGE_POLL`. One request can run a command and return selected files as tar. Connections are reused.
+Captures already stream archives ([wire reference](../../executor-service/README.md#wire-version-1)); incoming moves and materialization remain chunked. Public file transfers stream bounded bodies, staging uploads before briefly freezing to validate and install. Commands and host calls use SSE over reusable connections. Cancellation, expiry and shutdown retain admission until containment. Errors distinguish refusal from uncertain execution, with explicit recovery behavior.
+
+Atomic batches and frozen jobs need independent uses and failure contracts before implementation; consumer orchestration may replace old operations. Durable operation IDs bind plan digests across reconnects and restarts, separately from transport IDs. Git transactions and reconciliation stay outside Sandcrab.
 
 ### Compatibility
 
-Sandcrab implements a pinned subset of the OpenSandbox [lifecycle](https://github.com/alibaba/OpenSandbox/blob/main/specs/sandbox-lifecycle.yml) and [execd](https://github.com/alibaba/OpenSandbox/blob/main/specs/execd-api.yaml) specifications: create, get, list, delete, renew and endpoint lookup; commands with SSE output; sessions; files and directories. Its endpoints are served by path from the daemon itself. `image.uri` names a profile, requests for container images or caller-selected UIDs are rejected, and unimplemented features return an explicit unsupported error. Volumes, frozen snapshots, atomic apply, frozen jobs and host calls live under a separate extension prefix. An MCP endpoint is optional and disabled by default.
+An adapter targets OpenSandbox `release-1.1.0` [lifecycle](https://github.com/alibaba/OpenSandbox/blob/release-1.1.0/specs/sandbox-lifecycle.yml) and [execd](https://github.com/alibaba/OpenSandbox/blob/release-1.1.0/specs/execd-api.yaml): create, get, list, delete, renew, endpoint lookup, SSE commands, sessions, files and directories. Evidence pins the specification commit and Python/Kotlin SDK versions. Native clients need neither SDK. `image.uri` selects a profile; images, caller-selected UIDs and unsupported features are rejected. Extensions use a separate prefix; optional MCP defaults off.
 
-Peer UID checks on the Unix socket authenticate callers by default. Ed25519-signed requests remain available, and Poketto keeps them because its application runs in a container that does not share the supervisor's UID.
+Compatibility requires calls through both SDKs, not endpoint resemblance. Authentication adapters may support Ed25519 for deployments that need it; the existing signed Poketto envelope does not define the native API.
 
 ### Poketto as the first consumer
 
-Poketto composes copies, seeds, publication checks, saves, moves and journals in Java from these primitives. Repository execution, games and the creator QA corpus become profiles on separate daemon instances, each with its own service unit, execution account and slice, which preserves the separation that [pocket games](../implemented/2026-10-09-pocket-games.md) requires.
+Poketto owns repositories, publication, writes and recovery. It may redesign copy semantics, updating owning decisions, docs and tests together. Cutover preserves existing data, including unsaved work, and current authorization. Repository and game accounts, units and slices remain separate ([pocket games](../implemented/2026-10-09-pocket-games.md)). Creator QA is an optional consumer.
 
 ### Phases
 
 0. Validation without production code, recorded below.
 1. In-repository split, shipped as the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md).
 2. Finite jobs, shipped as [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md).
-3. Repository operations move to the primitives until the daemon contains no Poketto code, step by step: HTTP on the Unix socket ([wire reference](../../executor-service/README.md#wire-version-1)), shipped; the operation map's extension families in the order snapshot (captures shipped), apply, frozen job, volumes, host calls; finally labels, identity fields and the unit name check become caller metadata and profile settings, and the Poketto extension crate is removed.
-4. Extraction. Move the crates to their own repository with history, publish releases with checksums and benchmarks, and pin a release in Poketto. This phase starts only after phases 1 to 3 have shipped and four weeks have passed without a change that crosses the boundary.
+3. Public service and adoption. HTTP and streamed captures are shipped. Build native API, profiles, CLI, independent examples, evals, OpenAPI and the OpenSandbox adapter. Adapt Poketto, remove its compiled extension and product fields, and retire the old protocol without shims. The operation map inventories migration, not mandatory public operations.
+4. Extraction. Move generic crates with history, publish checksums, threat model, examples and evals, then pin a release in Poketto. Phases 1 to 3 must ship before four consecutive weeks without cross-boundary changes. Record the last deployed change; another restarts the interval. The operator selects repository identity, visibility and initial release version before publication.
 
 ### Phase 0 findings
 
 Recorded on 2026-10-27 against OpenSandbox `main` and the tags `release-1.1.0` and `release-1.2.0-rc.2`.
 
-**SDK reachability.** The Kotlin SDK builds the execd base URL as `protocol://endpoint` from the endpoint lookup and sends the endpoint's headers with every execd request, so a daemon answering `127.0.0.1:<port>/sandboxes/<id>/port/44772` with a token header needs no SDK change. It uses OkHttp and accepts only a connection pool from the caller, so it cannot use a Unix socket. The Python SDK accepts a caller-supplied httpx transport and can.
+**SDK reachability.** Kotlin constructs `protocol://endpoint` and forwards endpoint headers, allowing path-routed execd and token authentication. Its OkHttp integration exposes a connection pool, not Unix transport. Python accepts an httpx transport. Neither observation proves SDK conformance.
 
-**Operation map.** Of the 28 operations Poketto sends the supervisor today, five map onto the OpenSandbox subset: HELLO, EXEC as a session run, RENEW, CLOSE, and REVOKE as a metadata-filtered list followed by deletes. Twenty-one need five extension families, none of which carries Poketto semantics:
+**Operation map.** Before streamed captures, Poketto's 28 operations suggested five common lifecycle operations and five extension families. This inventory records the extraction candidates, not the final API:
 
 | Extension | Replaces |
 |---|---|
-| Volumes: create from an uploaded bundle or by reflink clone, exclusive attach, delete, quota | OPEN, ATTACH, DISCARD |
+| Volumes and consumer initialization: create, clone, exclusive attach, delete, quota | OPEN, ATTACH, DISCARD |
 | Frozen snapshot: listed files with sizes and SHA-256, streamed as tar | the five CAPTURE operations, ARTIFACT_CREATE |
 | Atomic apply: writes, deletions and renames with SHA-256 or absence preconditions, applied while frozen, rolled back on failure, idempotent by receipt | the four MATERIALIZE and five MOVE operations |
 | Frozen job: a run under another profile on the session's volume while the session is frozen | BASELINE |
 | Host calls | BRIDGE_POLL, BRIDGE_COMPLETE |
 
-ARTIFACT_READ and ARTIFACT_REMOVE move to Poketto, which keeps artifact bytes after the snapshot. Each streamed extension replaces a begin, chunk and commit sequence with one request. OpenSandbox compatibility therefore serves outside users; Poketto relies on the extensions.
+Artifact retention belongs to the consumer after download. Streaming removes chunk round trips; migration must separately decide which transaction and recovery guarantees belong in a generic primitive and which remain with Poketto.
 
-**Specification changes.** Between 1.1.0 and 1.2.0-rc.2, OpenSandbox merged 754 commits and added five lifecycle and ten execd paths outside the subset. Of the 22 operations in the subset, 18 are unchanged. `POST /command` and `POST /session/{sessionId}/run` gained an `error` field, and `POST /sandboxes` gained optional `lifecycle` hooks and changed `networkPolicy`, which Sandcrab rejects as unsupported.
+**Specification changes.** The compared tags changed command/session error fields and sandbox lifecycle/network options. Versioned conformance must detect these differences; unsupported lifecycle and network options remain rejected.
 
-**Benchmark.** The [transport benchmark](../../experiments/sandcrab-transport/README.md) ran in a two-CPU Linux container on a developer machine ([result](../../acceptance/evidence/2026-10-27-sandcrab-transport-benchmark.json)). A signed frame on a new connection took a median 173 µs, an HTTP request on a kept-alive connection 88 µs, and one on a new connection 137 µs; signing alone was 20 µs. Both are negligible beside a command's half second, so HTTP adds no round-trip cost. The transfer shape matters instead: 800 requests of 64 KiB took 97 ms over kept-alive HTTP, and one streamed 50 MiB body took 9 ms.
+**Benchmark.** The [transport experiment](../../experiments/sandcrab-transport/README.md) compares frames, HTTP and streamed transfers. Its [developer-container receipt](../../acceptance/evidence/2026-10-27-sandcrab-transport-benchmark.json) supports streaming over chunk loops; it is not production-capacity evidence.
 
 ## Acceptance criteria
 
 - Phase 3:
+  - A fresh installation runs documented CLI and HTTP examples without Poketto configuration, identifiers, Git content or a compiled extension. A batch code runner and a build/test agent exercise the same public service as Poketto.
+  - Contract, lifecycle, failure-injection and native isolation tests verify the public entry paths and cleanup. A sandbox failure never falls back to an unrestricted subprocess. Protocol fixtures alone do not prove containment.
+  - Agent evals use fixed clients/models, repeated natural-language tasks and independent output/file/state grading. Cover generic execution, sessions, files, cancellation and recovery. Record configuration, code/corpus revisions, failures, calls, latency, usage and known/unknown costs; retain every attempt in the denominator. Separate scripted and model-directed results. Estimate and bound paid batches; exclude private content and credentials from published evidence.
   - The native adapter probe, the toolkit acceptance, the game supervisor's tests and the `load` lane pass.
   - A 50-agent round on one host with unchanged bounds, before and after, reports goodput, p95 latency, refusals and CPU split by application container, supervisor and sandbox units, and none gets worse.
-- Phase 4 publishes the OpenAPI document, the threat model and a conformance run of the OpenSandbox Python and Kotlin SDKs against the supported subset.
+  - Fix warm-up, repetition and comparison rules before collecting the load comparison; retain every round and both client and server timings. Do not replace a failed metric with another or rerun selectively for a passing sample.
+- Phase 4 publishes the OpenAPI document, threat model, exact SDK conformance runs and generic-consumer eval results. Poketto runs against the checksummed release and passes its adoption checks.
 
 ## Alternatives
 
 - **Keep the three paths and host the QA corpus in the game worker.** It ships fastest, but leaves two supervisor implementations in production.
 - **Compile integrations into the daemon through Rust traits.** Policy stays close to the mechanism, but every integrator must write and build Rust.
+- **Preserve every Poketto semantic as a generic extension.** It reduces adapter changes but makes unrelated projects inherit its transactions, identities and lifecycle. Consumer adaptation is the chosen cost of an independently useful public service.
 - **Implement the E2B API.** Its SDK addresses envd at `https://49983-{sandboxId}.{domain}` or, in debug mode, at one localhost port; a local daemon would need wildcard DNS and certificates. envd uses Connect RPC, and there is no official Java SDK.
 - **Contribute a bubblewrap runtime to OpenSandbox.** No API to maintain, but a Python server and a Go execd stay resident on a 4 GB host, and its bubblewrap sessions ([OSEP-0013](https://github.com/alibaba/OpenSandbox/blob/main/oseps/0013-isolated-execution-api.md)) are an inner layer that leaves cgroup limits to an outer container.
 - **Use microVMs.** Stronger isolation, but E2B, including its single-host package, and microsandbox need KVM.
@@ -87,4 +96,4 @@ ARTIFACT_READ and ARTIFACT_REMOVE move to Poketto, which keeps artifact bytes af
 
 ## Consequences
 
-Sandcrab publicly offers a same-kernel boundary, so security reports, the threat model and pinned tool upgrades become maintenance duties. Repository operations take more requests unless streaming and combined requests replace the current chunk loops. After extraction, a change across the boundary needs a sandcrab release before Poketto can use it, and released interfaces carry a compatibility expectation that Poketto's own pre-1.0 rules do not. Following OpenSandbox costs a review of each specification release. Poketto loses no isolation property: profiles, accounts, slices and fail-closed launch carry over unchanged.
+Sandcrab owns a same-kernel security boundary, public API, examples and evaluation maintenance. Poketto may require larger adapter changes or simpler product semantics; those costs must not shape the daemon into a second Poketto backend. Independent scenarios reveal integration costs that product-specific probes cannot measure. After extraction, cross-boundary changes need a Sandcrab release before adoption. Following OpenSandbox adds versioned conformance work, without making its whole API a promise. Profiles, separate accounts and slices, and fail-closed launch preserve isolation through the transition.
