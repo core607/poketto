@@ -19,7 +19,8 @@ QA keeps no question text, so production cannot show which questions failed.
    and questions with no answer. Store the set beside the fixed
    [QA corpus](../../acceptance/qa/README.md), pinned to the commits it was written
    against.
-2. **Replay.** Run the set through the QA loop with the default model and record, per
+2. **Replay.** Run the set through the QA loop with the default model, as a suite of
+   the [evaluation entrance](2026-10-28-agent-evaluation-entrance.md), and record, per
    question, whether every expected article was read, the tool calls spent, and
    whether citations passed revalidation. Keep failed and capped questions.
 3. **Aggregate counters.** Count, per QA question, search calls, zero-result searches
