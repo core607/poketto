@@ -33,10 +33,11 @@ account. The controller creates its own bounded units and temporary credentials,
 runs both clients without root, checks effective kernel limits and native record
 cleanup, and verifies containment before removing its fixture.
 
-The receipt records binary, probe and Python-client hashes, the JVM SDK hash,
+The receipt records binary, probe and Python-client hashes, JVM artifact hashes,
 client checks and cleanup. Failed attempts keep their receipts and separate
 operator diagnostics. Use a different report path for every attempt. Supplying
 only `--python` runs the Python client alone and cannot establish JVM support.
 The harness also exercises credential scope, reused native identities,
-disconnects, timeout, cancellation and file refusal paths against the same
+disconnects, timeout, cancellation, directory management, literal replacement
+and file refusal paths against the same
 service. No result establishes production adoption or model usability.

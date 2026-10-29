@@ -209,7 +209,7 @@ class Contract:
                                encode_chunked=chunked)
             response = connection.getresponse()
             data = response.read()
-            return response.status, json.loads(data)
+            return response.status, json.loads(data) if data else None
         finally:
             connection.close()
 
@@ -260,9 +260,67 @@ class Contract:
         self.delete(identity)
         self.probe.done('sdk-file-limits-disconnect-framing-traversal-and-ownership-refusals-preserve-existing-content')
 
+    def filesystem(self):
+        identity, headers = self.create()
+        base = '/opensandbox/' + identity
+        request = lambda method, path, body=None: self.request(method, base + path, body, headers)
+        assert request('POST', '/directories', {'/workspace/safe/nested': {'mode': 750},
+                                               '/workspace/keep': {'mode': 700}})[0] == 200
+        content = self.multipart([({'path': '/workspace/keep/guard', 'mode': 640}, b'original')])
+        assert self.upload(identity, headers, content)[0] == 200
+        run, result = self.probe.session_exec({'id': identity}, 'ln -s ../keep /workspace/safe/link')
+        assert result['state'] == 'succeeded'
+        self.probe.forget(run)
+        assert request('POST', '/directories', {'/workspace/aaa': {'mode': 700},
+                                               '/workspace/safe/link/escape': {'mode': 700}})[0] == 400
+        assert request('POST', '/files/permissions', {'keep/guard': {'mode': 600},
+                                                     'safe/link': {'mode': 600}})[0] == 400
+        assert request('POST', '/files/permissions', {'keep/guard': {'mode': 600},
+                                                     '/workspace/keep/guard': {'mode': 600}})[0] == 400
+        assert request('POST', '/files/mv', [{'src': 'keep/guard', 'dest': 'keep/moved'},
+                                            {'src': 'missing', 'dest': 'keep/other'}])[0] == 404
+        assert request('DELETE', '/files?path=keep/guard&path=missing')[0] == 404
+        assert request('DELETE', '/directories?path=safe&path=missing')[0] == 404
+        for query in ['path=/workspace', 'path=safe&path=safe/nested']:
+            assert request('DELETE', '/directories?' + query)[0] == 400
+        assert request('GET', '/directories/list?path=safe/link')[0] == 400
+        assert request('GET', '/directories/list?path=safe&depth=65')[0] == 400
+        assert request('GET', '/files/info?path=safe/link')[1]['safe/link']['type'] == 'symlink'
+        assert request('POST', '/files/replace', {'keep/guard': {'old': '', 'new': 'changed'}})[0] == 400
+        assert request('POST', '/files/replace', {'keep/guard': {'old': 'original', 'new': 'changed'},
+                                                 'missing': {'old': 'x', 'new': 'y'}})[0] == 404
+        run, result = self.probe.session_exec({'id': identity},
+            "python3 -c \"from pathlib import Path; Path('keep/big').write_bytes(b'x'*600000)\"")
+        assert result['state'] == 'succeeded'
+        self.probe.forget(run)
+        assert request('POST', '/files/replace', {'keep/big': {'old': 'x', 'new': 'xx'}})[0] == 413
+        run, result = self.probe.session_exec({'id': identity},
+            "test ! -e /workspace/aaa && test ! -e /workspace/keep/escape && "
+            "test ! -e /workspace/keep/moved && test -d /workspace/safe/nested && "
+            "test \"$(cat /workspace/keep/guard)\" = original && "
+            "test \"$(stat -c '%a' /workspace/keep/guard)\" = 640 && "
+            "test \"$(stat -c '%s' /workspace/keep/big)\" = 600000 && printf preserved")
+        assert result['state'] == 'succeeded' and result['result']['stdout'] == 'preserved'
+        self.probe.forget(run)
+        assert request('POST', '/files/mv', [{'src': 'safe/link', 'dest': 'safe/moved-link'}])[0] == 200
+        run, result = self.probe.session_exec({'id': identity},
+            "python3 -c \"from pathlib import Path; [Path('safe/'+str(i)).write_text('x') for i in range(500)]\"")
+        assert result['state'] == 'succeeded'
+        self.probe.forget(run)
+        assert request('GET', '/directories/list?path=safe&depth=1')[0] == 413
+        assert request('DELETE', '/directories?path=safe')[0] == 200
+        assert request('GET', '/files/info?path=keep/guard')[1]['keep/guard']['size'] == 8
+        run, result = self.probe.session_exec({'id': identity},
+            "test ! -e /workspace/safe && test \"$(cat /workspace/keep/guard)\" = original")
+        assert result['state'] == 'succeeded'
+        self.probe.forget(run)
+        self.delete(identity)
+        self.probe.done('sdk-filesystem-preflight-batches-metadata-bounds-and-link-safe-recursive-removal')
+
     def tests(self):
         self.authorization()
         self.refusal()
         self.scope()
         self.lifecycle()
         self.files()
+        self.filesystem()

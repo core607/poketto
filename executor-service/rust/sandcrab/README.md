@@ -4,7 +4,7 @@
 bash sessions, durable volumes, streamed files, live command output and opaque host calls. It needs no Poketto account, workspace, repository,
 signing key or compiled extension. The service uses a Unix socket or optional
 authenticated loopback TCP. An optional [OpenSandbox adapter](opensandbox.md)
-supports SDK lifecycle, foreground commands and file streams. Remaining SDK
+supports SDK lifecycle, foreground commands, file streams and workspace file management. Remaining SDK
 operations and consumer adoption are under the
 [service proposal](../../../notes/proposed/2026-10-26-sandcrab-sandbox-service.md).
 

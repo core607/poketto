@@ -4,7 +4,7 @@ Set `service.opensandbox = true` with the authenticated loopback TCP listener in
 [config.example.toml](config.example.toml). The adapter is disabled by default.
 It targets the published OpenSandbox 1.1.0 Python and Kotlin SDKs. The
 [independent SDK clients](../../../evals/sdk/README.md) exercise both against
-the native daemon. Directory operations, other file APIs and named shell contexts remain under the
+the native daemon. Glob search, partial downloads and named shell contexts remain under the
 [service proposal](../../../notes/proposed/2026-10-26-sandcrab-sandbox-service.md).
 
 ## Connection and ownership
@@ -75,7 +75,7 @@ yet supported by the adapter.
 SDK uploads accept fixed-length and chunked multipart bodies. Downloads return
 fixed-length raw bytes. Paths are relative to `/workspace` or start with
 `/workspace/`; traversal, symlink parents and other absolute roots are refused.
-Parents must already exist. File ownership remains the execution profile's UID
+Upload parents must already exist. File ownership remains the execution profile's UID
 and GID. SDK decimal octal permissions, such as `640`, select ordinary permission
 bits; owner/group overrides and special bits are refused.
 
@@ -95,3 +95,40 @@ not keep the sandbox frozen. Range and line-selection requests are refused.
 Closing, expiry and cancellation retain workspace ownership until transfer
 helpers and cleanup finish. An uncertain cleanup fails the request and fences
 the affected workspace until service recovery.
+
+## Directory and file management
+
+The SDK can create directories, list entries, read metadata, move files or
+directories, remove files or directory trees, change permissions and replace
+literal file content. These operations use the same workspace lease and bounded
+file helper as transfers; the sandbox is frozen for each operation.
+
+Directory creation makes missing parents in normalized path order. Requested
+modes apply to new directories; existing directories keep their modes. Listing
+defaults to one child level, accepts depths from zero to 64, and reports entries
+in lexical order with descendants following their parents. Links appear as
+`symlink` entries and are never traversed. Metadata reports numeric UID/GID strings;
+`created_at` uses filesystem birth time when available and inode change time
+otherwise. Directory sizes are zero. Metadata responses are bounded at 60,000
+JSON bytes and fail explicitly when they exceed the bound.
+
+JSON mutation requests accept at most 128 entries. Metadata and removal queries
+use the native query bounds of 32 parameters and 4096 encoded bytes. Duplicate
+normalized paths are rejected, as are overlapping removal paths, overlapping
+move sources or destinations, and moves into their own descendant. A move
+replaces an existing compatible destination; replacing a nonempty directory
+fails. Recursive removal unlinks child symlinks without following them and visits
+at most 10,000 descendants across the requested trees, with at most 64 levels.
+
+Every request validates its parameters and filesystem preconditions before its
+first mutation. Mutations are not batch transactions: an I/O failure, interruption
+or uncertain helper outcome may follow partial changes and returns
+`FILE_OPERATION_UNKNOWN`. Inspect the affected paths before retrying. Successful
+mutation calls without a result have an empty response body.
+
+Content replacement matches nonempty literal UTF-8 pattern bytes without decoding
+the file, preserving unrelated binary bytes and ordinary permission bits. Files
+with special permission bits are refused. Aggregate input and staged output are
+each bounded by `transfer_bytes`; the entire batch is staged before publication.
+Detailed calls return a replacement count for every requested path, including
+zero matches. A zero-match file is not rewritten.

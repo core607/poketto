@@ -524,7 +524,15 @@ pub fn execute(path: &Path) -> io::Result<serde_json::Value> {
         return Err(invalid("Unprotected file stage"));
     }
     crate::storage::no_mounts_below(&job.stage, true)?;
-    if ["publish", "snapshot", "sdk-publish"].contains(&job.action.as_str()) {
+    if [
+        "publish",
+        "snapshot",
+        "sdk-publish",
+        "sdk-query",
+        "sdk-mutate",
+    ]
+    .contains(&job.action.as_str())
+    {
         crate::storage::no_mounts_below(&job.workspace, true)?;
     }
     let owner: crate::file_records::Stage = serde_json::from_slice(
@@ -538,6 +546,9 @@ pub fn execute(path: &Path) -> io::Result<serde_json::Value> {
     }
     if job.action == "snapshot" {
         return snapshot(&job);
+    }
+    if ["sdk-query", "sdk-mutate"].contains(&job.action.as_str()) {
+        return crate::sdk_fs_io::execute(&job);
     }
     match job.action.as_str() {
         "sdk-receive" => crate::sdk_file_io::receive(&job),
@@ -579,6 +590,9 @@ pub fn error_code(error: &io::Error) -> &'static str {
         "INVALID_FILE_METADATA" => "INVALID_FILE_METADATA",
         "UNSUPPORTED_FILE_OWNER" => "UNSUPPORTED_FILE_OWNER",
         "INVALID_FILE_MODE" => "INVALID_FILE_MODE",
+        "FILE_METADATA_LIMIT" => "FILE_METADATA_LIMIT",
+        "FILE_METADATA_UNAVAILABLE" => "FILE_METADATA_UNAVAILABLE",
+        "FILE_OPERATION_UNKNOWN" => "FILE_OPERATION_UNKNOWN",
         _ => match error.kind() {
             io::ErrorKind::NotFound => "FILE_NOT_FOUND",
             io::ErrorKind::AlreadyExists => "PATH_EXISTS",

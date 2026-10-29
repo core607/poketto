@@ -15,7 +15,7 @@ from opensandbox.exceptions import SandboxApiException
 from opensandbox.manager import SandboxManager
 from opensandbox.models.execd import RunCommandOpts
 from opensandbox.models.sandboxes import SandboxFilter
-from opensandbox.models.filesystem import WriteEntry
+from opensandbox.models.filesystem import ContentReplaceEntry, DirectoryListEntry, MoveEntry, SetPermissionEntry, WriteEntry
 
 
 def output(execution, stream='stdout'):
@@ -42,6 +42,60 @@ async def files(sandbox, commands, checks):
     commands.append(execution.id)
     assert execution.exit_code == 0 and output(execution) == 'files verified\n'
     checks.append('chunked-multipart-binary-text-empty-stream-and-replacement-mode')
+
+
+async def replacements(sandbox, checks):
+    data = b'A' * 32767 + b'abcabc\xff\0'
+    await sandbox.files.write_file('project/replace.bin', data, mode=640)
+    result = await sandbox.files.replace_contents_detailed([
+        ContentReplaceEntry(path='project/replace.bin', old_content='abc', new_content='x')])
+    assert len(result) == 1 and result[0].path == 'project/replace.bin' and result[0].replaced_count == 2
+    assert await sandbox.files.read_bytes('project/replace.bin') == b'A' * 32767 + b'xx\xff\0'
+    result = await sandbox.files.replace_contents_detailed([
+        ContentReplaceEntry(path='project/replace.bin', old_content='missing', new_content='unused')])
+    assert result[0].replaced_count == 0
+    await sandbox.files.replace_contents([
+        ContentReplaceEntry(path='project/replace.bin', old_content='x', new_content='X')])
+    assert await sandbox.files.read_bytes('project/replace.bin') == b'A' * 32767 + b'XX\xff\0'
+    assert (await sandbox.files.get_file_info(['project/replace.bin']))['project/replace.bin'].mode == 640
+    checks.append('streamed-literal-replacement-counts-binary-preservation-and-mode')
+
+
+async def directories(sandbox, commands, checks):
+    await sandbox.files.create_directories([
+        WriteEntry(path='/workspace/project/src', mode=700), WriteEntry(path='project', mode=750)])
+    await sandbox.files.write_files([WriteEntry(path='project/src/main.txt', data='original', mode=600),
+                                     WriteEntry(path='project/keep', data='keep')])
+    info = await sandbox.files.get_file_info(['project', '/workspace/project/src', 'project/src/main.txt'])
+    assert info['project'].path == '/workspace/project' and info['project'].mode == 750
+    assert info['project'].size == 0 and info['project'].entry_type == 'directory'
+    assert info['/workspace/project/src'].mode == 700 and info['project/src/main.txt'].size == 8
+    listing = await sandbox.files.list_directory(DirectoryListEntry(path='/workspace/project', depth=2))
+    assert [item.path for item in listing] == ['/workspace/project/keep', '/workspace/project/src',
+                                              '/workspace/project/src/main.txt']
+    assert await sandbox.files.list_directory(DirectoryListEntry(path='project', depth=0)) == []
+    execution = await sandbox.commands.run('ln -s /etc /workspace/project/link')
+    commands.append(execution.id)
+    assert execution.exit_code == 0
+    listing = await sandbox.files.list_directory(DirectoryListEntry(path='project', depth=5))
+    assert next(item for item in listing if item.path.endswith('/link')).entry_type == 'symlink'
+    assert len(listing) == 4
+    await replacements(sandbox, checks)
+    await sandbox.files.set_permissions([SetPermissionEntry(path='project/src/main.txt', mode=640)])
+    await sandbox.files.move_files([MoveEntry(src='project/src', dest='project/renamed')])
+    await sandbox.files.move_files([MoveEntry(src='project/renamed/main.txt', dest='project/renamed/run.txt')])
+    execution = await sandbox.commands.run(['python3', '-c',
+        "from pathlib import Path; import os,stat; p=Path('project/renamed/run.txt'); "
+        "assert p.read_text()=='original'; assert stat.S_IMODE(p.stat().st_mode)==0o640; "
+        "assert p.stat().st_uid==os.getuid(); print('metadata verified')"])
+    commands.append(execution.id)
+    assert execution.exit_code == 0 and output(execution) == 'metadata verified\n'
+    await sandbox.files.delete_files(['project/keep', 'project/link'])
+    await sandbox.files.delete_directories(['project'])
+    execution = await sandbox.commands.run('test ! -e /workspace/project && test -f /workspace/text')
+    commands.append(execution.id)
+    assert execution.exit_code == 0
+    checks.append('directory-creation-metadata-depth-links-mode-move-and-recursive-deletion')
 
 
 async def exercise(args):
@@ -127,6 +181,7 @@ async def exercise(args):
         assert execution.exit_code == 0
         checks.append('unsupported-execution-option-refuses-without-side-effects')
         await files(sandbox, commands, checks)
+        await directories(sandbox, commands, checks)
 
         before = (await sandbox.get_info()).expires_at
         await sandbox.renew(timedelta(seconds=90))

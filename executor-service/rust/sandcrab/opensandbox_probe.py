@@ -34,6 +34,8 @@ class SdkProbe(ResourcesProbe):
             for item in self.jvm_libs.iterdir():
                 assert item.is_file() and item.suffix == '.jar'
                 item.chmod(0o644)
+            self.receipt['jvmArtifactsSha256'] = {
+                item.name: hashlib.sha256(item.read_bytes()).hexdigest() for item in sorted(self.jvm_libs.iterdir())}
             for name, digest in [('sandbox-1.1.0.jar', 'cb96348a273124a899586e23abe9b5aeafcc98b1d6055532a62ecc8a2a22a392'),
                                  ('sandbox-api-1.1.0.jar', '4cc5236a3c69d4328a8e80754fe0ccf47bddea10a0eaecd5dd01ba299bb87e45')]:
                 assert hashlib.sha256((self.jvm_libs / name).read_bytes()).hexdigest() == digest

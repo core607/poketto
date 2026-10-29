@@ -232,12 +232,12 @@ impl Runtime {
             };
             let mut readonly = vec![record.as_path()];
             let mut writable = vec![job.stage.as_path()];
-            if job.action == "snapshot" {
+            if ["snapshot", "sdk-query"].contains(&job.action.as_str()) {
                 readonly.push(&job.workspace);
             }
             // Renaming across two bind mounts fails with EXDEV even on the same
             // filesystem. Publication binds their protected common parent once.
-            if ["publish", "sdk-publish"].contains(&job.action.as_str()) {
+            if ["publish", "sdk-publish", "sdk-mutate"].contains(&job.action.as_str()) {
                 writable = vec![
                     job.stage
                         .parent()
@@ -283,7 +283,11 @@ impl Runtime {
                 },
                 cancelled,
                 Duration::from_millis(timeout),
-                16384,
+                if ["sdk-query", "sdk-mutate"].contains(&job.action.as_str()) {
+                    65536
+                } else {
+                    16384
+                },
                 input,
                 |_, _| {},
             );

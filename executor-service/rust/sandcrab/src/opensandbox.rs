@@ -74,7 +74,7 @@ fn execd(path: &str) -> Option<(&str, &str)> {
     sandcrab_core::uuid(id).then_some((id, action))
 }
 pub fn write(stream: &Stream, status: u16, value: &Value, close: bool) -> io::Result<()> {
-    let bytes = if status == 204 {
+    let bytes = if status == 204 || (status == 200 && value.is_null()) {
         Vec::new()
     } else {
         serde_json::to_vec(value)?
@@ -372,6 +372,10 @@ impl Service {
             if method == "GET" && action == "egress/policy" && pairs.is_empty() {
                 self.sdk_native(&sandbox, "", None)?;
                 return Ok((200, json!({"policy":{"defaultAction":"deny","egress":[]}})));
+            }
+            if crate::sdk_fs::endpoint(method, action) {
+                let request = crate::sdk_fs::Request::parse(method, action, &pairs, body)?;
+                return Ok((200, self.sdk_file_operation(id, &request)?));
             }
             return self.sdk_command_route(&sandbox, method, action, &pairs);
         }

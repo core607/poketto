@@ -6,6 +6,9 @@ import com.alibaba.opensandbox.sandbox.config.ConnectionConfig;
 import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.Execution;
 import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.OutputMessage;
 import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.RunCommandRequest;
+import com.alibaba.opensandbox.sandbox.domain.models.execd.filesystem.ContentReplaceEntry;
+import com.alibaba.opensandbox.sandbox.domain.models.execd.filesystem.MoveEntry;
+import com.alibaba.opensandbox.sandbox.domain.models.execd.filesystem.SetPermissionEntry;
 import com.alibaba.opensandbox.sandbox.domain.models.execd.filesystem.WriteEntry;
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxFilter;
 import java.io.BufferedReader;
@@ -78,6 +81,7 @@ public final class SdkConformance {
                 lifecycle(sandbox, manager, metadata, token, checks);
                 commands(sandbox, commands, checks);
                 files(sandbox, commands, checks);
+                directories(sandbox, commands, checks);
                 sandbox.renew(Duration.ofSeconds(90));
                 sandbox.kill();
                 deleted = true;
@@ -235,6 +239,125 @@ public final class SdkConformance {
         remember(execution, ids, 0);
         require(output(execution).equals("files verified\n"), "Sandbox-side file checks failed");
         checks.add("fixed-and-chunked-multipart-binary-text-empty-stream-and-replacement-mode");
+    }
+
+    private static void directories(Sandbox sandbox, List<String> ids, List<String> checks) {
+        sandbox.files()
+                .createDirectories(List.of(
+                        WriteEntry.builder()
+                                .path("/workspace/project/src")
+                                .mode(700)
+                                .build(),
+                        WriteEntry.builder().path("project").mode(750).build()));
+        sandbox.files()
+                .writeFile(WriteEntry.builder()
+                        .path("project/src/main.txt")
+                        .data("original")
+                        .mode(600)
+                        .build());
+        var info = sandbox.files().readFileInfo(List.of("project", "/workspace/project/src", "project/src/main.txt"));
+        require(
+                info.get("project").getMode() == 750 && info.get("project").getSize() == 0,
+                "Directory mode or size changed");
+        require(
+                info.get("/workspace/project/src").getMode() == 700
+                        && info.get("project/src/main.txt").getSize() == 8,
+                "Nested metadata changed");
+        require(
+                sandbox.files().listDirectory("project", 2).stream()
+                        .map(item -> item.getPath())
+                        .toList()
+                        .equals(List.of("/workspace/project/src", "/workspace/project/src/main.txt")),
+                "Listing order changed");
+        require(sandbox.files().listDirectory("project", 0).isEmpty(), "Zero-depth listing changed");
+        remember(sandbox.commands().run("ln -s /etc /workspace/project/link"), ids, 0);
+        var entries = sandbox.files().listDirectory("project", 5);
+        require(entries.size() == 3 && entries.get(0).getType().equals("symlink"), "Listing followed a link");
+        replacements(sandbox, checks);
+        directoryChanges(sandbox, ids);
+        checks.add("directory-creation-metadata-depth-links-mode-move-and-recursive-deletion");
+    }
+
+    private static void replacements(Sandbox sandbox, List<String> checks) {
+        byte[] data = {(byte) 0xff, 'a', 'b', 'c', 'a', 'b', 'c', 0};
+        sandbox.files()
+                .writeFile(WriteEntry.builder()
+                        .path("project/replace.bin")
+                        .data(data)
+                        .mode(640)
+                        .build());
+        var result = sandbox.files()
+                .replaceContentsDetailed(List.of(ContentReplaceEntry.builder()
+                        .path("project/replace.bin")
+                        .oldContent("abc")
+                        .newContent("x")
+                        .build()));
+        require(
+                result.size() == 1
+                        && result.get(0).getPath().equals("project/replace.bin")
+                        && result.get(0).getReplacedCount() == 2,
+                "Replacement count changed");
+        require(
+                Arrays.equals(
+                        sandbox.files().readByteArray("project/replace.bin"), new byte[] {(byte) 0xff, 'x', 'x', 0}),
+                "Literal replacement changed unrelated bytes");
+        result = sandbox.files()
+                .replaceContentsDetailed(List.of(ContentReplaceEntry.builder()
+                        .path("project/replace.bin")
+                        .oldContent("missing")
+                        .newContent("unused")
+                        .build()));
+        require(result.get(0).getReplacedCount() == 0, "Unmatched replacement changed its count");
+        sandbox.files()
+                .replaceContents(List.of(ContentReplaceEntry.builder()
+                        .path("project/replace.bin")
+                        .oldContent("x")
+                        .newContent("X")
+                        .build()));
+        require(
+                Arrays.equals(
+                        sandbox.files().readByteArray("project/replace.bin"), new byte[] {(byte) 0xff, 'X', 'X', 0}),
+                "Non-verbose replacement changed bytes");
+        require(
+                sandbox.files()
+                                .readFileInfo(List.of("project/replace.bin"))
+                                .get("project/replace.bin")
+                                .getMode()
+                        == 640,
+                "Replacement changed permissions");
+        checks.add("streamed-literal-replacement-counts-binary-preservation-and-mode");
+    }
+
+    private static void directoryChanges(Sandbox sandbox, List<String> ids) {
+        sandbox.files()
+                .setPermissions(List.of(SetPermissionEntry.builder()
+                        .path("project/src/main.txt")
+                        .mode(640)
+                        .build()));
+        sandbox.files()
+                .moveFiles(List.of(MoveEntry.builder()
+                        .src("project/src")
+                        .dest("project/renamed")
+                        .build()));
+        sandbox.files()
+                .moveFiles(List.of(MoveEntry.builder()
+                        .src("project/renamed/main.txt")
+                        .dest("project/renamed/run.txt")
+                        .build()));
+        Execution checked = sandbox.commands()
+                .run(RunCommandRequest.builder()
+                        .argv(List.of(
+                                "python3",
+                                "-c",
+                                "from pathlib import Path; import os,stat; p=Path('project/renamed/run.txt'); "
+                                        + "assert p.read_text()=='original'; assert stat.S_IMODE(p.stat().st_mode)==0o640; "
+                                        + "assert p.stat().st_uid==os.getuid(); print('metadata verified')"))
+                        .build());
+        remember(checked, ids, 0);
+        require(output(checked).equals("metadata verified\n"), "Sandbox-side metadata checks failed");
+        sandbox.files().deleteFiles(List.of("project/link"));
+        sandbox.files().deleteDirectories(List.of("project"));
+        remember(sandbox.commands().run("test ! -e /workspace/project && test -f /workspace/text"), ids, 0);
     }
 
     private static void remember(Execution execution, List<String> ids, int code) {

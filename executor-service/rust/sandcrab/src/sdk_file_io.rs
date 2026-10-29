@@ -28,9 +28,9 @@ struct Metadata {
     mode: Option<u32>,
 }
 #[derive(Deserialize, Serialize)]
-struct Entry {
-    path: String,
-    mode: u32,
+pub(crate) struct Entry {
+    pub path: String,
+    pub mode: u32,
 }
 fn metadata(bytes: &[u8]) -> io::Result<Entry> {
     let value = sandcrab_core::parse(bytes).map_err(|_| invalid("INVALID_FILE_METADATA"))?;
@@ -39,16 +39,19 @@ fn metadata(bytes: &[u8]) -> io::Result<Entry> {
     if metadata.owner.is_some() || metadata.group.is_some() {
         return Err(invalid("UNSUPPORTED_FILE_OWNER"));
     }
-    let mode = match metadata.mode {
+    let mode = mode(metadata.mode)?;
+    Ok(Entry {
+        path: path(&metadata.path, false)?,
+        mode,
+    })
+}
+pub fn mode(value: Option<u32>) -> io::Result<u32> {
+    Ok(match value {
         Some(mode) => u32::from_str_radix(&mode.to_string(), 8)
             .ok()
             .filter(|n| *n <= 0o777)
             .ok_or_else(|| invalid("INVALID_FILE_MODE"))?,
         None => 0o755,
-    };
-    Ok(Entry {
-        path: path(&metadata.path, false)?,
-        mode,
     })
 }
 pub fn receive(job: &Job) -> io::Result<()> {
