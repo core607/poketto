@@ -1,7 +1,7 @@
 //! Operator-owned profiles; callers choose a name and may only lower execution limits.
 use sandcrab_core::fs::{normal, protected_directory, protected_file};
 use sandcrab_daemon::install::{execution_account, unit_name};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     io,
@@ -84,6 +84,37 @@ pub struct Profile {
     pub uid: u32,
     #[serde(skip)]
     pub gid: u32,
+}
+
+#[derive(Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Resources {
+    pub memory_bytes: Option<u64>,
+    pub cpu_quota_percent: Option<u64>,
+}
+impl Profile {
+    pub fn minimum_memory(&self) -> u64 {
+        self.temporary_bytes.max(16 * 1024 * 1024)
+    }
+
+    pub fn with_resources(&self, resources: Option<&Resources>) -> Result<Self, &'static str> {
+        let mut profile = self.clone();
+        if let Some(resources) = resources {
+            if let Some(memory) = resources.memory_bytes {
+                if !(self.minimum_memory()..=self.memory_bytes).contains(&memory) {
+                    return Err("PROFILE_LIMIT");
+                }
+                profile.memory_bytes = memory;
+            }
+            if let Some(cpu) = resources.cpu_quota_percent {
+                if !(1..=self.cpu_quota_percent).contains(&cpu) {
+                    return Err("PROFILE_LIMIT");
+                }
+                profile.cpu_quota_percent = cpu;
+            }
+        }
+        Ok(profile)
+    }
 }
 fn file_records() -> usize {
     256
@@ -353,6 +384,47 @@ mod tests {
         let config = Config::parse(EXAMPLE).unwrap();
         assert!(config.profiles.contains_key("python"));
         assert_eq!(config.profiles["python"].network, "none");
+    }
+    #[test]
+    fn requested_resources_preserve_operator_mounts_identity_and_hard_caps() {
+        let config = Config::parse(EXAMPLE).unwrap();
+        let profile = &config.profiles["python"];
+        let limited = profile
+            .with_resources(Some(&Resources {
+                memory_bytes: Some(32 * 1024 * 1024),
+                cpu_quota_percent: Some(25),
+            }))
+            .unwrap();
+        assert_eq!(limited.memory_bytes, 32 * 1024 * 1024);
+        assert_eq!(limited.cpu_quota_percent, 25);
+        assert_eq!(limited.exec_user, profile.exec_user);
+        assert_eq!(limited.read_only, profile.read_only);
+        assert_eq!(limited.tasks_max, profile.tasks_max);
+        assert_eq!(limited.temporary_bytes, profile.temporary_bytes);
+        for resource in [
+            Resources {
+                memory_bytes: Some(profile.memory_bytes + 1),
+                cpu_quota_percent: None,
+            },
+            Resources {
+                memory_bytes: Some(profile.minimum_memory() - 1),
+                cpu_quota_percent: None,
+            },
+            Resources {
+                memory_bytes: None,
+                cpu_quota_percent: Some(profile.cpu_quota_percent + 1),
+            },
+            Resources {
+                memory_bytes: None,
+                cpu_quota_percent: Some(0),
+            },
+        ] {
+            assert!(matches!(
+                profile.with_resources(Some(&resource)),
+                Err("PROFILE_LIMIT")
+            ));
+        }
+        assert!(serde_json::from_str::<Resources>(r#"{"memoryBytes":33554432,"uid":0}"#).is_err());
     }
     #[test]
     fn unknown_fields_unsafe_mounts_and_unbounded_resources_fail() {

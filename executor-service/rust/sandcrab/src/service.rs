@@ -26,6 +26,7 @@ pub struct Request {
     pub command: Vec<String>,
     pub timeout_millis: Option<u64>,
     pub output_limit_bytes: Option<usize>,
+    pub resources: Option<crate::config::Resources>,
 }
 impl Request {
     fn limits(&self, profile: &Profile) -> Result<(u64, usize), &'static str> {
@@ -173,7 +174,8 @@ impl Service {
         }
         if method == "GET" && path == "/v1/info" {
             let profiles = self.runtime.config.profiles.iter().map(|(name,p)|
-                (name.clone(), json!({"timeoutMillis":p.timeout_millis,"outputLimitBytes":p.output_limit_bytes,"sessionTtlMillis":p.session_ttl_millis,"transferBytes":p.transfer_bytes,"network":p.network,"hostCalls":p.host_calls})))
+                (name.clone(), json!({"timeoutMillis":p.timeout_millis,"outputLimitBytes":p.output_limit_bytes,"sessionTtlMillis":p.session_ttl_millis,"transferBytes":p.transfer_bytes,"network":p.network,"hostCalls":p.host_calls,
+                    "memoryBytes":p.memory_bytes,"minimumMemoryBytes":p.minimum_memory(),"cpuQuotaPercent":p.cpu_quota_percent})))
                 .collect::<serde_json::Map<_,_>>();
             let mut capabilities = vec!["runs", "sessions", "files", "events", "calls"];
             let storage=self.runtime.storage.as_ref().map(|s| {
@@ -268,6 +270,10 @@ impl Service {
         }
         let Some(profile) = self.runtime.config.profiles.get(&request.profile).cloned() else {
             return error(400, "PROFILE_NOT_FOUND");
+        };
+        let profile = match profile.with_resources(request.resources.as_ref()) {
+            Ok(profile) => profile,
+            Err(code) => return error(400, code),
         };
         let (timeout, limit) = match request.limits(&profile) {
             Ok(l) => l,

@@ -24,6 +24,7 @@ pub struct Open {
     pub profile: String,
     pub ttl_millis: Option<u64>,
     pub volume_id: Option<String>,
+    pub resources: Option<crate::config::Resources>,
 }
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -236,6 +237,10 @@ impl Service {
         }
         let Some(profile) = self.runtime.config.profiles.get(&request.profile).cloned() else {
             return error(400, "PROFILE_NOT_FOUND");
+        };
+        let profile = match profile.with_resources(request.resources.as_ref()) {
+            Ok(profile) => profile,
+            Err(code) => return error(400, code),
         };
         let lifetime = match ttl(request.ttl_millis, &profile) {
             Ok(v) => v,

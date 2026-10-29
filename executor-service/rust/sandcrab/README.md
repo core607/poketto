@@ -126,7 +126,12 @@ account can connect to the socket. TCP uses the bearer credential above.
 
 Submit JSON with `id` (a fresh UUID), `serverId` from info, `profile`, and an argv
 array `command`. Optional `timeoutMillis` and `outputLimitBytes` only narrow the
-profile. Unknown fields are errors. Within one epoch, repeating the same ID and
+profile. Runs and session creation also accept `resources` with optional
+`memoryBytes` and `cpuQuotaPercent`. These only lower the profile's hard caps;
+memory must be at least the larger of 16 MiB and the profile's temporary filesystem
+bound. Info publishes these limits per profile. CPU percentages use 100 for one
+CPU. The CLI exposes `--memory-bytes N` and `--cpu-percent N` on `run` and
+`session open`. Unknown fields are errors. Within one epoch, repeating the same ID and
 request returns the existing run; changed arguments give `ID_CONFLICT`. A stale
 epoch gives `SERVER_CHANGED`. After restart old outcomes are unknown, not proof of
 nonexecution. Forgetting explicitly ends replay protection; never reuse that ID.
@@ -393,5 +398,7 @@ both IP families, TCP CLI/files/events and data retention through token rotation
 `host_calls_probe.py` uses the same arguments from a repository checkout, or an
 explicit `--example FILE` for the build-signing caller. It checks opaque calls,
 ordinary caller/guest CLI use, isolation, bounded admission and failure recovery.
+`resources_probe.py` checks caller-lowered memory and CPU caps in actual cgroups,
+request refusal before admission, and the ordinary run/session CLI options.
 Independent agent tasks and their budgeted runner live in the
 [Inspect suite](../../../evals/README.md).
