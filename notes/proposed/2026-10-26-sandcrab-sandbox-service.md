@@ -6,7 +6,7 @@ Date: 2026-10-26
 
 Repository execution and games share Rust mechanisms ([in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md), [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md)). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases through TypeScript.
 
-The [retained-session service](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still requires Poketto identities, revisions and signed requests. [Native runs, sessions, volumes, files and command events](../../executor-service/rust/sandcrab/README.md) are independent; host calls, SDK integration and consumer adoption remain unfinished. Replicating repository operations would retain product coupling.
+The [retained-session service](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still requires Poketto identities, revisions and signed requests. [Native runs, sessions, volumes, files, command events and host calls](../../executor-service/rust/sandcrab/README.md) are independent; SDK integration and consumer adoption remain unfinished. Replicating repository operations would retain product coupling.
 
 The service must fit the default two-core, 4 GB deployment target ([continuous delivery](../implemented/2026-09-03-continuous-delivery.md)) without requiring KVM or a container runtime. Other projects need a usable execution service without adopting Poketto's content model.
 
@@ -48,7 +48,7 @@ Poketto owns repositories, publication, writes and recovery. It may redesign cop
 0. Validation without production code, recorded below.
 1. In-repository split, shipped as the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md).
 2. Finite jobs, shipped as [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md).
-3. Public service and adoption. Runs, sessions, volumes, files and command SSE provide profiles, CLI, authenticated loopback TCP and OpenAPI; [Inspect](../../evals/README.md) evaluates independent API and programming tasks. Complete host calls and OpenSandbox. Adapt Poketto, remove its compiled extension and product fields, and retire the old protocol without shims. The operation map inventories migration, not mandatory public operations.
+3. Public service and adoption. Runs, sessions, volumes, files, command SSE and host calls provide profiles, CLI, authenticated loopback TCP and OpenAPI; [Inspect](../../evals/README.md) evaluates independent API and programming tasks. Complete OpenSandbox. Adapt Poketto, remove its compiled extension and product fields, and retire the old protocol without shims. The operation map inventories migration, not mandatory public operations.
 4. Extraction. Move generic crates with history, publish checksums, threat model, examples and evals, then pin a release in Poketto. Phases 1 to 3 must ship before four consecutive weeks without cross-boundary changes. Record the last deployed change; another restarts the interval. The operator selects repository identity, visibility and initial release version before publication.
 
 ### Phase 0 findings
