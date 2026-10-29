@@ -71,6 +71,12 @@ jobs:
             --tools /var/lib/sandcrab-evals/tools --python /var/lib/sandcrab-evals/python/bin/python \
             --output /var/lib/sandcrab-evals/results --mode "$EVIDENCE_MODE" --suite "$EVAL_SUITE" --model "$EVAL_MODEL" \
             --epochs "$EVAL_REPEATS" --budget-usd "$EVAL_BUDGET"
+      - name: Hand retained reports to the artifact collector
+        if: always()
+        run: |
+          if [ -d /var/lib/sandcrab-evals/results ]; then
+            sudo chown --no-dereference -R "$(id -u):$(id -g)" /var/lib/sandcrab-evals/results
+          fi
       - name: Publish the readable summary
         if: always()
         run: |

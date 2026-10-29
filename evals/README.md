@@ -164,6 +164,9 @@ The output directory must be new. Its ancestors and the virtual environment must
 be readable by the `daemon` client account; source files are copied into the
 root-owned fixture. Keep every attempt in a separate directory. The harness never
 falls back to an unrestricted host subprocess for a sandbox command.
+Export directories belong to `daemon` and are private. After a local run, use a
+privileged copy to collect them. The workflow transfers report ownership to its
+runner after the controller exits, including on failure.
 
 Use `--suite native`, `workspace` or `all` (default) to select cases. For a paid
 local run, supply `DEEPSEEK_API_KEY` through the environment, preserve only that
