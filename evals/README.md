@@ -30,6 +30,9 @@ or `all`, the repeat count and batch budget, then read the workflow summary.
 Incorrect task results are measurements; missing
 usage, infrastructure errors and incomplete cleanup fail the run. Every trial
 remains in the artifact. Paid work never runs automatically on a pull request.
+The [programming evidence receipt](evidence/2026-10-29-workspace-model.json) records
+one paid batch and a controlled regrade of the same artifacts after correcting an
+unstated exit-status requirement. It preserves the original scores separately.
 
 Configure `DEEPSEEK_EVAL_API_KEY` as a repository secret. The workflow can reuse
 `AI_REVIEW_API_KEY` when review uses the standard DeepSeek endpoint. Only the
