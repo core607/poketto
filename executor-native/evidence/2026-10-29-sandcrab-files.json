@@ -1,0 +1,737 @@
+{
+  "date": "2026-10-29",
+  "scope": "Native raw/tar transfers, CLI installation, filesystem isolation, quotas, cancellation, publication and cleanup recovery on disposable Linux fixtures. Includes session/volume and legacy adapter/game/supervisor regression checks. No model-directed file evaluation, SDK conformance, capacity comparison or production cutover.",
+  "baseRevision": "1d20ce9e6cd6d89c7fbb4d76927866f67e14c181",
+  "sourceSha256": {
+    "evals/README.md": "eed0404b1f8ca96451a07d60fbd26f0c8d7ef6155118b68d191fb225811d10af",
+    "evals/native.py": "b1ec525aa0ae6790c547b977e27966249e0951d2acdb3e4de77de274f3ff6664",
+    "executor-service/rust/Cargo.lock": "2d5dbaddad563886115b4657743fc597004b31f94998a4d1ea8a3f60dfcadbf0",
+    "executor-service/rust/sandcrab-core/src/http.rs": "7254c0e0ed0a6cf8ed7564fab1f9f7a096a9d60392838038d2daefcbdbd6e141",
+    "executor-service/rust/sandcrab-daemon/src/job.rs": "028d3bf369063ef88537581b7c87ad4ff155ff7e4c30d6627032bef817592c74",
+    "executor-service/rust/sandcrab/Cargo.toml": "f5211d03de9c1bccf5506be4e6709a89bd291c0f139d4f235cfa8c2086d88e37",
+    "executor-service/rust/sandcrab/README.md": "57d1ade731ac59370da85aa08dcb027fbc9c57b8b5ba5ff65c4ebcce00623d36",
+    "executor-service/rust/sandcrab/config.example.toml": "307a41da790c45bbbdff3f5706be3955d5949ce4c1cbd7bab43341705bf8cce0",
+    "executor-service/rust/sandcrab/file_probe.py": "93dd956239a99c999c0a131d28adb3b1aace41641fb869ae138aa20eae9bead6",
+    "executor-service/rust/sandcrab/native_probe.py": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+    "executor-service/rust/sandcrab/openapi.json": "aadc34c003b10cfdd601644920cdc083eabb4a4db794bceb44027d998eb53f5d",
+    "executor-service/rust/sandcrab/src/client.rs": "c53f05b91dc9cc505d2c8db0c806a3f6571f50d4480f31a4636717414acffff1",
+    "executor-service/rust/sandcrab/src/config.rs": "7e1b6ce4041e195f8e67c281193c9f4816760bc103761629b8f33ece00368e48",
+    "executor-service/rust/sandcrab/src/file_access.rs": "41da75906bfbcff34ceaef036d4f75032e3ba6f08c25292c30d3b938accee67b",
+    "executor-service/rust/sandcrab/src/file_client.rs": "8108547123affd6f71694a5ef0e98c24386e0e50f586137c0c9bc505f779b7e6",
+    "executor-service/rust/sandcrab/src/file_io.rs": "35f00d42b9c3a08cad8633c89216b030afda5aa08b57511d26562e9cdeddfe68",
+    "executor-service/rust/sandcrab/src/file_records.rs": "45d369319c1bbe9051959a60e49b826719a91fa07e0f3723d7f4cbfebbb4588a",
+    "executor-service/rust/sandcrab/src/files.rs": "4f99929f45aea4ee0c1b5a6ff4360c9942165be8a1de68bf75e9e35d4202805e",
+    "executor-service/rust/sandcrab/src/main.rs": "2083dcfac5351ffd13aea2b4795944f6bb7e4aa68a7bc32162bf34ab7c2df6a6",
+    "executor-service/rust/sandcrab/src/runtime.rs": "64766508943431fbbc133f343a5302464b57e999c7d8aafe8904ea4e01dadd35",
+    "executor-service/rust/sandcrab/src/server.rs": "c40b04382425f9bf7b643f22ec7c568e3df1a33fd3124d73cdd1522a50f6ca23",
+    "executor-service/rust/sandcrab/src/service.rs": "5e504d266e490c4fe3c34d7ea49754b45e4b9c8346da4601c0f9cf9f7b934697",
+    "executor-service/rust/sandcrab/src/sessions.rs": "2b7b14057eba6b904308e49c3336ce25f38ee5472f61e0947c9d6dfd5ec7680a",
+    "executor-service/rust/sandcrab/src/spec.rs": "d75e9927c15d9413c4f59fa6d8c88f30e2a14f58a9e92f7cda2ae522a5562d91",
+    "executor-service/rust/sandcrab/src/storage.rs": "458a6977116b7f121a09d348d19fd9fa6e153878afea9a5683e3cbed051abd4e",
+    "executor-service/rust/sandcrab/volume_probe.py": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+    "notes/proposed/2026-10-26-sandcrab-sandbox-service.md": "fcb0f49a5e10b4d11899b1b34fd5506f9d1e5a7d588ba6d220db07e5189a9958"
+  },
+  "builds": {
+    "focusedPackage": {
+      "command": "cargo build --locked --release -p sandcrab --target x86_64-unknown-linux-musl",
+      "binarySha256": "340e9267728f8f1d08f2c847a44f83eedc8a419e4e25ae520b3726e6892a68c1"
+    },
+    "workspaceArtifact": {
+      "command": "./gradlew stageExecutorWorker stageGameWorker stageExecutorNativeTest",
+      "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6"
+    },
+    "scope": "Different build commands produced different binary fingerprints; all native suites were repeated on the workspace artifact. The isolated Linux checkout matched all 27 changed source-file hashes."
+  },
+  "iterationChecks": [
+    {
+      "attempt": 1,
+      "result": "FAIL",
+      "stage": "cargo check",
+      "detail": "Two character literals needed byte literals."
+    },
+    {
+      "attempt": 2,
+      "result": "PASS",
+      "stage": "cargo check",
+      "detail": "An unused Access field warning was subsequently removed."
+    },
+    {
+      "attempt": 3,
+      "result": "FAIL",
+      "stage": "Clippy",
+      "detail": "Three collapsible-if diagnostics were corrected."
+    },
+    {
+      "attempt": 4,
+      "result": "PASS",
+      "stage": "format, focused Clippy, 43 tests and release build"
+    },
+    {
+      "attempt": 5,
+      "result": "PASS",
+      "stage": "format, focused Clippy, 43 tests and release build"
+    },
+    {
+      "attempt": 6,
+      "result": "PASS",
+      "stage": "format, focused Clippy, 43 tests and release build"
+    },
+    {
+      "attempt": 7,
+      "result": "PASS",
+      "stage": "format, focused Clippy, 43 tests and release build"
+    },
+    {
+      "attempt": 8,
+      "result": "PASS",
+      "stage": "format, focused Clippy, 43 tests and release build"
+    }
+  ],
+  "standardCheckAttempts": [
+    {
+      "attempt": 1,
+      "result": "FAIL",
+      "classification": "environment",
+      "detail": "The cold executorRustCheck reached its ten-minute task limit while exporting an unused image, after its checks finished. No timeout or check was removed."
+    },
+    {
+      "attempt": 2,
+      "result": "PASS",
+      "command": "./gradlew appImageIdentityCheck executorRustCheck executorServiceTests",
+      "rustTests": 104,
+      "protocolTests": 176,
+      "detail": "The private bounded Docker wrapper used cache-only output for the rust-check target; artifact-producing builds kept their normal exports. The actual Gradle task completed, including both Clippy configurations and all locked workspace tests."
+    }
+  ],
+  "localChecks": {
+    "repoCheck": "PASS",
+    "inspectUnitTests": 16
+  },
+  "fileAttempts": [
+    {
+      "attempt": 1,
+      "classification": "implementation",
+      "detail": "Private helper records used group-readable permissions and were refused by the helper authority check.",
+      "result": "FAIL",
+      "cleanup": "PASS",
+      "binarySha256": "20d4fc440d001312b39a87d922dc27c02588e20eac56d45eae1124e53c2ddeb9",
+      "probeSha256": "7fb6a7f9af0700b71e95df9d4e53d91eb831a1a621010f9b7c493c64c90c78d2",
+      "fileProbeSha256": "6a74ffe1c218b48a2d527dfd466c13ade0ae80bd7d7a05e61f72a75077a41b3d",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "failureType": "AssertionError",
+      "passedChecks": 1
+    },
+    {
+      "attempt": 2,
+      "classification": "contract",
+      "detail": "The raw symlink snapshot refusal did not return the expected HTTP 400 class.",
+      "result": "FAIL",
+      "cleanup": "PASS",
+      "binarySha256": "66cc86281cb79ea28753c5abf156b9a182160d9077d391612be28777a7aef2d1",
+      "probeSha256": "7fb6a7f9af0700b71e95df9d4e53d91eb831a1a621010f9b7c493c64c90c78d2",
+      "fileProbeSha256": "c1683421a634509aa95cacef3b8bd3e06299e9e47baae0f52ff7cc3448bd99d1",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "failureType": "AssertionError",
+      "passedChecks": 4
+    },
+    {
+      "attempt": 3,
+      "classification": "fixture",
+      "detail": "The sender assumed a final JSON response after early quota refusal; the fixture now reconciles by the original upload ID after transport loss.",
+      "result": "FAIL",
+      "cleanup": "PASS",
+      "binarySha256": "cdc28243817e18defdd206a2278fc3511b0424b2e202e95ae29886e385edbf2e",
+      "probeSha256": "7fb6a7f9af0700b71e95df9d4e53d91eb831a1a621010f9b7c493c64c90c78d2",
+      "fileProbeSha256": "39db681c6fdad75a562c8178156877acb4a619e2e2a85b6719f58b5744cca20e",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "failureType": "BrokenPipeError",
+      "passedChecks": 9
+    },
+    {
+      "attempt": 4,
+      "classification": "implementation",
+      "detail": "Interrupted from the cancelled download writer was retried by write_all, preventing the response and shutdown from finishing. Cleanup required a later verified recovery.",
+      "result": "FAIL",
+      "cleanup": "NOT_RUN",
+      "binarySha256": "cdc28243817e18defdd206a2278fc3511b0424b2e202e95ae29886e385edbf2e",
+      "probeSha256": "7fb6a7f9af0700b71e95df9d4e53d91eb831a1a621010f9b7c493c64c90c78d2",
+      "fileProbeSha256": "9ce6986307107ee78f7905fb3de08112bab2cad833a298a5e6b16b576ebca922",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "failureType": "TimeoutExpired",
+      "passedChecks": 17,
+      "recoveryCleanup": {
+        "scope": "Cleanup of the failed file probe 4 fixture after its download cancellation hang",
+        "cleanup": "PASS"
+      }
+    },
+    {
+      "attempt": 5,
+      "classification": "fixture",
+      "detail": "The cleanup fault exited the launch wrapper without creating a failing systemd unit, so it did not establish the intended helper failure.",
+      "result": "FAIL",
+      "cleanup": "PASS",
+      "binarySha256": "340e9267728f8f1d08f2c847a44f83eedc8a419e4e25ae520b3726e6892a68c1",
+      "probeSha256": "7fb6a7f9af0700b71e95df9d4e53d91eb831a1a621010f9b7c493c64c90c78d2",
+      "fileProbeSha256": "982727bc8ec5a5378f7b7a560eb4cd9d5ddbcf9864475b8b4fdb43951a57cefe",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "failureType": "AssertionError",
+      "passedChecks": 21
+    },
+    {
+      "attempt": 6,
+      "classification": "fixture",
+      "detail": "The controller tried to register a transient supervisor definition still referenced by units retained for recovery.",
+      "result": "FAIL",
+      "cleanup": "PASS",
+      "binarySha256": "340e9267728f8f1d08f2c847a44f83eedc8a419e4e25ae520b3726e6892a68c1",
+      "probeSha256": "7fb6a7f9af0700b71e95df9d4e53d91eb831a1a621010f9b7c493c64c90c78d2",
+      "fileProbeSha256": "e5218d212a11cf6cec020d704f64b793e392d6dad6ac96ad2d363833c006e0fd",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "failureType": "CalledProcessError",
+      "passedChecks": 21
+    },
+    {
+      "attempt": 7,
+      "classification": "fixture",
+      "detail": "Waiting for transient-unit collection did not release that retained definition; the controller now restarts the matching existing definition.",
+      "result": "FAIL",
+      "cleanup": "PASS",
+      "binarySha256": "340e9267728f8f1d08f2c847a44f83eedc8a419e4e25ae520b3726e6892a68c1",
+      "probeSha256": "7fb6a7f9af0700b71e95df9d4e53d91eb831a1a621010f9b7c493c64c90c78d2",
+      "fileProbeSha256": "92a5d487a17d79487370a1c260e36388f781a47ca279c61a3bb9c7a3524be918",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "failureType": "AssertionError",
+      "passedChecks": 21
+    },
+    {
+      "attempt": 8,
+      "classification": "passed",
+      "detail": "The focused-package build passed the complete file fixture, including real helper OOM and cleanup recovery.",
+      "result": "PASS",
+      "cleanup": "PASS",
+      "binarySha256": "340e9267728f8f1d08f2c847a44f83eedc8a419e4e25ae520b3726e6892a68c1",
+      "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+      "fileProbeSha256": "93dd956239a99c999c0a131d28adb3b1aace41641fb869ae138aa20eae9bead6",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "passedChecks": 23
+    },
+    {
+      "attempt": 9,
+      "classification": "passed",
+      "detail": "The complete file fixture passed against the full-workspace artifact used by the standard build.",
+      "result": "PASS",
+      "cleanup": "PASS",
+      "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6",
+      "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+      "fileProbeSha256": "93dd956239a99c999c0a131d28adb3b1aace41641fb869ae138aa20eae9bead6",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "passedChecks": 23
+    }
+  ],
+  "fileAcceptance": {
+    "scope": "Native raw/tar upload, snapshot, quota, cancellation and crash recovery; synthetic files, no model or production cutover",
+    "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6",
+    "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+    "checks": [
+      {
+        "name": "volume-bootstrap-refuses-preexisting-data",
+        "result": "PASS"
+      },
+      {
+        "name": "files-stream-beyond-json-limit-empty-binary-replace-and-replay",
+        "result": "PASS"
+      },
+      {
+        "name": "files-expect-continue-after-admission",
+        "result": "PASS"
+      },
+      {
+        "name": "files-refusals-and-checksum-failure-preserve-the-old-file",
+        "result": "PASS"
+      },
+      {
+        "name": "files-ordinary-tar-preserves-unicode-modes-and-links-without-following-host-links",
+        "result": "PASS"
+      },
+      {
+        "name": "files-tar-escape-links-and-special-nodes-never-publish",
+        "result": "PASS"
+      },
+      {
+        "name": "files-gnu-and-pax-sparse-archives-are-refused-without-publication",
+        "result": "PASS"
+      },
+      {
+        "name": "files-tar-replaces-a-nonempty-directory-and-cleans-the-old-tree",
+        "result": "PASS"
+      },
+      {
+        "name": "files-cli-roundtrip-status-and-safe-local-installation",
+        "result": "PASS"
+      },
+      {
+        "name": "files-cli-truncated-or-corrupted-download-preserves-local-destination",
+        "result": "PASS"
+      },
+      {
+        "name": "files-volume-quota-and-restart-retain-data-and-upload-identity",
+        "result": "PASS"
+      },
+      {
+        "name": "files-bounded-records-discovery-and-cancel-before-content",
+        "result": "PASS"
+      },
+      {
+        "name": "files-disconnect-cancel-and-body-deadline-preserve-data-and-release-admission",
+        "result": "PASS"
+      },
+      {
+        "name": "files-session-close-cancels-receive-before-releasing-the-volume",
+        "result": "PASS"
+      },
+      {
+        "name": "files-session-expiry-cancels-an-active-upload-and-retains-volume-data",
+        "result": "PASS"
+      },
+      {
+        "name": "files-supervisor-loss-before-publication-recovers-without-writing",
+        "result": "PASS"
+      },
+      {
+        "name": "files-before-publication-loss-reconciles-without-overwriting-a-later-edit",
+        "result": "PASS"
+      },
+      {
+        "name": "files-after-publication-loss-reconciles-without-overwriting-a-later-edit",
+        "result": "PASS"
+      },
+      {
+        "name": "files-metadata-publication-loss-reconciles-without-overwriting-a-later-edit",
+        "result": "PASS"
+      },
+      {
+        "name": "files-snapshot-cleanup-pins-volume-and-withholds-success-until-release",
+        "result": "PASS"
+      },
+      {
+        "name": "files-disconnected-snapshot-thaws-the-session-and-removes-staging",
+        "result": "PASS"
+      },
+      {
+        "name": "files-uncertain-cleanup-retains-ownership-until-restart-recovery",
+        "result": "PASS"
+      },
+      {
+        "name": "files-receive-helper-oom-is-contained-without-ending-the-service-or-session",
+        "result": "PASS"
+      }
+    ],
+    "cleanup": "PASS",
+    "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+    "fileProbeSha256": "93dd956239a99c999c0a131d28adb3b1aace41641fb869ae138aa20eae9bead6",
+    "quotaResponseLost": true,
+    "uploadDeadlineSeconds": 30.362,
+    "fileHelperOom": {
+      "injectedMemoryMaxBytes": 8388608,
+      "unitResult": "oom-kill"
+    },
+    "result": "PASS"
+  },
+  "nativeAttempts": [
+    {
+      "result": "PASS",
+      "cleanup": "PASS",
+      "binarySha256": "340e9267728f8f1d08f2c847a44f83eedc8a419e4e25ae520b3726e6892a68c1",
+      "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+      "passedChecks": 29
+    },
+    {
+      "result": "PASS",
+      "cleanup": "PASS",
+      "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6",
+      "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+      "passedChecks": 29
+    }
+  ],
+  "nativeAcceptance": {
+    "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+    "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6",
+    "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+    "checks": [
+      {
+        "name": "http-sequential-reuse-body-boundary-and-declared-close",
+        "result": "PASS"
+      },
+      {
+        "name": "http-invalid-framing-closes-without-dispatch",
+        "result": "PASS"
+      },
+      {
+        "name": "http-deadline-does-not-reset-on-progress",
+        "result": "PASS"
+      },
+      {
+        "name": "http-idle-expiry-closes-without-an-unsolicited-response",
+        "result": "PASS"
+      },
+      {
+        "name": "independent-cli",
+        "result": "PASS"
+      },
+      {
+        "name": "cli-outcome-survives-forget-failure",
+        "result": "PASS"
+      },
+      {
+        "name": "cli-reuses-connection-and-does-not-replay-incomplete-response",
+        "result": "PASS"
+      },
+      {
+        "name": "profile-identity-workspace-and-replay",
+        "result": "PASS"
+      },
+      {
+        "name": "request-authority-and-profile-bounds",
+        "result": "PASS"
+      },
+      {
+        "name": "host-network-and-unix-socket-denial",
+        "result": "PASS"
+      },
+      {
+        "name": "exit-timeout-and-output-bounds",
+        "result": "PASS"
+      },
+      {
+        "name": "workspace-quota-and-descendant-cleanup",
+        "result": "PASS"
+      },
+      {
+        "name": "admission-and-cancellation",
+        "result": "PASS"
+      },
+      {
+        "name": "bounded-results-and-release",
+        "result": "PASS"
+      },
+      {
+        "name": "peer-refusal-before-request",
+        "result": "PASS"
+      },
+      {
+        "name": "abrupt-loss-cleanup-and-stale-epoch",
+        "result": "PASS"
+      },
+      {
+        "name": "session-build-repair-state-isolation-and-descendant-cleanup",
+        "result": "PASS"
+      },
+      {
+        "name": "session-cli-reconnects-and-explicit-lifecycle",
+        "result": "PASS"
+      },
+      {
+        "name": "session-shared-admission-exclusive-command-and-replay",
+        "result": "PASS"
+      },
+      {
+        "name": "session-results-share-the-global-retention-bound",
+        "result": "PASS"
+      },
+      {
+        "name": "session-sigkill-and-exit-137-are-not-memory-evidence",
+        "result": "PASS"
+      },
+      {
+        "name": "session-timeout-output-memory-and-shell-exit-end-the-session",
+        "result": "PASS"
+      },
+      {
+        "name": "session-renewal-and-expiry-cancel-an-active-command",
+        "result": "PASS"
+      },
+      {
+        "name": "session-command-cancellation-closes-the-whole-session",
+        "result": "PASS"
+      },
+      {
+        "name": "session-supervisor-loss-cleans-units-and-invalidates-the-epoch",
+        "result": "PASS"
+      },
+      {
+        "name": "independent-build-test-example",
+        "result": "PASS"
+      },
+      {
+        "name": "session-unconfirmed-cleanup-holds-capacity-until-restart",
+        "result": "PASS"
+      },
+      {
+        "name": "cancellation-before-unit-registration",
+        "result": "PASS"
+      },
+      {
+        "name": "session-close-before-unit-registration",
+        "result": "PASS"
+      }
+    ],
+    "cleanup": "PASS",
+    "slowRequestDeadlineSeconds": 5.012,
+    "idleDisconnectSeconds": 5.128,
+    "exampleSha256": "48512f23c91d749b2860770974b907bae28b152f945d4c6ef656505a271a4517",
+    "startupCancellation": {
+      "initialKillExitCode": 1,
+      "killAttempts": 2,
+      "seconds": 0.627,
+      "state": "cancelled",
+      "limitSeconds": 3
+    },
+    "sessionStartupCancellation": {
+      "initialKillExitCode": 1,
+      "killAttempts": 2,
+      "seconds": 0.476,
+      "state": "closed",
+      "limitSeconds": 3
+    },
+    "result": "PASS"
+  },
+  "volumeAttempts": [
+    {
+      "result": "PASS",
+      "cleanup": "PASS",
+      "binarySha256": "340e9267728f8f1d08f2c847a44f83eedc8a419e4e25ae520b3726e6892a68c1",
+      "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "passedChecks": 17
+    },
+    {
+      "result": "PASS",
+      "cleanup": "PASS",
+      "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6",
+      "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "passedChecks": 17
+    }
+  ],
+  "volumeAcceptance": {
+    "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+    "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6",
+    "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+    "checks": [
+      {
+        "name": "volume-bootstrap-refuses-preexisting-data",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-capability-discovery-fits-model-tool-output",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-exclusive-attachment-and-closed-session-persistence",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-block-and-inode-quotas-apply-to-untrusted-writes",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-supervisor-loss-retains-published-data-and-durable-replay",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-clone-holds-source-and-the-single-storage-slot",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-interrupted-clone-recovers-only-unpublished-data",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-publication-failure-fences-mutations-until-recovery",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-attachment-survives-unconfirmed-session-cleanup",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-namespace-change-preserves-data-and-refuses-startup",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-live-and-durable-record-capacity-with-ordered-discovery",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-data-pool-exhaustion-leaves-deletion-metadata-writable",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-cli-creates-attaches-lists-deletes-and-forgets",
+        "result": "PASS"
+      },
+      {
+        "name": "volume-explicit-deletion-tombstone-and-record-release",
+        "result": "PASS"
+      }
+    ],
+    "cleanup": "PASS",
+    "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+    "result": "PASS"
+  },
+  "adapterAcceptance": {
+    "summary": {
+      "summary": "PASS",
+      "tests": 40,
+      "adapterClassSha256": "b8da2dbb5dc80ffeef0fc92e10a33f9463c5fb4cc34aa3777673b175087811d7",
+      "nativeProbeClassSha256": "67c50bc9b7867d079e05aba7949fc7016a105be81fa9f6ccfae263b9174f59d3",
+      "authentication": "synthetic-stub-not-PG-or-MCP-acceptance"
+    },
+    "processLoss": {
+      "test": "java-process-loss-expires-real-worker-lease",
+      "result": "PASS"
+    },
+    "combined": {
+      "nativeCombined": "PASS",
+      "sourceLayout": "flat",
+      "runtimeManifestSha256": "d5793601203efd6743c1dbd49a4cae1ef7df44fe588f1c85f6be48c99de51491",
+      "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+      "nativePoolSha256": "94ff8dd3d4cfac0222defab0b9eb71b1f9af3cd732f4d7b32eb2f7a1839e5f47",
+      "supervisorKind": "rust",
+      "workerSha256": "ce012d31881d678511104480dcee805d015a764fcf60b9f0c350e54b25890db5",
+      "launcherSha256": "5093662e99f599cfe060844ce391590895b54edcfd2056db9e07f8a0d01d3bbe",
+      "shellLoopSha256": "ea7d36e9c3034301d41e8f4f6131ff0f05655141834fd97a3400162d63298a3a",
+      "syncProgramSha256": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233",
+      "cliSha256": "38f5400062010264b5ddad206ea91b97b749535b44d221ad2436b12adc4f562f",
+      "nativeScriptSha256": "65cd8aef8b975b834263c1630fc15f49a089ff1a6a29c57d4d1447b485d9dd26",
+      "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
+      "games": null,
+      "source": "synthetic-only",
+      "scenario": "all",
+      "processCase": null
+    },
+    "cleanup": "PASS"
+  },
+  "gamesAcceptance": {
+    "checks": [
+      {
+        "test": "root-owned-socket-rejects-non-root-peer",
+        "result": "PASS",
+        "observation": {
+          "accepted": true,
+          "requestBytes": 0
+        }
+      },
+      {
+        "test": "native-game-shared-example-and-complete-utf8-save",
+        "result": "PASS",
+        "repositoryBaselineMillis": null,
+        "repositoryWithGameMillis": null
+      },
+      {
+        "test": "native-game-denies-host-files-credentials-tcp-unix-and-bridge",
+        "result": "PASS",
+        "repositoryBaselineMillis": null,
+        "repositoryWithGameMillis": null
+      },
+      {
+        "test": "native-game-output-memory-descendants-and-readmission",
+        "result": "PASS",
+        "repositoryBaselineMillis": null,
+        "repositoryWithGameMillis": null
+      },
+      {
+        "test": "native-game-admission-does-not-consume-repository-capacity",
+        "result": "PASS",
+        "repositoryBaselineMillis": 192.825333,
+        "repositoryWithGameMillis": 61.406923
+      },
+      {
+        "test": "native-game-account-revocation-terminates-active-job",
+        "result": "PASS",
+        "repositoryBaselineMillis": null,
+        "repositoryWithGameMillis": null
+      },
+      {
+        "test": "native-game-supervisor-loss-cleans-jobs-before-readmission",
+        "result": "PASS",
+        "repositoryBaselineMillis": null,
+        "repositoryWithGameMillis": null
+      },
+      {
+        "test": "selected-scenario-closes-worker-leases",
+        "result": "PASS"
+      }
+    ],
+    "combined": {
+      "nativeCombined": "PASS",
+      "sourceLayout": "flat",
+      "runtimeManifestSha256": "d5793601203efd6743c1dbd49a4cae1ef7df44fe588f1c85f6be48c99de51491",
+      "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+      "nativePoolSha256": "94ff8dd3d4cfac0222defab0b9eb71b1f9af3cd732f4d7b32eb2f7a1839e5f47",
+      "supervisorKind": "rust",
+      "workerSha256": "ce012d31881d678511104480dcee805d015a764fcf60b9f0c350e54b25890db5",
+      "launcherSha256": "5093662e99f599cfe060844ce391590895b54edcfd2056db9e07f8a0d01d3bbe",
+      "shellLoopSha256": "ea7d36e9c3034301d41e8f4f6131ff0f05655141834fd97a3400162d63298a3a",
+      "syncProgramSha256": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233",
+      "cliSha256": "38f5400062010264b5ddad206ea91b97b749535b44d221ad2436b12adc4f562f",
+      "nativeScriptSha256": "65cd8aef8b975b834263c1630fc15f49a089ff1a6a29c57d4d1447b485d9dd26",
+      "peerObserverSha256": "4e33f6df37165dcb03bcdeabd1aa1c23e3594ee0974ce1de53fe8ff98883c460",
+      "games": {
+        "supervisorSha256": "671152bce8a7b607233e141c6adffca68e64c4077b5fc42ac9cd3b6a30a9ac1d",
+        "runtimeSha256": "8ee28e17266d6fce9f157fbc53252573150219f30a08defd0814fa064dbed1e8",
+        "entrySha256": "111c875956ba96850013fe6d2ede2e89463d73384ec028a8d466f894565c0c84",
+        "exampleSha256": "7d02464c5858e80f4d45d93234d911113de28b28abbf0715103d20cb42fb57e2",
+        "fixtureSha256": "0a95ce7ccc28bc790d5f46616d56a54291e4a3887a99d71fc164934baab748d6"
+      },
+      "source": "synthetic-only",
+      "scenario": "games",
+      "processCase": null
+    },
+    "cleanup": "PASS"
+  },
+  "directSupervisorAttempts": [
+    {
+      "attempt": 1,
+      "result": "FAIL",
+      "classification": "invocation",
+      "detail": "The copied staging directory retained the builder account ownership; the supervisor correctly refused the unprotected path before runtime creation.",
+      "recoveryCleanup": {
+        "scope": "Cleanup of direct supervisor probe attempt 1, refused before runtime creation because staging was not root-owned",
+        "cleanup": "PASS"
+      }
+    },
+    {
+      "attempt": 2,
+      "result": "PASS",
+      "summary": {
+        "summary": "PASS",
+        "tests": 24,
+        "source": "synthetic-only",
+        "runtimeParent": "/run",
+        "supervisorUmask": "0077",
+        "resourcePoolSha256": "39d11c409f6e036d3eef906ab11a98768ca54f2a6a7053b8963020c315f79880",
+        "nativePoolSha256": "94ff8dd3d4cfac0222defab0b9eb71b1f9af3cd732f4d7b32eb2f7a1839e5f47",
+        "supervisorKind": "rust",
+        "workerSha256": "ce012d31881d678511104480dcee805d015a764fcf60b9f0c350e54b25890db5",
+        "shellLoopSha256": "ea7d36e9c3034301d41e8f4f6131ff0f05655141834fd97a3400162d63298a3a",
+        "syncProgramSha256": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233",
+        "probeSha256": "52c3e61fe9ae8adac26ee3d3f584e9bff773330175d83b9363d87abc1de0d2d3",
+        "launcherSha256": "5093662e99f599cfe060844ce391590895b54edcfd2056db9e07f8a0d01d3bbe"
+      },
+      "cleanup": "PASS"
+    }
+  ]
+}

@@ -56,13 +56,25 @@ pub fn run(
     timeout: Duration,
     limit: usize,
 ) -> (io::Result<Finished>, io::Result<()>) {
+    run_input(launch, cancelled, timeout, limit, Stdio::null())
+}
+
+/// The caller owns the input producer and must stop it on cancellation. Passing a
+/// pipe lets a bounded unit charge staged file pages to its own cgroup.
+pub fn run_input(
+    launch: &Launch,
+    cancelled: &AtomicBool,
+    timeout: Duration,
+    limit: usize,
+    input: Stdio,
+) -> (io::Result<Finished>, io::Result<()>) {
     let (program, args) = match launch.command.split_first() {
         Some(parts) => parts,
         None => return (Err(unavailable()), Ok(())),
     };
     let child = Command::new(program)
         .args(args)
-        .stdin(Stdio::null())
+        .stdin(input)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
