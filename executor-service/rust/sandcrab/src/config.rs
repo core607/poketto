@@ -30,6 +30,8 @@ pub struct Tcp {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Service {
+    #[serde(default)]
+    pub opensandbox: bool,
     pub runtime_root: PathBuf,
     pub socket: PathBuf,
     pub client_uid: u32,
@@ -286,6 +288,9 @@ impl Config {
             return Err(invalid(
                 "Use 8..256 max_connections and 1..min(128, max_connections-4) max_event_streams; reserve four control connections",
             ));
+        }
+        if service.opensandbox && self.tcp.is_none() {
+            return Err(invalid("OpenSandbox requires authenticated loopback TCP"));
         }
         if !(1..=64).contains(&service.max_sandboxes)
             || !(service.max_sandboxes..=1024).contains(&service.max_records)

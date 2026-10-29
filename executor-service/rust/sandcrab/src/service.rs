@@ -124,7 +124,7 @@ impl Registry {
             reserved: 0,
         }
     }
-    fn forget(&mut self, id: &str) -> Result<(), &'static str> {
+    pub(crate) fn forget(&mut self, id: &str) -> Result<(), &'static str> {
         let run = self.runs.get(id).ok_or("RUN_NOT_FOUND")?;
         if !run.terminal() {
             return Err("RUN_ACTIVE");
@@ -137,6 +137,7 @@ impl Registry {
 }
 
 pub struct Service {
+    pub(crate) sdk: crate::opensandbox::Book,
     pub runtime: Runtime,
     pub id: String,
     pub(crate) registry: Mutex<Registry>,
@@ -148,6 +149,7 @@ pub struct Service {
 impl Service {
     pub fn new(runtime: Runtime, stopped: Arc<AtomicBool>) -> io::Result<Self> {
         Ok(Self {
+            sdk: crate::opensandbox::Book::default(),
             runtime,
             id: sandcrab_core::new_uuid()?,
             registry: Mutex::new(Registry::new()),
@@ -401,6 +403,8 @@ impl Service {
                 session.state = "ready".into();
             }
         }
+        drop(registry);
+        self.sdk_completed(id);
     }
 
     pub(crate) fn output(&self, id: &str, stream: usize, bytes: &[u8]) {

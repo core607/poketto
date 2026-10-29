@@ -64,7 +64,7 @@ fn metadata(result: Result<Value>) -> (u16, Value) {
         Err((status, code)) => error(status, code),
     }
 }
-fn code(error: &io::Error) -> String {
+pub(crate) fn code(error: &io::Error) -> String {
     let value = error.to_string();
     if !value.is_empty()
         && value.len() <= 64
@@ -75,7 +75,7 @@ fn code(error: &io::Error) -> String {
         crate::file_io::error_code(error).into()
     }
 }
-fn stage(id: &str, access: &Access) -> Stage {
+pub(crate) fn stage(id: &str, access: &Access) -> Stage {
     Stage {
         id: id.into(),
         session_id: access.session.clone(),
@@ -85,7 +85,13 @@ fn stage(id: &str, access: &Access) -> Stage {
         gid: access.profile.gid,
     }
 }
-fn job(action: &str, path: &str, format: Format, access: &Access, stage: &std::path::Path) -> Job {
+pub(crate) fn job(
+    action: &str,
+    path: &str,
+    format: Format,
+    access: &Access,
+    stage: &std::path::Path,
+) -> Job {
     Job {
         action: action.into(),
         workspace: access.workspace.clone(),
@@ -100,11 +106,12 @@ fn job(action: &str, path: &str, format: Format, access: &Access, stage: &std::p
         gid: access.profile.gid,
         byte_limit: access.profile.transfer_bytes,
         entry_limit: 10000,
+        multipart: None,
     }
 }
 
 impl Service {
-    fn file_access(&self, id: &str) -> Result<Arc<Access>> {
+    fn file_access(&self, id: &str, incarnation: Option<&str>) -> Result<Arc<Access>> {
         if self.stopped.load(Ordering::SeqCst) {
             return Err((503, "STOPPING"));
         }
@@ -117,13 +124,16 @@ impl Service {
             .sessions
             .get(id)
             .ok_or((404, "SESSION_NOT_FOUND"))?;
+        if incarnation.is_some_and(|expected| session.incarnation != expected) {
+            return Err((409, "SESSION_CHANGED"));
+        }
         if !["ready", "busy"].contains(&session.state.as_str()) {
             return Err((409, "SESSION_NOT_READY"));
         }
         session.files.clone().ok_or((409, "SESSION_NOT_READY"))
     }
-    fn file_lease(&self, id: &str) -> Result<Lease> {
-        self.file_access(id)?
+    pub(crate) fn file_lease(&self, id: &str, incarnation: Option<&str>) -> Result<Lease> {
+        self.file_access(id, incarnation)?
             .acquire(
                 self.file_count.clone(),
                 self.runtime.config.service.max_file_transfers,
@@ -147,7 +157,7 @@ impl Service {
             if input.server_id != self.id {
                 return error(409, "SERVER_CHANGED");
             }
-            let access = match self.file_access(&input.session_id) {
+            let access = match self.file_access(&input.session_id, None) {
                 Ok(v) => v,
                 Err((status, code)) => return error(status, code),
             };
@@ -240,7 +250,7 @@ impl Service {
         if length != record.request.bytes {
             return error(400, "CONTENT_LENGTH_MISMATCH");
         }
-        let lease = match self.file_lease(&record.request.session_id) {
+        let lease = match self.file_lease(&record.request.session_id, None) {
             Ok(l) => l,
             Err((status, code)) => return error(status, code),
         };
@@ -368,7 +378,7 @@ impl Service {
         response
     }
 
-    fn pipe_upload(
+    pub(crate) fn pipe_upload(
         &self,
         job: &Job,
         lease: &Lease,
@@ -423,7 +433,12 @@ impl Service {
         })
     }
 
-    pub fn capture(&self, session: &str, body: &[u8]) -> Result<Snapshot> {
+    pub fn capture(
+        &self,
+        session: &str,
+        body: &[u8],
+        incarnation: Option<&str>,
+    ) -> Result<Snapshot> {
         let request = sandcrab_core::parse(body)
             .ok()
             .and_then(|v| serde_json::from_value::<Capture>(v).ok())
@@ -432,7 +447,7 @@ impl Service {
             return Err((400, "INVALID_PATH"));
         }
         let id = sandcrab_core::new_uuid().map_err(|_| (503, "FILE_UNAVAILABLE"))?;
-        let lease = self.file_lease(session)?;
+        let lease = self.file_lease(session, incarnation)?;
         let stage = stage(&id, &lease.access);
         let mut contained = true;
         let result = (|| -> io::Result<(File, u64, String)> {

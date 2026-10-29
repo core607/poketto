@@ -1,0 +1,251 @@
+package example.sandcrab;
+
+import com.alibaba.opensandbox.sandbox.Sandbox;
+import com.alibaba.opensandbox.sandbox.SandboxManager;
+import com.alibaba.opensandbox.sandbox.config.ConnectionConfig;
+import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.Execution;
+import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.OutputMessage;
+import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.RunCommandRequest;
+import com.alibaba.opensandbox.sandbox.domain.models.execd.filesystem.WriteEntry;
+import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxFilter;
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import tools.jackson.databind.json.JsonMapper;
+
+/** Calls the published Kotlin SDK from an independent Java consumer. */
+public final class SdkConformance {
+    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final String SDK_SHA = "cb96348a273124a899586e23abe9b5aeafcc98b1d6055532a62ecc8a2a22a392";
+
+    private SdkConformance() {}
+
+    record Created(String created) {}
+
+    record Receipt(
+            String result,
+            String client,
+            String sdkVersion,
+            String sdkArtifactSha256,
+            List<String> checks,
+            List<String> sandboxIds,
+            List<String> commandIds) {}
+
+    public static void main(String[] args) throws Exception {
+        require(args.length == 3, "Pass ENDPOINT TOKEN_FILE barrier-or-direct");
+        Path artifact = Path.of(Sandbox.class
+                .getProtectionDomain()
+                .getCodeSource()
+                .getLocation()
+                .toURI());
+        String digest =
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(artifact)));
+        require(SDK_SHA.equals(digest), "Unexpected Kotlin SDK artifact");
+        String token = Files.readString(Path.of(args[1])).strip();
+        ConnectionConfig config = ConnectionConfig.builder()
+                .domain(args[0])
+                .protocol("http")
+                .apiKey(token)
+                .requestTimeout(Duration.ofSeconds(15))
+                .build();
+        List<String> checks = new ArrayList<>();
+        List<String> commands = new ArrayList<>();
+        Map<String, String> metadata = Map.of("name", "SDK proof 汉字 & +", "client", "kotlin-java");
+        try (SandboxManager manager =
+                SandboxManager.builder().connectionConfig(config).build()) {
+            Sandbox sandbox = Sandbox.builder()
+                    .image("python")
+                    .connectionConfig(config)
+                    .resource(Map.of("cpu", "0.25", "memory", "32Mi"))
+                    .timeout(Duration.ofSeconds(60))
+                    .env("SDK_VALUE", "base ' quoted")
+                    .metadata(metadata)
+                    .build();
+            boolean deleted = false;
+            try {
+                barrier(args[2], sandbox.getId());
+                lifecycle(sandbox, manager, metadata, token, checks);
+                commands(sandbox, commands, checks);
+                files(sandbox, commands, checks);
+                sandbox.renew(Duration.ofSeconds(90));
+                sandbox.kill();
+                deleted = true;
+                checks.add("renew-and-explicit-delete");
+                System.out.println(JSON.writeValueAsString(new Receipt(
+                        "PASS",
+                        "kotlin-sdk-java-caller",
+                        "1.1.0",
+                        digest,
+                        checks,
+                        List.of(sandbox.getId()),
+                        commands)));
+            } finally {
+                try {
+                    if (!deleted) {
+                        sandbox.kill();
+                    }
+                } finally {
+                    sandbox.close();
+                }
+            }
+        }
+    }
+
+    private static void barrier(String mode, String id) throws Exception {
+        if (mode.equals("barrier")) {
+            System.out.println(JSON.writeValueAsString(new Created(id)));
+            System.out.flush();
+            String line = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8)).readLine();
+            require("continue".equals(line), "Kernel inspection barrier was not released");
+        } else {
+            require(mode.equals("direct"), "Unknown barrier mode");
+        }
+    }
+
+    private static void lifecycle(
+            Sandbox sandbox, SandboxManager manager, Map<String, String> metadata, String token, List<String> checks) {
+        require(sandbox.getInfo().getId().equals(sandbox.getId()), "Sandbox identity changed");
+        require(sandbox.getInfo().getStatus().getState().equals("Running"), "Sandbox is not ready");
+        require(sandbox.getInfo().getMetadata().equals(metadata), "Metadata did not round-trip");
+        require(sandbox.isHealthy(), "SDK health probe failed");
+        String access = sandbox.getEndpoint(44772).getHeaders().get("X-EXECD-ACCESS-TOKEN");
+        require(access.length() == 64, "Endpoint access token is missing");
+        require(!access.equals(token), "Endpoint exposed the lifecycle credential");
+        require(
+                manager
+                        .listSandboxInfos(SandboxFilter.builder()
+                                .states("Running")
+                                .metadata(metadata)
+                                .page(1)
+                                .pageSize(5)
+                                .build())
+                        .getSandboxInfos()
+                        .stream()
+                        .map(item -> item.getId())
+                        .toList()
+                        .equals(List.of(sandbox.getId())),
+                "Filtered discovery disagreed");
+        checks.add("create-discover-filter-and-scope-endpoint-credentials");
+    }
+
+    private static void commands(Sandbox sandbox, List<String> ids, List<String> checks) {
+        Execution execution = sandbox.commands()
+                .run(RunCommandRequest.builder()
+                        .argv(List.of(
+                                "python3",
+                                "-c",
+                                "import os,sys; print(os.environ['SDK_VALUE']); sys.stderr.write('diagnostic\\n')"))
+                        .build());
+        remember(execution, ids, 0);
+        require(output(execution).equals("base ' quoted\n"), "Command environment or output changed");
+        require(
+                execution.getLogs().getStderr().stream()
+                        .map(OutputMessage::getText)
+                        .collect(Collectors.joining())
+                        .equals("diagnostic\n"),
+                "Stderr did not survive the stream");
+        require(
+                sandbox.commands().getCommandStatus(execution.getId()).getExitCode() == 0,
+                "Completed status is missing");
+        checks.add("foreground-argv-environment-output-and-retained-status");
+        execution = sandbox.commands()
+                .run(RunCommandRequest.builder()
+                        .argv(List.of(
+                                "python3",
+                                "-c",
+                                "import sys; sys.stdout.buffer.write(b'A'*4095+'中'.encode()+b'\\xffX')"))
+                        .build());
+        remember(execution, ids, 0);
+        require(output(execution).equals("A".repeat(4095) + "中\ufffdX"), "UTF-8 boundaries changed output");
+        execution = sandbox.commands().run("printf failed; exit 7");
+        remember(execution, ids, 7);
+        require(execution.getError() != null, "Failed command has no SDK error");
+        require(output(execution).equals("failed"), "Failed command lost output");
+        checks.add("split-unicode-invalid-bytes-and-failed-exit");
+        for (int index = 0; index < 16; index++) {
+            execution = sandbox.commands().run("printf " + index);
+            remember(execution, ids, 0);
+            require(output(execution).equals(Integer.toString(index)), "Command output changed");
+        }
+        checks.add("bounded-native-result-reclamation");
+    }
+
+    private static String output(Execution execution) {
+        return execution.getLogs().getStdout().stream()
+                .map(OutputMessage::getText)
+                .collect(Collectors.joining());
+    }
+
+    private static void files(Sandbox sandbox, List<String> ids, List<String> checks) throws Exception {
+        byte[] bytes = new byte[131328];
+        for (int index = 0; index < bytes.length; index++) {
+            bytes[index] = (byte) index;
+        }
+        sandbox.files()
+                .write(List.of(
+                        WriteEntry.builder()
+                                .path("/workspace/文件; name=odd.bin")
+                                .data(bytes)
+                                .mode(640)
+                                .build(),
+                        WriteEntry.builder()
+                                .path("/workspace/empty")
+                                .data(new byte[0])
+                                .build(),
+                        WriteEntry.builder()
+                                .path("/workspace/text")
+                                .data("hello 世界\n")
+                                .build()));
+        require(
+                Arrays.equals(bytes, sandbox.files().readByteArray("/workspace/文件; name=odd.bin")),
+                "Binary content changed");
+        require(sandbox.files().readByteArray("/workspace/empty").length == 0, "Empty file changed");
+        require(sandbox.files().readFile("/workspace/text").equals("hello 世界\n"), "Text content changed");
+        try (var stream = sandbox.files().readStream("/workspace/文件; name=odd.bin")) {
+            require(Arrays.equals(bytes, stream.readAllBytes()), "Streaming download changed bytes");
+        }
+        try (var input = new ByteArrayInputStream(bytes)) {
+            sandbox.files()
+                    .writeFile(WriteEntry.builder()
+                            .path("/workspace/文件; name=odd.bin")
+                            .data(input)
+                            .mode(600)
+                            .build());
+        }
+        Execution execution = sandbox.commands()
+                .run(RunCommandRequest.builder()
+                        .argv(List.of(
+                                "python3",
+                                "-c",
+                                "from pathlib import Path; import stat; p=Path('/workspace/文件; name=odd.bin'); "
+                                        + "assert p.read_bytes()==bytes(range(256))*513; "
+                                        + "assert stat.S_IMODE(p.stat().st_mode)==0o600; print('files verified')"))
+                        .build());
+        remember(execution, ids, 0);
+        require(output(execution).equals("files verified\n"), "Sandbox-side file checks failed");
+        checks.add("fixed-and-chunked-multipart-binary-text-empty-stream-and-replacement-mode");
+    }
+
+    private static void remember(Execution execution, List<String> ids, int code) {
+        require(execution.getComplete() != null, "Command completion was not observed");
+        require(Integer.valueOf(code).equals(execution.getExitCode()), "Command exit code changed");
+        ids.add(execution.getId());
+    }
+
+    private static void require(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalStateException(message);
+        }
+    }
+}

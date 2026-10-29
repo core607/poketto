@@ -237,7 +237,7 @@ impl Runtime {
             }
             // Renaming across two bind mounts fails with EXDEV even on the same
             // filesystem. Publication binds their protected common parent once.
-            if job.action == "publish" {
+            if ["publish", "sdk-publish"].contains(&job.action.as_str()) {
                 writable = vec![
                     job.stage
                         .parent()
@@ -341,6 +341,7 @@ impl Runtime {
                 gid: stage.gid,
                 byte_limit: profile.transfer_bytes,
                 entry_limit: 10000,
+                multipart: None,
             };
             let (result, contained) =
                 self.file_helper(&job, profile, &AtomicBool::new(false), Stdio::null());

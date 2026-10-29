@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Exercise the published OpenSandbox Python SDK against an actual service."""
+import argparse
+import asyncio
+from datetime import timedelta
+import importlib.metadata
+import io
+import json
+from pathlib import Path
+import sys
+
+from opensandbox import Sandbox
+from opensandbox.config import ConnectionConfig
+from opensandbox.exceptions import SandboxApiException
+from opensandbox.manager import SandboxManager
+from opensandbox.models.execd import RunCommandOpts
+from opensandbox.models.sandboxes import SandboxFilter
+from opensandbox.models.filesystem import WriteEntry
+
+
+def output(execution, stream='stdout'):
+    return ''.join(item.text for item in getattr(execution.logs, stream))
+
+
+async def files(sandbox, commands, checks):
+    data = bytes(range(256)) * 513
+    await sandbox.files.write_files([
+        WriteEntry(path='/workspace/文件; name=odd.bin', data=data, mode=640),
+        WriteEntry(path='/workspace/empty', data=b''),
+        WriteEntry(path='/workspace/text', data='hello 世界\n')])
+    assert await sandbox.files.read_bytes('/workspace/文件; name=odd.bin') == data
+    assert await sandbox.files.read_bytes('/workspace/empty') == b''
+    assert await sandbox.files.read_file('/workspace/text') == 'hello 世界\n'
+    stream = await sandbox.files.read_bytes_stream('/workspace/文件; name=odd.bin', chunk_size=8191)
+    assert b''.join([chunk async for chunk in stream]) == data
+    await sandbox.files.write_file('/workspace/文件; name=odd.bin', io.BytesIO(data[::-1]), mode=600)
+    assert await sandbox.files.read_bytes('/workspace/文件; name=odd.bin') == data[::-1]
+    execution = await sandbox.commands.run(['python3', '-c',
+        "from pathlib import Path; import stat; p=Path('/workspace/文件; name=odd.bin'); "
+        "assert p.read_bytes()==(bytes(range(256))*513)[::-1]; "
+        "assert stat.S_IMODE(p.stat().st_mode)==0o600; print('files verified')"])
+    commands.append(execution.id)
+    assert execution.exit_code == 0 and output(execution) == 'files verified\n'
+    checks.append('chunked-multipart-binary-text-empty-stream-and-replacement-mode')
+
+
+async def exercise(args):
+    assert importlib.metadata.version('opensandbox') == '1.1.0'
+    token = args.token_file.read_text().strip()
+    config = ConnectionConfig(domain=args.endpoint, protocol='http', api_key=token,
+                              request_timeout=timedelta(seconds=15))
+    checks, commands, identities = [], [], []
+    manager = await SandboxManager.create(connection_config=config)
+    sandbox = None
+    expired = False
+    try:
+        metadata = {'name': 'SDK proof 汉字 & +', 'client': 'python'}
+        sandbox = await Sandbox.create(args.profile, connection_config=config,
+                                       timeout=timedelta(seconds=60),
+                                       resource={'cpu': '0.25', 'memory': '32Mi'},
+                                       env={'SDK_VALUE': "base ' quoted"}, metadata=metadata)
+        identities.append(sandbox.id)
+        if args.barrier:
+            print(json.dumps({'created': sandbox.id}), flush=True)
+            assert sys.stdin.readline().strip() == 'continue'
+        info = await sandbox.get_info()
+        assert info.id == sandbox.id and info.status.state == 'Running'
+        assert info.metadata == metadata
+        assert await sandbox.is_healthy()
+        endpoint = await sandbox.get_endpoint(44772)
+        assert endpoint.endpoint == args.endpoint + '/opensandbox/' + sandbox.id
+        assert len(endpoint.headers['X-EXECD-ACCESS-TOKEN']) == 64
+        assert endpoint.headers['X-EXECD-ACCESS-TOKEN'] != token
+        policy = await sandbox.get_egress_policy()
+        assert policy.default_action == 'deny' and policy.egress == []
+        page = await manager.list_sandbox_infos(SandboxFilter(states=['Running'], metadata=metadata,
+                                                             page=1, page_size=5))
+        assert [item.id for item in page.sandbox_infos] == [sandbox.id]
+        assert page.pagination.total_items == 1
+        checks.append('create-discover-filter-and-scope-endpoint-credentials')
+
+        execution = await sandbox.commands.run(['python3', '-c',
+            "import os,sys; print(os.environ['SDK_VALUE']); print(os.environ['SDK_OVERRIDE']); sys.stderr.write('diagnostic\\n')"],
+            opts=RunCommandOpts(envs={'SDK_OVERRIDE': 'per-command'}))
+        commands.append(execution.id)
+        assert execution.complete is not None and execution.exit_code == 0
+        assert output(execution) == "base ' quoted\nper-command\n"
+        assert output(execution, 'stderr') == 'diagnostic\n'
+        status = await sandbox.commands.get_command_status(execution.id)
+        assert status.id == execution.id and not status.running and status.exit_code == 0
+        checks.append('foreground-argv-environment-output-and-retained-status')
+
+        execution = await sandbox.commands.run(['python3', '-c',
+            "import sys; sys.stdout.buffer.write(b'A'*4095+'中'.encode()+b'\\xffX')"])
+        commands.append(execution.id)
+        assert execution.exit_code == 0 and output(execution) == 'A' * 4095 + '中\ufffdX'
+        literal = "a'; touch /tmp/sdk-escape; ' $(uname) &"
+        execution = await sandbox.commands.run(['printf', '%s', literal])
+        commands.append(execution.id)
+        assert execution.exit_code == 0 and output(execution) == literal
+        execution = await sandbox.commands.run('test ! -e /tmp/sdk-escape; printf failed; exit 7')
+        commands.append(execution.id)
+        assert execution.complete is not None and execution.exit_code == 7 and execution.error is not None
+        assert output(execution) == 'failed'
+        checks.append('split-unicode-invalid-bytes-literal-arguments-and-failed-exit')
+
+        execution = await sandbox.commands.run('mkdir -p /workspace/dir; cd /workspace/dir; export SDK_CHILD=temporary')
+        commands.append(execution.id)
+        assert execution.exit_code == 0
+        execution = await sandbox.commands.run('pwd; test -z "${SDK_CHILD:-}"')
+        commands.append(execution.id)
+        assert execution.exit_code == 0 and output(execution) == '/workspace\n'
+        for index in range(16):
+            execution = await sandbox.commands.run(['printf', '%s', str(index)])
+            commands.append(execution.id)
+            assert execution.complete is not None and execution.exit_code == 0 and output(execution) == str(index)
+        checks.append('independent-commands-and-bounded-native-result-reclamation')
+
+        try:
+            await sandbox.commands.run('touch /workspace/forbidden-background', opts=RunCommandOpts(background=True))
+        except SandboxApiException as error:
+            assert error.status_code == 400
+        else:
+            raise AssertionError('Unsupported background request was accepted')
+        execution = await sandbox.commands.run('test ! -e /workspace/forbidden-background')
+        commands.append(execution.id)
+        assert execution.exit_code == 0
+        checks.append('unsupported-execution-option-refuses-without-side-effects')
+        await files(sandbox, commands, checks)
+
+        before = (await sandbox.get_info()).expires_at
+        await sandbox.renew(timedelta(seconds=90))
+        assert (await sandbox.get_info()).expires_at > before
+        await sandbox.kill()
+        expired = True
+        try:
+            await manager.get_sandbox_info(sandbox.id)
+        except SandboxApiException as error:
+            assert error.status_code == 404
+        else:
+            raise AssertionError('Deleted sandbox remains available')
+        checks.append('renew-and-explicit-delete')
+    finally:
+        if sandbox is not None:
+            try:
+                if not expired:
+                    await sandbox.kill()
+            finally:
+                await sandbox.close()
+        await manager.close()
+    return {'result': 'PASS', 'client': 'python', 'sdkVersion': importlib.metadata.version('opensandbox'),
+            'checks': checks, 'sandboxIds': identities, 'commandIds': commands,
+            'packages': {name: importlib.metadata.version(name) for name in ['opensandbox', 'httpx', 'pydantic']}}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--endpoint', required=True)
+    parser.add_argument('--token-file', type=Path, required=True)
+    parser.add_argument('--profile', default='python')
+    parser.add_argument('--barrier', action='store_true')
+    args = parser.parse_args()
+    print(json.dumps(asyncio.run(exercise(args)), ensure_ascii=False), flush=True)
+
+
+if __name__ == '__main__':
+    main()

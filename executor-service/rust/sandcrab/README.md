@@ -3,7 +3,9 @@
 `sandcrab` is a standalone Linux daemon and CLI for finite commands, persistent
 bash sessions, durable volumes, streamed files, live command output and opaque host calls. It needs no Poketto account, workspace, repository,
 signing key or compiled extension. The service uses a Unix socket or optional
-authenticated loopback TCP; the OpenSandbox adapter remains under the
+authenticated loopback TCP. An optional [OpenSandbox adapter](opensandbox.md)
+supports SDK lifecycle, foreground commands and file streams. Remaining SDK
+operations and consumer adoption are under the
 [service proposal](../../../notes/proposed/2026-10-26-sandcrab-sandbox-service.md).
 
 ## Installation
