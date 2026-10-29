@@ -22,12 +22,14 @@ from native_probe import Probe, call, connect, http
 
 
 class Events:
-    def __init__(self, endpoint, run, after=None):
-        self.socket = socket.socket(socket.AF_UNIX)
+    def __init__(self, endpoint, run, after=None, *, connection=None, headers=None):
+        self.socket = connection or socket.socket(socket.AF_UNIX)
         self.socket.settimeout(8)
-        connect(self.socket, endpoint)
+        if connection is None:
+            connect(self.socket, endpoint)
         cursor = f'Last-Event-ID: {after}\r\n' if after else ''
-        self.socket.sendall(f'GET /v1/runs/{run["id"]}/events HTTP/1.1\r\nHost: sandcrab\r\n{cursor}\r\n'.encode())
+        extra = ''.join(f'{key}: {value}\r\n' for key, value in (headers or {}).items())
+        self.socket.sendall(f'GET /v1/runs/{run["id"]}/events HTTP/1.1\r\nHost: sandcrab\r\n{cursor}{extra}\r\n'.encode())
         self.response = HTTPResponse(self.socket)
         self.response.begin()
         assert self.response.status == 200, self.response.read()

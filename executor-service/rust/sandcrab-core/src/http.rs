@@ -95,8 +95,8 @@ fn token(text: &str) -> bool {
 }
 
 /// Parse only the bounded head, retaining at most one 1 KiB read's body prefix.
-/// Callers authenticate first, bound the selected operation's length, and impose
-/// socket deadlines. PUT permits an explicitly declared empty file.
+/// Callers authenticate the peer or parsed headers before dispatch, bound the
+/// body length and impose I/O deadlines. PUT permits an explicitly empty file.
 fn envelope(source: &mut impl Read, chunked: bool) -> Result<Option<Envelope>, &'static str> {
     let mut buffer = Vec::with_capacity(1024);
     let end = loop {
@@ -498,6 +498,7 @@ pub fn response_head_with(
         202 => "Accepted",
         204 => "No Content",
         400 => "Bad Request",
+        401 => "Unauthorized",
         403 => "Forbidden",
         404 => "Not Found",
         409 => "Conflict",
