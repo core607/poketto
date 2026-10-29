@@ -90,6 +90,7 @@ code and hidden checks never enter model messages. Expected checks are:
 | `preserve` | Supplied inputs or public tests that must remain byte-identical |
 | `textContains` | Required literal snippets in a submitted text file |
 | `steps` | One to eight ordered checks, each invoking submitted Python or a supplied check driver with `argv`, `stdin` and exact `stdoutJson` |
+| Step `exitCode` | Expected process status, default `0`; `null` permits normal nonzero exits when only the output and state are specified |
 | Step `files`, `links`, `reset` | New inputs, opaque symlink targets and paths to remove inside the grading sandbox; cannot replace submitted source |
 | Step `filesJson`, `absentFiles`, `unchangedFiles` | Independent stored-JSON, absence or byte-preservation checks |
 
@@ -100,6 +101,8 @@ grader copies only the required sources into a fresh sandbox, provides hidden
 inputs and compares stdout and file readback on the host. A final-answer claim,
 changed public test or matching stdout with incorrect stored data cannot pass.
 Every hidden check uses real Sandcrab execution; there is no model judge.
+Timeout, cancellation, resource exhaustion and output truncation always fail;
+accepting a normal nonzero exit still requires every output and stored-file check.
 
 A task has an 8 MiB volume, at most 20 shell commands, 16 text uploads, three
 session restarts and four exports. Commands have ten-second and 4096-byte output
