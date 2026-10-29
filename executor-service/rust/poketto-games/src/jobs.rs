@@ -277,6 +277,7 @@ impl Games {
                 cancelled,
                 Duration::from_millis(self.config.max_timeout_millis),
                 game::MAX_OUTPUT,
+                |_, _| {},
             ),
             Err(error) => (Err(error), Ok(())),
         };
