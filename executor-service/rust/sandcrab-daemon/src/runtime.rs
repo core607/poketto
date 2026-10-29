@@ -190,6 +190,7 @@ impl Runtime {
             },
             cancelled,
             on_ready,
+            |_, _| {},
         );
         let run_ms = running.elapsed().as_millis() as u64;
         let termination = match result.reason {

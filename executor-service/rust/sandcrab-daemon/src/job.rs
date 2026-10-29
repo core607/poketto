@@ -50,13 +50,16 @@ fn systemctl(args: &[&str], unit: &str, seconds: u64) -> io::Result<std::process
 /// Run `launch` once. The timeout, cancellation or output beyond `limit` bytes over both
 /// streams kills the unit. The first result is the job's; the second confirms that the unit
 /// stopped and left no process, and is an error whenever that is unknown.
+/// The synchronous observer receives retained raw output while the job runs; it must not
+/// block or interpret progress as proof of completion or containment.
 pub fn run(
     launch: &Launch,
     cancelled: &AtomicBool,
     timeout: Duration,
     limit: usize,
+    on_output: impl FnMut(usize, &[u8]),
 ) -> (io::Result<Finished>, io::Result<()>) {
-    run_input(launch, cancelled, timeout, limit, Stdio::null())
+    run_input(launch, cancelled, timeout, limit, Stdio::null(), on_output)
 }
 
 /// The caller owns the input producer and must stop it on cancellation. Passing a
@@ -67,6 +70,7 @@ pub fn run_input(
     timeout: Duration,
     limit: usize,
     input: Stdio,
+    mut on_output: impl FnMut(usize, &[u8]),
 ) -> (io::Result<Finished>, io::Result<()>) {
     let (program, args) = match launch.command.split_first() {
         Some(parts) => parts,
@@ -80,7 +84,14 @@ pub fn run_input(
         .spawn();
     let (finished, mut child) = match child {
         Ok(mut child) => (
-            watch(launch, &mut child, cancelled, timeout, limit),
+            watch(
+                launch,
+                &mut child,
+                cancelled,
+                timeout,
+                limit,
+                &mut on_output,
+            ),
             Some(child),
         ),
         Err(error) => (Err(error), None),
@@ -103,6 +114,7 @@ fn watch(
     cancelled: &AtomicBool,
     timeout: Duration,
     limit: usize,
+    on_output: &mut impl FnMut(usize, &[u8]),
 ) -> io::Result<Finished> {
     let mut streams = [
         File::from(OwnedFd::from(child.stdout.take().ok_or_else(unavailable)?)),
@@ -172,6 +184,9 @@ fn watch(
                 Ok(n) => {
                     let available = limit - output[0].len() - output[1].len();
                     output[index].extend_from_slice(&buffer[..n.min(available)]);
+                    if available != 0 {
+                        on_output(index, &buffer[..n.min(available)]);
+                    }
                     if n > available {
                         truncated = true;
                         kill(End::OutputLimit, &mut end);
