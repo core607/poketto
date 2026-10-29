@@ -210,12 +210,8 @@ impl Store {
             Ok(old) if old != owner => return Err(invalid("File cleanup namespace changed")),
             Ok(_) => (),
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                if fs::read_dir(&root)?.next().is_some()
-                    || fs::read_dir(config.service.runtime_root.join("jobs"))?
-                        .next()
-                        .is_some()
-                {
-                    return Err(invalid("Refusing unowned file state or active workspaces"));
+                if fs::read_dir(&root)?.next().is_some() {
+                    return Err(invalid("Refusing unowned file state"));
                 }
                 storage::write(&owner_path, &owner)?;
             }

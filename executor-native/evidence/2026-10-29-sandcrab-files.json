@@ -11,7 +11,7 @@
     "executor-service/rust/sandcrab/Cargo.toml": "f5211d03de9c1bccf5506be4e6709a89bd291c0f139d4f235cfa8c2086d88e37",
     "executor-service/rust/sandcrab/README.md": "57d1ade731ac59370da85aa08dcb027fbc9c57b8b5ba5ff65c4ebcce00623d36",
     "executor-service/rust/sandcrab/config.example.toml": "307a41da790c45bbbdff3f5706be3955d5949ce4c1cbd7bab43341705bf8cce0",
-    "executor-service/rust/sandcrab/file_probe.py": "93dd956239a99c999c0a131d28adb3b1aace41641fb869ae138aa20eae9bead6",
+    "executor-service/rust/sandcrab/file_probe.py": "a793e159e26bc0a530e2646e3a7c17263fb3c0f9ad3139586b5453135008ea36",
     "executor-service/rust/sandcrab/native_probe.py": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
     "executor-service/rust/sandcrab/openapi.json": "aadc34c003b10cfdd601644920cdc083eabb4a4db794bceb44027d998eb53f5d",
     "executor-service/rust/sandcrab/src/client.rs": "c53f05b91dc9cc505d2c8db0c806a3f6571f50d4480f31a4636717414acffff1",
@@ -19,7 +19,7 @@
     "executor-service/rust/sandcrab/src/file_access.rs": "41da75906bfbcff34ceaef036d4f75032e3ba6f08c25292c30d3b938accee67b",
     "executor-service/rust/sandcrab/src/file_client.rs": "8108547123affd6f71694a5ef0e98c24386e0e50f586137c0c9bc505f779b7e6",
     "executor-service/rust/sandcrab/src/file_io.rs": "35f00d42b9c3a08cad8633c89216b030afda5aa08b57511d26562e9cdeddfe68",
-    "executor-service/rust/sandcrab/src/file_records.rs": "45d369319c1bbe9051959a60e49b826719a91fa07e0f3723d7f4cbfebbb4588a",
+    "executor-service/rust/sandcrab/src/file_records.rs": "67d277b84c52f8b0ac80cfd4936f533899db178879c0aefe4ca103d92880ab9b",
     "executor-service/rust/sandcrab/src/files.rs": "4f99929f45aea4ee0c1b5a6ff4360c9942165be8a1de68bf75e9e35d4202805e",
     "executor-service/rust/sandcrab/src/main.rs": "2083dcfac5351ffd13aea2b4795944f6bb7e4aa68a7bc32162bf34ab7c2df6a6",
     "executor-service/rust/sandcrab/src/runtime.rs": "64766508943431fbbc133f343a5302464b57e999c7d8aafe8904ea4e01dadd35",
@@ -38,9 +38,13 @@
     },
     "workspaceArtifact": {
       "command": "./gradlew stageExecutorWorker stageGameWorker stageExecutorNativeTest",
-      "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6"
+      "binarySha256": "40db5cb094255a53aa29edd8ee57db8febecc4bc87ff2396ff10915804305c59"
     },
-    "scope": "Different build commands produced different binary fingerprints; all native suites were repeated on the workspace artifact. The isolated Linux checkout matched all 27 changed source-file hashes."
+    "scope": "Different build commands produced different binary fingerprints; all native suites were repeated on the workspace artifact. The isolated Linux checkout matched all 27 changed source-file hashes.",
+    "initialWorkspaceArtifact": {
+      "command": "./gradlew stageExecutorWorker stageGameWorker stageExecutorNativeTest",
+      "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6"
+    }
   },
   "iterationChecks": [
     {
@@ -101,6 +105,14 @@
       "rustTests": 104,
       "protocolTests": 176,
       "detail": "The private bounded Docker wrapper used cache-only output for the rust-check target; artifact-producing builds kept their normal exports. The actual Gradle task completed, including both Clippy configurations and all locked workspace tests."
+    },
+    {
+      "attempt": 3,
+      "result": "PASS",
+      "command": "./gradlew appImageIdentityCheck executorRustCheck executorServiceTests",
+      "rustTests": 104,
+      "protocolTests": 176,
+      "detail": "The complete standard command passed again after the first-start recovery fix."
     }
   ],
   "localChecks": {
@@ -226,15 +238,48 @@
       "fileProbeSha256": "93dd956239a99c999c0a131d28adb3b1aace41641fb869ae138aa20eae9bead6",
       "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
       "passedChecks": 23
+    },
+    {
+      "attempt": 10,
+      "classification": "regression-reproduction",
+      "detail": "The preceding reviewed binary fails a new first-start fixture when prior session residue remains and no upload owner exists. Unowned upload state is separately refused and preserved.",
+      "result": "FAIL",
+      "cleanup": "PASS",
+      "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6",
+      "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+      "fileProbeSha256": "a793e159e26bc0a530e2646e3a7c17263fb3c0f9ad3139586b5453135008ea36",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "failureType": "AssertionError",
+      "passedChecks": 2
+    },
+    {
+      "attempt": 11,
+      "classification": "passed",
+      "detail": "The corrected workspace artifact passes all 25 file checks, including first-start recovery and durable volume readback.",
+      "result": "PASS",
+      "cleanup": "PASS",
+      "binarySha256": "40db5cb094255a53aa29edd8ee57db8febecc4bc87ff2396ff10915804305c59",
+      "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+      "fileProbeSha256": "a793e159e26bc0a530e2646e3a7c17263fb3c0f9ad3139586b5453135008ea36",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "passedChecks": 25
     }
   ],
   "fileAcceptance": {
     "scope": "Native raw/tar upload, snapshot, quota, cancellation and crash recovery; synthetic files, no model or production cutover",
-    "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6",
+    "binarySha256": "40db5cb094255a53aa29edd8ee57db8febecc4bc87ff2396ff10915804305c59",
     "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
     "checks": [
       {
         "name": "volume-bootstrap-refuses-preexisting-data",
+        "result": "PASS"
+      },
+      {
+        "name": "files-first-start-refuses-unowned-upload-state-before-touching-prior-workspaces",
+        "result": "PASS"
+      },
+      {
+        "name": "files-first-start-recovers-prior-session-residue-and-preserves-durable-volume-data",
         "result": "PASS"
       },
       {
@@ -328,9 +373,9 @@
     ],
     "cleanup": "PASS",
     "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
-    "fileProbeSha256": "93dd956239a99c999c0a131d28adb3b1aace41641fb869ae138aa20eae9bead6",
+    "fileProbeSha256": "a793e159e26bc0a530e2646e3a7c17263fb3c0f9ad3139586b5453135008ea36",
     "quotaResponseLost": true,
-    "uploadDeadlineSeconds": 30.362,
+    "uploadDeadlineSeconds": 30.444,
     "fileHelperOom": {
       "injectedMemoryMaxBytes": 8388608,
       "unitResult": "oom-kill"
@@ -351,11 +396,18 @@
       "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6",
       "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
       "passedChecks": 29
+    },
+    {
+      "result": "PASS",
+      "cleanup": "PASS",
+      "binarySha256": "40db5cb094255a53aa29edd8ee57db8febecc4bc87ff2396ff10915804305c59",
+      "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+      "passedChecks": 29
     }
   ],
   "nativeAcceptance": {
     "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
-    "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6",
+    "binarySha256": "40db5cb094255a53aa29edd8ee57db8febecc4bc87ff2396ff10915804305c59",
     "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
     "checks": [
       {
@@ -476,20 +528,20 @@
       }
     ],
     "cleanup": "PASS",
-    "slowRequestDeadlineSeconds": 5.012,
-    "idleDisconnectSeconds": 5.128,
+    "slowRequestDeadlineSeconds": 5.01,
+    "idleDisconnectSeconds": 5.449,
     "exampleSha256": "48512f23c91d749b2860770974b907bae28b152f945d4c6ef656505a271a4517",
     "startupCancellation": {
       "initialKillExitCode": 1,
       "killAttempts": 2,
-      "seconds": 0.627,
+      "seconds": 0.862,
       "state": "cancelled",
       "limitSeconds": 3
     },
     "sessionStartupCancellation": {
       "initialKillExitCode": 1,
       "killAttempts": 2,
-      "seconds": 0.476,
+      "seconds": 0.726,
       "state": "closed",
       "limitSeconds": 3
     },
@@ -511,11 +563,19 @@
       "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
       "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
       "passedChecks": 17
+    },
+    {
+      "result": "PASS",
+      "cleanup": "PASS",
+      "binarySha256": "40db5cb094255a53aa29edd8ee57db8febecc4bc87ff2396ff10915804305c59",
+      "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
+      "volumeProbeSha256": "f4f959fbaf1a6320c41344c173ada31bf424950b232fee4568849ab489596529",
+      "passedChecks": 17
     }
   ],
   "volumeAcceptance": {
     "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
-    "binarySha256": "560a87bae225baca8b33a2a138147e28c4f598e393f5f0b474a7a6c76f4f37e6",
+    "binarySha256": "40db5cb094255a53aa29edd8ee57db8febecc4bc87ff2396ff10915804305c59",
     "probeSha256": "dbb30eee10a07f1a4b28dcf528e41de98a08fbcc60c8e381aff3148673932202",
     "checks": [
       {
@@ -733,5 +793,16 @@
       },
       "cleanup": "PASS"
     }
-  ]
+  ],
+  "firstStartRecovery": {
+    "regressionRevision": "a8fd7d674901b0d6c542c3bf946780e14ac77fe2",
+    "failingAttempt": 10,
+    "passingAttempt": 11,
+    "fixture": "A real session is killed with durable volume data present. Its empty file metadata is removed to seed the pre-files state; startup must refuse an unowned upload sentinel, then recover session residue after that sentinel is removed."
+  },
+  "legacyBinaryContinuity": {
+    "workerSha256": "ce012d31881d678511104480dcee805d015a764fcf60b9f0c350e54b25890db5",
+    "gamesSupervisorSha256": "671152bce8a7b607233e141c6adffca68e64c4077b5fc42ac9cd3b6a30a9ac1d",
+    "detail": "The first-start fix changes only the native service. The full-workspace legacy supervisor and games artifacts match those used by the recorded adapter, games and direct-supervisor checks."
+  }
 }

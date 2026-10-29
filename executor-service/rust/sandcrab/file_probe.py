@@ -136,6 +136,7 @@ class FileProbe(VolumeProbe):
         raise AssertionError('upload did not finish')
 
     def tests(self):
+        self.bootstrap_recovery()
         session = self.session_open()
         content = bytes((i * 73) % 256 for i in range(131173))
         request, result = self.upload(session, 'data.bin', content)
@@ -251,6 +252,50 @@ class FileProbe(VolumeProbe):
         self.record_limits()
         self.interrupted_uploads()
         self.publication_faults()
+
+    def bootstrap_recovery(self):
+        volume, result = self.volume()
+        assert result['state'] == 'ready', result
+        session = self.session_open(volumeId=volume['id'])
+        assert self.command(session, 'printf prior-version-data > kept; printf written') == 'written'
+        prior_job = self.socket.parent / 'jobs' / session['id']
+        assert prior_job.exists()
+        call('systemctl', 'kill', '--kill-whom=main', '--signal=KILL', self.unit)
+        call('systemctl', 'stop', self.unit, check=False)
+        call('systemctl', 'reset-failed', self.unit, check=False)
+        # Seed the pre-files release state: a stopped session remains, but no file
+        # metadata has ever been owned. There are no upload records or stages to discard.
+        uploads = self.storage / 'state/uploads'
+        owner = json.loads((uploads / 'owner.json').read_text())
+        assert owner['runtimeRoot'] == str(self.socket.parent)
+        assert owner['unitPrefix'] == self.name + '-'
+        (uploads / 'records').rmdir()
+        (uploads / 'stages').rmdir()
+        (uploads / 'owner.json').unlink()
+        unowned = uploads / 'operator-sentinel'
+        unowned.write_text('preserve unowned upload state')
+        try:
+            self.restart()
+        except AssertionError:
+            assert 'Refusing unowned file state' in call('journalctl', '-u', self.unit, '--no-pager', '-n', '30').stdout
+        else:
+            raise AssertionError('unowned file state was adopted')
+        assert unowned.read_text() == 'preserve unowned upload state'
+        assert not (uploads / 'owner.json').exists()
+        assert prior_job.exists()
+        self.done('files-first-start-refuses-unowned-upload-state-before-touching-prior-workspaces')
+        unowned.unlink()
+        self.restart()
+        assert not prior_job.exists()
+        assert (uploads / 'owner.json').exists()
+        assert http(self.socket, 'GET', '/v1/sessions/' + session['id'])[0] == 404
+        session = self.session_open(volumeId=volume['id'])
+        assert self.command(session, 'cat kept') == 'prior-version-data'
+        self.session_close(session)
+        self.session_forget(session)
+        self.volume_delete(volume)
+        self.volume_forget(volume)
+        self.done('files-first-start-recovers-prior-session-residue-and-preserves-durable-volume-data')
 
     def cli(self, session, content):
         local = self.root / 'client-files'
