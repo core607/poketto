@@ -48,7 +48,7 @@ Poketto owns repositories, publication, writes and recovery. It may redesign cop
 0. Validation without production code, recorded below.
 1. In-repository split, shipped as the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md).
 2. Finite jobs, shipped as [finite jobs](../implemented/2026-10-28-sandcrab-finite-jobs.md).
-3. Public service and adoption. Native runs, sessions, volumes and files provide profiles, CLI and OpenAPI. Complete host calls, SSE, TCP authentication, agent evals and the OpenSandbox adapter. Adapt Poketto, remove its compiled extension and product fields, and retire the old protocol without shims. The operation map inventories migration, not mandatory public operations.
+3. Public service and adoption. Native runs, sessions, volumes and files provide profiles, CLI and OpenAPI; [Inspect](../../evals/README.md) evaluates independent API and programming tasks. Complete host calls, SSE, TCP authentication and the OpenSandbox adapter. Adapt Poketto, remove its compiled extension and product fields, and retire the old protocol without shims. The operation map inventories migration, not mandatory public operations.
 4. Extraction. Move generic crates with history, publish checksums, threat model, examples and evals, then pin a release in Poketto. Phases 1 to 3 must ship before four consecutive weeks without cross-boundary changes. Record the last deployed change; another restarts the interval. The operator selects repository identity, visibility and initial release version before publication.
 
 ### Phase 0 findings
