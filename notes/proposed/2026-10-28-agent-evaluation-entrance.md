@@ -16,8 +16,8 @@ Every one of these needs an agent or an engineer to stage a host, run the script
 
 ## Proposal
 
-The [Inspect entrance](../../evals/README.md) runs native Sandcrab cases with scripted
-and budgeted model agents. Product suites and comparison below remain proposed.
+The [Inspect entrance](../../evals/README.md) runs Sandcrab API and programming tasks
+with scripted or budgeted agents. Product suites and comparison remain proposed.
 
 ### One entrance, plain cases
 
