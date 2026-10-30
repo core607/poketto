@@ -4,7 +4,7 @@ Set `service.opensandbox = true` with the authenticated loopback TCP listener in
 [config.example.toml](config.example.toml). The adapter is disabled by default.
 It targets the published OpenSandbox 1.1.0 Python and Kotlin SDKs. The
 [independent SDK clients](../../../evals/sdk/README.md) exercise both against
-the native daemon. Glob search, partial downloads and named shell contexts remain under the
+the native daemon. Named shell contexts remain under the
 [service proposal](../../../notes/proposed/2026-10-26-sandcrab-sandbox-service.md).
 
 ## Connection and ownership
@@ -91,14 +91,34 @@ An I/O failure during publication may leave a partial batch and returns
 `PUBLICATION_UNKNOWN`. Inspect file contents before deciding whether to retry.
 
 Downloads freeze only while making their private snapshot; a slow reader does
-not keep the sandbox frozen. Range and line-selection requests are refused.
+not keep the sandbox frozen. Byte and line selections also use private snapshots.
 Closing, expiry and cancellation retain workspace ownership until transfer
 helpers and cleanup finish. An uncertain cleanup fails the request and fences
 the affected workspace until service recovery.
 
+### Partial downloads
+
+The SDK's `Range` option accepts one closed byte range (`bytes=3-7`), an open
+range (`bytes=3-`) or a suffix (`bytes=-4`). A successful selection returns HTTP
+206 with the exact `Content-Range` and `Content-Length`. An empty file, zero suffix
+or starting position beyond EOF returns 416. The selected byte count, rather than
+the source file's size, must fit `transfer_bytes`; this permits bounded reads of
+larger files. Multiple ranges and `If-Range` are refused.
+
+Line reads use a positive, one-based `offset` and an optional positive `limit`.
+Providing only a limit starts at line one; providing only an offset reads to EOF.
+Following the pinned SDK contract, each selected line loses its trailing CR/LF
+bytes and the selected lines are joined with LF. An offset beyond EOF returns an
+empty body. Range and line options cannot be combined. Line scanning and output
+are each bounded by `transfer_bytes`, and long lines are processed incrementally.
+
+Byte ranges and line selections do not expose the full-file ETag. Each request
+observes its own snapshot; separate selections do not establish a consistent
+multi-request view of a file that changes between calls.
+
 ## Directory and file management
 
-The SDK can create directories, list entries, read metadata, move files or
+The SDK can create directories, list and search entries, read metadata, move files or
 directories, remove files or directory trees, change permissions and replace
 literal file content. These operations use the same workspace lease and bounded
 file helper as transfers; the sandbox is frozen for each operation.
@@ -111,6 +131,16 @@ in lexical order with descendants following their parents. Links appear as
 `created_at` uses filesystem birth time when available and inode change time
 otherwise. Directory sizes are zero. Metadata responses are bounded at 60,000
 JSON bytes and fail explicitly when they exceed the bound.
+
+Search walks recursively and matches the pattern against each non-directory
+entry's basename, as in the pinned OpenSandbox endpoint. It returns symlinks as
+entries without traversing their targets. Patterns support `*`, `**`, Unicode
+`?`, character classes and ranges, brace alternatives, backslash escapes and
+whole-name negation such as `!(lock.json)`. Negation inside a larger expression is
+refused. Patterns are bounded at 1024 bytes, 16 brace levels and eight whole-name
+negations; compilation and matching run in the bounded file helper. A search
+visits at most 10,000 entries and 64 levels and shares the metadata response bound.
+Invalid patterns fail even when no entries would match.
 
 JSON mutation requests accept at most 128 entries. Metadata and removal queries
 use the native query bounds of 32 parameters and 4096 encoded bytes. Duplicate

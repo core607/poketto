@@ -142,11 +142,12 @@ fn exchange(stream: &mut Stream, service: &Arc<Service>) -> io::Result<()> {
             if head.method == "GET"
                 && let Some((id, query)) = crate::sdk_files::download_path(&head.path)
             {
-                if head.header("range").is_some() {
-                    let (status, value) = crate::sdk_types::reply((400, "UNSUPPORTED_FILE_RANGE"));
+                if head.header("if-range").is_some() {
+                    let (status, value) =
+                        crate::sdk_types::reply((400, "CONDITIONAL_RANGE_UNSUPPORTED"));
                     return crate::opensandbox::write(stream, status, &value, true);
                 }
-                let snapshot = match service.sdk_capture(id, query) {
+                let snapshot = match service.sdk_capture(id, query, head.header("range")) {
                     Ok(snapshot) => snapshot,
                     Err(error) => {
                         let (status, value) = crate::sdk_types::reply(error);
@@ -350,7 +351,7 @@ impl Write for Download<'_> {
     }
 }
 fn snapshot(stream: &mut Stream, service: &Service, id: &str, body: &[u8]) -> io::Result<()> {
-    let snapshot = match service.capture(id, body, None) {
+    let snapshot = match service.capture(id, body, None, None) {
         Ok(s) => s,
         Err((status, code)) => return json_reply(stream, status, &error(status, code).1, true),
     };
@@ -364,11 +365,31 @@ fn send_snapshot(
 ) -> io::Result<()> {
     let bytes = snapshot.bytes;
     let etag = format!("\"{}\"", snapshot.sha256);
-    let content_type = if snapshot.format == crate::file_io::Format::Tar {
+    let content_type = if snapshot.text {
+        "text/plain; charset=utf-8"
+    } else if snapshot.format == crate::file_io::Format::Tar {
         "application/x-tar"
     } else {
         "application/octet-stream"
     };
+    let range = snapshot.range.as_ref().map(|range| {
+        format!(
+            "bytes {}-{}/{}",
+            range.start,
+            range.start + bytes - 1,
+            range.total
+        )
+    });
+    let status = if range.is_some() { 206 } else { 200 };
+    let mut headers = Vec::new();
+    if let Some(range) = &range {
+        headers.push(("Content-Range", range.as_str()));
+    } else if !snapshot.text {
+        headers.push(("ETag", etag.as_str()));
+    }
+    if sdk && !snapshot.text {
+        headers.push(("Accept-Ranges", "bytes"));
+    }
     let cancelled = snapshot.lease.cancelled.clone();
     let deadline = Instant::now() + Duration::from_secs(30);
     if bytes == 0 {
@@ -384,7 +405,7 @@ fn send_snapshot(
             cancelled: &cancelled,
             deadline,
         };
-        http::response_head_with(&mut output, 200, content_type, 0, true, &[("ETag", &etag)])?;
+        http::response_head_with(&mut output, status, content_type, 0, true, &headers)?;
         return output.flush();
     }
     let mut tail = [0u8; 1];
@@ -394,14 +415,7 @@ fn send_snapshot(
             cancelled: &cancelled,
             deadline,
         };
-        http::response_head_with(
-            &mut output,
-            200,
-            content_type,
-            bytes,
-            true,
-            &[("ETag", &etag)],
-        )?;
+        http::response_head_with(&mut output, status, content_type, bytes, true, &headers)?;
         if io::copy(&mut (&mut snapshot.file).take(bytes - 1), &mut output)? != bytes - 1 {
             return Err(io::ErrorKind::UnexpectedEof.into());
         }

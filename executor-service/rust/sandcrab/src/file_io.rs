@@ -39,6 +39,7 @@ pub struct Job {
     pub byte_limit: u64,
     pub entry_limit: usize,
     pub multipart: Option<String>,
+    pub selection: Option<crate::sdk_download::Selection>,
 }
 
 /// Names remain case-sensitive and are not Unicode-normalized. A tar root marker
@@ -465,11 +466,17 @@ fn snapshot(job: &Job) -> io::Result<serde_json::Value> {
         limit: job.byte_limit,
         hash: Sha256::new(),
     };
+    let mut source_bytes = None;
     if job.format == Format::Raw {
         let (dir, name) = parent(&workspace, &job.path, false)?;
         let mut file = regular(&dir, &name)?;
         let before = file.metadata()?;
-        copy_hash(&mut file, &mut output, job.byte_limit)?;
+        source_bytes = Some(before.len());
+        if let Some(selection) = &job.selection {
+            selection.copy(&mut file, &mut output, job.byte_limit)?;
+        } else {
+            copy_hash(&mut file, &mut output, job.byte_limit)?;
+        }
         if !stable(&before, &file.metadata()?) {
             return Err(invalid("FILE_CHANGED"));
         }
@@ -487,7 +494,9 @@ fn snapshot(job: &Job) -> io::Result<serde_json::Value> {
     }
     output.writer.sync_all()?;
     stage.sync_all()?;
-    Ok(serde_json::json!({"bytes":output.bytes,"sha256":format!("{:x}",output.hash.finalize())}))
+    Ok(
+        serde_json::json!({"bytes":output.bytes,"sha256":format!("{:x}",output.hash.finalize()),"sourceBytes":source_bytes}),
+    )
 }
 
 pub fn execute(path: &Path) -> io::Result<serde_json::Value> {
@@ -508,6 +517,7 @@ pub fn execute(path: &Path) -> io::Result<serde_json::Value> {
         || job.workspace == job.stage
         || job.stage.starts_with(&job.workspace)
         || job.uid == 0
+        || (job.selection.is_some() && (job.action != "snapshot" || job.format != Format::Raw))
         || job.bytes > job.byte_limit
         || job.byte_limit > 1_073_741_824
         || job.mode > 0o777
@@ -593,6 +603,10 @@ pub fn error_code(error: &io::Error) -> &'static str {
         "FILE_METADATA_LIMIT" => "FILE_METADATA_LIMIT",
         "FILE_METADATA_UNAVAILABLE" => "FILE_METADATA_UNAVAILABLE",
         "FILE_OPERATION_UNKNOWN" => "FILE_OPERATION_UNKNOWN",
+        "INVALID_GLOB" => "INVALID_GLOB",
+        "GLOB_LIMIT" => "GLOB_LIMIT",
+        "UNSUPPORTED_GLOB_NEGATION" => "UNSUPPORTED_GLOB_NEGATION",
+        "RANGE_NOT_SATISFIABLE" => "RANGE_NOT_SATISFIABLE",
         _ => match error.kind() {
             io::ErrorKind::NotFound => "FILE_NOT_FOUND",
             io::ErrorKind::AlreadyExists => "PATH_EXISTS",

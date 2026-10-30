@@ -15,7 +15,7 @@ from opensandbox.exceptions import SandboxApiException
 from opensandbox.manager import SandboxManager
 from opensandbox.models.execd import RunCommandOpts
 from opensandbox.models.sandboxes import SandboxFilter
-from opensandbox.models.filesystem import ContentReplaceEntry, DirectoryListEntry, MoveEntry, SetPermissionEntry, WriteEntry
+from opensandbox.models.filesystem import ContentReplaceEntry, DirectoryListEntry, MoveEntry, SearchEntry, SetPermissionEntry, WriteEntry
 
 
 def output(execution, stream='stdout'):
@@ -61,6 +61,45 @@ async def replacements(sandbox, checks):
     checks.append('streamed-literal-replacement-counts-binary-preservation-and-mode')
 
 
+async def searches(sandbox, checks):
+    await sandbox.files.create_directories([WriteEntry(path='project/src/nested')])
+    await sandbox.files.write_files([WriteEntry(path=path, data='source') for path in
+        ['project/src/中.rs', 'project/src/a.py', 'project/src/nested/deep.rs']])
+    matches = await sandbox.files.search(SearchEntry(path='project', pattern='*.rs'))
+    assert [item.path for item in matches] == ['/workspace/project/src/nested/deep.rs', '/workspace/project/src/中.rs']
+    matches = await sandbox.files.search(SearchEntry(path='project', pattern='?.rs'))
+    assert [item.path for item in matches] == ['/workspace/project/src/中.rs']
+    matches = await sandbox.files.search(SearchEntry(path='project', pattern='{*.rs,*.py}'))
+    assert len(matches) == 3
+    assert await sandbox.files.search(SearchEntry(path='project', pattern='src/*.rs')) == []
+    matches = await sandbox.files.search(SearchEntry(path='project', pattern='!(main.txt)'))
+    assert len(matches) == 6 and all(not item.path.endswith('/main.txt') for item in matches)
+    assert next(item for item in matches if item.path.endswith('/link')).entry_type == 'symlink'
+    checks.append('recursive-basename-globs-unicode-alternatives-and-link-boundaries')
+
+
+async def downloads(sandbox, checks):
+    data = bytes(range(16))
+    await sandbox.files.write_file('project/range.bin', data)
+    for header, expected in [('bytes=0-0', data[:1]), ('bytes=3-7', data[3:8]),
+                             ('bytes=12-', data[12:]), ('bytes=-4', data[-4:]), ('bytes=3-999', data[3:])]:
+        assert await sandbox.files.read_bytes('project/range.bin', range_header=header) == expected
+    stream = await sandbox.files.read_bytes_stream('project/range.bin', range_header='bytes=2-5', chunk_size=2)
+    assert b''.join([chunk async for chunk in stream]) == data[2:6]
+    await sandbox.files.write_file('project/lines.log', b'one\r\n\r\nthree\r\nfour\rlast\n')
+    assert await sandbox.files.read_file('project/lines.log', offset=2, limit=2) == '\nthree'
+    assert await sandbox.files.read_file('project/lines.log', limit=2) == 'one\n'
+    assert await sandbox.files.read_file('project/lines.log', offset=4) == 'four\rlast'
+    assert await sandbox.files.read_file('project/lines.log', offset=99) == ''
+    try:
+        await sandbox.files.read_bytes('/workspace/empty', range_header='bytes=0-0')
+    except SandboxApiException as error:
+        assert error.status_code == 416
+    else:
+        raise AssertionError('Empty file accepted a byte range')
+    checks.append('byte-range-prefix-suffix-streams-and-normalized-line-selection')
+
+
 async def directories(sandbox, commands, checks):
     await sandbox.files.create_directories([
         WriteEntry(path='/workspace/project/src', mode=700), WriteEntry(path='project', mode=750)])
@@ -81,6 +120,8 @@ async def directories(sandbox, commands, checks):
     assert next(item for item in listing if item.path.endswith('/link')).entry_type == 'symlink'
     assert len(listing) == 4
     await replacements(sandbox, checks)
+    await searches(sandbox, checks)
+    await downloads(sandbox, checks)
     await sandbox.files.set_permissions([SetPermissionEntry(path='project/src/main.txt', mode=640)])
     await sandbox.files.move_files([MoveEntry(src='project/src', dest='project/renamed')])
     await sandbox.files.move_files([MoveEntry(src='project/renamed/main.txt', dest='project/renamed/run.txt')])

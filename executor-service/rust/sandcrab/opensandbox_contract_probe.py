@@ -245,7 +245,7 @@ class Contract:
         oversized = self.multipart([({'path': '/workspace/guard'}, b'x' * 1048577)])
         assert self.upload(identity, headers, oversized)[0] == 413
         self.interrupted_upload(identity, headers)
-        status, _ = self.request('GET', '/opensandbox/' + identity + '/files/download?path=%2Fworkspace%2Fguard',
+        status, _ = self.request('GET', '/opensandbox/' + identity + '/files/download?path=%2Fworkspace%2Fguard&offset=1',
                                  headers={**headers, 'Range': 'bytes=0-1'})
         assert status == 400
         run, result = self.probe.session_exec({'id': identity},
@@ -308,6 +308,8 @@ class Contract:
         assert result['state'] == 'succeeded'
         self.probe.forget(run)
         assert request('GET', '/directories/list?path=safe&depth=1')[0] == 413
+        assert request('GET', '/files/search?path=safe&pattern=**')[0] == 413
+        assert request('GET', '/files/search?path=safe&pattern=*.absent') == (200, [])
         assert request('DELETE', '/directories?path=safe')[0] == 200
         assert request('GET', '/files/info?path=keep/guard')[1]['keep/guard']['size'] == 8
         run, result = self.probe.session_exec({'id': identity},
@@ -317,6 +319,56 @@ class Contract:
         self.delete(identity)
         self.probe.done('sdk-filesystem-preflight-batches-metadata-bounds-and-link-safe-recursive-removal')
 
+    def download(self, identity, headers, query, extra=None):
+        connection = HTTPConnection(self.probe.endpoint, timeout=15)
+        try:
+            connection.request('GET', '/opensandbox/' + identity + '/files/download?' + query,
+                               headers={**headers, **(extra or {})})
+            response = connection.getresponse()
+            content = response.read(1048577)
+            assert len(content) <= 1048576
+            return response.status, {key.lower(): value for key, value in response.getheaders()}, content
+        finally:
+            connection.close()
+
+    def selections(self):
+        identity, headers = self.create()
+        data = bytes(range(16))
+        content = self.multipart([({'path': 'range.bin'}, data),
+                                  ({'path': 'lines.log'}, b'A' * 70000 + b'\r\nmiddle\r\nlast\r\r\n')])
+        assert self.upload(identity, headers, content)[0] == 200
+        status, fields, result = self.download(identity, headers, 'path=range.bin', {'Range': 'bytes=3-7'})
+        assert status == 206 and result == data[3:8]
+        assert fields['content-range'] == 'bytes 3-7/16' and fields['content-length'] == '5'
+        assert fields['accept-ranges'] == 'bytes' and 'etag' not in fields
+        status, fields, result = self.download(identity, headers, 'path=lines.log&offset=2&limit=1')
+        assert status == 200 and result == b'middle' and fields['content-length'] == '6'
+        assert fields['content-type'].startswith('text/plain') and 'etag' not in fields
+        assert self.download(identity, headers, 'path=lines.log&offset=99')[2] == b''
+        for query, extra, expected in [('path=range.bin', {'Range': 'bytes=16-'}, 416),
+                                       ('path=range.bin', {'Range': 'bytes=-0'}, 416),
+                                       ('path=range.bin', {'Range': 'bytes=0-1,3-4'}, 400),
+                                       ('path=range.bin&offset=1', {'Range': 'bytes=0-1'}, 400),
+                                       ('path=range.bin&limit=0', {}, 400),
+                                       ('path=range.bin', {'Range': 'bytes=0-1', 'If-Range': 'old'}, 400)]:
+            assert self.download(identity, headers, query, extra)[0] == expected
+        run, result = self.probe.session_exec({'id': identity},
+            "python3 -c \"f=open('sparse.bin','wb'); f.seek(1048576); f.write(b'tail'); f.close()\"")
+        assert result['state'] == 'succeeded'
+        self.probe.forget(run)
+        assert self.download(identity, headers, 'path=sparse.bin', {'Range': 'bytes=-4'})[2] == b'tail'
+        assert self.download(identity, headers, 'path=sparse.bin')[0] == 413
+        assert self.download(identity, headers, 'path=sparse.bin&offset=2')[0] == 413
+        assert self.download(identity, headers, 'path=sparse.bin', {'Range': 'bytes=0-1048576'})[0] == 413
+        for query, expected in [('path=/workspace&pattern=[', 400), ('path=/etc&pattern=**', 400),
+                                ('path=/workspace&pattern=/etc/*', 200)]:
+            status, result = self.request('GET', '/opensandbox/' + identity + '/files/search?' + query, headers=headers)
+            assert status == expected
+            if status == 200:
+                assert result == []
+        self.delete(identity)
+        self.probe.done('sdk-partial-download-headers-long-lines-sparse-files-and-selection-limits')
+
     def tests(self):
         self.authorization()
         self.refusal()
@@ -324,3 +376,4 @@ class Contract:
         self.lifecycle()
         self.files()
         self.filesystem()
+        self.selections()

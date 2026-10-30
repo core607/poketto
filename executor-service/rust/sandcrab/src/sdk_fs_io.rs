@@ -130,6 +130,41 @@ fn listing(
     }
     Ok(())
 }
+fn searching(
+    root: &File,
+    path: &str,
+    glob: &crate::sdk_glob::Glob,
+    depth: usize,
+    visited: &mut usize,
+    output: &mut Vec<Value>,
+    bytes: &mut usize,
+) -> io::Result<()> {
+    *visited += 1;
+    if *visited > 10000 || depth > 64 {
+        return Err(invalid("FILE_ENTRY_LIMIT"));
+    }
+    if !file_io::valid_path(path, true) {
+        return Err(invalid("INVALID_PATH"));
+    }
+    if node(root, path)?.metadata()?.is_dir() {
+        for name in names(&directory(root, path)?)? {
+            let child = if path == "." {
+                name
+            } else {
+                format!("{path}/{name}")
+            };
+            searching(root, &child, glob, depth + 1, visited, output, bytes)?;
+        }
+    } else if glob.matches(path.rsplit('/').next().unwrap()) {
+        let value = info(root, path)?;
+        *bytes += bounded(&value)? + 1;
+        if *bytes > METADATA_LIMIT {
+            return Err(invalid("FILE_METADATA_LIMIT"));
+        }
+        output.push(value);
+    }
+    Ok(())
+}
 fn make_directory(
     root: &File,
     path: &str,
@@ -234,6 +269,20 @@ fn remove_tree(parent: &File, name: &str) -> io::Result<()> {
 }
 fn apply(job: &Job, root: &File, request: &Request, attempted: &mut bool) -> io::Result<Value> {
     match request {
+        Request::Search { path, pattern } => {
+            let glob = crate::sdk_glob::Glob::new(pattern)?;
+            let mut values = Vec::new();
+            searching(
+                root,
+                &normalize(path, true)?,
+                &glob,
+                0,
+                &mut 0,
+                &mut values,
+                &mut 2,
+            )?;
+            return Ok(Value::Array(values));
+        }
         Request::Replace { entries, verbose } => {
             let (counts, changed) = crate::sdk_replace::stage(job, entries)?;
             let value = if *verbose { counts } else { Value::Null };

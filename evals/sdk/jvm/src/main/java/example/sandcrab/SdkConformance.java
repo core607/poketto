@@ -8,6 +8,7 @@ import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.OutputMess
 import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.RunCommandRequest;
 import com.alibaba.opensandbox.sandbox.domain.models.execd.filesystem.ContentReplaceEntry;
 import com.alibaba.opensandbox.sandbox.domain.models.execd.filesystem.MoveEntry;
+import com.alibaba.opensandbox.sandbox.domain.models.execd.filesystem.SearchEntry;
 import com.alibaba.opensandbox.sandbox.domain.models.execd.filesystem.SetPermissionEntry;
 import com.alibaba.opensandbox.sandbox.domain.models.execd.filesystem.WriteEntry;
 import com.alibaba.opensandbox.sandbox.domain.models.sandboxes.SandboxFilter;
@@ -274,6 +275,8 @@ public final class SdkConformance {
         var entries = sandbox.files().listDirectory("project", 5);
         require(entries.size() == 3 && entries.get(0).getType().equals("symlink"), "Listing followed a link");
         replacements(sandbox, checks);
+        searches(sandbox, checks);
+        downloads(sandbox, checks);
         directoryChanges(sandbox, ids);
         checks.add("directory-creation-metadata-depth-links-mode-move-and-recursive-deletion");
     }
@@ -326,6 +329,93 @@ public final class SdkConformance {
                         == 640,
                 "Replacement changed permissions");
         checks.add("streamed-literal-replacement-counts-binary-preservation-and-mode");
+    }
+
+    private static void searches(Sandbox sandbox, List<String> checks) {
+        sandbox.files()
+                .createDirectories(
+                        List.of(WriteEntry.builder().path("project/src/nested").build()));
+        for (String path : List.of("project/src/中.rs", "project/src/a.py", "project/src/nested/deep.rs")) {
+            sandbox.files().writeFile(path, "source");
+        }
+        var matches = sandbox.files()
+                .search(SearchEntry.builder().path("project").pattern("*.rs").build());
+        require(
+                matches.stream()
+                        .map(item -> item.getPath())
+                        .toList()
+                        .equals(List.of("/workspace/project/src/nested/deep.rs", "/workspace/project/src/中.rs")),
+                "Recursive search changed");
+        matches = sandbox.files()
+                .search(SearchEntry.builder().path("project").pattern("?.rs").build());
+        require(matches.size() == 1 && matches.get(0).getPath().endsWith("/中.rs"), "Glob split a Unicode character");
+        matches = sandbox.files()
+                .search(SearchEntry.builder()
+                        .path("project")
+                        .pattern("{*.rs,*.py}")
+                        .build());
+        require(matches.size() == 3, "Glob alternatives changed");
+        require(
+                sandbox.files()
+                        .search(SearchEntry.builder()
+                                .path("project")
+                                .pattern("src/*.rs")
+                                .build())
+                        .isEmpty(),
+                "Search matched a relative path instead of a basename");
+        matches = sandbox.files()
+                .search(SearchEntry.builder()
+                        .path("project")
+                        .pattern("!(main.txt)")
+                        .build());
+        require(
+                matches.size() == 5
+                        && matches.stream().noneMatch(item -> item.getPath().endsWith("/main.txt")),
+                "Whole-name negation changed");
+        require(matches.stream().anyMatch(item -> "symlink".equals(item.getType())), "Search followed or hid a link");
+        checks.add("recursive-basename-globs-unicode-alternatives-and-link-boundaries");
+    }
+
+    private static void downloads(Sandbox sandbox, List<String> checks) {
+        byte[] data = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+        sandbox.files().writeFile("project/range.bin", data);
+        require(
+                Arrays.equals(
+                        sandbox.files().readByteArray("project/range.bin", "bytes=3-7"),
+                        Arrays.copyOfRange(data, 3, 8)),
+                "Byte range changed");
+        require(
+                Arrays.equals(
+                        sandbox.files().readByteArray("project/range.bin", "bytes=12-"),
+                        Arrays.copyOfRange(data, 12, 16)),
+                "Open range changed");
+        require(
+                Arrays.equals(
+                        sandbox.files().readByteArray("project/range.bin", "bytes=-4"),
+                        Arrays.copyOfRange(data, 12, 16)),
+                "Suffix range changed");
+        sandbox.files().writeFile("project/lines.log", "one\r\n\r\nthree\r\nfour\rlast\n");
+        require(
+                sandbox.files()
+                        .readFile("project/lines.log", "UTF-8", null, 2, 2)
+                        .equals("\nthree"),
+                "Line selection changed");
+        require(
+                sandbox.files()
+                        .readFile("project/lines.log", "UTF-8", null, null, 2)
+                        .equals("one\n"),
+                "Line limit changed");
+        require(
+                sandbox.files()
+                        .readFile("project/lines.log", "UTF-8", null, 4, null)
+                        .equals("four\rlast"),
+                "Line suffix changed");
+        require(
+                sandbox.files()
+                        .readFile("project/lines.log", "UTF-8", null, 99, null)
+                        .isEmpty(),
+                "Line EOF changed");
+        checks.add("byte-range-prefix-suffix-and-normalized-line-selection");
     }
 
     private static void directoryChanges(Sandbox sandbox, List<String> ids) {

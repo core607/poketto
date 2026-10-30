@@ -346,6 +346,7 @@ impl Runtime {
                 byte_limit: profile.transfer_bytes,
                 entry_limit: 10000,
                 multipart: None,
+                selection: None,
             };
             let (result, contained) =
                 self.file_helper(&job, profile, &AtomicBool::new(false), Stdio::null());

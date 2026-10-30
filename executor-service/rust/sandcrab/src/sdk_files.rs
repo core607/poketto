@@ -1,10 +1,6 @@
 //! SDK transfers pin native workspace generations and release owned staging.
 use crate::{
-    config::invalid,
-    file_io::Format,
-    files,
-    opensandbox::Sandbox,
-    sdk_types::{self, Result},
+    config::invalid, file_io::Format, files, opensandbox::Sandbox, sdk_types::Result,
     service::Service,
 };
 use std::{
@@ -109,13 +105,13 @@ impl Service {
         }
         result.map_err(|e| error(&e, attempted))
     }
-    pub(crate) fn sdk_capture(self: &Arc<Self>, id: &str, query: &str) -> Result<files::Snapshot> {
-        let pairs = sdk_types::query(query)?;
-        if pairs.len() != 1 || pairs[0].0 != "path" {
-            return Err((400, "INVALID_QUERY"));
-        }
-        let path =
-            crate::sdk_file_io::path(&pairs[0].1, false).map_err(|_| (400, "INVALID_PATH"))?;
+    pub(crate) fn sdk_capture(
+        self: &Arc<Self>,
+        id: &str,
+        query: &str,
+        range: Option<&str>,
+    ) -> Result<files::Snapshot> {
+        let (path, selection) = crate::sdk_download::request(query, range)?;
         let sandbox: Arc<Sandbox> = self.sdk.sandbox(id)?;
         if sandbox.closing.load(Ordering::SeqCst) {
             return Err((409, "SANDBOX_CLOSING"));
@@ -125,6 +121,7 @@ impl Service {
             &serde_json::to_vec(&serde_json::json!({"path":path,"format":"raw","freeze":true}))
                 .unwrap(),
             Some(&sandbox.incarnation),
+            selection.as_ref(),
         )
     }
 }

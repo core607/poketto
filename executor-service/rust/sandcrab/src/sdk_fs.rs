@@ -50,6 +50,10 @@ struct Substitution {
 #[derive(Deserialize, Serialize)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Request {
+    Search {
+        path: String,
+        pattern: String,
+    },
     Replace {
         entries: Vec<Replace>,
         verbose: bool,
@@ -78,7 +82,7 @@ pub enum Request {
 pub fn endpoint(method: &str, path: &str) -> bool {
     matches!(
         (method, path),
-        ("GET", "files/info" | "directories/list")
+        ("GET", "files/info" | "directories/list" | "files/search")
             | (
                 "POST",
                 "directories" | "files/permissions" | "files/mv" | "files/replace"
@@ -112,7 +116,10 @@ fn distinct(paths: &[String], root: bool, overlap: bool) -> Result<()> {
 }
 impl Request {
     pub fn mutation(&self) -> bool {
-        !matches!(self, Self::Info { .. } | Self::List { .. })
+        !matches!(
+            self,
+            Self::Info { .. } | Self::List { .. } | Self::Search { .. }
+        )
     }
     pub fn parse(
         method: &str,
@@ -127,6 +134,22 @@ impl Request {
             Ok(pairs.iter().map(|(_, v)| v.clone()).collect())
         };
         let request = match (method, path) {
+            ("GET", "files/search") => {
+                let (mut path, mut pattern) = (None, None);
+                for (key, value) in pairs {
+                    match key.as_str() {
+                        "path" if path.is_none() => path = Some(value.clone()),
+                        "pattern" if pattern.is_none() => pattern = Some(value.clone()),
+                        _ => return Err((400, "INVALID_QUERY")),
+                    }
+                }
+                Self::Search {
+                    path: path.ok_or((400, "INVALID_QUERY"))?,
+                    pattern: pattern
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| "**".into()),
+                }
+            }
             ("POST", "files/replace") => {
                 if pairs.len() > 1
                     || pairs
@@ -200,6 +223,16 @@ impl Request {
     }
     pub fn validate(&self) -> Result<()> {
         match self {
+            Self::Search { path, pattern } => {
+                normalized(path, true)?;
+                if pattern.is_empty()
+                    || pattern.len() > 1024
+                    || pattern.chars().any(char::is_control)
+                {
+                    return Err((400, "GLOB_LIMIT"));
+                }
+                Ok(())
+            }
             Self::Replace { entries, .. } => {
                 if entries.iter().any(|e| e.old.is_empty()) {
                     return Err((400, "EMPTY_REPLACEMENT_PATTERN"));
@@ -248,6 +281,9 @@ impl Request {
 }
 fn error(value: &io::Error, mutation_started: bool) -> (u16, &'static str) {
     match files::code(value).as_str() {
+        "INVALID_GLOB" => (400, "INVALID_GLOB"),
+        "GLOB_LIMIT" => (400, "GLOB_LIMIT"),
+        "UNSUPPORTED_GLOB_NEGATION" => (400, "UNSUPPORTED_GLOB_NEGATION"),
         "FILE_NOT_FOUND" => (404, "FILE_NOT_FOUND"),
         "FILE_ENTRY_LIMIT" | "FILE_METADATA_LIMIT" => (413, "FILE_METADATA_LIMIT"),
         "FILE_LIMIT" => (413, "FILE_LIMIT"),

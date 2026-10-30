@@ -43,6 +43,8 @@ pub struct Snapshot {
     pub sha256: String,
     pub format: Format,
     pub lease: Lease,
+    pub range: Option<crate::sdk_download::Range>,
+    pub text: bool,
     stage: Stage,
 }
 struct Active<'a> {
@@ -107,6 +109,7 @@ pub(crate) fn job(
         byte_limit: access.profile.transfer_bytes,
         entry_limit: 10000,
         multipart: None,
+        selection: None,
     }
 }
 
@@ -438,6 +441,7 @@ impl Service {
         session: &str,
         body: &[u8],
         incarnation: Option<&str>,
+        selection: Option<&crate::sdk_download::Selection>,
     ) -> Result<Snapshot> {
         let request = sandcrab_core::parse(body)
             .ok()
@@ -446,22 +450,26 @@ impl Service {
         if !valid_path(&request.path, request.format == Format::Tar) {
             return Err((400, "INVALID_PATH"));
         }
+        if selection.is_some() && request.format != Format::Raw {
+            return Err((400, "INVALID_SELECTION"));
+        }
         let id = sandcrab_core::new_uuid().map_err(|_| (503, "FILE_UNAVAILABLE"))?;
         let lease = self.file_lease(session, incarnation)?;
         let stage = stage(&id, &lease.access);
         let mut contained = true;
-        let result = (|| -> io::Result<(File, u64, String)> {
+        let result = (|| -> io::Result<(File, u64, String, Option<crate::sdk_download::Range>)> {
             let path = self
                 .runtime
                 .files
                 .begin_stage(&stage, &self.runtime.config)?;
-            let job = job(
+            let mut job = job(
                 "snapshot",
                 &request.path,
                 request.format,
                 &lease.access,
                 &path,
             );
+            job.selection = selection.cloned();
             let value = lease.access.frozen(request.freeze, || {
                 if lease.cancelled.load(Ordering::SeqCst) {
                     return Err(invalid("FILE_CANCELLED"));
@@ -494,16 +502,31 @@ impl Service {
             if !file.metadata()?.is_file() || file.metadata()?.len() != bytes {
                 return Err(invalid("FILE_HELPER_FAILED"));
             }
-            Ok((file, bytes, sha))
+            let range =
+                if let Some(selected @ crate::sdk_download::Selection::Bytes { .. }) = selection {
+                    let total = value["sourceBytes"]
+                        .as_u64()
+                        .ok_or_else(|| invalid("FILE_HELPER_FAILED"))?;
+                    let (start, length) = selected.range(total)?;
+                    if length != bytes {
+                        return Err(invalid("FILE_HELPER_FAILED"));
+                    }
+                    Some(crate::sdk_download::Range { start, total })
+                } else {
+                    None
+                };
+            Ok((file, bytes, sha, range))
         })();
         match result {
-            Ok((file, bytes, sha256)) => Ok(Snapshot {
+            Ok((file, bytes, sha256, range)) => Ok(Snapshot {
                 file,
                 bytes,
                 sha256,
                 format: request.format,
                 lease,
                 stage,
+                range,
+                text: selection.is_some_and(crate::sdk_download::Selection::text),
             }),
             Err(error) => {
                 if contained {
@@ -516,6 +539,7 @@ impl Service {
                 } else {
                     match code(&error).as_str() {
                         "FILE_NOT_FOUND" => (404, "FILE_NOT_FOUND"),
+                        "RANGE_NOT_SATISFIABLE" => (416, "RANGE_NOT_SATISFIABLE"),
                         "FILE_LIMIT" => (413, "FILE_LIMIT"),
                         "INVALID_PATH" => (400, "INVALID_PATH"),
                         "INVALID_LINK" => (400, "INVALID_LINK"),
