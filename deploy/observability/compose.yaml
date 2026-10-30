@@ -32,7 +32,7 @@ services:
       - --web.listen-address=127.0.0.1:9100
       # Unit states for the executor, the game runner and every live command sandbox.
       - --collector.systemd
-      - --collector.systemd.unit-include=poketto.+\.service
+      - --collector.systemd.unit-include=^(poketto.+|sandcrab-games(-.+)?)[.]service$$
     volumes:
       - /:/host:ro,rslave
       - /run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket:ro
