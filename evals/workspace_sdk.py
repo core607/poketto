@@ -144,7 +144,7 @@ class SdkWorkspace(Workspace):
                 raise Rejected('The sample artifact-export limit is four')
             self.state['exports'] = self.state.get('exports', 0) + 1
             self.close_context()
-            name = '.sdk-export-' + str(uuid.uuid4()) + '.tar'
+            name = 'sdk-export-' + str(uuid.uuid4()) + '.tar'
             try:
                 result = self.helper('python3 -I -c ' + shlex.quote(SOURCE) + ' ' + shlex.quote(name))
                 if result['state'] != 'succeeded':

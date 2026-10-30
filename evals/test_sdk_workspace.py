@@ -9,6 +9,7 @@ import tarfile
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 import httpx
 from opensandbox.sync.adapters.command_adapter import CommandsAdapterSync
@@ -123,6 +124,23 @@ class ConsumerFaults(unittest.TestCase):
             client.creation_unknown = True
             with self.assertRaisesRegex(RuntimeError, 'creation was not acknowledged'):
                 client.cleanup()
+
+    def test_export_seals_a_visible_artifact_for_workflow_collection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            client = self.client(directory)
+            client.directory.mkdir()
+            data = b'bounded fixture archive'
+            info = {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
+            deleted = []
+            client.box = SimpleNamespace(files=SimpleNamespace(read_bytes=lambda name: data,
+                delete_files=lambda names: deleted.extend(names)))
+            with patch.object(client, 'helper', return_value={'state': 'succeeded', 'stdout': json.dumps(info)}):
+                self.assertTrue(client.export()['exported'])
+            name = client.state['artifact']['name']
+            self.assertFalse(name.startswith('.'), 'Workflow artifact collection excludes hidden files')
+            self.assertEqual(data, (client.directory / name).read_bytes())
+            self.assertEqual(['/workspace/' + name], deleted)
+            client.transport.close()
 
     def test_identical_corpus_runs_through_both_clients_with_unique_sample_ids(self):
         native = sandcrab_native('fixture', baseline=True, suite='workspace', artifacts='artifacts')

@@ -189,6 +189,9 @@ async def scripted(state):
         if state.metadata.get('workspaceClient') != 'sdk':
             arguments['replace'] = name in state.metadata['fixture']['files']
         await invoke('workspace_write_file', arguments)
+    if (await invoke('workspace_restart', {})).get('state') != 'ready':
+        raise RuntimeError('Scripted workspace restart did not become ready')
+    await invoke('workspace_status', {})
     for command in reference['check']:
         await invoke('workspace_shell', {'command': command})
     if not (await invoke('workspace_export', {})).get('exported'):
