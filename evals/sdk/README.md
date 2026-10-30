@@ -8,6 +8,11 @@ calls the published Kotlin SDK from Java. Neither depends on Poketto application
 code or calls a model API. They verify the implemented adapter subset, not the
 entire upstream SDK surface.
 
+The [Evaluation preflight](../../.github/workflows/evals.yml) runs both consumers
+on code changes and scripted manual runs, before Inspect. It uses a separate
+Python environment and retains the JSON SDK receipt with the evaluation artifact.
+Paid model runs skip SDK conformance and keep their model evidence separate.
+
 Install [requirements.txt](requirements.txt) in a dedicated Python environment.
 Build the JVM client from the repository root:
 
