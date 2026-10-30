@@ -181,11 +181,22 @@ os.execv('/usr/bin/umount', ['umount', *sys.argv[1:]])
         parent = self.session_open()
         child = self.child(parent)
         self.execute(parent, 'printf preserved > artifact')
+        active, _ = self.session_exec(parent, 'printf running > active; sleep 30; printf escaped > after-fence', wait=False)
+        workspace = self.socket.parent / 'jobs' / parent['id'] / 'work'
+        deadline = time.monotonic() + 5
+        while not (workspace / 'active').exists():
+            assert time.monotonic() < deadline, 'parent command did not start'
+            time.sleep(.025)
         failure.write_text(child['id'])
         assert http(self.socket, 'POST', f'/v1/sessions/{child["id"]}/close', {})[0] == 200
         assert self.session_wait(child, terminal=True)['state'] == 'closing'
-        assert self.session_wait(parent, terminal=True)['state'] == 'closing'
-        assert (self.socket.parent / 'jobs' / parent['id'] / 'work/artifact').read_text() == 'preserved'
+        deadline = time.monotonic() + 5
+        while http(self.socket, 'GET', f'/v1/sessions/{parent["id"]}')[1]['state'] != 'closing':
+            assert time.monotonic() < deadline, 'workspace fence did not cancel the active parent command'
+            time.sleep(.025)
+        assert http(self.socket, 'GET', f'/v1/runs/{active["id"]}')[1]['state'] == 'closing'
+        assert (workspace / 'artifact').read_text() == 'preserved'
+        assert not (workspace / 'after-fence').exists()
         assert http(self.socket, 'POST', f'/v1/sessions/{child["id"]}/forget', {})[1]['error']['code'] == 'SESSION_ACTIVE'
         other = self.session_open()
         assert http(self.socket, 'POST', '/v1/sessions', {**other, 'id': str(uuid.uuid4())})[1]['error']['code'] == 'SESSION_CAPACITY'

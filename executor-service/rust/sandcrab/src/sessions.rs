@@ -145,6 +145,9 @@ impl Registry {
         let Some(parent) = self.sessions.get(id) else {
             return;
         };
+        if parent.parent.is_some() {
+            return;
+        }
         let children: Vec<_> = self
             .sessions
             .iter()
@@ -160,19 +163,31 @@ impl Registry {
         }
     }
     pub(crate) fn expire_sessions(&mut self) {
+        let now = Instant::now();
         let expired: Vec<_> = self
             .sessions
             .iter()
             .filter(|(_, s)| {
-                s.deadline <= Instant::now()
+                // Workspace cleanup failures set cancellation without taking the registry.
+                // Propagate that signal to an active command and every child shell.
+                (s.deadline <= now || s.cancelled.load(Ordering::SeqCst))
                     && !s.terminal()
                     && s.state != "stopping"
                     && s.state != "closing"
             })
-            .map(|(id, _)| id.clone())
+            .map(|(id, s)| {
+                (
+                    id.clone(),
+                    if s.deadline <= now {
+                        "expired"
+                    } else {
+                        "closed"
+                    },
+                )
+            })
             .collect();
-        for id in expired {
-            self.stop_session(&id, "expired");
+        for (id, reason) in expired {
+            self.stop_session(&id, reason);
         }
     }
 }
