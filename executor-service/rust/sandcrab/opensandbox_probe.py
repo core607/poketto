@@ -74,7 +74,7 @@ class SdkProbe(ResourcesProbe):
                 _, error = process.communicate(timeout=5)
                 raise AssertionError('SDK creation failed: ' + error.decode(errors='replace'))
             created = json.loads(first)['created']
-            self.limits(created)
+            self.limits(created, session=True)
             self.done(label + '-selected-resource-caps-reach-the-actual-kernel-cgroup')
             out, error = process.communicate(input=b'continue\n', timeout=90)
             assert process.returncode == 0, error.decode(errors='replace')

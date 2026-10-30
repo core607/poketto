@@ -145,6 +145,9 @@ impl Runtime {
         ])?;
         for line in String::from_utf8_lossy(&units.stdout).lines() {
             let unit = line.split_whitespace().next().unwrap_or_default();
+            if crate::session_resources::Group::owns(&self.config.service, unit) {
+                continue;
+            }
             if !unit
                 .strip_prefix(prefix)
                 .and_then(|s| s.strip_suffix(".service"))
@@ -156,10 +159,29 @@ impl Runtime {
             {
                 return Err(invalid("Unexpected unit in Sandcrab namespace"));
             }
+            let group = call(&["systemctl", "show", unit, "-p", "ControlGroup", "--value"])?;
+            let group = std::str::from_utf8(&group.stdout)
+                .map_err(|_| invalid("Invalid unit cgroup"))?
+                .trim();
+            let group = if group.is_empty() {
+                self.pool.join(unit)
+            } else {
+                if !sandcrab_core::fs::normal(Path::new(group)) {
+                    return Err(invalid("Invalid unit cgroup"));
+                }
+                let group = Path::new("/sys/fs/cgroup").join(group.trim_start_matches('/'));
+                if !group.starts_with(&self.pool)
+                    || group.file_name().and_then(|n| n.to_str()) != Some(unit)
+                {
+                    return Err(invalid("Unit is outside the resource pool"));
+                }
+                group
+            };
             call(&["systemctl", "stop", unit])?;
-            empty_group(&self.pool.join(unit))?;
+            empty_group(&group)?;
             let _ = call(&["systemctl", "reset-failed", unit]);
         }
+        crate::session_resources::Group::recover(&self.config.service, &self.pool)?;
         let root = &self.config.service.runtime_root;
         for entry in fs::read_dir(root.join("jobs"))? {
             let entry = entry?;
@@ -417,6 +439,11 @@ impl Runtime {
         cancelled: Arc<AtomicBool>,
     ) -> Result<Shell, OpenError> {
         let id = request.id.as_str();
+        let resources = crate::session_resources::Group::new(&self.config.service, &self.pool, id)
+            .map_err(|_| OpenError {
+                code: "SESSION_UNAVAILABLE",
+                contained: true,
+            })?;
         let volume = request.volume_id.as_deref();
         let mut attachment = match volume {
             Some(volume) => Some(
@@ -448,19 +475,35 @@ impl Runtime {
                 .join("records")
                 .join(format!("{id}.{kind}.json"))
         });
+        if resources.start(&self.config.service, profile).is_err() {
+            return Err(OpenError {
+                code: "SESSION_UNAVAILABLE",
+                contained: resources
+                    .stop()
+                    .and_then(|()| release(&root, &records))
+                    .is_ok(),
+            });
+        }
+        let workspace = attachment
+            .as_ref()
+            .map(Attachment::path)
+            .unwrap_or_else(|| root.join("work"));
         let (launch, mailbox) = match self.prepare(
             &root,
             &records,
             profile,
             &[],
             None,
-            attachment.as_ref().map(Attachment::path).as_deref(),
+            Some((&workspace, &resources)),
         ) {
             Ok(launch) => launch,
             Err(_) => {
                 return Err(OpenError {
                     code: "SESSION_UNAVAILABLE",
-                    contained: release(&root, &records).is_ok(),
+                    contained: resources
+                        .stop()
+                        .and_then(|()| release(&root, &records))
+                        .is_ok(),
                 });
             }
         };
@@ -475,7 +518,10 @@ impl Runtime {
             Err(_) => {
                 return Err(OpenError {
                     code: "SESSION_UNAVAILABLE",
-                    contained: release(&root, &records).is_ok(),
+                    contained: resources
+                        .stop()
+                        .and_then(|()| release(&root, &records))
+                        .is_ok(),
                 });
             }
         };
@@ -491,11 +537,8 @@ impl Runtime {
             files: crate::file_access::Access::new(
                 request,
                 profile.clone(),
-                attachment
-                    .as_ref()
-                    .map(Attachment::path)
-                    .unwrap_or_else(|| root.join("work")),
-                launch.cgroup.clone(),
+                workspace,
+                resources.cgroup.clone(),
                 cancelled,
             ),
             channel,
@@ -504,6 +547,7 @@ impl Runtime {
             records,
             attachment,
             mailbox,
+            resources,
         })
     }
 
@@ -574,8 +618,9 @@ impl Runtime {
         profile: &Profile,
         argv: &[String],
         timeout: Option<u64>,
-        workspace: Option<&Path>,
+        session: Option<(&Path, &crate::session_resources::Group)>,
     ) -> io::Result<(Launch, Option<Arc<sandcrab_core::mailbox::Mailbox>>)> {
+        let workspace = session.map(|(workspace, _)| workspace);
         let id = root
             .file_name()
             .and_then(|s| s.to_str())
@@ -642,7 +687,9 @@ impl Runtime {
             tools: profile.tools.clone(),
             launcher: self.executable.clone(),
             exec_user: profile.exec_user.clone(),
-            resource_slice: self.config.service.resource_slice.clone(),
+            resource_slice: session
+                .map(|(_, group)| group.unit.clone())
+                .unwrap_or_else(|| self.config.service.resource_slice.clone()),
             supervisor_unit: self.config.service.supervisor_unit.clone(),
             cpu_quota_percent: profile.cpu_quota_percent,
             memory_bytes: profile.memory_bytes,
@@ -651,7 +698,7 @@ impl Runtime {
             temporary_inodes: profile.temporary_inodes,
         };
         let mut writable = vec![root];
-        if let Some(workspace) = workspace {
+        if let Some(workspace) = workspace.filter(|workspace| !workspace.starts_with(root)) {
             writable.push(workspace);
         }
         // One OOM ends the session, including its shell and background processes.
@@ -671,7 +718,10 @@ impl Runtime {
         Ok((
             Launch {
                 command,
-                cgroup: self.pool.join(format!("{unit}.service")),
+                cgroup: session
+                    .map(|(_, group)| &group.cgroup)
+                    .unwrap_or(&self.pool)
+                    .join(format!("{unit}.service")),
                 unit,
             },
             mailbox,
@@ -845,6 +895,7 @@ pub struct Shell {
     records: [PathBuf; 2],
     attachment: Option<Attachment>,
     mailbox: Option<Arc<sandcrab_core::mailbox::Mailbox>>,
+    resources: crate::session_resources::Group,
 }
 impl Shell {
     pub fn ready(&mut self, cancelled: &AtomicBool) -> bool {
@@ -915,6 +966,7 @@ impl Shell {
         if let Some(mailbox) = &self.mailbox {
             mailbox.close()?;
         }
+        self.resources.stop()?;
         let _ = call(&["systemctl", "reset-failed", &self.launch.unit]);
         release(&self.root, &self.records)?;
         if let Some(attachment) = self.attachment.take() {
@@ -971,7 +1023,7 @@ impl Shell {
             Some(EndReason::Timeout) => job::End::Timeout,
             Some(EndReason::OutputLimit) => job::End::OutputLimit,
             Some(EndReason::Cancelled) => job::End::Cancelled,
-            _ if fs::read_to_string(self.launch.cgroup.join("memory.events")).is_ok_and(
+            _ if fs::read_to_string(self.resources.cgroup.join("memory.events")).is_ok_and(
                 |events| {
                     events.lines().any(|line| {
                         line.split_once(' ').is_some_and(|(key, value)| {

@@ -281,6 +281,7 @@ impl Config {
                 "unit_prefix must be the supervisor unit name followed by '-'",
             ));
         }
+        crate::session_resources::validate(service)?;
         if !(8..=256).contains(&service.max_connections)
             || !(1..=service.max_connections.saturating_sub(4).min(128))
                 .contains(&service.max_event_streams)

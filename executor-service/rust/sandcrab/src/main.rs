@@ -29,6 +29,7 @@ mod sdk_replace;
 mod sdk_types;
 mod server;
 mod service;
+mod session_resources;
 mod sessions;
 mod spec;
 mod storage;

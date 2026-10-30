@@ -23,7 +23,7 @@ Integration requires neither Rust nor product identifiers. Native HTTP, CLI and 
 ### Primitives
 
 - `run`: one command in a fresh sandbox, destroyed afterwards.
-- Sessions: a persistent shell with open, execute, renew and close.
+- Sessions: own a workspace and an aggregate process budget, with open, execute, renew and close. Named shell contexts retain independent state and share that workspace; closing a context preserves the files.
 - Volumes: quota-bounded directories, empty or populated from ordinary file archives, which can be cloned by reflink and exclusively attached to sessions. Git bundle interpretation belongs to a consumer's initialization job.
 - Files: uploads and downloads as raw or tar streams.
 - Host calls: a program inside the sandbox sends an opaque request that the daemon relays to the caller and answers with the caller's reply; the daemon interprets neither.
@@ -57,7 +57,7 @@ Recorded on 2026-10-27 against OpenSandbox `main` and the tags `release-1.1.0` a
 
 **SDK reachability.** Kotlin constructs `protocol://endpoint` and forwards endpoint headers, allowing path-routed execd and token authentication. Its OkHttp integration exposes a connection pool, not Unix transport. Python accepts an httpx transport. Neither observation proves SDK conformance.
 
-**Operation map.** The original protocol suggested these extraction candidates, not mandatory public operations:
+**Operation map.** Original-protocol migration inventory:
 
 | Extension | Replaces |
 |---|---|
@@ -67,7 +67,7 @@ Recorded on 2026-10-27 against OpenSandbox `main` and the tags `release-1.1.0` a
 | Frozen job: a run under another profile on the session's volume while the session is frozen | BASELINE |
 | Host calls | BRIDGE_POLL, BRIDGE_COMPLETE |
 
-Artifact retention belongs to the consumer after download. Streaming removes chunk round trips; migration must separately decide which transaction and recovery guarantees belong in a generic primitive and which remain with Poketto.
+Consumers retain downloaded artifacts. Migration decides which transaction and recovery guarantees belong to generic primitives or Poketto.
 
 **Specification changes.** The compared tags changed command/session error fields and sandbox lifecycle/network options. Versioned conformance must detect these differences; unsupported lifecycle and network options remain rejected.
 
@@ -96,4 +96,6 @@ Artifact retention belongs to the consumer after download. Streaming removes chu
 
 ## Consequences
 
-Sandcrab owns a same-kernel security boundary, public API, examples and evaluation maintenance. Poketto may require larger adapter changes or simpler product semantics; those costs must not shape the daemon into a second Poketto backend. Independent scenarios reveal integration costs that product-specific probes cannot measure. After extraction, cross-boundary changes need a Sandcrab release before adoption. Following OpenSandbox adds versioned conformance work, without making its whole API a promise. Profiles, separate accounts and slices, and fail-closed launch preserve isolation through the transition.
+Poketto absorbs adaptation costs, including simpler copy semantics. Sandcrab owns isolation, API, examples and evals; independent consumers expose integration costs that product-specific probes miss. After extraction, cross-boundary changes require a Sandcrab release before adoption. OpenSandbox adds versioned conformance work without promising its entire API.
+
+Per-session slices add kernel bookkeeping so shells share resource and file-freeze boundaries. Per-shell budgets would multiply the caller's allowance; shell-owned workspaces would make context closure destroy unrelated files.

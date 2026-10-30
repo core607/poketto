@@ -15,7 +15,7 @@ from native_probe import Probe, call, http
 
 
 class ResourcesProbe(Probe):
-    def limits(self, identity, memory=33554432, cpu=25):
+    def limits(self, identity, memory=33554432, cpu=25, session=False):
         deadline = time.monotonic() + 8
         unit = f'{self.name}-{identity}.service'
         while time.monotonic() < deadline:
@@ -25,10 +25,20 @@ class ResourcesProbe(Probe):
             if group and properties.get('ActiveState') == 'active':
                 root = Path('/sys/fs/cgroup') / group.lstrip('/')
                 if (root / 'memory.max').is_file() and (root / 'cpu.max').is_file():
-                    assert int((root / 'memory.max').read_text()) == memory
+                    page = os.sysconf('SC_PAGE_SIZE')
+                    assert memory // page * page <= int((root / 'memory.max').read_text()) <= (memory + page - 1) // page * page
                     quota, period = (root / 'cpu.max').read_text().split()
                     assert int(quota) * 100 == cpu * int(period)
-                    return
+                    if session:
+                        parent = root.parent
+                        assert parent.name.endswith('.slice') and parent.name != self.slice
+                        assert int((parent / 'memory.max').read_text()) == memory // page * page
+                        assert (parent / 'memory.swap.max').read_text().strip() == '0'
+                        assert (root / 'memory.oom.group').read_text().strip() == '1'
+                        assert int((parent / 'pids.max').read_text()) == int((root / 'pids.max').read_text())
+                        quota, period = (parent / 'cpu.max').read_text().split()
+                        assert int(quota) * 100 == cpu * int(period)
+                    return root
             time.sleep(.025)
         raise AssertionError('Sandbox did not publish its effective cgroup limits')
 
@@ -53,13 +63,21 @@ class ResourcesProbe(Probe):
         self.done('finite-resource-caps-reach-the-kernel-and-bind-replay-identity')
 
         session = self.session_open(resources=resources)
-        self.limits(session['id'])
+        group = self.limits(session['id'], session=True).parent
         run, result = self.session_exec(session, 'printf bounded')
         assert result['state'] == 'succeeded' and result['result']['stdout'] == 'bounded'
         self.forget(run)
         self.session_close(session)
+        assert not any(path.read_text().strip() for path in group.rglob('cgroup.procs'))
+        assert call('systemctl', 'show', group.name, '-p', 'ActiveState', '--value').stdout.strip() == 'inactive'
         self.session_forget(session)
         self.done('session-resource-caps-reach-the-kernel-for-its-lifetime')
+
+        session = self.session_open(resources={**resources, 'memoryBytes': 33554433})
+        self.limits(session['id'], memory=33554433, session=True)
+        self.session_close(session)
+        self.session_forget(session)
+        self.done('session-aggregate-memory-cap-rounds-down-to-a-kernel-page')
 
         for invalid, code in [({'memoryBytes': 67108865}, 'PROFILE_LIMIT'),
                               ({'memoryBytes': 16777215}, 'PROFILE_LIMIT'),
@@ -102,7 +120,7 @@ class ResourcesProbe(Probe):
                 pass
             process.wait(timeout=10)
         session = json.loads(call(*cli, 'session', 'open', *flags).stdout)
-        self.limits(session['id'])
+        self.limits(session['id'], session=True)
         self.session_close(session)
         self.session_forget(session)
         self.done('ordinary-cli-run-and-session-options-enforce-lower-kernel-limits')

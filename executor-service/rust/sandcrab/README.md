@@ -13,8 +13,9 @@ operations and consumer adoption are under the
 Build with `./gradlew buildExecutorRust`; the static binary is
 `build/executor-service/bin/sandcrab`. It is excluded from the Poketto worker bundle.
 Install it with mode 0755 in a root-owned directory with root-owned ancestors. The host needs
-systemd, cgroup v2, unprivileged user namespaces, bubblewrap and the pinned seccomp
-helper from the executor's [tool preparation](../../prepare-tools.sh).
+systemd with `systemctl`, `systemd-run` and `busctl`, cgroup v2, unprivileged user
+namespaces, bubblewrap and the pinned seccomp helper from the executor's
+[tool preparation](../../prepare-tools.sh).
 
 Copy [config.example.toml](config.example.toml) to a root-owned file with mode 0600
 in a protected directory. Set the client's numeric UID/GID and a separate execution
@@ -22,6 +23,12 @@ account. Profiles choose readable paths, tools, finite resource limits and
 `network = "none"`; calls can lower timeout and output limits but cannot select
 accounts, mounts or isolation policy. Sessions need `/bin/bash` and its libraries
 in the profile's read mounts. Read mounts cannot expose runtime storage.
+
+Each session has a child systemd slice under the configured resource slice. Its
+aggregate memory, CPU and task limits apply to every process in the session.
+Memory caps round down to whole kernel pages; swap is disabled. File freezing
+covers that child slice. Closing and restart recovery confirm process containment
+before releasing the workspace or attached volume.
 
 Configure the slice with finite `MemoryMax`, `MemorySwapMax`, `TasksMax` and
 `CPUQuota`, then run `sandcrab serve --config FILE` as root in `supervisor_unit`
