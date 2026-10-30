@@ -22,6 +22,48 @@ The transport and host trust requirements are those of [native TCP](README.md#lo
 The SDK's Kubernetes `secureAccess` option is unsupported; scoped endpoint
 credentials are always required by this adapter.
 
+Install the [pinned Python dependencies](../../../evals/sdk/requirements.txt), set
+`SANDCRAB_TOKEN_FILE` to your private client token file, and enable the `python`
+profile and TCP example above. `SANDCRAB_ENDPOINT` defaults to `127.0.0.1:9011`.
+This client writes a program, runs it and reads its output file:
+
+```python
+import asyncio
+import os
+from datetime import timedelta
+from pathlib import Path
+
+from opensandbox import Sandbox
+from opensandbox.config import ConnectionConfig
+
+
+async def main():
+    connection = ConnectionConfig(
+        domain=os.environ.get("SANDCRAB_ENDPOINT", "127.0.0.1:9011"), protocol="http",
+        api_key=Path(os.environ["SANDCRAB_TOKEN_FILE"]).read_text().strip(),
+    )
+    sandbox = await Sandbox.create(
+        "python", connection_config=connection, timeout=timedelta(seconds=60),
+        resource={"cpu": "0.25", "memory": "32Mi"},
+    )
+    try:
+        await sandbox.files.write_file(
+            "answer.py", "from pathlib import Path\nPath('answer.txt').write_text(str(6 * 7))\n"
+        )
+        result = await sandbox.commands.run(["python3", "answer.py"])
+        if result.exit_code != 0:
+            raise RuntimeError("The sandbox command did not succeed")
+        print(await sandbox.files.read_file("answer.txt"))
+    finally:
+        try:
+            await sandbox.kill()
+        finally:
+            await sandbox.close()
+
+
+asyncio.run(main())
+```
+
 ## Lifecycle
 
 `image.uri` selects an operator profile. The SDK default entrypoint

@@ -38,8 +38,9 @@ account. The controller creates its own bounded units and temporary credentials,
 runs both clients without root, checks effective kernel limits and native record
 cleanup, and verifies containment before removing its fixture.
 
-The receipt records binary, probe and Python-client hashes, JVM artifact hashes,
-client checks and cleanup. Failed attempts keep their receipts and separate
+The receipt pins the [specification revision](https://github.com/opensandbox-group/OpenSandbox/tree/b1a29cf93a823a95913f7943010febb3f29de05c/specs)
+and records binary, probe and Python-client hashes, JVM artifact hashes, client
+checks and cleanup. Failed attempts keep their receipts and separate
 operator diagnostics. Use a different report path for every attempt. Supplying
 only `--python` runs the Python client alone and cannot establish JVM support.
 The harness also exercises credential scope, reused native identities,

@@ -55,6 +55,9 @@ class SdkProbe(ResourcesProbe):
         config = config.replace('[profiles.python]', '[profiles.python]\ntransfer_bytes = 1048576')
         self.config.write_text(config + f'\n[tcp]\nlisten = "{self.endpoint}"\ntoken_file = {json.dumps(str(server))}\n')
         self.receipt.update(scope='Published OpenSandbox SDK clients through actual native TCP and sandbox units; no model or production cutover',
+                            specification={'repository': 'https://github.com/opensandbox-group/OpenSandbox',
+                                           'commit': 'b1a29cf93a823a95913f7943010febb3f29de05c',
+                                           'files': ['specs/sandbox-lifecycle.yml', 'specs/execd-api.yaml']},
                             opensandboxProbeSha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                             contractProbeSha256=hashlib.sha256(Path(opensandbox_contract_probe.__file__).read_bytes()).hexdigest(),
                             pythonClientSha256=hashlib.sha256(client.read_bytes()).hexdigest())
