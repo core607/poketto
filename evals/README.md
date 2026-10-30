@@ -147,8 +147,9 @@ shell ID and recent receipts; binding does not prove shell readiness.
 The caller-owned HTTP transport rejects endpoints outside the fixture origin,
 bounds complete responses and counts actual requests without retaining credentials
 or discovery response bodies. It buffers command events because tools return
-complete results; these evaluations do not measure streaming latency. Requests
-are not automatically retried. An ambiguous SDK mutation stops agent operations;
+complete results; these evaluations do not measure streaming latency. Mutations
+are not automatically retried; SDK creation health polls remain recorded, including
+initial not-ready responses. An ambiguous SDK mutation stops agent operations;
 cleanup deletes the known sandbox or fails if its creation was not acknowledged.
 The client checks observed HTTP status even when the pinned SDK masks a session
 error. This is evaluation instrumentation, not an SDK patch or a server response change.

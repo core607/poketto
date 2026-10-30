@@ -78,6 +78,16 @@ class TransportFaults(unittest.TestCase):
         self.assertEqual('ReadError', transport.observations[0]['error'])
         self.assertNotIn('sensitive', json.dumps(transport.observations))
 
+    def test_sdk_unlimited_stream_read_is_bounded_before_dispatch(self):
+        timeouts = []
+        def receive(request):
+            timeouts.append(request.extensions['timeout'])
+            return httpx.Response(200, content=b'')
+        transport = Transport('http://127.0.0.1:1234', [], lambda: 'agent', httpx.MockTransport(receive))
+        transport.handle_request(httpx.Request('POST', 'http://127.0.0.1:1234/opensandbox/box/command',
+            extensions={'timeout': {'connect': 15, 'read': None, 'write': 300, 'pool': None}}))
+        self.assertEqual([{'connect': 15, 'read': 75, 'write': 75, 'pool': 75}], timeouts)
+
 
 class ConsumerFaults(unittest.TestCase):
     def client(self, directory):
@@ -124,6 +134,26 @@ class ConsumerFaults(unittest.TestCase):
             client.creation_unknown = True
             with self.assertRaisesRegex(RuntimeError, 'creation was not acknowledged'):
                 client.cleanup()
+
+    def test_only_creation_health_polls_may_transition_from_503_to_ready(self):
+        for readiness, status, route, accepted in [(True, 503, '/opensandbox/box/ping', True),
+                                                  (False, 503, '/opensandbox/box/ping', False),
+                                                  (True, 500, '/opensandbox/box/ping', False),
+                                                  (True, 503, '/opensandbox/other/ping', False)]:
+            with self.subTest(readiness=readiness, status=status, route=route), tempfile.TemporaryDirectory() as directory:
+                client = self.client(directory)
+                def create():
+                    client.state['observations'].extend([
+                        {'method': 'GET', 'path': route, 'status': status},
+                        {'method': 'GET', 'path': '/opensandbox/box/ping', 'status': 200}])
+                    return SimpleNamespace(id='box')
+                if accepted:
+                    self.assertEqual('box', client.sdk(create, readiness=True).id)
+                    self.assertEqual(2, len(client.state['observations']))
+                else:
+                    with self.assertRaises(RuntimeError):
+                        client.sdk(create, readiness=readiness)
+                client.transport.close()
 
     def test_export_seals_a_visible_artifact_for_workflow_collection(self):
         with tempfile.TemporaryDirectory() as directory:

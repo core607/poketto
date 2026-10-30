@@ -25,7 +25,7 @@ class SdkWorkspace(Workspace):
         self.creation_unknown = False
         self.state.update(workspaceClient='sdk', sdkSandbox=None, sdkContext=None, sdkExecutions=[], sdkWrites=[])
 
-    def sdk(self, operation):
+    def sdk(self, operation, readiness=False):
         start = len(self.state['observations'])
         error, result = None, None
         try:
@@ -33,9 +33,14 @@ class SdkWorkspace(Workspace):
         except Exception as failure:
             error = failure
         rows = self.state['observations'][start:]
+        ready_path = f'/opensandbox/{result.id}/ping' if readiness and error is None and result is not None else None
+        ready = (ready_path is not None and rows and rows[-1].get('method') == 'GET'
+                 and rows[-1].get('path') == ready_path and rows[-1]['status'] == 200 and not rows[-1].get('error'))
         # The pinned SDK can mask a create/delete-session HTTP error. Check the
         # observed response as well as its return value; never replay a mutation.
-        failures = [r for r in rows if r.get('error') or r['status'] is None or not 200 <= r['status'] < 300]
+        failures = [r for r in rows if (r.get('error') or r['status'] is None or not 200 <= r['status'] < 300)
+                    and not (ready and not r.get('error') and r.get('method') == 'GET'
+                             and r.get('path') == ready_path and r['status'] == 503)]
         if error is not None or failures:
             refused = failures[-1] if failures else None
             if refused and not refused.get('error') and refused['status'] is not None and 400 <= refused['status'] < 500 and self.phase == 'agent':
@@ -81,10 +86,13 @@ class SdkWorkspace(Workspace):
         with self.exclusive('setup'):
             self.directory.mkdir(parents=True, mode=0o700)
             self.creation_unknown = True
-            self.box = self.sdk(lambda: SandboxSync.create('python', timeout=timedelta(seconds=300),
-                resource={'cpu': '0.5', 'memory': '64Mi'}, connection_config=self.connection))
-            self.creation_unknown = False
-            self.state['sdkSandbox'] = self.box.id
+            def create():
+                self.box = SandboxSync.create('python', timeout=timedelta(seconds=300),
+                    resource={'cpu': '0.5', 'memory': '64Mi'}, connection_config=self.connection)
+                self.creation_unknown = False
+                self.state['sdkSandbox'] = self.box.id
+                return self.box
+            self.sdk(create, readiness=True)
             runtime = self.helper('python3 --version')
             if runtime['state'] != 'succeeded':
                 raise RuntimeError('SDK sandbox Python is unavailable')

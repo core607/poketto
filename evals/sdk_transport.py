@@ -30,6 +30,11 @@ class Transport(httpx.BaseTransport):
         self.observations.append(row)
         response = None
         try:
+            # The SDK disables its SSE read timeout. Bound that path too so a
+            # stopped server cannot leave cleanup waiting on an unlimited read.
+            timeouts = request.extensions.get('timeout', {})
+            request.extensions['timeout'] = {name: min(timeouts.get(name) or 75, 75)
+                                             for name in ('connect', 'read', 'write', 'pool')}
             response = self.inner.handle_request(request)
             row['status'] = response.status_code
             download = request.url.path.endswith('/files/download') and response.status_code == 200
