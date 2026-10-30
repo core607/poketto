@@ -10,18 +10,21 @@ import tools.jackson.databind.ObjectMapper;
 /** Poketto interprets game input and output; the sandbox service only transports bytes. */
 final class GamePayload {
     static final int OUTPUT_BYTES = 96 * 1024;
+    static final int UPLOAD_BYTES = 1024 * 1024;
     private final ObjectMapper json;
 
     GamePayload(ObjectMapper json) {
         this.json = json;
     }
 
-    byte[] input(GameBundle bundle, GameRunner.Request request) {
+    byte[] archive(GameBundle bundle, GameRunner.Request request) {
         bounded(bundle, GameBundle.MAX_BYTES);
         if (request.state() != null) {
             GameJson.require(request.state(), 32 * 1024, json);
         }
-        return bounded(new Input(bundle, request), 512 * 1024);
+        byte[] archive = GameArchive.packageInput(bounded(new Input(bundle, request), 512 * 1024));
+        ProtocolValues.require(archive.length <= UPLOAD_BYTES, "game package", "must fit its upload bound");
+        return archive;
     }
 
     GameRunner.Result result(GameBundle bundle, String output) {

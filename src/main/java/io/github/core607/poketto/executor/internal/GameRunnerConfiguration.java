@@ -19,7 +19,6 @@ class GameRunnerConfiguration {
             MachineAccounts accounts,
             @Value("${poketto.games.socket}") Path socket,
             @Value("${poketto.data-dir}") Path data,
-            @Value("${poketto.games.entry:/opt/poketto-games/game-entry.mjs}") String entry,
             @Value("${poketto.games.max-jobs:2}") int jobs) {
         if (!System.getProperty("os.name").equalsIgnoreCase("Linux")) {
             throw new IllegalStateException("The game worker requires Linux containment");
@@ -32,7 +31,6 @@ class GameRunnerConfiguration {
                 json,
                 jobs,
                 data.resolve("game-service.lock"),
-                entry,
                 identity -> authorize(accounts, identity));
     }
 

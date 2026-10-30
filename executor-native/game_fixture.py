@@ -37,7 +37,7 @@ class GameFixture:
         self.assets.mkdir(mode=0o755)
         shutil.copy2(source / 'sandcrab', root / 'sandcrab')
         (root / 'sandcrab').chmod(0o755)
-        for name in ('game-entry.mjs', 'game-runtime.mjs', 'game-example.mjs'):
+        for name in ('game-example.mjs',):
             shutil.copy2(source / name, self.assets / name)
             (self.assets / name).chmod(0o644)
         self.socket = self.runtime / 'control.sock'
@@ -60,7 +60,7 @@ max_event_streams = 4
 [profiles.games]
 exec_user = "{self.user}"
 tools = {json.dumps(str(tools))}
-read_only = ["/usr", "/bin", "/lib", "/lib64", "/etc/ld.so.cache", {json.dumps(str(self.assets))}]
+read_only = ["/usr", "/bin", "/lib", "/lib64", "/etc/ld.so.cache"]
 memory_bytes = 134217728
 temporary_bytes = 2097152
 temporary_inodes = 128
@@ -69,7 +69,7 @@ cpu_quota_percent = 50
 timeout_millis = 5000
 session_ttl_millis = 15000
 output_limit_bytes = 98304
-transfer_bytes = 524288
+transfer_bytes = 1048576
 network = "none"
 host_calls = false
 '''
@@ -93,7 +93,7 @@ host_calls = false
         run([str(self.root / 'sandcrab'), 'check', '--config', str(self.config_path)])
         self.start_worker()
         return {'gameSocket': str(self.socket), 'gameHostCredential': str(private),
-                'gameOwnerFile': str(owner / 'owner.lock'), 'gameEntry': str(self.assets / 'game-entry.mjs'),
+                'gameOwnerFile': str(owner / 'owner.lock'),
                 'gameHostFile': str(sentinel), 'gameHostPort': self.listener.server_address[1],
                 'gameExample': str(self.assets / 'game-example.mjs')}
 

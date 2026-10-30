@@ -48,8 +48,7 @@ at most 128 readers bounds descriptor use. The shell wrapper, execution identity
 frame bounds and exit-status mapping remain part of the protocol.
 
 The [in-repository split](2026-10-27-sandcrab-in-repository-split.md)
-made the launcher Rust and [finite jobs](2026-10-28-sandcrab-finite-jobs.md) the
-game supervisor; the
+owns the launcher; [pocket games](2026-10-09-pocket-games.md) owns its use of the generic service. The
 [repository supervisor decision](2026-10-21-rust-repository-supervisor.md) owns its host runtime.
 
 ## Alternatives

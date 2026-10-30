@@ -7,7 +7,7 @@ import java.util.UUID;
 
 /** Every mutation has one pre-registered identity; losing a reply never starts a replacement job. */
 final class GameSandboxJob {
-    private final String source;
+    private static final String SOURCE = "exec node --max-old-space-size=64 game/game-entry.mjs game/input.json";
     final GameRunner.Identity owner;
     final SandcrabProtocol.SessionPlan plan;
     final SandcrabProtocol.Reference upload;
@@ -18,10 +18,9 @@ final class GameSandboxJob {
     boolean contained;
     private final SandcrabClient client;
 
-    GameSandboxJob(SandcrabClient client, GameRunner.Identity owner, SandcrabProtocol.Info info, String source) {
+    GameSandboxJob(SandcrabClient client, GameRunner.Identity owner, SandcrabProtocol.Info info) {
         this.client = client;
         this.owner = owner;
-        this.source = source;
         plan = new SandcrabProtocol.SessionPlan(
                 id(),
                 info.serverId(),
@@ -55,20 +54,20 @@ final class GameSandboxJob {
                 upload.id(),
                 upload.serverId(),
                 plan.id(),
-                "input.json",
-                "raw",
+                "game",
+                "tar",
                 input.length,
                 SandcrabProtocol.sha256(input),
                 false,
                 true,
-                0600);
+                0700);
         client.register(session, transfer);
         if (!client.send(transfer, input).succeeded()) {
             throw new WorkerUnavailableException();
         }
         checkCancelled();
         var step = new SandcrabProtocol.CommandPlan(
-                command.id(), command.serverId(), source, 5000, GamePayload.OUTPUT_BYTES);
+                command.id(), command.serverId(), SOURCE, 5000, GamePayload.OUTPUT_BYTES);
         SandcrabProtocol.Run result = client.command(session, step);
         long deadline = System.nanoTime() + Duration.ofSeconds(8).toNanos();
         while (!result.terminal()) {

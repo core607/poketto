@@ -152,6 +152,10 @@ val stageLinuxStorageTest = tasks.register<Sync>("stageLinuxStorageTest") {
     onlyIf { storageTestsNeedLinux }
     into(linuxStorageRuntime)
     from(sourceSets.main.get().output.classesDirs) { into("classes") }
+    from(checkNotNull(sourceSets.main.get().output.resourcesDir)) {
+        include("io/github/core607/poketto/executor/*.mjs")
+        into("classes")
+    }
     from(sourceSets.test.get().output.classesDirs) { into("classes") }
     from(configurations.testRuntimeClasspath) { into("jars") }
 }
@@ -245,7 +249,7 @@ val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
 tasks.named("check") { dependsOn(existingDeploymentTests) }
 
 val appIdentityDirectory = layout.buildDirectory.dir("app-image-identity")
-val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src", "content-template")
+val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src", "content-template", "frontend/public/games/runtime.mjs", "executor-service/rust", "executor-service/resource_pool.py")
 val appImageRevision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
 val buildAppIdentityImage = tasks.register<Exec>("buildAppIdentityImage") {
     group = "verification"
@@ -320,10 +324,21 @@ tasks.check {
 // files the documentation describes.
 tasks.processResources {
     from("content-template") { into("content-template") }
+    from("frontend/public/games/runtime.mjs") {
+        into("io/github/core607/poketto/executor")
+        rename { "game-runtime.mjs" }
+    }
     // The initializer loads the template at startup; a build that lost any of its files fails here, not
     // there. The list is the directory itself; ContentRepositoryInitializerTests pins that the code's
     // list of files equals it.
     doLast {
+        val game = destinationDir.resolve("io/github/core607/poketto/executor")
+        listOf("game-entry.mjs", "game-runtime.mjs").forEach { name ->
+            check(game.resolve(name).isFile) { "application game runtime is missing $name" }
+        }
+        check(game.resolve("game-runtime.mjs").readBytes().contentEquals(
+            layout.projectDirectory.file("frontend/public/games/runtime.mjs").asFile.readBytes()
+        )) { "native and browser game runtimes differ" }
         val template = layout.projectDirectory.dir("content-template").asFile
         val files = template.walkTopDown().filter { it.isFile }.toList()
         check(files.isNotEmpty()) { "content template is empty" }

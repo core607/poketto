@@ -20,7 +20,7 @@ class GameSandboxJobTests {
     private final SandcrabClient client = mock(SandcrabClient.class);
     private final String epoch = UUID.randomUUID().toString();
     private final GameSandboxJob job = new GameSandboxJob(
-            client, new GameRunner.Validation(WorkspaceId.random()), IsolatedGameRunnerTests.info(epoch), "exec true");
+            client, new GameRunner.Validation(WorkspaceId.random()), IsolatedGameRunnerTests.info(epoch));
 
     @Test
     void failureBeforeRequestWritingRequiresNoRemoteCleanup() {

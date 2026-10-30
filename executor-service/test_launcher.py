@@ -1,6 +1,5 @@
 """The Rust launcher's own tests (rust/sandcrab-launch, rust/poketto-launch) cover policy
-translation, tool pins, versions and ownership on real root-owned files, and the game
-supervisor's test (rust/poketto-games) pins its job policy. These cases run the installed binary
+translation, tool pins, versions and ownership on real root-owned files. These cases run the installed binary
 as an unprivileged account and keep the Python worker's policies and launch records matched to it."""
 import json
 import os

@@ -22,7 +22,6 @@ final class GameSandboxPool implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(GameSandboxPool.class);
     private final SandcrabClient client;
     private final Semaphore capacity;
-    private final String command;
     private final RetainedFileLocks.Held ownership;
     private final ConcurrentHashMap<String, GameSandboxJob> jobs = new ConcurrentHashMap<>();
     private final Set<String> owned = ConcurrentHashMap.newKeySet();
@@ -30,21 +29,31 @@ final class GameSandboxPool implements AutoCloseable {
     private final Object collection = new Object();
     private boolean closed;
 
-    GameSandboxPool(SandcrabClient client, int maximum, Path ownerFile, String entry) {
+    GameSandboxPool(SandcrabClient client, int maximum, Path ownerFile) {
         ProtocolValues.inRange(maximum, 1, 16, "game concurrency");
         this.client = client;
         capacity = new Semaphore(maximum);
-        ProtocolValues.boundedText(entry, 4096, "game entry");
-        ProtocolValues.require(
-                entry.startsWith("/") && entry.chars().noneMatch(Character::isISOControl),
-                "game entry",
-                "must be an absolute sandbox path without controls");
-        command = ProtocolValues.boundedText(
-                "exec node --max-old-space-size=64 '" + entry.replace("'", "'\\''") + "' input.json",
-                16384,
-                "game command");
         ownership = own(ownerFile);
         orphans = new GameSandboxOrphans(client, owned::contains);
+        verifyService();
+    }
+
+    private void verifyService() {
+        try {
+            SandcrabProtocol.Info info = info();
+            client.sessions(info.serverId(), null);
+            client.runs(info.serverId(), null);
+            client.uploads(null);
+        } catch (RuntimeException unavailable) {
+            log.warn("Native game service is unavailable or incompatible", unavailable);
+            try {
+                ownership.close();
+            } catch (IOException release) {
+                unavailable.addSuppressed(release);
+            }
+            throw new IllegalStateException(
+                    "Enabled games require a ready dedicated native Sandcrab service", unavailable);
+        }
     }
 
     private static RetainedFileLocks.Held own(Path file) {
@@ -72,7 +81,7 @@ final class GameSandboxPool implements AutoCloseable {
             if (!capacity.tryAcquire()) {
                 throw new GameException("GAME_BUSY", "The game service is serving other players or reclaiming a job");
             }
-            var job = new GameSandboxJob(client, identity, info, command);
+            var job = new GameSandboxJob(client, identity, info);
             // All identities become protected before any request can reach the daemon.
             owned.add(job.plan.id());
             owned.add(job.upload.id());
@@ -95,7 +104,8 @@ final class GameSandboxPool implements AutoCloseable {
                 "game profile",
                 "must permit the bounded game lifetime");
         ProtocolValues.require(
-                profile.outputLimitBytes() >= GamePayload.OUTPUT_BYTES && profile.transferBytes() >= 512 * 1024,
+                profile.outputLimitBytes() >= GamePayload.OUTPUT_BYTES
+                        && profile.transferBytes() >= GamePayload.UPLOAD_BYTES,
                 "game profile",
                 "must permit bounded game input and output");
         return info;

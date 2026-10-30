@@ -58,7 +58,7 @@ tasks.register<Sync>("stageExecutorWorker") {
         exclude("test_*.py", "run_tests.py")
     }
     from(executorBinaries) {
-        exclude("poketto-supervisor", "poketto-launch", "poketto-games", "sandcrab")
+        include("poketto", "poketto-shell", "poketto-syncfs")
         into("bin")
     }
     from(executorBinaries.map { it.file("poketto-supervisor") })
@@ -68,13 +68,12 @@ tasks.register<Sync>("stageExecutorWorker") {
 
 tasks.register<Sync>("stageGameWorker") {
     group = "build"
-    description = "Stage Sandcrab and the exact shared browser game runtime for native acceptance."
+    description = "Stage Sandcrab, the game profile and a synthetic example for native acceptance."
     dependsOn(buildExecutorRust)
     from(executorBinaries.map { it.file("sandcrab") })
     from(executorServiceSource) {
-        include("game-entry.mjs", "game-config.example.json", "poketto-games.service", "pokettogames.slice")
+        include("game-config.example.toml", "sandcrab-games.service", "pokettogames.slice")
     }
-    from(layout.projectDirectory.file("frontend/public/games/runtime.mjs")) { rename { "game-runtime.mjs" } }
     from(layout.projectDirectory.file("examples/pocket-game/rules.mjs")) { rename { "game-example.mjs" } }
     into(layout.buildDirectory.dir("game-worker"))
 }
@@ -86,7 +85,7 @@ val stageExecutorServiceTests = tasks.register<Sync>("stageExecutorServiceTests"
         exclude("rust/target/**", "**/__pycache__/**")
     }
     from(executorBinaries) {
-        exclude("poketto-supervisor", "poketto-launch", "poketto-games")
+        include("sandcrab", "poketto", "poketto-shell", "poketto-syncfs")
         into("bin")
     }
     from(executorBinaries.map { it.file("poketto-supervisor") })

@@ -16,20 +16,15 @@ final class IsolatedGameRunner implements GameRunner, AutoCloseable {
     private final Consumer<Identity> authorize;
 
     IsolatedGameRunner(
-            SandcrabClient client,
-            ObjectMapper json,
-            int capacity,
-            Path ownerFile,
-            String entry,
-            Consumer<Identity> authorize) {
+            SandcrabClient client, ObjectMapper json, int capacity, Path ownerFile, Consumer<Identity> authorize) {
         payload = new GamePayload(json);
-        pool = new GameSandboxPool(client, capacity, ownerFile, entry);
+        pool = new GameSandboxPool(client, capacity, ownerFile);
         this.authorize = authorize;
     }
 
     @Override
     public Result run(Identity identity, GameBundle bundle, Request request) {
-        byte[] input = payload.input(bundle, request);
+        byte[] input = payload.archive(bundle, request);
         GameSandboxJob job;
         try {
             job = pool.begin(identity);

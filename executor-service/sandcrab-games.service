@@ -1,0 +1,19 @@
+[Unit]
+Description=Sandcrab sandbox service for Poketto games
+After=local-fs.target
+Requires=pokettogames.slice
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0077
+Slice=pokettogames.slice
+ExecStart=/opt/sandcrab/sandcrab serve --config /etc/sandcrab-games/config.toml
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

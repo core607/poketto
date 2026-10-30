@@ -1,0 +1,31 @@
+[service]
+runtime_root = "/run/sandcrab-games"
+socket = "/run/sandcrab-games/control.sock"
+client_uid = 10001
+client_gid = 10001
+resource_slice = "pokettogames.slice"
+supervisor_unit = "sandcrab-games.service"
+unit_prefix = "sandcrab-games-"
+max_sandboxes = 2
+max_records = 128
+max_output_bytes = 1048576
+max_file_records = 128
+max_file_transfers = 2
+max_connections = 16
+max_event_streams = 4
+
+[profiles.games]
+exec_user = "poketto-game"
+tools = "/opt/sandcrab/tools"
+read_only = ["/usr", "/bin", "/lib", "/lib64", "/etc/ld.so.cache"]
+memory_bytes = 134217728
+temporary_bytes = 2097152
+temporary_inodes = 128
+tasks_max = 48
+cpu_quota_percent = 50
+timeout_millis = 5000
+session_ttl_millis = 15000
+output_limit_bytes = 98304
+transfer_bytes = 1048576
+network = "none"
+host_calls = false

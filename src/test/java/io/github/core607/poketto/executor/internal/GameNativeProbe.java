@@ -31,12 +31,7 @@ final class GameNativeProbe {
     GameNativeProbe(JsonNode config) {
         this.config = config;
         runner = new IsolatedGameRunner(
-                ExecutorConfiguration.sandcrabClient(path("gameSocket")),
-                json,
-                4,
-                path("gameOwnerFile"),
-                config.path("gameEntry").stringValue(),
-                owner -> {
+                ExecutorConfiguration.sandcrabClient(path("gameSocket")), json, 4, path("gameOwnerFile"), owner -> {
                     if (owner instanceof GameRunner.Player player
                             && revokedAccounts.contains(player.principal().accountId())) {
                         throw new GameException("GAME_UNAVAILABLE", "Synthetic player authority was revoked");

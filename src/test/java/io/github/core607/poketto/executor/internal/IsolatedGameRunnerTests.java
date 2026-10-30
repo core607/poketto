@@ -3,9 +3,11 @@ package io.github.core607.poketto.executor.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -41,8 +43,7 @@ class IsolatedGameRunnerTests {
     Path root;
 
     private IsolatedGameRunner runner(Consumer<GameRunner.Identity> authority) {
-        return new IsolatedGameRunner(
-                client, json, 1, root.resolve("owner.lock"), "/game runtime/entry.mjs", authority);
+        return new IsolatedGameRunner(client, json, 1, root.resolve("owner.lock"), authority);
     }
 
     private GameRunner.Result initialize(IsolatedGameRunner runner) {
@@ -65,7 +66,7 @@ class IsolatedGameRunnerTests {
             var command = ArgumentCaptor.forClass(SandcrabProtocol.CommandPlan.class);
             verify(client).command(any(), command.capture());
             assertThat(command.getValue().command())
-                    .isEqualTo("exec node --max-old-space-size=64 '/game runtime/entry.mjs' input.json");
+                    .isEqualTo("exec node --max-old-space-size=64 game/game-entry.mjs game/input.json");
             assertThat(command.getValue().outputLimitBytes()).isEqualTo(GamePayload.OUTPUT_BYTES);
             verify(client).forget(any(SandcrabProtocol.Session.class));
             verify(client).forget(any(SandcrabProtocol.Upload.class));
@@ -75,12 +76,42 @@ class IsolatedGameRunnerTests {
 
     @Test
     void stateByteLimitIsCheckedBeforeContactingTheService() {
+        nativeService(STEP);
         try (var runner = runner(owner -> {})) {
+            clearInvocations(client);
             var state = json.createObjectNode().put("text", "猫".repeat(12_000));
             assertThatThrownBy(() -> runner.run(identity, bundle, new GameRunner.Request("observe", state, null, null)))
                     .isInstanceOf(GameException.class)
                     .hasMessageContaining("byte limit");
             verifyNoInteractions(client);
+        }
+    }
+
+    @Test
+    void incompatibleServiceRefusesStartupWithoutKeepingItsOwnerLock() {
+        nativeService(STEP);
+        when(client.info())
+                .thenReturn(new SandcrabProtocol.Info(
+                        1,
+                        UUID.randomUUID().toString(),
+                        Set.of("runs", "volumes"),
+                        Map.of(
+                                "python",
+                                new SandcrabProtocol.Profile(
+                                        5000,
+                                        GamePayload.OUTPUT_BYTES,
+                                        "none",
+                                        15_000,
+                                        GamePayload.UPLOAD_BYTES,
+                                        false))));
+        assertThatThrownBy(() -> runner(owner -> {}))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ready dedicated native Sandcrab");
+        verify(client, never()).open(any());
+        reset(client);
+        nativeService(STEP);
+        try (var runner = runner(owner -> {})) {
+            assertThat(initialize(runner).state().path("turn").intValue()).isEqualTo(1);
         }
     }
 
@@ -161,7 +192,7 @@ class IsolatedGameRunnerTests {
                 Map.of(
                         "games",
                         new SandcrabProtocol.Profile(
-                                5000, GamePayload.OUTPUT_BYTES, "none", 15_000, 512 * 1024, false)));
+                                5000, GamePayload.OUTPUT_BYTES, "none", 15_000, GamePayload.UPLOAD_BYTES, false)));
     }
 
     private void nativeService(String output) {

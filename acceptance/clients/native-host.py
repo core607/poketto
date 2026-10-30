@@ -162,8 +162,7 @@ def main():
             '--poketto.executor.max-operations=' + str(max(4, args.agents))]
         if args.games:
             copy_args.extend(['--poketto.games.enabled=true', '--poketto.games.max-jobs=1',
-                '--poketto.games.socket=' + game_settings['gameSocket'],
-                '--poketto.games.entry=' + game_settings['gameEntry']])
+                '--poketto.games.socket=' + game_settings['gameSocket']])
         run(['systemd-run', '--quiet', '--unit', app_unit, '-p', 'User=' + app_user,
              '-p', 'EnvironmentFile=' + str(app_environment), '-p', 'UMask=0077',
              '-p', 'MemoryMax=768M', '-p', 'TasksMax=256', '-p', 'CPUQuota=100%',
@@ -197,7 +196,8 @@ def main():
                 'journalctl', '-u', worker_unit, '--no-pager', '-n', '40', '-o', 'cat'])}), flush=True)
             raise
         receipt = root / 'client.json'
-        receipt.write_text(json.dumps({'endpoint': endpoint, 'password': password, 'root': str(root)}))
+        receipt.write_text(json.dumps({'endpoint': endpoint, 'password': password, 'root': str(root),
+                                     'gameUnitPrefix': game_fixture.prefix if game_fixture is not None else None}))
         receipt.chmod(0o600)
         print(json.dumps({'ready': True, 'root': str(root), 'endpoint': endpoint,
                           'accountDiskCopies': True, 'supervisorKind': 'rust', 'controllerSha256': sha(Path(__file__)),
