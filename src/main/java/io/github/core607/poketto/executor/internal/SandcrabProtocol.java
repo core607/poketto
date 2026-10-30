@@ -3,7 +3,11 @@ package io.github.core607.poketto.executor.internal;
 import static io.github.core607.poketto.executor.internal.ProtocolValues.require;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -25,11 +29,42 @@ final class SandcrabProtocol {
             .build();
     private static final Set<String> RUN_STATES = Set.of(
             "running", "closing", "succeeded", "failed", "cancelled", "timed_out", "output_limit", "resource_limit");
+    private static final Set<String> SESSION_STATES =
+            Set.of("starting", "ready", "busy", "stopping", "closed", "expired", "failed", "closing");
+    private static final Set<String> UPLOAD_STATES =
+            Set.of("waiting", "receiving", "publishing", "published", "succeeded", "failed", "unknown", "closing");
 
     private SandcrabProtocol() {}
 
     static byte[] write(Object value) {
         return JSON.writeValueAsBytes(value);
+    }
+
+    static String sha256(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (NoSuchAlgorithmException unavailable) {
+            throw new IllegalStateException("SHA-256 is required for native file transfers", unavailable);
+        }
+    }
+
+    private static String optionalUuid(String value, String field) {
+        return value == null ? null : ProtocolValues.uuid(value, field);
+    }
+
+    private static String relativePath(String value) {
+        ProtocolValues.boundedText(value, 4096, "upload path");
+        require(
+                !value.contains("\\") && value.chars().noneMatch(Character::isISOControl),
+                "upload path",
+                "must be relative and contain no controls");
+        String[] components = value.split("/", -1);
+        ProtocolValues.inRange(components.length, 1, 64, "upload path component count");
+        for (String component : components) {
+            ProtocolValues.boundedText(component, 255, "upload path component");
+            require(!component.equals(".") && !component.equals(".."), "upload path", "must not traverse parents");
+        }
+        return value;
     }
 
     static <T> T read(byte[] body, Class<T> type) {
@@ -118,6 +153,150 @@ final class SandcrabProtocol {
 
         Reference reference() {
             return new Reference(id, serverId);
+        }
+    }
+
+    record SessionPlan(String id, String serverId, String profile, long ttlMillis, String volumeId) {
+        SessionPlan {
+            id = ProtocolValues.uuid(id, "session ID");
+            serverId = ProtocolValues.uuid(serverId, "session epoch");
+            profile = SandcrabProtocol.profile(profile);
+            ProtocolValues.inRange(ttlMillis, 100, 86_400_000, "session lifetime");
+            volumeId = optionalUuid(volumeId, "session volume ID");
+        }
+
+        Reference reference() {
+            return new Reference(id, serverId);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record Session(
+            String id,
+            String serverId,
+            String profile,
+            String state,
+            long expiresAtMillis,
+            @JsonProperty(required = true) String activeRunId,
+            @JsonProperty(required = true) String volumeId,
+            @JsonProperty(required = true) String code,
+            @JsonProperty(required = true) String parentSessionId) {
+        Session {
+            id = ProtocolValues.uuid(id, "session ID");
+            serverId = ProtocolValues.uuid(serverId, "session epoch");
+            profile = SandcrabProtocol.profile(profile);
+            require(
+                    state != null && SESSION_STATES.contains(state),
+                    "session state",
+                    "must be a native lifecycle state");
+            ProtocolValues.inRange(expiresAtMillis, 1, ProtocolValues.MAX_SAFE_INTEGER, "session expiry estimate");
+            activeRunId = optionalUuid(activeRunId, "active command ID");
+            volumeId = optionalUuid(volumeId, "session volume ID");
+            code = code == null ? null : SandcrabProtocol.code(code);
+            parentSessionId = optionalUuid(parentSessionId, "parent session ID");
+        }
+
+        Reference reference() {
+            return new Reference(id, serverId);
+        }
+
+        boolean terminal() {
+            return state.equals("closed") || state.equals("expired") || state.equals("failed");
+        }
+    }
+
+    record CommandPlan(String id, String serverId, String command, long timeoutMillis, int outputLimitBytes) {
+        CommandPlan {
+            id = ProtocolValues.uuid(id, "command ID");
+            serverId = ProtocolValues.uuid(serverId, "command epoch");
+            ProtocolValues.withoutNul(ProtocolValues.boundedText(command, 16384, "command source"), "command source");
+            ProtocolValues.inRange(timeoutMillis, 1, 300_000, "command timeout");
+            ProtocolValues.inRange(outputLimitBytes, 1, 1_048_576, "command output bound");
+        }
+
+        Reference reference() {
+            return new Reference(id, serverId);
+        }
+    }
+
+    record UploadPlan(
+            String id,
+            String serverId,
+            String sessionId,
+            String path,
+            String format,
+            long bytes,
+            String sha256,
+            boolean replace,
+            boolean freeze,
+            int mode) {
+        UploadPlan {
+            id = ProtocolValues.uuid(id, "upload ID");
+            serverId = ProtocolValues.uuid(serverId, "upload epoch");
+            sessionId = ProtocolValues.uuid(sessionId, "upload session ID");
+            path = relativePath(path);
+            require("raw".equals(format) || "tar".equals(format), "upload format", "must be raw or tar");
+            ProtocolValues.inRange(bytes, 0, 1_073_741_824, "upload bytes");
+            sha256 = ProtocolValues.hex(sha256, 64, "upload digest");
+            ProtocolValues.inRange(mode, 0, 0777, "upload mode");
+        }
+
+        Reference reference() {
+            return new Reference(id, serverId);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record Upload(
+            String id,
+            String serverId,
+            String sessionId,
+            String profile,
+            @JsonProperty(required = true) String volumeId,
+            String path,
+            String format,
+            long bytes,
+            String sha256,
+            String planDigest,
+            String state,
+            @JsonProperty(required = true) String code,
+            String publication) {
+        Upload {
+            id = ProtocolValues.uuid(id, "upload ID");
+            serverId = ProtocolValues.uuid(serverId, "upload epoch");
+            sessionId = ProtocolValues.uuid(sessionId, "upload session ID");
+            profile = SandcrabProtocol.profile(profile);
+            volumeId = optionalUuid(volumeId, "upload volume ID");
+            path = relativePath(path);
+            require("raw".equals(format) || "tar".equals(format), "upload format", "must be raw or tar");
+            ProtocolValues.inRange(bytes, 0, 1_073_741_824, "upload bytes");
+            sha256 = ProtocolValues.hex(sha256, 64, "upload digest");
+            planDigest = ProtocolValues.hex(planDigest, 64, "upload plan digest");
+            require(state != null && UPLOAD_STATES.contains(state), "upload state", "must be a native lifecycle state");
+            code = code == null ? null : SandcrabProtocol.code(code);
+            require(
+                    "none".equals(publication) || "unknown".equals(publication) || "committed".equals(publication),
+                    "upload publication",
+                    "must describe publication certainty");
+            require(
+                    !state.equals("succeeded") || publication.equals("committed"),
+                    "successful upload",
+                    "must confirm publication");
+        }
+
+        Reference reference() {
+            return new Reference(id, serverId);
+        }
+
+        boolean succeeded() {
+            return state.equals("succeeded");
+        }
+
+        boolean forgettable() {
+            return state.equals("waiting")
+                    || state.equals("succeeded")
+                    || state.equals("failed")
+                    || state.equals("unknown");
         }
     }
 

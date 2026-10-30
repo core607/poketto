@@ -29,6 +29,8 @@ public final class SandcrabNativeProbe {
         probe.failedCommand();
         probe.outputBound();
         probe.epochRefusal();
+        probe.workspace();
+        probe.workspaceCancellation();
         System.out.println(
                 new String(SandcrabProtocol.write(new Summary("PASS", probe.checks)), StandardCharsets.UTF_8));
     }
@@ -111,6 +113,148 @@ public final class SandcrabNativeProbe {
         }
         absent(request.reference());
         checks.add("native-stale-epoch-refuses-before-admission");
+    }
+
+    private SandcrabProtocol.Session workspaceOpen() throws InterruptedException {
+        var plan = new SandcrabProtocol.SessionPlan(
+                UUID.randomUUID().toString(),
+                info.serverId(),
+                "python",
+                Math.min(profile.sessionTtlMillis(), 60_000),
+                null);
+        client.open(plan);
+        return awaitSession(plan.reference(), false);
+    }
+
+    private SandcrabProtocol.Session awaitSession(SandcrabProtocol.Reference reference, boolean terminal)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
+        while (System.nanoTime() < deadline) {
+            SandcrabProtocol.Session session = client.session(reference);
+            if (terminal ? session.terminal() : session.state().equals("ready")) {
+                return session;
+            }
+            require(terminal || !session.terminal(), "Native session failed before readiness");
+            Thread.sleep(25);
+        }
+        throw new IllegalStateException("Native session did not reach the required lifecycle state");
+    }
+
+    private SandcrabProtocol.UploadPlan uploadPlan(SandcrabProtocol.Session session, String path, byte[] data) {
+        return new SandcrabProtocol.UploadPlan(
+                UUID.randomUUID().toString(),
+                session.serverId(),
+                session.id(),
+                path,
+                "raw",
+                data.length,
+                SandcrabProtocol.sha256(data),
+                false,
+                true,
+                0640);
+    }
+
+    private SandcrabProtocol.CommandPlan commandPlan(SandcrabProtocol.Session session, String source) {
+        return new SandcrabProtocol.CommandPlan(
+                UUID.randomUUID().toString(),
+                session.serverId(),
+                source,
+                Math.min(profile.timeoutMillis(), 10_000),
+                Math.min(profile.outputLimitBytes(), 4096));
+    }
+
+    private String command(SandcrabProtocol.Session session, String source) throws InterruptedException {
+        SandcrabProtocol.CommandPlan plan = commandPlan(session, source);
+        client.command(session, plan);
+        SandcrabProtocol.Run run = await(plan.reference());
+        require(run.state().equals("succeeded") && run.result().success(), "Workspace command failed");
+        forgotten(run);
+        return run.result().stdout();
+    }
+
+    private SandcrabProtocol.Upload upload(
+            SandcrabProtocol.Session session, SandcrabProtocol.UploadPlan plan, byte[] data) {
+        require(client.register(session, plan).state().equals("waiting"), "New upload did not await its content");
+        SandcrabProtocol.Upload receipt = client.send(plan, data);
+        require(receipt.succeeded() && receipt.publication().equals("committed"), "Upload was not published");
+        require(client.upload(plan.reference()).equals(receipt), "Retained upload receipt changed");
+        return receipt;
+    }
+
+    private void workspace() throws InterruptedException {
+        SandcrabProtocol.Session session = workspaceOpen();
+        byte[] data = new byte[512 * 1024];
+        for (int index = 0; index < data.length; index++) {
+            data[index] = (byte) (index * 17);
+        }
+        SandcrabProtocol.UploadPlan plan = uploadPlan(session, "input.bin", data);
+        SandcrabProtocol.Upload input = upload(session, plan, data);
+        SandcrabProtocol.Upload empty = upload(session, uploadPlan(session, "empty", new byte[0]), new byte[0]);
+        String digest = command(session, """
+                python3 -c 'from pathlib import Path; import hashlib,stat; p=Path("input.bin"); assert stat.S_IMODE(p.stat().st_mode)==0o640; assert Path("empty").stat().st_size==0; print(hashlib.sha256(p.read_bytes()).hexdigest())'
+                """);
+        require(digest.strip().equals(plan.sha256()), "Sandbox file bytes differ from the uploaded body");
+        checks.add("native-session-binary-and-empty-upload-readback");
+        waitingUploadCancellation(session);
+        command(session, "printf later > input.bin");
+        require(client.register(session, plan).equals(input), "Registration replay changed its original receipt");
+        require(command(session, "cat input.bin").equals("later"), "Registration replay overwrote later edits");
+        checks.add("native-upload-registration-replay-preserves-later-workspace-edits");
+        forgetUpload(input);
+        forgetUpload(empty);
+        client.close(session.reference());
+        forgetSession(awaitSession(session.reference(), true));
+    }
+
+    private void waitingUploadCancellation(SandcrabProtocol.Session session) throws InterruptedException {
+        SandcrabProtocol.UploadPlan plan = uploadPlan(session, "never-sent", new byte[0]);
+        client.register(session, plan);
+        SandcrabProtocol.Upload receipt = client.cancelUpload(plan.reference());
+        require(
+                receipt.state().equals("failed") && receipt.publication().equals("none"),
+                "Cancellation before content did not confirm nonpublication");
+        require(
+                command(session, "test ! -e never-sent && printf absent").equals("absent"),
+                "Cancelled upload created a file");
+        forgetUpload(receipt);
+        checks.add("native-upload-cancellation-before-content-publishes-nothing");
+    }
+
+    private void workspaceCancellation() throws InterruptedException {
+        SandcrabProtocol.Session session = workspaceOpen();
+        SandcrabProtocol.CommandPlan plan = commandPlan(session, "sleep 30");
+        client.command(session, plan);
+        client.close(session.reference());
+        SandcrabProtocol.Session closed = awaitSession(session.reference(), true);
+        SandcrabProtocol.Run run = await(plan.reference());
+        require(run.state().equals("cancelled"), "Session closure did not cancel its active command");
+        forgotten(run);
+        forgetSession(closed);
+        checks.add("native-session-close-confirms-command-containment-and-record-release");
+    }
+
+    private void forgetUpload(SandcrabProtocol.Upload upload) {
+        client.forget(upload);
+        try {
+            client.upload(upload.reference());
+            throw new IllegalStateException("Native upload record was retained after forgetting");
+        } catch (SandcrabClient.Rejected refusal) {
+            require(
+                    refusal.status() == 404 && refusal.code().equals("UPLOAD_NOT_FOUND"),
+                    "Unexpected missing-upload response");
+        }
+    }
+
+    private void forgetSession(SandcrabProtocol.Session session) {
+        client.forget(session);
+        try {
+            client.session(session.reference());
+            throw new IllegalStateException("Native session record was retained after forgetting");
+        } catch (SandcrabClient.Rejected refusal) {
+            require(
+                    refusal.status() == 404 && refusal.code().equals("SESSION_NOT_FOUND"),
+                    "Unexpected missing-session response");
+        }
     }
 
     private void forgotten(SandcrabProtocol.Run run) {

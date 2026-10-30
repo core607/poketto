@@ -19,7 +19,7 @@ import org.slf4j.LoggerFactory;
 final class SandboxHttp {
     private static final Logger log = LoggerFactory.getLogger(SandboxHttp.class);
     private static final int MAX_HEAD = 8192;
-    private static final int MAX_BODY = 1024 * 1024;
+    static final int MAX_REQUEST_BYTES = 1024 * 1024;
     private final Path socket;
     private final Runnable verifySocket;
     private final Consumer<SocketChannel> verifyPeer;
@@ -92,12 +92,12 @@ final class SandboxHttp {
     }
 
     private static ByteBuffer request(String method, String path, String contentType, byte[] body) {
-        require(body.length <= MAX_BODY);
+        require(body.length <= MAX_REQUEST_BYTES);
         require(method.matches("GET|POST|PUT|DELETE"));
         require(path.startsWith("/") && path.chars().allMatch(c -> c > 32 && c < 127));
         require(contentType.equals("application/json") || contentType.equals("application/octet-stream"));
         byte[] head = (method + " " + path + " HTTP/1.1\r\nHost: sandcrab\r\n"
-                        + (body.length > 0
+                        + (body.length > 0 || method.equals("POST") || method.equals("PUT")
                                 ? "Content-Type: " + contentType + "\r\nContent-Length: " + body.length + "\r\n"
                                 : "")
                         + "Connection: close\r\n\r\n")
