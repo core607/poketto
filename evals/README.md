@@ -32,7 +32,7 @@ These scripted results establish that the harness can drive and score the API.
 The **Agent evaluations** workflow runs a selected suite with a plain tool-calling
 DeepSeek Flash agent. Start it on `main`, choose `workspace` (the default), `native`
 or `all`, the programming client (`sdk` by default), repeat count and batch budget,
-then read the workflow summary. The native-only suite requires the `native` client.
+then read the workflow summary. The native-only suite selects the `native` client automatically.
 Incorrect task results are measurements; missing
 usage, infrastructure errors and incomplete cleanup fail the run. Every trial
 remains in the artifact. Paid work never runs automatically on a pull request.
