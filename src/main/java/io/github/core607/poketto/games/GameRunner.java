@@ -1,19 +1,32 @@
 package io.github.core607.poketto.games;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.List;
-import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 
 /** One bounded isolated job per step. Implementations must never fall back to a host process. */
 public interface GameRunner {
     Result run(Identity identity, GameBundle bundle, Request request);
 
-    record Identity(UUID principalId, UUID accountId, WorkspaceId workspaceId) {
-        public Identity {
-            if (principalId == null || accountId == null || workspaceId == null) {
+    sealed interface Identity permits Player, Validation {
+        WorkspaceId workspaceId();
+    }
+
+    record Player(AuthPrincipal principal, WorkspaceId workspaceId) implements Identity {
+        public Player {
+            if (principal == null || principal.kind() != AuthPrincipal.Kind.API_KEY || workspaceId == null) {
                 throw new IllegalArgumentException("A game job requires server-selected identity");
+            }
+        }
+    }
+
+    /** Public catalogue validation has no player account or credential authority. */
+    record Validation(WorkspaceId workspaceId) implements Identity {
+        public Validation {
+            if (workspaceId == null) {
+                throw new IllegalArgumentException("Game validation requires its publication workspace");
             }
         }
     }

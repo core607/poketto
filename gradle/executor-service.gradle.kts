@@ -68,10 +68,9 @@ tasks.register<Sync>("stageExecutorWorker") {
 
 tasks.register<Sync>("stageGameWorker") {
     group = "build"
-    description = "Stage the independent game supervisor with the exact shared browser rule runtime."
+    description = "Stage Sandcrab and the exact shared browser game runtime for native acceptance."
     dependsOn(buildExecutorRust)
-    from(executorBinaries.map { it.file("poketto-games") })
-    from(executorBinaries.map { it.file("poketto-launch") })
+    from(executorBinaries.map { it.file("sandcrab") })
     from(executorServiceSource) {
         include("game-entry.mjs", "game-config.example.json", "poketto-games.service", "pokettogames.slice")
     }

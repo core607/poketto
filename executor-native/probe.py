@@ -367,10 +367,10 @@ with socket.socket(socket.AF_UNIX) as connection:
             'cliSha256': digest(root / 'bin/poketto'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
             'games': None if game_fixture is None else {
-                'supervisorSha256': digest(root / 'poketto-games'),
-                'runtimeSha256': digest(root / 'game-runtime.mjs'),
-                'entrySha256': digest(root / 'game-entry.mjs'),
-                'exampleSha256': digest(root / 'game-example.mjs'),
+                'supervisorSha256': digest(root / 'sandcrab'),
+                'runtimeSha256': digest(game_fixture.assets / 'game-runtime.mjs'),
+                'entrySha256': digest(game_fixture.assets / 'game-entry.mjs'),
+                'exampleSha256': digest(game_fixture.assets / 'game-example.mjs'),
                 'fixtureSha256': digest(Path(__file__).with_name('game_fixture.py'))},
             'source': 'synthetic-only', 'scenario': args.scenario, 'processCase': args.process_case}), flush=True)
     finally:

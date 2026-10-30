@@ -163,7 +163,7 @@ def main():
         if args.games:
             copy_args.extend(['--poketto.games.enabled=true', '--poketto.games.max-jobs=1',
                 '--poketto.games.socket=' + game_settings['gameSocket'],
-                '--poketto.games.signing-key=' + game_settings['gamePrivateKey']])
+                '--poketto.games.entry=' + game_settings['gameEntry']])
         run(['systemd-run', '--quiet', '--unit', app_unit, '-p', 'User=' + app_user,
              '-p', 'EnvironmentFile=' + str(app_environment), '-p', 'UMask=0077',
              '-p', 'MemoryMax=768M', '-p', 'TasksMax=256', '-p', 'CPUQuota=100%',

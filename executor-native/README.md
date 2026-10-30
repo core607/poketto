@@ -21,7 +21,7 @@ the probe verifies every manifest entry and rejects unlisted files. Copy that di
 root-level `poketto-supervisor` and `poketto-launch`, `bin/` directory and executable permissions. Never stage operator settings or credentials.
 
 For `--scenario games`, also stage `game_fixture.py` beside `probe.py`. Run
-`./gradlew stageGameWorker` and add its `poketto-games`, `game-entry.mjs`,
+`./gradlew stageGameWorker` and add its `sandcrab`, `game-entry.mjs`,
 `game-runtime.mjs` and `game-example.mjs` to the staged worker sources.
 
 The host needs cgroup v2, systemd, root access, Git, Python with the worker's pinned dependencies and

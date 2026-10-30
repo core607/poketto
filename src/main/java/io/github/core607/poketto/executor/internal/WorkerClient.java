@@ -63,12 +63,6 @@ final class WorkerClient {
         }
     }
 
-    Hello gameHello() {
-        JsonNode response = exchange("GET", "/v1/hello", null, Duration.ofSeconds(3));
-        var handshake = WorkerResponses.read(response, IsolatedGameRunner.Handshake.class);
-        return new Hello(handshake.workerBootId(), handshake.leaseSeconds(), handshake.renewAfterSeconds());
-    }
-
     JsonNode request(Hello hello, Identity identity, String operation, WorkerRequests.Data data, Duration timeout) {
         return send(prepare(hello, identity, operation, data), timeout);
     }

@@ -278,7 +278,7 @@ final class DefaultGameSaves implements GameSaves {
     }
 
     private static GameRunner.Identity identity(AuthPrincipal actor, WorkspaceId connection) {
-        return new GameRunner.Identity(actor.subjectId(), actor.accountId(), connection);
+        return new GameRunner.Player(actor, connection);
     }
 
     private static void requireState(GameSaveStore.Save save) {

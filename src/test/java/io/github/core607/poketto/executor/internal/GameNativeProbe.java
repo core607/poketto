@@ -10,37 +10,54 @@ import io.github.core607.poketto.games.GameRunner;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Actual Java adapter, signed worker and SRT jobs; only account identities are synthetic. */
+/** Actual Java adapter and native Sandcrab jobs; account identities and revocation authority are synthetic. */
 final class GameNativeProbe {
     private final JsonMapper json = JsonMapper.shared();
     private final JsonNode config;
     private final IsolatedGameRunner runner;
-    private final GameRunner.Identity identity =
-            new GameRunner.Identity(UUID.randomUUID(), UUID.randomUUID(), WorkspaceId.random());
+    private final GameRunner.Player identity = GameTestIdentities.player(WorkspaceId.random());
+    private final Set<UUID> revokedAccounts = ConcurrentHashMap.newKeySet();
 
     GameNativeProbe(JsonNode config) {
         this.config = config;
         runner = new IsolatedGameRunner(
-                ExecutorConfiguration.workerClient(json, path("gameSocket"), path("gamePrivateKey")), json, 4);
+                ExecutorConfiguration.sandcrabClient(path("gameSocket")),
+                json,
+                4,
+                path("gameOwnerFile"),
+                config.path("gameEntry").stringValue(),
+                owner -> {
+                    if (owner instanceof GameRunner.Player player
+                            && revokedAccounts.contains(player.principal().accountId())) {
+                        throw new GameException("GAME_UNAVAILABLE", "Synthetic player authority was revoked");
+                    }
+                });
     }
 
     void run(RepositoryRead repository, Control control) throws Exception {
-        example();
-        confinement();
-        limits(control);
-        contention(repository, control);
-        revocation(control);
-        restart(control);
-        control.run("game-assert-clean");
-        System.out.println(json.writeValueAsString(new Summary("PASS")));
+        try {
+            example();
+            confinement();
+            limits(control);
+            orphans(control);
+            contention(repository, control);
+            revocation(control);
+            restart(control);
+            control.run("game-assert-clean");
+            System.out.println(json.writeValueAsString(new Summary("PASS")));
+        } finally {
+            runner.close();
+        }
     }
 
     private void example() throws Exception {
@@ -78,7 +95,7 @@ final class GameNativeProbe {
                         config.path("gameHostPort").intValue(),
                         quoted("socket"),
                         quoted("gameHostFile"),
-                        quoted("gamePrivateKey"));
+                        quoted("gameHostCredential"));
         JsonNode state = initialize(source).state();
         for (String name : new String[] {"blocked", "unixBlocked", "hostDenied", "keyDenied", "noBridge"}) {
             assertThat(state.path(name).booleanValue()).as(name).isTrue();
@@ -115,6 +132,8 @@ final class GameNativeProbe {
         double baseline = repository.run();
         CompletableFuture<GameRunner.Result> active = busy();
         control.run("game-await-running");
+        runner.collect();
+        control.run("game-await-running");
         assertThatThrownBy(() -> initialize(rules("return {};")))
                 .isInstanceOfSatisfying(
                         GameException.class, error -> assertThat(error.code()).isEqualTo("GAME_BUSY"));
@@ -129,10 +148,62 @@ final class GameNativeProbe {
         passed("native-game-admission-does-not-consume-repository-capacity", baseline, concurrent);
     }
 
+    private void orphans(Control control) throws Exception {
+        SandcrabClient client = ExecutorConfiguration.sandcrabClient(path("gameSocket"));
+        SandcrabProtocol.Info info = client.info();
+        var plan =
+                new SandcrabProtocol.SessionPlan(UUID.randomUUID().toString(), info.serverId(), "games", 15_000, null);
+        SandcrabProtocol.Session session = client.open(plan);
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (!session.state().equals("ready")) {
+            assertThat(System.nanoTime()).isLessThan(deadline);
+            Thread.sleep(25);
+            session = client.session(plan.reference());
+        }
+        var upload = new SandcrabProtocol.UploadPlan(
+                UUID.randomUUID().toString(),
+                info.serverId(),
+                session.id(),
+                "never-sent",
+                "raw",
+                0,
+                SandcrabProtocol.sha256(new byte[0]),
+                false,
+                true,
+                0600);
+        client.register(session, upload);
+        var command =
+                new SandcrabProtocol.CommandPlan(UUID.randomUUID().toString(), info.serverId(), "sleep 30", 5000, 1024);
+        client.command(session, command);
+        do {
+            runner.collect();
+            if (missing(() -> client.session(plan.reference()), "SESSION_NOT_FOUND")
+                    && missing(() -> client.get(command.reference()), "RUN_NOT_FOUND")
+                    && missing(() -> client.upload(upload.reference()), "UPLOAD_NOT_FOUND")) {
+                control.run("game-assert-clean");
+                passed("native-game-orphan-discovery-reclaims-unowned-ephemeral-records", null, null);
+                return;
+            }
+            Thread.sleep(25);
+        } while (System.nanoTime() < deadline);
+        throw new IllegalStateException("Unowned game records were not reclaimed");
+    }
+
+    private static boolean missing(Runnable lookup, String code) {
+        try {
+            lookup.run();
+            return false;
+        } catch (SandcrabClient.Rejected absent) {
+            return GameSandboxJob.missing(absent, code);
+        }
+    }
+
     private void revocation(Control control) throws Exception {
         CompletableFuture<GameRunner.Result> active = busy();
         control.run("game-await-running");
-        runner.revoked(new AuthRevocation(identity.workspaceId(), Set.of(identity.accountId()), Set.of()));
+        revokedAccounts.add(identity.principal().accountId());
+        runner.revoked(new AuthRevocation(
+                identity.workspaceId(), Set.of(identity.principal().accountId()), Set.of()));
         assertThatThrownBy(() -> active.get(12, TimeUnit.SECONDS)).hasCauseInstanceOf(GameException.class);
         assertThatThrownBy(() -> initialize(rules("return {};"))).isInstanceOf(GameException.class);
         control.run("game-assert-clean");
@@ -140,7 +211,7 @@ final class GameNativeProbe {
     }
 
     private void restart(Control control) throws Exception {
-        var other = new GameRunner.Identity(UUID.randomUUID(), UUID.randomUUID(), identity.workspaceId());
+        var other = GameTestIdentities.player(identity.workspaceId());
         CompletableFuture<GameRunner.Result> active = CompletableFuture.supplyAsync(() -> runner.run(
                 other,
                 new GameBundle(1, rules("process.title='pkt-game-live';for(;;){}"), null, Map.of()),
@@ -148,7 +219,10 @@ final class GameNativeProbe {
         control.run("game-await-running");
         control.run("game-restart-worker");
         assertThatThrownBy(() -> active.get(12, TimeUnit.SECONDS)).hasCauseInstanceOf(GameException.class);
-        assertThat(initialize(rules("return {afterRestart:true};"))
+        assertThat(runner.run(
+                                other,
+                                new GameBundle(1, rules("return {afterRestart:true};"), null, Map.of()),
+                                new GameRunner.Request("init", null, null, 1L))
                         .state()
                         .path("afterRestart")
                         .booleanValue())

@@ -344,8 +344,7 @@ final class DefaultGameLibrary implements GameLibrary, AutoCloseable {
         }
         try {
             runner.run(
-                    new GameRunner.Identity(
-                            value.workspaceId().value(), value.workspaceId().value(), value.workspaceId()),
+                    new GameRunner.Validation(value.workspaceId()),
                     value.bundle(),
                     new GameRunner.Request("init", null, null, 1L));
             boolean current = snapshots.withCurrent(

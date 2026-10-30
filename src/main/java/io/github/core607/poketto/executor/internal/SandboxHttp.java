@@ -46,11 +46,16 @@ final class SandboxHttp {
             Duration timeout,
             Duration idle,
             Reader<T> reader) {
-        verifySocket.run();
+        try {
+            verifySocket.run();
+        } catch (WorkerUnavailableException failure) {
+            throw new WorkerUnavailableException(failure, false);
+        }
         ByteBuffer output = request(method, path, contentType, body == null ? new byte[0] : body);
         long deadline = System.nanoTime() + timeout.toNanos();
         String phase = "connect";
         boolean reading = false;
+        boolean writing = false;
         try (SocketChannel channel = SocketChannel.open(StandardProtocolFamily.UNIX);
                 Selector selector = Selector.open()) {
             channel.configureBlocking(false);
@@ -62,6 +67,7 @@ final class SandboxHttp {
             phase = "peer-verification";
             verifyPeer.accept(channel);
             phase = "request-write";
+            writing = true;
             while (output.hasRemaining()) {
                 deadline(deadline);
                 if (channel.write(output) == 0) {
@@ -74,21 +80,21 @@ final class SandboxHttp {
             reading = true;
             return reader.read(response.head(), response.body());
         } catch (IOException | WorkerUnavailableException exception) {
-            throw unavailable(phase, exception);
+            throw unavailable(phase, exception, writing);
         } catch (RuntimeException exception) {
             if (reading) {
                 // A reader's own refusal, such as an invalid selection, keeps its meaning.
                 throw exception;
             }
-            throw unavailable(phase, exception);
+            throw unavailable(phase, exception, writing);
         }
     }
 
-    private static WorkerUnavailableException unavailable(String phase, Exception exception) {
+    private static WorkerUnavailableException unavailable(String phase, Exception exception, boolean writing) {
         log.warn("Sandbox exchange failed during {}", phase, exception);
-        return exception instanceof WorkerUnavailableException unavailable
+        return writing && exception instanceof WorkerUnavailableException unavailable
                 ? unavailable
-                : new WorkerUnavailableException(exception);
+                : new WorkerUnavailableException(exception, writing);
     }
 
     private static ByteBuffer request(String method, String path, String contentType, byte[] body) {

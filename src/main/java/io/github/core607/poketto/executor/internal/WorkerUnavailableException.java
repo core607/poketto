@@ -9,12 +9,23 @@ package io.github.core607.poketto.executor.internal;
 final class WorkerUnavailableException extends IllegalStateException {
     private static final String ADVICE =
             "Isolated worker unavailable; execution was not confirmed. Inspect the working copy before retrying writes.";
+    private final boolean mayHaveExecuted;
 
     WorkerUnavailableException() {
         super(ADVICE);
+        mayHaveExecuted = true;
     }
 
     WorkerUnavailableException(Throwable cause) {
+        this(cause, true);
+    }
+
+    WorkerUnavailableException(Throwable cause, boolean mayHaveExecuted) {
         super(ADVICE, cause);
+        this.mayHaveExecuted = mayHaveExecuted;
+    }
+
+    boolean mayHaveExecuted() {
+        return mayHaveExecuted;
     }
 }

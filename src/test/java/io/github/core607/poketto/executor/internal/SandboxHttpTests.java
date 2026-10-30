@@ -80,7 +80,9 @@ class SandboxHttpTests {
                             .getBytes(StandardCharsets.US_ASCII));
         })) {
             assertThatThrownBy(() -> exchange(peer.client(channel -> {}), Duration.ofSeconds(2)))
-                    .isInstanceOf(WorkerUnavailableException.class)
+                    .isInstanceOfSatisfying(
+                            WorkerUnavailableException.class,
+                            failure -> assertThat(failure.mayHaveExecuted()).isTrue())
                     .hasCauseInstanceOf(IOException.class);
         }
     }
@@ -93,7 +95,9 @@ class SandboxHttpTests {
                 throw new WorkerUnavailableException();
             });
             assertThatThrownBy(() -> exchange(client, Duration.ofSeconds(2)))
-                    .isInstanceOf(WorkerUnavailableException.class);
+                    .isInstanceOfSatisfying(
+                            WorkerUnavailableException.class,
+                            failure -> assertThat(failure.mayHaveExecuted()).isFalse());
         }
     }
 
