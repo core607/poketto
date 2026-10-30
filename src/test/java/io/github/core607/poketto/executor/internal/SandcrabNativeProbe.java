@@ -31,6 +31,7 @@ public final class SandcrabNativeProbe {
         probe.epochRefusal();
         probe.workspace();
         probe.workspaceCancellation();
+        probe.inventoryReleased();
         System.out.println(
                 new String(SandcrabProtocol.write(new Summary("PASS", probe.checks)), StandardCharsets.UTF_8));
     }
@@ -234,6 +235,10 @@ public final class SandcrabNativeProbe {
     }
 
     private void forgetUpload(SandcrabProtocol.Upload upload) {
+        require(
+                client.uploads(null).uploads().stream()
+                        .anyMatch(retained -> retained.id().equals(upload.id())),
+                "Upload inventory omitted a retained receipt");
         client.forget(upload);
         try {
             client.upload(upload.reference());
@@ -246,6 +251,9 @@ public final class SandcrabNativeProbe {
     }
 
     private void forgetSession(SandcrabProtocol.Session session) {
+        require(
+                client.sessions(session.serverId(), null).ids().contains(session.id()),
+                "Session inventory omitted a terminal session");
         client.forget(session);
         try {
             client.session(session.reference());
@@ -258,8 +266,16 @@ public final class SandcrabNativeProbe {
     }
 
     private void forgotten(SandcrabProtocol.Run run) {
+        require(client.runs(run.serverId(), null).ids().contains(run.id()), "Run inventory omitted a retained result");
         client.forget(run);
         absent(run.reference());
+    }
+
+    private void inventoryReleased() {
+        require(client.runs(info.serverId(), null).ids().isEmpty(), "Run inventory retained forgotten IDs");
+        require(client.sessions(info.serverId(), null).ids().isEmpty(), "Session inventory retained forgotten IDs");
+        require(client.uploads(null).uploads().isEmpty(), "Upload inventory retained forgotten IDs");
+        checks.add("native-inventories-observe-retained-records-and-explicit-release");
     }
 
     private void absent(SandcrabProtocol.Reference reference) {

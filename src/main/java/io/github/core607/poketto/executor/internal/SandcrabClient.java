@@ -16,6 +16,40 @@ final class SandcrabClient {
         this.http = http;
     }
 
+    SandcrabProtocol.IdentityPage runs(String serverId, String after) {
+        return identities("runs", serverId, after);
+    }
+
+    SandcrabProtocol.IdentityPage sessions(String serverId, String after) {
+        return identities("sessions", serverId, after);
+    }
+
+    private SandcrabProtocol.IdentityPage identities(String collection, String serverId, String after) {
+        ProtocolValues.uuid(serverId, "inventory epoch");
+        SandcrabProtocol.IdentityPage page =
+                request("GET", pagePath(collection, after), null, SandcrabProtocol.IdentityPage.class, 200);
+        require(serverId.equals(page.serverId()), "Inventory epoch changed");
+        require(
+                after == null || page.ids().stream().allMatch(id -> id.compareTo(after) > 0),
+                "Inventory cursor moved backwards");
+        return page;
+    }
+
+    SandcrabProtocol.UploadPage uploads(String after) {
+        SandcrabProtocol.UploadPage page =
+                request("GET", pagePath("uploads", after), null, SandcrabProtocol.UploadPage.class, 200);
+        require(
+                after == null
+                        || page.uploads().stream()
+                                .allMatch(upload -> upload.id().compareTo(after) > 0),
+                "Upload cursor moved backwards");
+        return page;
+    }
+
+    private static String pagePath(String collection, String after) {
+        return "/v1/" + collection + (after == null ? "" : "?after=" + ProtocolValues.uuid(after, "inventory cursor"));
+    }
+
     SandcrabProtocol.Info info() {
         return request("GET", "/v1/info", null, SandcrabProtocol.Info.class, 200);
     }

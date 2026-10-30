@@ -96,6 +96,41 @@ final class SandcrabProtocol {
         }
     }
 
+    record IdentityPage(
+            String serverId,
+            List<String> ids,
+            @JsonProperty(required = true) String nextAfter) {
+        IdentityPage {
+            serverId = ProtocolValues.uuid(serverId, "inventory epoch");
+            require(ids != null && ids.size() <= 64, "inventory", "must contain at most 64 identities");
+            ids = List.copyOf(ids);
+            String previous = "";
+            for (String id : ids) {
+                ProtocolValues.uuid(id, "inventory identity");
+                require(id.compareTo(previous) > 0, "inventory", "must contain unique identities in UUID order");
+                previous = id;
+            }
+            nextAfter = optionalUuid(nextAfter, "inventory cursor");
+            require(nextAfter == null || nextAfter.equals(previous), "inventory cursor", "must name the last identity");
+        }
+    }
+
+    record UploadPage(
+            List<Upload> uploads,
+            @JsonProperty(required = true) String nextAfter) {
+        UploadPage {
+            require(uploads != null && uploads.size() <= 10, "upload inventory", "must contain at most ten records");
+            uploads = List.copyOf(uploads);
+            String previous = "";
+            for (Upload upload : uploads) {
+                require(upload.id().compareTo(previous) > 0, "upload inventory", "must have unique ordered identities");
+                previous = upload.id();
+            }
+            nextAfter = optionalUuid(nextAfter, "upload inventory cursor");
+            require(nextAfter == null || nextAfter.equals(previous), "upload cursor", "must name the last identity");
+        }
+    }
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Info(int apiVersion, String serverId, Set<String> capabilities, Map<String, Profile> profiles) {
         Info {
