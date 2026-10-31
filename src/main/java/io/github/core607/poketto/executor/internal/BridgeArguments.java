@@ -30,6 +30,36 @@ final class BridgeArguments {
 
     private BridgeArguments() {}
 
+    static Status status(JsonNode arguments) {
+        if (object(arguments, "status").isEmpty()) {
+            return new Status(false);
+        }
+        return new Status(bool(exactly(arguments, Status.class), "remote"));
+    }
+
+    record Status(boolean remote) {}
+
+    static Receipt receipt(JsonNode arguments) {
+        JsonNode fields = exactly(arguments, Receipt.class);
+        return new Receipt(
+                string(fields, "kind"),
+                integer(fields, "offset"),
+                integer(fields, "limit"),
+                nullableString(fields, "sha256"));
+    }
+
+    record Receipt(String kind, int offset, int limit, String sha256) {
+        Receipt {
+            require(Set.of("save", "import").contains(kind), "receipt kind", "must be save or import");
+            ProtocolValues.inRange(offset, 0, 65536, "receipt offset");
+            ProtocolValues.inRange(limit, 1, 16384, "receipt page limit");
+            if (sha256 != null) {
+                sha256 = ProtocolValues.hex(sha256, 64, "receipt digest");
+            }
+            require(offset == 0 || sha256 != null, "receipt digest", "must identify every continuation");
+        }
+    }
+
     static ArtifactCreate artifactCreate(JsonNode arguments) {
         var fields = exactly(arguments, ArtifactCreate.class);
         return new ArtifactCreate(string(fields, "path"), string(fields, "mediaType"));
@@ -219,6 +249,12 @@ final class BridgeArguments {
         JsonNode value = fields.path(field);
         require(value.isBoolean(), field, "must be a boolean");
         return value.booleanValue();
+    }
+
+    private static int integer(JsonNode fields, String field) {
+        JsonNode value = fields.path(field);
+        require(value.isIntegralNumber() && value.canConvertToInt(), field, "must be an integer");
+        return value.intValue();
     }
 
     private static List<String> selected(JsonNode fields, String field) {

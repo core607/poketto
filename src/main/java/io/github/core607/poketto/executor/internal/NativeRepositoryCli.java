@@ -3,10 +3,12 @@ package io.github.core607.poketto.executor.internal;
 /** The repository CLI is consumer code, carried by Poketto rather than compiled into Sandcrab. */
 final class NativeRepositoryCli {
     private static final String SOURCE = """
-            import argparse,json,subprocess,sys
+            import argparse,base64,hashlib,json,subprocess,sys
             parser=argparse.ArgumentParser(prog='poketto')
             commands=parser.add_subparsers(dest='operation',required=True)
-            commands.add_parser('status',help='Show local acknowledged state; does not fetch remote main or inspect Git HEAD')
+            status=commands.add_parser('status',help='Show local acknowledged state; does not inspect Git HEAD')
+            status.add_argument('--remote',action='store_true',help='Also fetch current remote main and compare it with the host baseline')
+            commands.add_parser('receipt',help='Read a complete retained receipt, including details omitted by status').add_argument('kind',choices=['save','import'])
             commands.add_parser('recover')
             save=commands.add_parser('save')
             save.add_argument('paths',nargs='*')
@@ -42,7 +44,9 @@ final class NativeRepositoryCli {
             args=parser.parse_args()
             arguments={}
             operation=args.operation
-            if args.operation=='save':
+            if operation=='status' and args.remote:
+                arguments={'remote':True}
+            elif args.operation=='save':
                 if not args.paths and not args.delete:
                     parser.error('save requires selected files or explicit --delete paths')
                 arguments={'writes':args.paths,'deletes':args.delete}
@@ -62,14 +66,42 @@ final class NativeRepositoryCli {
                                'key':args.key,'replace':args.replace}
                 else:
                     arguments={'path':args.path,'assetId':args.asset,'revision':args.revision,'replace':args.replace}
-            request=json.dumps({'operation':operation,'arguments':arguments}).encode()
-            if len(request)>65536:
-                parser.error('host request exceeds 64 KiB')
-            result=subprocess.run(['sandcrab','call','-'],input=request,stdout=subprocess.PIPE)
-            sys.stdout.buffer.write(result.stdout)
-            if result.returncode:
-                sys.exit(result.returncode)
-            reply=json.loads(result.stdout)
+            def call(operation,arguments):
+                request=json.dumps({'operation':operation,'arguments':arguments}).encode()
+                if len(request)>65536:
+                    parser.error('host request exceeds 64 KiB')
+                result=subprocess.run(['sandcrab','call','-'],input=request,stdout=subprocess.PIPE)
+                if result.returncode:
+                    sys.stdout.buffer.write(result.stdout)
+                    sys.exit(result.returncode)
+                return result.stdout
+            if operation=='receipt':
+                content=bytearray()
+                digest=None
+                while True:
+                    raw=call('receipt',{'kind':args.kind,'offset':len(content),'limit':16384,'sha256':digest})
+                    reply=json.loads(raw)
+                    if reply.get('ok') is not True:
+                        sys.stdout.buffer.write(raw)
+                        sys.exit(1)
+                    page=reply['result']
+                    if page['offset']!=len(content) or (digest is not None and digest!=page['sha256']):
+                        parser.error('receipt changed during delivery')
+                    digest=page['sha256']
+                    chunk=base64.b64decode(page['base64'],validate=True)
+                    content.extend(chunk)
+                    if not chunk or len(content)>65536 or page['bytes']>65536:
+                        parser.error('invalid receipt delivery length')
+                    if page['nextOffset'] is None:
+                        if len(content)!=page['bytes'] or hashlib.sha256(content).hexdigest()!=digest:
+                            parser.error('receipt delivery is incomplete')
+                        sys.stdout.buffer.write(content+b'\\n')
+                        sys.exit(0)
+                    if page['nextOffset']!=len(content):
+                        parser.error('invalid receipt continuation')
+            raw=call(operation,arguments)
+            sys.stdout.buffer.write(raw)
+            reply=json.loads(raw)
             sys.exit(0 if reply.get('ok') is True else 1)
             """;
 

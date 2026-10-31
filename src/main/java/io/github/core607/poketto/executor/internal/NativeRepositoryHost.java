@@ -1,5 +1,6 @@
 package io.github.core607.poketto.executor.internal;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
@@ -13,10 +14,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
 
 /** Opaque calls terminate here: only the application interprets repository identities and save preconditions. */
 final class NativeRepositoryHost {
+    private static final Logger log = LoggerFactory.getLogger(NativeRepositoryHost.class);
     private final SelectedFileSaves saves;
     private final SnapshotReader files;
     private final NativeArtifactCommands artifacts;
@@ -41,7 +46,9 @@ final class NativeRepositoryHost {
             var workspace = new WorkspaceId(held.owner().workspaceId());
             SelectedFileSaves.State state = held.state();
             reply = switch (request.operation()) {
-                case "status" -> status(request, held);
+                case "status" -> status(principal, workspace, request, held);
+                case "receipt" ->
+                    NativeRepositoryReceipts.page(held.record().state(), BridgeArguments.receipt(request.arguments()));
                 case "save" -> save(principal, workspace, held, lease, state, request.arguments());
                 case "recover" -> recover(principal, workspace, state, request.arguments());
                 case "artifact_create", "artifact_remove" ->
@@ -69,22 +76,47 @@ final class NativeRepositoryHost {
             reply = BridgeReplies.failed("REPOSITORY_UNAVAILABLE");
         }
         lease.authorize();
-        return SandcrabProtocol.write(reply);
+        byte[] response = SandcrabProtocol.write(reply);
+        if (response.length > SandcrabEventProtocol.CALL_BYTES) {
+            throw new WorkerUnavailableException(
+                    new IllegalStateException("Repository host reply exceeds its byte budget"));
+        }
+        return response;
     }
 
-    private static BridgeReplies.Reply status(Request request, AccountCommand held) {
-        if (!request.arguments().isEmpty()) {
-            throw new IllegalArgumentException("Status takes no arguments");
-        }
+    private BridgeReplies.Reply status(
+            AuthPrincipal principal, WorkspaceId workspace, Request request, AccountCommand held) {
+        BridgeArguments.Status query = BridgeArguments.status(request.arguments());
         var record = held.record();
         return BridgeReplies.succeeded(new Status(
                 record.copyId().toString(),
                 record.owner().fullRead() ? "full" : "public",
                 record.state().baseCommit(),
                 record.state().originalCommit(),
+                query.remote() ? remoteStatus(principal, workspace, record) : null,
                 record.state().uncertain(),
-                record.state().lastSave(),
-                record.state().lastImport()));
+                NativeRepositoryReceipts.preview(record.state().lastSave()),
+                NativeRepositoryReceipts.preview(record.state().lastImport())));
+    }
+
+    private BridgeReplies.RemoteStatus remoteStatus(
+            AuthPrincipal principal, WorkspaceId workspace, AccountCopyRecord record) {
+        if (!record.owner().fullRead()) {
+            return new BridgeReplies.RemoteStatus(
+                    BridgeReplies.RemoteState.PUBLIC_PROJECTION,
+                    record.publicExport().export().commit());
+        }
+        try {
+            Optional<String> commit = saves.currentCommit(principal, workspace);
+            return new BridgeReplies.RemoteStatus(
+                    commit.filter(record.state().baseCommit()::equals).isPresent()
+                            ? BridgeReplies.RemoteState.MATCHES_BASE
+                            : BridgeReplies.RemoteState.DIFFERS_FROM_BASE,
+                    commit.orElse(null));
+        } catch (ContentRepositoryException unavailable) {
+            log.warn("Remote main could not be checked; local copy status remains available", unavailable);
+            return new BridgeReplies.RemoteStatus(BridgeReplies.RemoteState.UNAVAILABLE, null);
+        }
     }
 
     private BridgeReplies.Reply save(
@@ -164,14 +196,16 @@ final class NativeRepositoryHost {
         }
     }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     record Status(
             String copyId,
             String scope,
             String baseCommit,
             String initialCommit,
+            BridgeReplies.RemoteStatus remote,
             boolean writeOutcomeUnknown,
-            BridgeReplies.Recorded lastSave,
-            BridgeReplies.Recorded lastImport) {}
+            NativeRepositoryReceipts.Preview lastSave,
+            NativeRepositoryReceipts.Preview lastImport) {}
 
     @FunctionalInterface
     interface SnapshotReader {
