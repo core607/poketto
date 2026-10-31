@@ -36,7 +36,7 @@ class NativeTransferStoreTests {
                     .isInstanceOf(WorkerUnavailableException.class);
             try (var file = store.write(4, () -> {}, output -> output.write(new byte[] {1, 2, 3, 4}))) {
                 assertThat(file.size()).isEqualTo(4);
-                assertThat(file.sha256()).isEqualTo(SessionWorker.hash(new byte[] {1, 2, 3, 4}));
+                assertThat(file.sha256()).isEqualTo(SandcrabProtocol.sha256(new byte[] {1, 2, 3, 4}));
                 assertThatThrownBy(() -> store.write(1, () -> {}, output -> output.write(0)))
                         .isInstanceOf(NativeTransferStore.Capacity.class);
             }

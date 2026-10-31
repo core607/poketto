@@ -93,7 +93,7 @@ class NativeArtifactsTests {
                     .orElseThrow();
             assertThat(page.bytes()).containsExactly(2, 3, 4);
             assertThat(page.size()).isEqualTo(5);
-            assertThat(page.sha256()).isEqualTo(SessionWorker.hash(new byte[] {1, 2, 3, 4, 5}));
+            assertThat(page.sha256()).isEqualTo(SandcrabProtocol.sha256(new byte[] {1, 2, 3, 4, 5}));
             assertThat(checks.get()).isEqualTo(2);
             when(grant.accountId()).thenReturn(UUID.randomUUID());
             assertThat(artifacts.owner(grant, workspace, metadata.artifactId())).isEmpty();

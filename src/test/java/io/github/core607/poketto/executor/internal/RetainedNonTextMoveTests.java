@@ -73,7 +73,10 @@ class RetainedNonTextMoveTests {
             assertThat(pending.move.fileBaselines.get("private/dest.bin").file(workspace, "private/dest.bin"))
                     .isEqualTo(expected);
             var saves = unavailable(fixture);
-            assertThat(saves.moves().installed(pending).ok()).isTrue();
+            assertThat(new SessionMoves(saves.repository(), fixture.moves(auth))
+                            .installed(pending)
+                            .ok())
+                    .isTrue();
             var installed = reopen(pending);
             var restored = saves.baselineFile(actor, workspace, installed, "private/dest.bin");
             assertThat(restored).isEqualTo(expected);
@@ -102,7 +105,10 @@ class RetainedNonTextMoveTests {
             var pending = reopen(state);
             assertThat(pending.move.fileBaselines.keySet()).containsExactlyInAnyOrderElementsOf(pending.move.paths);
             var saves = unavailable(fixture);
-            assertThat(saves.moves().installed(pending).ok()).isTrue();
+            assertThat(new SessionMoves(saves.repository(), fixture.moves(auth))
+                            .installed(pending)
+                            .ok())
+                    .isTrue();
             var installed = reopen(pending);
             var file = saves.baselineFile(actor, workspace, installed, "private/moved.pdf");
             assertThat(file.expectedAbsence()).isFalse();
@@ -128,8 +134,7 @@ class RetainedNonTextMoveTests {
             String destination,
             Optional<String> index) {
         var state = new SelectedFileSaves.State(commit, checkpoint -> {});
-        var moves =
-                new SelectedFileSaves(auth, fixture.reader(auth), fixture.patches(auth), fixture.moves(auth)).moves();
+        var moves = new SessionMoves(fixture.reader(auth), fixture.moves(auth));
         var plan = moves.prepare(actor, workspace, state, source, destination, index);
         assertThat(moves.commit(actor, workspace, state, plan).code()).isEqualTo("LOCAL_MOVE_PENDING");
         return state;

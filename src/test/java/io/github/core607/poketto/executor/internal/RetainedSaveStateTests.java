@@ -56,7 +56,7 @@ class RetainedSaveStateTests {
     void roundTripPreservesMovePayloadAndConfirmedRemoteOutcomeWithoutAliasing() {
         var state = stateWithIndependentBaselines();
         byte[] payload = {0, -1, 42, 10};
-        state.move = new SessionMoves.Pending(
+        state.move = new PendingAccountMove(
                 new RepositoryMoveRequest(ADVANCED, "from.md", "to.md"), payload, Set.of("from.md", "to.md"));
         state.move.attempt = new RepositoryWriteAttempt(CANDIDATE, new byte[] {4, 5, 6});
         state.move.result = new RepositoryPatchResult(CANDIDATE, true, false, Map.of("from.md", Optional.empty()));

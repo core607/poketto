@@ -55,7 +55,7 @@ class RetainedSessionMovesTests {
             pushes.add(fixture.pushes());
         });
         SessionMoves moves = moves(fixture);
-        SessionMoves.Pending plan =
+        PendingAccountMove plan =
                 moves.prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
         byte[] original = plan.payload.clone();
         assertThat(moves.commit(actor, workspace, state, plan).code()).isEqualTo("LOCAL_MOVE_PENDING");
@@ -100,7 +100,7 @@ class RetainedSessionMovesTests {
             }
         });
         SessionMoves moves = moves(fixture);
-        SessionMoves.Pending plan =
+        PendingAccountMove plan =
                 moves.prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
         assertThatThrownBy(() -> moves.commit(actor, workspace, state, plan)).isSameAs(failure);
         assertThat(fixture.pushes()).isZero();
@@ -124,7 +124,7 @@ class RetainedSessionMovesTests {
             retained.add(snapshot);
         });
         SessionMoves moves = moves(fixture);
-        SessionMoves.Pending plan =
+        PendingAccountMove plan =
                 moves.prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
         assertThatThrownBy(() -> moves.commit(actor, workspace, state, plan)).isSameAs(failure);
         assertThat(fixture.pushes()).isEqualTo(1);
@@ -149,7 +149,7 @@ class RetainedSessionMovesTests {
             }
         });
         SessionMoves moves = moves(fixture);
-        SessionMoves.Pending plan =
+        PendingAccountMove plan =
                 moves.prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
         moves.commit(actor, workspace, state, plan);
         String committed = state.move.result.commit();
@@ -180,7 +180,7 @@ class RetainedSessionMovesTests {
             return delegate.getFile(call.getArgument(0), call.getArgument(1), commit, call.getArgument(3));
         });
         var state = new SelectedFileSaves.State(fixture.sourceCommit(), value -> {});
-        var moves = new SelectedFileSaves(auth, reader, fixture.patches(auth), fixture.moves(auth)).moves();
+        var moves = new SessionMoves(reader, fixture.moves(auth));
         var plan = moves.prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
         assertThatThrownBy(() -> moves.commit(actor, workspace, state, plan))
                 .isInstanceOf(ContentRepositoryException.class)
@@ -226,7 +226,7 @@ class RetainedSessionMovesTests {
     }
 
     private SessionMoves moves(PublicExecutionNativeFixture fixture) {
-        return new SelectedFileSaves(auth, fixture.reader(auth), fixture.patches(auth), fixture.moves(auth)).moves();
+        return new SessionMoves(fixture.reader(auth), fixture.moves(auth));
     }
 
     private PublicExecutionNativeFixture fixture() throws Exception {

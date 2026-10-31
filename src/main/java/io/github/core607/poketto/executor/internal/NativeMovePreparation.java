@@ -87,7 +87,7 @@ final class NativeMovePreparation {
                     state.baseCommit,
                     null,
                     request,
-                    SessionMoves.affected(definition).stream().sorted().toList(),
+                    WorkingCopyMoves.affected(definition).stream().sorted().toList(),
                     Map.of(),
                     Set.of(),
                     Map.of(),
@@ -116,7 +116,7 @@ final class NativeMovePreparation {
         ProtocolValues.require(
                 definition.workspace().equals(workspace)
                         && definition.request().equals(plan.move())
-                        && SessionMoves.affected(definition).equals(Set.copyOf(plan.paths())),
+                        && WorkingCopyMoves.affected(definition).equals(Set.copyOf(plan.paths())),
                 "move definition",
                 "must match its retained owner, request and path inventory");
     }

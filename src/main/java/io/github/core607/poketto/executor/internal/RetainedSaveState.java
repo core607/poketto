@@ -135,7 +135,7 @@ record RetainedSaveState(
             }
         }
 
-        static Move capture(SessionMoves.Pending pending) {
+        static Move capture(PendingAccountMove pending) {
             return pending == null
                     ? null
                     : new Move(
@@ -147,8 +147,8 @@ record RetainedSaveState(
                             pending.fileBaselines);
         }
 
-        SessionMoves.Pending restore() {
-            var pending = new SessionMoves.Pending(request, payload(), paths);
+        PendingAccountMove restore() {
+            var pending = new PendingAccountMove(request, payload(), paths);
             pending.attempt = attempt;
             pending.result = result;
             pending.fileBaselines = fileBaselines;

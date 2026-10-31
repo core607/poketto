@@ -32,7 +32,7 @@ final class SelectedFileSaves {
     private final AuthService auth;
     private final AuthorizedRepositoryReader reader;
     private final RepositoryPatchService patches;
-    private final SessionMoves moves;
+    private final WorkingCopyMoves moves;
 
     SelectedFileSaves(
             AuthService auth,
@@ -42,10 +42,10 @@ final class SelectedFileSaves {
         this.auth = auth;
         this.reader = reader;
         this.patches = patches;
-        this.moves = new SessionMoves(reader, moves);
+        this.moves = new WorkingCopyMoves(reader, moves);
     }
 
-    SessionMoves moves() {
+    WorkingCopyMoves moves() {
         return moves;
     }
 
@@ -114,7 +114,9 @@ final class SelectedFileSaves {
             return BridgeReplies.failed("RECOVER_SYNC_FIRST");
         }
         if (state.move != null) {
-            return SessionMoves.pendingResult(state.move, "RECOVER_MOVE_FIRST");
+            return BridgeReplies.failed(
+                    "RECOVER_MOVE_FIRST",
+                    "This copy retains a move intent requiring operator reconciliation. Files and recovery data are preserved.");
         }
         if (state.uncertain) {
             return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
@@ -268,7 +270,7 @@ final class SelectedFileSaves {
         Optional<RepositoryWriteAttempt> attempt = Optional.empty();
         BridgeReplies.Recorded lastSave = new BridgeReplies.Absent();
         BridgeReplies.Recorded lastImport = new BridgeReplies.Absent();
-        SessionMoves.Pending move;
+        PendingAccountMove move;
         PendingWorkspaceSync sync;
         NativeRepositoryPlan nativePlan;
 

@@ -185,7 +185,7 @@ class NativeMediaCommandsTests {
         JsonNode result = reply.path("result");
         assertThat(result.path("indexUpdated").booleanValue()).isFalse();
         assertThat(result.path("originalStored").booleanValue()).isTrue();
-        assertThat(result.path("indexEntry").path("revision").stringValue()).isEqualTo(SessionWorker.hash(binary));
+        assertThat(result.path("indexEntry").path("revision").stringValue()).isEqualTo(SandcrabProtocol.sha256(binary));
         var reference = new ManagedAssetReference(
                 UUID.fromString(result.path("assetId").stringValue()),
                 result.path("sha256").stringValue());
