@@ -132,6 +132,13 @@ def stop_java(unit):
     call('systemctl', 'reset-failed', unit, check=False)
 
 
+def read_result(consumer, report):
+    raw = ordinary(consumer / 'result.json', 1024 * 1024)
+    with report.with_suffix('.java.json').open('xb') as evidence:
+        evidence.write(raw)
+    return json.loads(raw)
+
+
 def java(probe, args, runtime, consumer, flag):
     # This actor is outside the daemon's unit prefix, so daemon startup cleanup cannot kill the observer.
     unit = probe.name + 'j-recovery.service'
@@ -162,7 +169,7 @@ def java(probe, args, runtime, consumer, flag):
             if process.poll() is None:
                 process.kill()
             process.wait(timeout=10)
-    receipt = json.loads(ordinary(args.report.with_suffix('.stdout'), 1024 * 1024))
+    receipt = read_result(consumer, args.report)
     assert receipt['result'] == 'PASS' and len(receipt['recoveries']) == 4 and len(receipt['checks']) == 5
     assert all(not row['oldTerminalObserved'] and not row['oldReplyReceiptConfirmed'] for row in receipt['recoveries'])
     assert all(row['controllerConfirmedOldContainment'] and row['fresh']['state'] == 'succeeded' for row in receipt['recoveries'])

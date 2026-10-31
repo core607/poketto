@@ -56,4 +56,9 @@ helper refuses cleanup for one owned job; its flag is removed before recovery an
 final cleanup. The controller verifies old cgroups, units and runtime directories
 after each restart. Stream failure itself never supplies that proof. All four Java
 recoveries and final `cleanup: PASS` are required; every attempt uses a new report
-path. These checks do not establish complete Poketto consumer acceptance.
+path. Java publishes its structured result in an exclusive control file; the
+controller retains it as `.java.json` before parsing. Standard output and error
+remain diagnostic streams. On Linux, running
+`python3 executor-native/test_sandcrab_recovery_java_probe.py` checks this result
+boundary without a host probe. These checks do not establish complete Poketto
+consumer acceptance.

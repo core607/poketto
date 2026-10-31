@@ -77,6 +77,21 @@ final class SandcrabProbeControl {
         }
     }
 
+    void complete(byte[] summary) {
+        require(summary.length <= 1024 * 1024, "Fixture summary exceeded its bound");
+        Path published = directory.resolve("result.json");
+        require(!Files.exists(published, LinkOption.NOFOLLOW_LINKS), "Fixture result already exists");
+        try {
+            // The persistent exclusive marker also prevents concurrent or interrupted publication from retrying.
+            Files.write(directory.resolve("result.started"), new byte[0], StandardOpenOption.CREATE_NEW);
+            Path pending = directory.resolve("result.pending");
+            Files.write(pending, summary, StandardOpenOption.CREATE_NEW);
+            Files.move(pending, published, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException failure) {
+            throw new IllegalStateException("Could not publish the fixture result", failure);
+        }
+    }
+
     private static void require(boolean valid, String message) {
         if (!valid) {
             throw new IllegalStateException(message);

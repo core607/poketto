@@ -38,8 +38,7 @@ public final class SandcrabRecoveryNativeProbe {
         String epoch = probe.client.info().serverId();
         require(probe.client.runs(epoch, null).ids().isEmpty(), "Fixture retained new-epoch command receipts");
         require(probe.client.sessions(epoch, null).ids().isEmpty(), "Fixture created unexpected sessions");
-        System.out.println(new String(
-                SandcrabProtocol.write(new Summary("PASS", probe.checks, probe.recoveries)), StandardCharsets.UTF_8));
+        probe.control.complete(SandcrabProtocol.write(new Summary("PASS", probe.checks, probe.recoveries)));
     }
 
     private SandcrabProtocol.RunRequest plan(String source) {
