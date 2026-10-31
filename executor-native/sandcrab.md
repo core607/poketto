@@ -8,6 +8,8 @@ They also verify snapshot bytes and digests, binary host-call replies, and outpu
 SSE continuation. Host calls run with one event-observer slot, including a quiet
 pending request, so identity validation cannot consume a second slot.
 It does not exercise Poketto authorization or establish a product cutover.
+The separate [process durability fixture](durability.md) exercises the native
+application runtime at durable journal and remote-write checkpoints.
 
 ```sh
 ./gradlew stageExecutorNativeTest buildExecutorRust
