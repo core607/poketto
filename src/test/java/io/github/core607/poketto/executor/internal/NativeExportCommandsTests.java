@@ -10,16 +10,64 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentExportException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 
 @EnabledOnOs(OS.LINUX)
 class NativeExportCommandsTests extends NativeExportFixture {
+    @Test
+    void theWholeCommandDeadlineRetiresThePackageDuringItsChecksumPass() throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        var copying = new AtomicBoolean();
+        var checks = new AtomicInteger();
+        var retired = new CountDownLatch(1);
+        when(lease.remaining()).thenAnswer(call -> {
+            long left = deadline - System.nanoTime();
+            if (left <= 0) {
+                throw new WorkerUnavailableException(new IllegalStateException("Fixture command expired"));
+            }
+            return Duration.ofNanos(left);
+        });
+        doAnswer(call -> {
+                    copying.set(true);
+                    return call.callRealMethod();
+                })
+                .when(packages)
+                .copyTo(any(), any(), any(), any(), any());
+        doAnswer(call -> {
+                    // The third authorization is inside the checksum pass, before the first output write.
+                    if (copying.get() && checks.incrementAndGet() == 3) {
+                        assertThat(retired.await(4, TimeUnit.SECONDS)).isTrue();
+                    }
+                    return authorized();
+                })
+                .when(auth)
+                .authorize(any(), any(), any(Capability[].class));
+        doAnswer(call -> {
+                    call.callRealMethod();
+                    retired.countDown();
+                    return null;
+                })
+                .when(packages)
+                .closeClient(any(), any(), anyString());
+        assertThat(command(List.of("private/secret.md"), "expired.zip", false).code())
+                .isEqualTo("EXPORT_NOT_FOUND");
+        assertThat(checks.get()).isEqualTo(3);
+        assertThat(uploads.get()).isZero();
+        assertThat(worktree).doesNotContainKey("expired.zip");
+        assertThat(fixture.retainedPackages()).isZero();
+    }
+
     @Test
     void aCompletedPackageKeepsTheRemainingCommandTimeForTransfer() throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();

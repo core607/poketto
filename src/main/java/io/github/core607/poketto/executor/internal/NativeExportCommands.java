@@ -14,6 +14,7 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,6 +28,7 @@ final class NativeExportCommands {
     private static final long MAX_TRANSFER = 1024L * 1024 * 1024;
     private final NativeRepositoryFiles files;
     private final PortableContentExports packages;
+    private final Semaphore builders = new Semaphore(1);
 
     NativeExportCommands(NativeRepositoryFiles files, PortableContentExports packages) {
         this.files = files;
@@ -120,7 +122,8 @@ final class NativeExportCommands {
         private final String client;
         private final AtomicReference<BuildState> state = new AtomicReference<>(BuildState.BUILDING);
         private final FutureTask<PortableContentExports.Export> result;
-        private final Thread deadline;
+        private final Thread buildDeadline;
+        private Thread transferDeadline;
 
         Build(
                 AuthPrincipal principal,
@@ -132,6 +135,9 @@ final class NativeExportCommands {
             this.principal = principal;
             this.workspace = workspace;
             this.client = client;
+            if (!builders.tryAcquire()) {
+                throw new ContentExportException(ContentExportException.Reason.CAPACITY);
+            }
             result = new FutureTask<>(() -> {
                 try {
                     return packages.create(principal, workspace, paths, publicOnly, Optional.of(client));
@@ -143,8 +149,15 @@ final class NativeExportCommands {
                     }
                 }
             });
-            deadline = Thread.ofVirtual().name("native-export-deadline").start(() -> expire(budget));
-            Thread.ofVirtual().name("native-export-build").start(result);
+            buildDeadline = deadline(budget, BuildState.BUILDING);
+            Thread.ofVirtual().name("native-export-build").start(() -> {
+                try {
+                    result.run();
+                } finally {
+                    // Cancellation may precede run or return before an uninterruptible provider call exits.
+                    builders.release();
+                }
+            });
         }
 
         PortableContentExports.Export await(NativeRepositoryLease lease) {
@@ -156,7 +169,8 @@ final class NativeExportCommands {
                     if (!state.compareAndSet(BuildState.BUILDING, BuildState.HANDED_OFF)) {
                         throw new ContentExportException(ContentExportException.Reason.UNAVAILABLE);
                     }
-                    deadline.interrupt();
+                    buildDeadline.interrupt();
+                    transferDeadline = deadline(lease.remaining(), BuildState.HANDED_OFF);
                     return receipt;
                 } catch (TimeoutException pending) {
                     // Observe this same build while current command authority and time remain.
@@ -177,13 +191,21 @@ final class NativeExportCommands {
             }
         }
 
-        private void expire(Duration budget) {
+        private Thread deadline(Duration budget, BuildState phase) {
+            long expires = System.nanoTime() + budget.toNanos();
+            return Thread.ofVirtual().name("native-export-deadline").start(() -> expire(expires, phase));
+        }
+
+        private void expire(long expires, BuildState phase) {
             try {
-                Thread.sleep(budget);
+                long left = expires - System.nanoTime();
+                if (left > 0) {
+                    Thread.sleep(Duration.ofNanos(left));
+                }
             } catch (InterruptedException stopped) {
                 return;
             }
-            if (!state.compareAndSet(BuildState.BUILDING, BuildState.ABANDONED)) {
+            if (!state.compareAndSet(phase, BuildState.ABANDONED)) {
                 return;
             }
             result.cancel(true);
@@ -201,7 +223,10 @@ final class NativeExportCommands {
         @Override
         public void close() {
             state.set(BuildState.ABANDONED);
-            deadline.interrupt();
+            buildDeadline.interrupt();
+            if (transferDeadline != null) {
+                transferDeadline.interrupt();
+            }
             result.cancel(true);
             packages.closeClient(principal, workspace, client);
         }

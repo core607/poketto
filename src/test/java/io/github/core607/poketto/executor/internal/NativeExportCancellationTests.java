@@ -73,10 +73,8 @@ class NativeExportCancellationTests extends NativeExportFixture {
             assertThatThrownBy(() -> command.get(5, TimeUnit.SECONDS))
                     .hasCauseInstanceOf(WorkerUnavailableException.class);
             assertThat(uploads.get()).isZero();
-            if (blockedAuthorization == 2) {
-                assertThat(nextCommand().code()).isEqualTo("EXPORT_CAPACITY");
-                assertThat(clients).hasSize(2);
-            }
+            assertThat(nextCommand().code()).isEqualTo("EXPORT_CAPACITY");
+            assertThat(clients).hasSize(1);
         } finally {
             resume.countDown();
         }
@@ -89,6 +87,7 @@ class NativeExportCancellationTests extends NativeExportFixture {
         NativeRepositoryLease next = mock(NativeRepositoryLease.class);
         when(next.remaining()).thenReturn(Duration.ofSeconds(30));
         when(next.transferLimit()).thenReturn(1024L * 1024 * 1024);
+        when(next.upload(anyString(), any())).thenAnswer(call -> install(call.getArgument(0), call.getArgument(1)));
         return exports.command(actor, held, next, arguments(List.of("private/secret.md"), "next.zip", false));
     }
 
