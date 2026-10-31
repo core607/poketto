@@ -91,6 +91,9 @@ final class NativeMoves {
             BooleanSupplier outOfTime) {
         SelectedFileSaves.State state = held.state();
         NativeRepositoryPlan plan = require(state, id);
+        if (!plan.prepared()) {
+            return NativePlanReplies.progress(plan);
+        }
         NativeMoveState outcome = plan.moveState();
         if (outcome.conflicted()) {
             return reply(state, "REPOSITORY_CONFLICT");

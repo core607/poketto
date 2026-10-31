@@ -52,7 +52,7 @@ final class NativeMovePreparation {
                 return BridgeReplies.failedWith(
                         problem,
                         new LocalConflict(plan.id().toString(), path),
-                        "Working files are unchanged. Keep local edits; save or synchronize them before preparing another move.");
+                        "Working files are unchanged. Inspect or recover retained originals, then release this plan before saving or synchronizing affected local edits.");
             }
             state.retainPlan(state.nativePlan.withFile(
                     path, new NativeRepositoryPlan.File(original.file(), null, null, false, false)));

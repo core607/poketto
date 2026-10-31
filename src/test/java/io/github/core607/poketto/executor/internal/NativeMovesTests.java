@@ -44,6 +44,26 @@ class NativeMovesTests extends NativePlanFixture {
     }
 
     @Test
+    void interruptedStagingKeepsCapturedOriginalsAndRequiresCompletingTheSamePreparation() {
+        byte[] original = local.get("private/secret.md").clone();
+        loseMaterialization.set(true);
+        assertThatThrownBy(this::prepare).isInstanceOf(WorkerUnavailableException.class);
+        NativeRepositoryPlan partial = state.get().nativePlan();
+        assertThat(partial.prepared()).isFalse();
+        assertThat(call("recover", new BridgeArguments.Sync()).path("message").stringValue())
+                .contains("Run prepare again");
+        local.put("private/secret.md", "edited after captured preparation".getBytes(StandardCharsets.UTF_8));
+        assertThat(prepare().path("ok").booleanValue()).isTrue();
+        assertThat(state.get().nativePlan().id()).isEqualTo(partial.id());
+        NativePlanFile retainedOriginal =
+                state.get().nativePlan().files().get("private/secret.md").original();
+        assertThat(retained.get(retainedOriginal.sha256())).containsExactly(original);
+        assertThat(local.get("private/secret.md"))
+                .containsExactly("edited after captured preparation".getBytes(StandardCharsets.UTF_8));
+        assertThat(repository.pushes()).isZero();
+    }
+
+    @Test
     void finalAcceptanceUsesSavedVersionsAndLeavesEditsMadeAfterAnEarlierAcceptanceUnsaved() {
         prepare();
         applyCandidates();
