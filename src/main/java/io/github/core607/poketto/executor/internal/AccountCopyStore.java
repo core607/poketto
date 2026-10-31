@@ -7,15 +7,19 @@ import io.github.core607.poketto.content.RepositoryBaselineLimits;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -28,6 +32,7 @@ final class AccountCopyStore {
     private final RetainedDirectory directory;
     private final RetainedRecordFiles files;
     private final AccountFileBaselines baselines;
+    private final AccountPlanFiles plans;
     private final Limits limits;
     private final Clock clock;
     private String collectionCursor = "";
@@ -49,6 +54,7 @@ final class AccountCopyStore {
             throw unavailable(failure);
         }
         baselines = new AccountFileBaselines(this.root, directory, files, limits.recordBytes());
+        plans = new AccountPlanFiles(this.root, directory, limits.originalFiles());
     }
 
     RepositoryBaselineLimits traversalLimits() {
@@ -230,10 +236,12 @@ final class AccountCopyStore {
                 if (stored == null) {
                     // A removal deletes its journal before the versions it referenced.
                     baselines.retainOnly(key(owner), null);
+                    plans.retainOnly(key(owner), null, Set.of());
                     return new Lease(owner, held, null, null);
                 }
                 String digest = stored.state().fileBaselines();
                 var versions = baselines.read(key(owner), stored.copyId(), digest);
+                retainPlanFiles(owner, stored.state().nativePlan());
                 return new Lease(owner, held, stored.restore(versions), digest);
             } catch (RuntimeException | IOException failure) {
                 held.close();
@@ -292,6 +300,7 @@ final class AccountCopyStore {
             unused.requireValid();
             cleanPending(name.substring(0, 64));
             baselines.retainOnly(name.substring(0, 64), null);
+            plans.retainOnly(name.substring(0, 64), null, Set.of());
             Files.delete(path);
             RetainedDirectory.sync(root);
             return true;
@@ -316,58 +325,19 @@ final class AccountCopyStore {
         return root.resolve(key(owner) + ".account");
     }
 
+    private void retainPlanFiles(AccountCopyRecord.Owner owner, NativeRepositoryPlan plan) throws IOException {
+        plans.retainOnly(key(owner), plan == null ? null : plan.id(), plan == null ? Set.of() : plan.retainedDigests());
+    }
+
     /** A default copy keeps its original address; a fork's address adds its copy ID. */
     private static String key(AccountCopyRecord.Owner owner) {
         String base = owner.accountId() + ":" + owner.workspaceId() + ":" + owner.fullRead();
-        return SessionWorker.hash(owner.fork() == null ? base : base + ":" + owner.fork());
+        String identity = owner.fork() == null ? base : base + ":" + owner.fork();
+        return HexFormat.of().formatHex(RetainedBaselineIo.sha256().digest(identity.getBytes(StandardCharsets.UTF_8)));
     }
 
     private static RetainedCopyException unavailable(IOException failure) {
         return new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE, failure);
-    }
-
-    /** The journal's transition rules; the socket tests' in-memory journal applies the same ones. */
-    static void requireTransition(
-            AccountCopyRecord.Owner owner, AccountCopyRecord current, AccountCopyRecord next, long nextExpiry) {
-        ProtocolValues.require(next.owner().equals(owner), "copy owner", "must match the held account");
-        ProtocolValues.require(
-                next.revision() == (current == null ? 0 : current.revision() + 1),
-                "copy revision",
-                "must advance the held journal");
-        ProtocolValues.require(
-                current == null || current.copyId().equals(next.copyId()),
-                "copy identity",
-                "must not replace existing work");
-        if (current != null) {
-            ProtocolValues.require(
-                    current.phase() != AccountCopyRecord.Phase.DISCARDING
-                            || next.phase() == AccountCopyRecord.Phase.DISCARDING,
-                    "discarded copy",
-                    "must not become executable again");
-            // Only a public copy's rebuild re-pins its commit and projection, in one write from
-            // REFRESHING to REFRESHING, so the copy ID never leaves the journal.
-            boolean rebuilt = !owner.fullRead()
-                    && current.phase() == AccountCopyRecord.Phase.REFRESHING
-                    && next.phase() == AccountCopyRecord.Phase.REFRESHING;
-            ProtocolValues.require(
-                    rebuilt
-                            || current.state()
-                                    .originalCommit()
-                                    .equals(next.state().originalCommit()),
-                    "original commit",
-                    "must remain pinned");
-            ProtocolValues.require(
-                    current.original() == null || current.original().equals(next.original()),
-                    "original archive",
-                    "must remain immutable");
-            ProtocolValues.require(
-                    rebuilt || Objects.equals(current.publicExport(), next.publicExport()),
-                    "public projection",
-                    "must remain pinned");
-            ProtocolValues.require(next.expiresAt() >= current.expiresAt(), "copy expiry", "must not move backwards");
-        }
-        long latest = Math.max(nextExpiry, current == null ? 0 : current.expiresAt());
-        ProtocolValues.require(next.expiresAt() <= latest, "copy expiry", "exceeds idle retention");
     }
 
     final class Lease implements OriginalFileLookup, AutoCloseable {
@@ -393,6 +363,32 @@ final class AccountCopyStore {
         Optional<AccountCopyRecord> record() {
             requireUsable();
             return Optional.ofNullable(current);
+        }
+
+        void publishPlanFile(UUID plan, NativePlanFile file, NativeTransferStore.Source source, Runnable authorize) {
+            requirePlan(plan);
+            try {
+                plans.publish(key(owner), plan, file, source, authorize);
+            } catch (RetainedRecordFiles.SizeLimit capacity) {
+                throw new RetainedCopyException(RetainedCopyException.Reason.LIMIT, capacity);
+            } catch (IOException failure) {
+                throw unavailable(failure);
+            }
+        }
+
+        void copyPlanFile(UUID plan, NativePlanFile file, OutputStream output, Runnable authorize) throws IOException {
+            requirePlan(plan);
+            plans.copy(key(owner), plan, file, output, authorize);
+        }
+
+        private void requirePlan(UUID plan) {
+            requireUsable();
+            ProtocolValues.require(
+                    current != null
+                            && current.state().nativePlan() != null
+                            && current.state().nativePlan().id().equals(plan),
+                    "plan identity",
+                    "must match the locked copy journal");
         }
 
         AccountCopyRecord.Original captureOriginal(Consumer<Consumer<RepositoryFile>> source) {
@@ -461,6 +457,9 @@ final class AccountCopyStore {
         void write(AccountCopyRecord next) {
             requireUsable();
             requireNext(next);
+            boolean releasedPlan = current != null
+                    && current.state().nativePlan() != null
+                    && next.state().nativePlan() == null;
             Path temporary = root.resolve(key(owner) + ".pending");
             // Only first publication changes inventory membership. Atomic replacement keeps the
             // owner and copy ID; inventory readers lock and reread before acting on mutable state.
@@ -484,6 +483,9 @@ final class AccountCopyStore {
                     if (!versions.equals(previous)) {
                         discardSuperseded(versions);
                     }
+                    if (releasedPlan) {
+                        retainPlanFiles(owner, null);
+                    }
                 } finally {
                     Files.deleteIfExists(temporary);
                 }
@@ -494,7 +496,7 @@ final class AccountCopyStore {
         }
 
         private void requireNext(AccountCopyRecord next) {
-            requireTransition(owner, current, next, nextExpiry());
+            AccountCopyTransitions.requireTransition(owner, current, next, nextExpiry());
         }
 
         /** The journal already names {@code kept}; a leftover file is retried by the next change or removal. */
@@ -533,6 +535,7 @@ final class AccountCopyStore {
                 current = null;
                 currentBaselines = null;
                 baselines.retainOnly(key(owner), null);
+                retainPlanFiles(owner, null);
             } catch (IOException failure) {
                 uncertain = true;
                 throw unavailable(failure);
@@ -549,6 +552,7 @@ final class AccountCopyStore {
                         if (!Files.exists(recordPath(owner), NOFOLLOW_LINKS)) {
                             cleanPending(key(owner));
                             baselines.retainOnly(key(owner), null);
+                            retainPlanFiles(owner, null);
                             Files.deleteIfExists(root.resolve(key(owner) + ".lock"));
                             RetainedDirectory.sync(root);
                         }

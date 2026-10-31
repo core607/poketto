@@ -12,8 +12,8 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnProperty(name = "poketto.executor.enabled", havingValue = "true")
 class ExecutorAccountConfiguration {
     @Bean
-    AccountCopyMaintenance accountCopyMaintenance(IsolatedRepositoryExecutor executor) {
-        return new AccountCopyMaintenance(executor, Duration.ofMinutes(1));
+    AccountCopyMaintenance accountCopyMaintenance(NativeRepositoryExecutor executor) {
+        return new AccountCopyMaintenance(executor::collectExpiredCopies, Duration.ofMinutes(1));
     }
 
     @Bean

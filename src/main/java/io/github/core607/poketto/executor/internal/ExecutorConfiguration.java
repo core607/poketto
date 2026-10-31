@@ -15,11 +15,8 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
-import java.security.PrivateKey;
-import java.time.Clock;
-import java.time.Duration;
-import java.util.Base64;
 import java.util.Map;
+import java.util.UUID;
 import jdk.net.ExtendedSocketOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +24,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "poketto.executor.enabled", havingValue = "true")
@@ -35,43 +31,46 @@ class ExecutorConfiguration {
     private static final Logger log = LoggerFactory.getLogger(ExecutorConfiguration.class);
 
     @Bean
-    MeterBinder executorMetrics(IsolatedRepositoryExecutor executor) {
+    MeterBinder executorMetrics(NativeRepositoryExecutor executor) {
         return executor::bindMetrics;
     }
 
     @Bean
-    IsolatedRepositoryExecutor isolatedRepositoryExecutor(
+    NativeRepositoryExecutor nativeRepositoryExecutor(
             AccountCopyStore accounts,
             AuthService auth,
             RepositorySnapshotExports exports,
-            PortableContentExports packages,
             MediaFileService media,
+            PortableContentExports packages,
             AuthorizedRepositoryReader reader,
             RepositoryPatchService patches,
             RepositoryMoveService moves,
-            ObjectMapper json,
             @Value("${poketto.executor.socket}") Path socket,
-            @Value("${poketto.executor.signing-key}") Path key,
             ExecutionLimits limits,
-            @Value("${poketto.executor.open-timeout-seconds:60}") long openSeconds,
-            @Value("${poketto.executor.close-timeout-seconds:15}") long closeSeconds) {
+            @Value("${poketto.executor.transfers.directory}") Path transfers,
+            @Value("${poketto.executor.transfers.max-bytes:1073741824}") long transferBytes,
+            @Value("${poketto.executor.profile:repository}") String profile,
+            @Value("${poketto.executor.copies.bytes}") long copyBytes,
+            @Value("${poketto.executor.copies.inodes}") long copyInodes) {
         if (!System.getProperty("os.name").equalsIgnoreCase("Linux")) {
-            throw new IllegalStateException("The isolated execution service requires Linux");
+            throw new IllegalStateException("The native repository service requires Linux containment");
         }
-        if (openSeconds < 1 || openSeconds > 300 || closeSeconds < 1 || closeSeconds > 60) {
-            throw new IllegalArgumentException("Invalid isolated executor bounds");
-        }
-        return new IsolatedRepositoryExecutor(
-                accounts,
-                packages,
-                media,
-                new SelectedFileSaves(auth, reader, patches, moves),
+        // Validate persisted volume bounds before acquiring the private transfer store's owner lock.
+        new AccountCopyRecord.NativeStorage(UUID.randomUUID(), profile, copyBytes, copyInodes);
+        return NativeRepositoryRuntime.create(
+                sandcrabClient(socket),
                 auth,
+                accounts,
                 exports,
-                workerClient(json, socket, key),
+                new SelectedFileSaves(auth, reader, patches, moves),
+                media,
+                packages,
                 limits,
-                Duration.ofSeconds(openSeconds),
-                Duration.ofSeconds(closeSeconds));
+                transfers,
+                transferBytes,
+                profile,
+                copyBytes,
+                copyInodes);
     }
 
     /** Administrators have no per-account entry: only the site-wide ceilings bound them. */
@@ -98,22 +97,12 @@ class ExecutorConfiguration {
                         creatorCopies));
     }
 
-    static WorkerClient workerClient(ObjectMapper json, Path socket, Path key) {
-        return new WorkerClient(
-                socket,
-                privateKey(key),
-                () -> socketPermissions(socket),
-                ExecutorConfiguration::verifyPeer,
-                json,
-                Clock.systemUTC());
-    }
-
     static SandcrabClient sandcrabClient(Path socket) {
         return new SandcrabClient(
                 new SandboxHttp(socket, () -> socketPermissions(socket), ExecutorConfiguration::verifyPeer));
     }
 
-    private static void verifyPeer(SocketChannel channel) {
+    static void verifyPeer(SocketChannel channel) {
         try {
             if (!channel.getOption(ExtendedSocketOptions.SO_PEERCRED)
                     .user()
@@ -126,36 +115,7 @@ class ExecutorConfiguration {
         }
     }
 
-    private static PrivateKey privateKey(Path path) {
-        try {
-            ancestors(path);
-            // Every check reads the path itself, never what a link points at: following one would
-            // let anyone who can create a link inside a writable directory substitute another file
-            // between the check and the read.
-            if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.size(path) > 16 * 1024) {
-                throw new IllegalArgumentException("the signing key must be a regular file of at most 16 KiB");
-            }
-            // This key signs every request the worker trusts. Any access beyond its owner means
-            // another account on this host could sign requests as the application.
-            var permissions = Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS);
-            if (permissions.stream()
-                    .anyMatch(permission -> permission.name().startsWith("GROUP_")
-                            || permission.name().startsWith("OTHERS_"))) {
-                throw new IllegalArgumentException(
-                        "the signing key must not be readable or writable by group or others");
-            }
-            String pem = Files.readString(path);
-            byte[] bytes = Base64.getMimeDecoder()
-                    .decode(pem.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", ""));
-            return WorkerSignatures.privateKey(bytes);
-        } catch (Exception exception) {
-            // The message states the requirement; the cause says which part of it failed.
-            throw new IllegalStateException(
-                    "Executor signing key must be a private, regular Ed25519 PKCS8 file", exception);
-        }
-    }
-
-    private static void socketPermissions(Path path) {
+    static void socketPermissions(Path path) {
         try {
             ancestors(path);
             // A directory anyone else owns can be renamed or replaced, which moves the socket this
@@ -168,7 +128,7 @@ class ExecutorConfiguration {
             }
             // The endpoint must be a socket owned by root and closed to everyone outside its
             // group: a regular file or a socket someone else can bind would let another account
-            // answer in the worker's place, and the application would sign real leases to it.
+            // impersonate the sandbox service.
             var permissions = Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS);
             int mode = (Integer) Files.getAttribute(path, "unix:mode", LinkOption.NOFOLLOW_LINKS);
             if ((mode & 0170000) != 0140000
@@ -186,7 +146,7 @@ class ExecutorConfiguration {
         }
     }
 
-    private static void ancestors(Path path) throws IOException {
+    static void ancestors(Path path) throws IOException {
         if (!path.isAbsolute() || !path.equals(path.normalize())) {
             throw new IllegalArgumentException("a protected path must be absolute and already normalized");
         }

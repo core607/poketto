@@ -310,7 +310,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # A judged small agent load through real login, PostgreSQL, HTTP MCP, the root worker and SRT
+  # A judged small agent load through real login, PostgreSQL, HTTP MCP and independent Sandcrab
   # sandboxes on this runner. It gates on calls after the warm-up, as the production stages do.
   load:
     name: load
@@ -331,25 +331,28 @@ jobs:
         with:
           gradle-home-cache-cleanup: true
       - name: Stage the acceptance runtime
-        run: ./gradlew stageAcceptanceRuntime stageExecutorWorker --no-daemon
+        run: ./gradlew stageAcceptanceRuntime buildExecutorRust --no-daemon
+      - name: Check native acceptance controller boundaries
+        run: |
+          python3 -m unittest discover -s acceptance -p 'test_*.py' -v
+          python3 -m unittest discover -s acceptance/clients -p 'test_native_*.py' -v
       - name: Prepare the sandbox host
         run: |
-          # SRT's bubblewrap and seccomp helper need capability-bearing user namespaces.
+          # Native bubblewrap and seccomp need capability-bearing user namespaces on this runner.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           command -v mkfs.xfs || { sudo apt-get update && sudo apt-get install --yes --no-install-recommends xfsprogs; }
           sudo install -d -m 755 /var/lib/poketto-load
           sudo bash executor-service/prepare-tools.sh /var/lib/poketto-load/tools
-          python3 -m venv "$RUNNER_TEMP/pip"
-          "$RUNNER_TEMP/pip/bin/pip" install --disable-pip-version-check --no-deps --only-binary=:all: --target "$RUNNER_TEMP/python" -r executor-service/requirements.txt
-          sudo cp -R "$RUNNER_TEMP/python" /var/lib/poketto-load/tools/python
           sudo cp -R build/acceptance/runtime /var/lib/poketto-load/runtime
-          # native-host.py checks every runtime file against this manifest before it starts anything.
-          (cd /var/lib/poketto-load/runtime && find . -type f -printf '%P\0' | xargs -0 sha256sum > "$RUNNER_TEMP/manifest.sha256")
-          sudo cp "$RUNNER_TEMP/manifest.sha256" /var/lib/poketto-load/runtime/manifest.sha256
           sudo chown -R root:root /var/lib/poketto-load
           sudo chmod -R a+rX,go-w /var/lib/poketto-load
       - name: Isolated supervisor and enclosing-pool OOM recovery
         run: |
+          # Keep the existing legacy OOM guard until its independent native replacement is verified.
+          ./gradlew stageExecutorWorker --no-daemon
+          python3 -m venv "$RUNNER_TEMP/pip"
+          "$RUNNER_TEMP/pip/bin/pip" install --disable-pip-version-check --no-deps --only-binary=:all: --target "$RUNNER_TEMP/python" -r executor-service/requirements.txt
+          sudo cp -R "$RUNNER_TEMP/python" /var/lib/poketto-load/tools/python
           sudo mkdir /var/lib/poketto-oom
           sudo cp -R build/executor-service/worker/. /var/lib/poketto-oom/
           sudo env PYTHONPATH=/var/lib/poketto-load/tools/python python3 /var/lib/poketto-oom/native_probe.py --root /var/lib/poketto-oom --tools /var/lib/poketto-load/tools --oom-only
@@ -357,13 +360,117 @@ jobs:
       - name: Small agent load on native sandboxes
         run: |
           mkdir -p build/load
-          sudo env PYTHONPATH=/var/lib/poketto-load/tools/python python3 acceptance/clients/native-load.py --runtime /var/lib/poketto-load/runtime --worker-source build/executor-service/worker --tools /var/lib/poketto-load/tools --java "$JAVA_HOME/bin/java" --evidence build/load/native-load.json
+          sudo python3 acceptance/clients/native-load.py --runtime /var/lib/poketto-load/runtime --binary build/executor-service/bin/sandcrab --tools /var/lib/poketto-load/tools --java "$JAVA_HOME/bin/java" --evidence build/load/native-load.json
+      - name: Native supervision OOM recovery
+        run: |
+          sudo systemd-run --scope --quiet --unit="sandcrab-oom-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -p MemoryMax=128M -p MemorySwapMax=0 -p TasksMax=64 -p CPUQuota=50% \
+            python3 "$PWD/executor-service/rust/sandcrab/oom_probe.py" \
+            --binary "$PWD/build/executor-service/bin/sandcrab" \
+            --tools /var/lib/poketto-load/tools --report "$PWD/build/load/native-oom.json"
       - name: Upload the load receipt
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: load-${{ github.run_id }}
           path: build/load/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  native-recovery:
+    name: native-recovery (${{ matrix.scenario }})
+    needs: changes
+    if: needs.changes.outputs.docs_only == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [migration, retained-process]
+    env:
+      MIGRATION_FIXTURE_IMAGE: python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "26"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          gradle-home-cache-cleanup: true
+      - name: Stage native migration and consumer runtimes
+        run: ./gradlew stageExecutorNativeTest stageAcceptanceRuntime buildExecutorRust --no-daemon
+      - name: Check recovery controller boundaries
+        run: |
+          python3 -m unittest discover -s executor-native -p test_migration_probe_evidence.py -v
+          python3 -m unittest discover -s acceptance/clients -p 'test_native_*.py' -v
+      - name: Prepare the isolated recovery host
+        run: |
+          mkdir -p build/native-recovery
+          python3 - <<'PY'
+          import datetime, json, pathlib, platform, shutil
+          memory = int(next(line.split()[1] for line in pathlib.Path('/proc/meminfo').read_text().splitlines()
+                            if line.startswith('MemAvailable:'))) * 1024
+          free = shutil.disk_usage('/var/lib').free
+          preflight = {'utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                       'kernel': platform.release(), 'architecture': platform.machine(),
+                       'availableMemoryBytes': memory, 'freeDiskBytes': free}
+          pathlib.Path('build/native-recovery/preflight.json').write_text(json.dumps(preflight, indent=2) + '\n')
+          assert memory >= 2560 * 1024 * 1024 and free >= 4096 * 1024 * 1024, preflight
+          assert pathlib.Path('/sys/fs/cgroup/cgroup.controllers').is_file()
+          PY
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          if ! command -v mkfs.xfs || ! command -v strace; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends xfsprogs strace
+          fi
+          sudo install -d -m 755 /var/lib/poketto-recovery
+          sudo bash executor-service/prepare-tools.sh /var/lib/poketto-recovery/tools
+          sudo cp -R "$JAVA_HOME" /var/lib/poketto-recovery/jdk
+          sudo cp -R build/executor-native/runtime /var/lib/poketto-recovery/journal-runtime
+          sudo cp -R build/acceptance/runtime /var/lib/poketto-recovery/app-runtime
+          sudo chown -R root:root /var/lib/poketto-recovery
+          sudo chmod -R a+rX,go-w /var/lib/poketto-recovery
+          if [ '${{ matrix.scenario }}' = migration ]; then
+            docker pull "$MIGRATION_FIXTURE_IMAGE"
+          fi
+      - name: Import retained data through the real offline controller
+        if: matrix.scenario == 'migration'
+        run: |
+          sudo systemd-run --quiet --wait --pipe --collect --unit="sandcrab-migration-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -p MemoryMax=128M -p MemorySwapMax=0 -p TasksMax=64 -p CPUQuota=50% \
+            -p RuntimeMaxSec=1140 -p TimeoutStopSec=180 -p KillMode=control-group -p UMask=0077 \
+            /usr/bin/python3 "$PWD/executor-native/sandcrab_migration_probe.py" \
+            --runtime /var/lib/poketto-recovery/journal-runtime \
+            --binary "$PWD/build/executor-service/bin/sandcrab" --tools /var/lib/poketto-recovery/tools \
+            --java /var/lib/poketto-recovery/jdk/bin/java --strace /usr/bin/strace --revision "$(git rev-parse HEAD)" \
+            --container-image "$MIGRATION_FIXTURE_IMAGE" --report "$PWD/build/native-recovery/migration.json"
+      - name: Recover the real HTTP consumer after owned application loss
+        if: matrix.scenario == 'retained-process'
+        run: |
+          sudo systemd-run --quiet --wait --pipe --collect --unit="sandcrab-retained-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -p MemoryMax=128M -p MemorySwapMax=0 -p TasksMax=64 -p CPUQuota=50% \
+            -p RuntimeMaxSec=1200 -p TimeoutStopSec=180 -p KillMode=control-group -p UMask=0077 \
+            /usr/bin/python3 "$PWD/acceptance/clients/native-retained-process.py" \
+            --runtime /var/lib/poketto-recovery/app-runtime \
+            --binary "$PWD/build/executor-service/bin/sandcrab" --tools /var/lib/poketto-recovery/tools \
+            --java /var/lib/poketto-recovery/jdk/bin/java --revision "$(git rev-parse HEAD)" \
+            --evidence "$PWD/build/native-recovery/retained-process.json"
+      - name: Give the uploader ownership of the private fixture observations
+        if: always()
+        run: |
+          if [ -d build/native-recovery ]; then
+            sudo chown -R --no-dereference "$(id -u):$(id -g)" "$PWD/build/native-recovery"
+          fi
+      - name: Upload recovery observations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-recovery-${{ matrix.scenario }}-${{ github.run_id }}
+          path: build/native-recovery/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -380,7 +487,7 @@ jobs:
 
   verify:
     name: verify
-    needs: [changes, docs, java, database, web, image, stack, load, retrieval-lab, evals]
+    needs: [changes, docs, java, database, web, image, stack, load, native-recovery, retrieval-lab, evals]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -396,6 +503,7 @@ jobs:
           IMAGE: ${{ needs.image.result }}
           STACK: ${{ needs.stack.result }}
           LOAD: ${{ needs.load.result }}
+          NATIVE_RECOVERY: ${{ needs.native-recovery.result }}
           RETRIEVAL_LAB: ${{ needs.retrieval-lab.result }}
           EVALS: ${{ needs.evals.result }}
         run: |
@@ -406,7 +514,7 @@ jobs:
           if [ "$DOCS_ONLY" = true ]; then
             required="docs=$DOCS"
           else
-            required="java=$JAVA database=$DATABASE web=$WEB image=$IMAGE stack=$STACK load=$LOAD retrieval-lab=$RETRIEVAL_LAB evals=$EVALS"
+            required="java=$JAVA database=$DATABASE web=$WEB image=$IMAGE stack=$STACK load=$LOAD native-recovery=$NATIVE_RECOVERY retrieval-lab=$RETRIEVAL_LAB evals=$EVALS"
           fi
           failed=0
           for lane in $required; do
@@ -522,7 +630,7 @@ jobs:
   # GitHub is authoritative for identity and GitHub App settings in both deployment layouts. Configure
   # their secrets/variables before enabling this job: empty values clear the provider/contact,
   # and an unset daily limit becomes 100. Host-only identity settings apply to manual deployment.
-  # Every existing installation must install both update-existing.py and worker_release.py
+  # Every existing installation must install both update-existing.py and native_service.py
   # before enabling this delivery version, including when execution is disabled;
   # transfer never replaces an operator's privileged executable.
   deploy:

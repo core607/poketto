@@ -11,12 +11,15 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -29,6 +32,30 @@ class SandcrabSnapshotTests {
 
     @TempDir
     Path temporary;
+
+    @Test
+    void aSnapshotCannotWaitBeyondTheCallersRemainingBudgetOrPublishPartialBytes() throws Exception {
+        Path target = temporary.resolve("timed-out");
+        try (var peer = new SandboxPeer(channel -> {
+            request(channel, "raw", "file.bin");
+            assertThat(Channels.newInputStream(channel).read()).isEqualTo(-1);
+        })) {
+            var client = new SandcrabClient(peer.client(channel -> {}));
+            long started = System.nanoTime();
+            assertThatThrownBy(() -> client.snapshot(
+                            SESSION,
+                            new SandcrabFiles.Plan("file.bin", "raw", true),
+                            1024,
+                            target,
+                            Duration.ofMillis(100),
+                            () -> {}))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(3));
+            assertThat(Files.exists(target)).isFalse();
+            assertNoStagingFiles();
+            assertThat(peer.requests()).isEqualTo(1);
+        }
+    }
 
     @Test
     void rawSnapshotsVerifyEmptyAndBinaryFilesAndKeepTheirVerifiedBytesPrivate() throws Exception {
@@ -70,6 +97,79 @@ class SandcrabSnapshotTests {
                 assertThat(peer.requests()).isEqualTo(1);
                 assertNoStagingFiles();
             }
+        }
+    }
+
+    @Test
+    void cleanupFailureIsSuppressedWithoutReplacingTheOriginalRefusal() throws Exception {
+        var refusal = new SandcrabClient.Rejected(403, "POLICY_CHANGED");
+        var authorizations = new AtomicInteger();
+        var residue = new AtomicReference<Path>();
+        try (var peer = new SandboxPeer(channel -> {
+            SandboxPeer.request(channel);
+            reply(channel, "application/octet-stream", 0, digest(new byte[0]), new byte[0]);
+        })) {
+            var client = new SandcrabClient(peer.client(channel -> {}));
+            assertThatThrownBy(() -> client.snapshot(
+                            SESSION,
+                            new SandcrabFiles.Plan("file", "raw", true),
+                            0,
+                            temporary.resolve("unpublished"),
+                            () -> {
+                                if (authorizations.incrementAndGet() == 3) {
+                                    residue.set(obstructCleanup());
+                                    throw refusal;
+                                }
+                            }))
+                    .isSameAs(refusal);
+            assertThat(refusal.getSuppressed()).singleElement().isInstanceOf(IOException.class);
+            assertThat(residue.get().resolve("keep")).hasContent("unconfirmed cleanup");
+            assertThat(temporary.resolve("unpublished")).doesNotExist();
+        }
+    }
+
+    @Test
+    void publicationFailureKeepsItsCauseAndCleanupFailureAndPreservesExistingDestination() throws Exception {
+        var authorizations = new AtomicInteger();
+        Path target = temporary.resolve("existing-at-publication");
+        try (var peer = new SandboxPeer(channel -> {
+            SandboxPeer.request(channel);
+            reply(channel, "application/octet-stream", 0, digest(new byte[0]), new byte[0]);
+        })) {
+            var client = new SandcrabClient(peer.client(channel -> {}));
+            assertThatThrownBy(() ->
+                            client.snapshot(SESSION, new SandcrabFiles.Plan("file", "raw", true), 0, target, () -> {
+                                if (authorizations.incrementAndGet() == 3) {
+                                    obstructCleanup();
+                                    try {
+                                        Files.writeString(target, "keep existing destination");
+                                    } catch (IOException failure) {
+                                        throw new UncheckedIOException(failure);
+                                    }
+                                }
+                            }))
+                    .isInstanceOfSatisfying(WorkerUnavailableException.class, failure -> {
+                        assertThat(failure.getCause()).isInstanceOf(IOException.class);
+                        assertThat(failure.getCause().getSuppressed())
+                                .singleElement()
+                                .isInstanceOf(IOException.class);
+                    });
+            assertThat(target).hasContent("keep existing destination");
+        }
+    }
+
+    /** A nonempty directory forces deletion failure on Windows and Linux without mocking filesystem calls. */
+    private Path obstructCleanup() {
+        try (var paths = Files.list(temporary)) {
+            Path pending = paths.filter(path -> path.getFileName().toString().startsWith(".sandcrab-"))
+                    .findFirst()
+                    .orElseThrow();
+            Files.delete(pending);
+            Files.createDirectory(pending);
+            Files.writeString(pending.resolve("keep"), "unconfirmed cleanup");
+            return pending;
+        } catch (IOException failure) {
+            throw new UncheckedIOException(failure);
         }
     }
 

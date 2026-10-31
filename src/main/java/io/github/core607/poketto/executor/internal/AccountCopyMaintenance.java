@@ -13,15 +13,15 @@ final class AccountCopyMaintenance implements AutoCloseable {
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(
             Thread.ofPlatform().daemon().name("poketto-account-copy-cleanup").factory());
 
-    AccountCopyMaintenance(IsolatedRepositoryExecutor executor, Duration interval) {
+    AccountCopyMaintenance(Runnable collection, Duration interval) {
         ProtocolValues.require(interval.toMillis() > 0, "collection interval", "must be positive");
         scheduler.scheduleWithFixedDelay(
-                () -> collect(executor), interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS);
+                () -> collect(collection), interval.toMillis(), interval.toMillis(), TimeUnit.MILLISECONDS);
     }
 
-    private static void collect(IsolatedRepositoryExecutor executor) {
+    private static void collect(Runnable collection) {
         try {
-            executor.collectExpiredCopies();
+            collection.run();
         } catch (RetainedCopyException failure) {
             if (failure.reason() == RetainedCopyException.Reason.BUSY) {
                 log.debug("Account journal collection deferred while storage is busy");

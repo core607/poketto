@@ -40,6 +40,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.dircache.DirCache;
 import org.eclipse.jgit.dircache.DirCacheEntry;
@@ -64,8 +65,10 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     private final Path staging;
     private final long maxBytes;
     private final Duration timeout;
-    private final Set<UUID> exports = ConcurrentHashMap.newKeySet();
+    private final Map<UUID, ExportOwner> exports = new ConcurrentHashMap<>();
     private boolean initialized;
+
+    private record ExportOwner(UUID account, WorkspaceId workspace, boolean fullRead) {}
 
     // Within one commit the public set only grows as scheduled articles fall due, so the count tells views apart.
     private record PublicRevision(WorkspaceId workspace, String commit, int articles) {}
@@ -129,7 +132,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                 requireUnchanged(actor, workspace, snapshot);
                 long size = Files.size(pending);
                 Files.move(pending, published, StandardCopyOption.ATOMIC_MOVE);
-                exports.add(id);
+                exports.put(id, new ExportOwner(actor.accountId(), workspace, false));
                 return new PublicExport(
                         workspace,
                         new Export(id, commit.name(), HexFormat.of().formatHex(digest.digest()), size),
@@ -396,7 +399,7 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
                                 repository, ObjectId.fromString(commit), baseline, pending, digest, deadline);
                         long size = Files.size(pending);
                         Files.move(pending, staging.resolve(id + ".bundle"), StandardCopyOption.ATOMIC_MOVE);
-                        exports.add(id);
+                        exports.put(id, new ExportOwner(actor.accountId(), workspace, true));
                         return new Export(id, commit, HexFormat.of().formatHex(digest.digest()), size);
                     } catch (Exception exception) {
                         try {
@@ -489,8 +492,38 @@ final class JGitRepositorySnapshotExports implements RepositorySnapshotExports {
     }
 
     @Override
+    public void withBundle(AuthPrincipal actor, WorkspaceId workspace, Export exported, Consumer<Path> consumer) {
+        ExportOwner owner = exports.get(exported.exportId());
+        if (owner == null
+                || !owner.account().equals(actor.accountId())
+                || !owner.workspace().equals(workspace)) {
+            throw unavailable();
+        }
+        authorizeExport(actor, workspace, owner);
+        try {
+            safeStaging();
+            Path file = staging.resolve(exported.exportId() + ".bundle");
+            if (!Files.isRegularFile(file, NOFOLLOW_LINKS) || Files.size(file) != exported.bundleBytes()) {
+                throw unavailable();
+            }
+            consumer.accept(file);
+            authorizeExport(actor, workspace, owner);
+        } catch (IOException failure) {
+            throw new ContentRepositoryException("Repository export could not be streamed", failure);
+        }
+    }
+
+    private void authorizeExport(AuthPrincipal actor, WorkspaceId workspace, ExportOwner owner) {
+        if (owner.fullRead()) {
+            auth.authorize(actor, workspace, Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
+        } else {
+            auth.authorize(actor, workspace, Capability.EXECUTE_REPOSITORY);
+        }
+    }
+
+    @Override
     public void release(UUID exportId) {
-        if (!exports.contains(exportId)) {
+        if (!exports.containsKey(exportId)) {
             return;
         }
         try {

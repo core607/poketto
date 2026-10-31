@@ -1,4 +1,6 @@
+import java.security.MessageDigest
 import java.time.Duration
+import java.util.HexFormat
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
 plugins {
@@ -143,6 +145,24 @@ tasks.register<Sync>("stageAcceptanceRuntime") {
     from(layout.projectDirectory.dir("examples/pocket-game")) { into("game-example") }
     from(layout.projectDirectory.dir("acceptance/qa")) { into("qa-fixture") }
     from(configurations[integrationTestSourceSet.runtimeClasspathConfigurationName]) { into("jars") }
+    doLast {
+        val root = destinationDir
+        val manifest = root.walkTopDown().filter { it.isFile && it != root.resolve("manifest.sha256") }
+            .sortedBy { it.relativeTo(root).invariantSeparatorsPath }
+            .joinToString("\n", postfix = "\n") { file ->
+                val digest = MessageDigest.getInstance("SHA-256")
+                file.inputStream().use { input ->
+                    val buffer = ByteArray(65536)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        digest.update(buffer, 0, count)
+                    }
+                }
+                HexFormat.of().formatHex(digest.digest()) + "  " + file.relativeTo(root).invariantSeparatorsPath
+            }
+        root.resolve("manifest.sha256").writeText(manifest)
+    }
 }
 
 val storageTestsNeedLinux = System.getProperty("os.name").startsWith("Windows")
@@ -158,26 +178,67 @@ val stageLinuxStorageTest = tasks.register<Sync>("stageLinuxStorageTest") {
     }
     from(sourceSets.test.get().output.classesDirs) { into("classes") }
     from(configurations.testRuntimeClasspath) { into("jars") }
+    from("executor-service") {
+        include("native_migration_*.py", "migrate_native_repository.py")
+        into("migration-tests")
+    }
+    from("deploy") {
+        include("update-existing.py", "worker_release.py")
+        into("migration-tests/deploy")
+    }
+    from("deploy/native_service.py") { into("migration-tests") }
+}
+
+val stageRepositoryMigrationOperator = tasks.register<Sync>("stageRepositoryMigrationOperator") {
+    group = "distribution"
+    description = "Stages the offline data-only migration helper without starting the application."
+    dependsOn(tasks.classes)
+    into(layout.buildDirectory.dir("repositoryMigrationOperator"))
+    from(sourceSets.main.get().output.classesDirs) { into("classes") }
+    from(configurations.runtimeClasspath) { into("jars") }
+    from("executor-service") {
+        include("migrate_native_repository.py", "native_migration_files.py", "native_migration_guard.py")
+        into("operator")
+    }
+    from("deploy/native_service.py") { into("operator") }
+}
+
+val linuxStorageImage = layout.buildDirectory.file("linuxStorageTest/image.id")
+val buildLinuxStorageImage = tasks.register<Exec>("buildLinuxStorageImage") {
+    onlyIf { storageTestsNeedLinux }
+    inputs.files("executor-native/Dockerfile.peer-tests", "executor-native/peer_probe.py", "executor-native/rejected_peer.py")
+    outputs.file(linuxStorageImage)
+    doFirst {
+        linuxStorageImage.get().asFile.parentFile.mkdirs()
+    }
+    commandLine(
+        "docker", "build", "--network", "none", "--iidfile", linuxStorageImage.get().asFile.absolutePath,
+        "-f", "executor-native/Dockerfile.peer-tests", "executor-native",
+    )
 }
 
 val linuxStorageTest = tasks.register<Exec>("linuxStorageTest") {
     group = "verification"
     description = "Runs the real durable-storage JUnit suite in Linux when the host is Windows."
-    dependsOn(stageLinuxStorageTest)
+    dependsOn(stageLinuxStorageTest, buildLinuxStorageImage)
     onlyIf { storageTestsNeedLinux }
     inputs.files(sourceSets.test.get().runtimeClasspath)
     outputs.upToDateWhen { false }
     // Stage only compiled classes and resolved dependency JARs; never mount operator files.
-    commandLine(
-        "docker", "run", "--rm", "--network", "none", "--read-only",
-        "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-        "--memory", "512m", "--pids-limit", "128", "--mount", "type=volume,target=/tmp",
-        "--mount", "type=bind,source=${linuxStorageRuntime.get().asFile.absolutePath},target=/runtime,readonly",
-        "--entrypoint", "java",
-        "eclipse-temurin@sha256:c0fe66ea21e972724000cf402f8081c7841d960839f69cb0754f40b40f74b2cc",
-        "-Xmx256m", "-Djava.io.tmpdir=/tmp", "-Duser.home=/tmp", "-cp", "/runtime/classes:/runtime/jars/*",
-        "io.github.core607.poketto.assets.internal.LinuxStorageTestLauncher",
-    )
+    doFirst {
+        val image = linuxStorageImage.get().asFile.readText().trim()
+        check(Regex("sha256:[0-9a-f]{64}").matches(image)) { "Invalid Linux storage test image identity" }
+        commandLine(
+            "docker", "run", "--rm", "--network", "none", "--read-only",
+            "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+            "--memory", "512m", "--pids-limit", "128", "--mount", "type=volume,target=/tmp",
+            "--mount", "type=bind,source=${linuxStorageRuntime.get().asFile.absolutePath},target=/runtime,readonly",
+            "--entrypoint", "java",
+            image,
+            "-Xmx256m", "-Djava.io.tmpdir=/tmp", "-Duser.home=/tmp", "-cp", "/runtime/classes:/runtime/jars/*",
+            "io.github.core607.poketto.assets.internal.LinuxStorageTestLauncher",
+        )
+    }
 }
 
 // Git for Windows ships bash beside git.exe; System32\bash.exe belongs to WSL and may be absent.
@@ -234,7 +295,7 @@ val observabilityConfigCheck = tasks.register<Exec>("observabilityConfigCheck") 
 val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
     group = "verification"
     description = "Verifies existing-installation updates and interrupted-run reconciliation on Linux."
-    inputs.files("deploy/update-existing.py", "deploy/worker_release.py", "deploy/tests/test_existing_deployment.py", "deploy/tests/test_worker_deployment.py")
+    inputs.files("deploy/update-existing.py", "deploy/native_service.py", "deploy/tests/test_existing_deployment.py", "deploy/tests/test_native_deployment.py")
     outputs.upToDateWhen { false }
     commandLine(
         "docker", "run", "--rm", "--network", "none", "--read-only",
@@ -249,7 +310,7 @@ val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
 tasks.named("check") { dependsOn(existingDeploymentTests) }
 
 val appIdentityDirectory = layout.buildDirectory.dir("app-image-identity")
-val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src", "content-template", "frontend/public/games/runtime.mjs", "executor-service/rust", "executor-service/resource_pool.py")
+val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src", "content-template", "frontend/public/games/runtime.mjs")
 val appImageRevision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
 val buildAppIdentityImage = tasks.register<Exec>("buildAppIdentityImage") {
     group = "verification"

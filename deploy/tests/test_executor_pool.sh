@@ -5,13 +5,13 @@ source "$DEPLOY_DIR/tests/lib.sh"
 # resource_pool_probe.py checks the real unprivileged CLI against systemd/cgroup v2.
 cat > "$PWD/host-commands.sh" <<'EOF'
 systemctl() {
-    [ "$*" = 'is-active --quiet poketto-executor.service' ] || return 91
+    [ "$*" = 'is-active --quiet sandcrab-repository.service' ] || return 91
     [ ! -e "$FAKE_STATE/worker-inactive" ]
 }
 python3() {
-    if [ "${1:-}" = /opt/poketto-executor/resource_pool.py ]; then
+    if [ "${1:-}" = /opt/sandcrab/resource_pool.py ]; then
         printf '%s\n' "$*" >> "$FAKE_STATE/pool-check.log"
-        [ "$*" = '/opt/poketto-executor/resource_pool.py --service poketto-executor.service' ] || return 92
+        [ "$*" = '/opt/sandcrab/resource_pool.py --service sandcrab-repository.service' ] || return 92
         [ ! -e "$FAKE_STATE/pool-check-fails" ]
     else
         command python3 "$@"
@@ -25,7 +25,9 @@ executor_config() {
         "POKETTO_EXECUTOR_RUNTIME_DIR_HOST=$ROOT/not-installed" \
         "POKETTO_EXECUTOR_STAGING_DIR_HOST=$ROOT/staging" \
         "POKETTO_EXECUTOR_METADATA_DIR_HOST=$ROOT/metadata" \
-        "POKETTO_EXECUTOR_SIGNING_KEY_HOST=$ROOT/signing.pem" >> "$ROOT/.env"
+        "POKETTO_EXECUTOR_TRANSFERS_DIR_HOST=$ROOT/transfers" \
+        'POKETTO_EXECUTOR_COPIES_BYTES=67108864' \
+        'POKETTO_EXECUTOR_COPIES_INODES=4096' >> "$ROOT/.env"
 }
 
 # Unlimited/misplaced pools and a missing or broken helper all return nonzero.
@@ -52,7 +54,17 @@ executor_config
 touch "$FAKE_STATE/worker-inactive"
 run_deploy
 assert_status 1
-assert_contains "$ERR" 'poketto-executor.service must be active'
+assert_contains "$ERR" 'native repository service must be active'
+[ ! -e "$FAKE_STATE/pool-check.log" ]
+[ "$(up_count)" = 0 ]
+
+# A unit selector is data; malformed values never reach systemctl or the checker.
+setup_root
+executor_config
+printf '%s\n' 'POKETTO_EXECUTOR_SERVICE=--user' >> "$ROOT/.env"
+run_deploy
+assert_status 1
+assert_contains "$ERR" 'must name an installed native systemd service'
 [ ! -e "$FAKE_STATE/pool-check.log" ]
 [ "$(up_count)" = 0 ]
 

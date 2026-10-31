@@ -66,3 +66,40 @@ consumer acceptance.
 The [recovery receipt](evidence/2026-10-31-sandcrab-java-recovery.json) records five
 Java checks, four daemon recoveries and cleanup. It retains the earlier failed
 attempt whose controller parsed diagnostic output as JSON.
+
+## Offline repository import
+
+`sandcrab_migration_probe.py` runs the production migration controller and
+`SourceGuard` against a disposable legacy installation. Its repository, writer,
+Docker app and deployment state are synthetic; systemd containment, Docker state,
+mount checks, kernel locks, XFS journals, app-UID helper and native API are real.
+This exercises the offline import boundary, not production data migration.
+
+```sh
+sudo python3 executor-native/sandcrab_migration_probe.py \
+  --runtime build/executor-native/runtime \
+  --binary build/executor-service/bin/sandcrab \
+  --tools /prepared/tools --java /prepared/jdk/bin/java \
+  --strace /usr/bin/strace --revision "$(git rev-parse HEAD)" \
+  --container-image sha256:PREPARED_IMAGE_ID \
+  --report /tmp/sandcrab-migration.json
+```
+
+Stage with `./gradlew stageExecutorNativeTest buildExecutorRust` and keep the
+repository layout. Supply an
+already-present pinned Docker image containing `/bin/sleep`; the fixture never
+pulls images. It needs two 512 MiB XFS loop files, the native 384 MiB slice, a
+512 MiB operator cap, a 32 MiB legacy slice and a 32 MiB container. Each operator
+attempt has a 180-second runtime limit; work and cleanup have separate 900- and
+180-second deadlines. Select a host with room for these limits and retained logs.
+
+The fixture first requires live writers, source mounts and held locks to refuse
+admission. Preparation must observe the real info endpoint without native mutation
+or journal changes. Import must publish both roots without guest commands, preserve
+file bytes, modes and links, and change only the journal writer and revision.
+Syscall evidence must include the expected native requests; missing or unparseable
+observations fail. Source archives, journal snapshots and every attempt's logs are
+retained outside the disposable root. Success requires all checks and
+`cleanup: PASS`; failed cleanup retains the root. Use a new report path for every
+run. `python3 executor-native/test_migration_probe_evidence.py` runs offline
+observation tests without starting a host fixture.

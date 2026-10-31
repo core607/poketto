@@ -1,11 +1,12 @@
 # Local execution service
 
-This worker supplies the Linux process boundary for repository execution. Spring
-authorizes the principal and exports a credential-free Git bundle; the worker
-accepts a signed lease and starts a bubblewrap sandbox as a separate unprivileged account.
-It never opens an application repository or accepts a caller-specified host path.
-The [supervisor decision](../notes/implemented/2026-09-05-local-execution-supervisor.md)
+This worker supplies the Linux process boundary: Spring authorizes principals and
+exports credential-free Git bundles; signed leases start bubblewrap under a separate
+unprivileged account. It accepts no caller-specified host paths and never opens
+application repositories. The [supervisor decision](../notes/implemented/2026-09-05-local-execution-supervisor.md)
 owns topology, rationale and alternatives.
+
+The [offline native import](native-migration.md) preserves retained work and home for explicit operator cutover.
 
 ## Runtime
 
@@ -72,9 +73,9 @@ Idle-shell measurements omit workload costs. The slice includes supervision, rel
 
 After startup cleanup and before listening, the supervisor raises `RLIMIT_NOFILE`'s soft limit to its existing hard limit. Bridge and command waits support descriptor numbers above 1023. Size the service's `LimitNOFILE` hard limit for leases, retained artifacts and active connections; cgroup memory and configured capacities still bound resource use.
 
-## Automatic source updates
+## Native service dependency
 
-[Setup and recovery](../deploy/README.md#worker-source-updates) for automatic source updates.
+Deployment verifies [independent Sandcrab](../deploy/README.md#native-service-dependency). Installation stays operator-owned.
 
 ## Account copy storage
 
@@ -197,9 +198,9 @@ Commands reach the host only through the shared static `poketto` program, which 
 
 Acknowledged saves, syncs and moves record each affected file's version (text, non-text presence with its byte revision and diagnostics, or absence); other paths use the original archive, and unselected draft media mappings never become the index baseline. Later operations use these records, never historical caches, and check private-read permission before and after archive reads. A missing record or archive fails the operation instead of falling back or inferring absence. A text save onto an existing non-text file returns `NO_WRITABLE_BASELINE` before any write intent.
 
-`poketto move SOURCE DESTINATION` moves saved files, folders and indexed media through the shared atomic writer and repairs Markdown references. It needs a full-read session and write authority, plus publication authority for public changes. Dirty selected files, changed selected media mappings, unexpected source entries and occupied destinations are refused before the remote move; unselected edits stay local, and materialized originals move with their directory. Plans are limited to 16,384 paths, 32 MiB of replacement text and 64 MiB of transfer data. A lease keeps at most 256 completion receipts of 4 KiB; receipts and staging count against its quotas, and a failed reservation rejects preflight.
+`poketto move prepare SOURCE DESTINATION` retains originals and a domain plan for saved Git files, indexed media and repaired Markdown references. Full read and write authority are required, with publication authority for public changes. Dirty affected files, changed selected media mappings and occupied targets are refused. Preparation never installs working files or commits remote Git. Plans retain the domain bounds of 16,384 paths and 32 MiB of replacement text.
 
-A move whose local installation is pending returns `worktreeUpdated: false`, and later saves, moves and syncs wait for `poketto recover`, which uses the retained request and receipt even when a successful reply was lost. `LOCAL_MOVE_CONFLICT` means installation was refused after the remote commit. `poketto recover --skip-local` confirms any uncertain remote outcome, leaves local files untouched and releases the pending installation while keeping per-file baselines, so later saves cannot resurrect old paths or overwrite moved files without an explicit `poketto sync`.
+Inspect candidates with `poketto plan show ID`, apply them with ordinary tools, then use `poketto move accept ID --expect PATH=SHA256 [--absent PATH]`. Expectations must equal retained candidates. Each accepted path is verified at that call; later local edits remain unsaved. Final acceptance requests the saved remote change set under current authorization and CAS. `remoteCommitted` is separate from `localVerified` and its per-path verification scope. Unrelated local index entries stay local. `poketto move recover ID` or `poketto recover` reconciles the exact retained attempt and finishes confirmed baselines without installing worktree files. Unknown outcomes and pending baseline retention prevent plan release; no new move is generated during recovery. [Usage](../docs/usage.md#mcp-and-isolated-execution) owns plan inspection and backup release.
 
 `poketto sync` merges one fixed remote commit into the workspace, including new and deleted paths, and commits nothing. The host first inventories at most 16,384 paths and 32 MiB of text within 20 seconds. Text merges three ways with LOCAL/BASE/REMOTE markers; local-only files remain; unchanged local binaries can receive remote blobs up to 128 MiB. Conflicting binary edits, unsafe paths and unsupported changes stay in place as conflicts, and receipts list the total and at most 64 paths within 16 KiB, with `conflictsTruncated`. Each installation is journaled first. After interruption `poketto status` shows `syncPending`; `poketto recover` continues, preserving a different local edit with `LOCAL_SYNC_PENDING`, and `--skip-local` releases the rest without undoing installed paths. A run stops after at least one path once less than five seconds remain before the command timeout or the CLI's 55-second reply wait; it journals its progress and returns `SYNC_INCOMPLETE`, and `poketto sync` or `poketto recover` continues it. Completion, conflicts included, installs the new Git baseline; resolve conflicts before saving.
 

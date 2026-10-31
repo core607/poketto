@@ -27,7 +27,7 @@ The containment contract is:
 
 The prepared toolchain already contains the required binaries. Both supervisors validate the x64 `apply-seccomp` SHA-256 pin and bubblewrap's minimum version before serving requests, and the unprivileged launcher repeats validation before each execution. Both binaries and their ancestors must be root-owned and unwritable by other accounts; symlinks are rejected. Cleanup precedes validation and remains available with damaged tools.
 
-[Coordinated delivery](2026-10-19-coordinated-worker-delivery.md) updates sources without replacing operator tools or configuration. A failed supervisor start restores the previous source generation. Its post-deployment read-only MCP command exercises a real sandbox before delivery is accepted. Tool provisioning and upgrades remain explicit operator work.
+[Independent sandbox deployment](2026-10-31-independent-sandbox-deployment.md) verifies the installed runtime and a read-only MCP command. Runtime and tool installation, upgrades and recovery remain explicit operator work.
 
 ### Resource evidence
 

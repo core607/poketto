@@ -10,6 +10,7 @@ import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.withSettings;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -155,7 +156,8 @@ record AccountJournalConcurrencyProbe(Path root) {
 
     private static String key(AccountCopyRecord.Owner owner) {
         String identity = owner.accountId() + ":" + owner.workspaceId() + ":" + owner.fullRead();
-        return SessionWorker.hash(owner.fork() == null ? identity : identity + ":" + owner.fork());
+        return SandcrabProtocol.sha256(
+                (owner.fork() == null ? identity : identity + ":" + owner.fork()).getBytes(StandardCharsets.UTF_8));
     }
 
     private static AccountCopyRecord record(

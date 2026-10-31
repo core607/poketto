@@ -38,6 +38,21 @@ that unit's MainPID, verifies the pool and tools, takes the runtime lock and cle
 up previous runs. `sandcrab check --config FILE` checks protected configuration,
 accounts and tools; it does not prove the runtime slice or sandbox works.
 
+Set `OOMScoreAdjust=-900`, `OOMPolicy=stop` and `KillMode=control-group` on the
+supervisor. Its directly spawned relays inherit the score; independent sandbox,
+file and volume units do not. Keep parent and supervisor `memory.oom.group=0`.
+These settings preserve victim selection and stop supervision after a member OOM;
+they do not grant memory-limit immunity. Abrupt loss stops dependent units;
+startup confirms their containment and recovers old mounts before serving a new epoch.
+
+For deployment checks, install the read-only [resource-pool checker](../../resource_pool.py)
+at `/opt/sandcrab/resource_pool.py`, owned by root beneath protected directories.
+`python3 /opt/sandcrab/resource_pool.py --service sandcrab-example.service` verifies
+the running root process, its actual cgroup membership and finite pool limits.
+It also requires the supervisor OOM score and stop policy.
+It needs no private service configuration and starts no sandbox. Application
+health and consumer acceptance remain separate checks.
+
 Each run executes as the profile's account in a fresh bounded tmpfs at
 `/workspace`, with a private `/tmp`, isolated network and PID namespaces and
 seccomp. It shares the host kernel; this is not a microVM boundary. Workspace bytes
@@ -447,5 +462,16 @@ ordinary caller/guest CLI use, isolation, bounded admission and failure recovery
 request refusal before admission, and the ordinary run/session CLI options.
 `contexts_probe.py` uses those arguments to verify independent shell state,
 shared budgets, parent expiry and child containment faults; CI retains its receipt.
+`oom_probe.py` uses those arguments on an explicitly selected disposable Linux
+host with `xfsprogs` and kernel-journal access. It owns a 384 MiB, zero-swap,
+50% CPU slice and a 512 MiB XFS image. Each parent, daemon and service-member
+fault runs once, including a `continue` policy negative control. The daemon case
+retains at most 64 outputs of 768 KiB; it does not use oversized HTTP bodies.
+The report requires exact memcg/victim evidence, rejects host-wide OOM, checks
+two durable volumes after recovery and records cleanup separately. A signal or
+guest OOM is insufficient. Run the controller outside its pressure slice with a
+separate bounded operator budget. Classification unit tests do not establish
+native OOM acceptance; preserve the existing OOM CI gate until this fixture has
+passed with the selected binary and service policy.
 Independent agent tasks and their budgeted runner live in the
 [Inspect suite](../../../evals/README.md).

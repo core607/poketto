@@ -35,6 +35,8 @@ record AccountCopyRecord(
                 phase != Phase.REFRESHING || !owner.fullRead(), "refreshing copy", "must be a public projection");
         if (!owner.fullRead()) {
             ProtocolValues.require(original == null, "public baseline", "must not contain a private archive");
+            ProtocolValues.require(
+                    state.nativePlan() == null, "public copy", "must not retain a private preparation plan");
         } else if (phase != Phase.INITIALIZING && phase != Phase.DISCARDING) {
             Objects.requireNonNull(original, "a ready full copy requires its immutable original baseline");
         }
@@ -87,12 +89,34 @@ record AccountCopyRecord(
         }
     }
 
-    record Writer(UUID principalId, UUID workerBootId, UUID appBootId, UUID leaseId) {
+    record Writer(UUID principalId, UUID workerBootId, UUID appBootId, UUID leaseId, NativeStorage storage) {
+        Writer(UUID principalId, UUID workerBootId, UUID appBootId, UUID leaseId) {
+            this(principalId, workerBootId, appBootId, leaseId, null);
+        }
+
         Writer {
             Objects.requireNonNull(principalId, "writer grant must be present");
             Objects.requireNonNull(workerBootId, "worker epoch must be present");
             Objects.requireNonNull(appBootId, "application epoch must be present");
             Objects.requireNonNull(leaseId, "lease must be present");
+        }
+    }
+
+    /** The application binds an account copy to ordinary Sandcrab storage; labels grant no authority. */
+    record NativeStorage(UUID volumeId, String profile, long byteLimit, long inodeLimit) {
+        NativeStorage {
+            Objects.requireNonNull(volumeId, "native volume must be present");
+            profile = SandcrabProtocol.profile(profile);
+            ProtocolValues.inRange(byteLimit, 1_048_576, 1L << 50, "native volume byte limit");
+            ProtocolValues.require(byteLimit % 1024 == 0, "native volume byte limit", "must be a multiple of 1024");
+            ProtocolValues.inRange(inodeLimit, 32, 1_000_000, "native volume inode limit");
+        }
+
+        void requireVolume(SandcrabVolume volume) {
+            ProtocolValues.require(volumeId.toString().equals(volume.id()), "native volume", "must match its copy");
+            ProtocolValues.require(profile.equals(volume.profile()), "native profile", "must match its copy");
+            ProtocolValues.require(byteLimit == volume.byteLimit(), "native byte limit", "must match its copy");
+            ProtocolValues.require(inodeLimit == volume.inodeLimit(), "native inode limit", "must match its copy");
         }
     }
 
@@ -113,6 +137,7 @@ record AccountCopyRecord(
      */
     enum Phase {
         INITIALIZING,
+        ATTACHING,
         READY,
         RUNNING,
         INTERRUPTED,
