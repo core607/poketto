@@ -85,7 +85,8 @@ sudo python3 executor-native/sandcrab_migration_probe.py \
   --report /tmp/sandcrab-migration.json
 ```
 
-Stage with the command above and keep the repository layout. Supply an
+Stage with `./gradlew stageExecutorNativeTest buildExecutorRust` and keep the
+repository layout. Supply an
 already-present pinned Docker image containing `/bin/sleep`; the fixture never
 pulls images. It needs two 512 MiB XFS loop files, the native 384 MiB slice, a
 512 MiB operator cap, a 32 MiB legacy slice and a 32 MiB container. Each operator
