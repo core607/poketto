@@ -361,6 +361,13 @@ jobs:
         run: |
           mkdir -p build/load
           sudo python3 acceptance/clients/native-load.py --runtime /var/lib/poketto-load/runtime --binary build/executor-service/bin/sandcrab --tools /var/lib/poketto-load/tools --java "$JAVA_HOME/bin/java" --evidence build/load/native-load.json
+      - name: Native supervision OOM recovery
+        run: |
+          sudo systemd-run --scope --quiet --unit="sandcrab-oom-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -p MemoryMax=128M -p MemorySwapMax=0 -p TasksMax=64 -p CPUQuota=50% \
+            python3 "$PWD/executor-service/rust/sandcrab/oom_probe.py" \
+            --binary "$PWD/build/executor-service/bin/sandcrab" \
+            --tools /var/lib/poketto-load/tools --report "$PWD/build/load/native-oom.json"
       - name: Upload the load receipt
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
