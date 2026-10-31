@@ -229,7 +229,7 @@ class IsolatedGameRunnerTests {
                     "committed"));
             return upload.get();
         });
-        when(client.send(any(), any())).thenAnswer(call -> upload.get());
+        when(client.send(any(), any(byte[].class))).thenAnswer(call -> upload.get());
         when(client.upload(any())).thenAnswer(call -> required(upload.get(), "UPLOAD_NOT_FOUND"));
         when(client.command(any(), any())).thenAnswer(call -> {
             SandcrabProtocol.CommandPlan plan = call.getArgument(1);

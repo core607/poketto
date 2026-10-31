@@ -58,10 +58,9 @@ class SandboxHttpTests {
                 InputStream input = Channels.newInputStream(channel);
                 head(input);
                 assertThat(input.readNBytes(2)).hasSize(2);
-                Channels.newOutputStream(channel).write(header.getBytes(StandardCharsets.US_ASCII));
-                if (!header.startsWith("HTTP/1.1 100 ")) {
-                    Channels.newOutputStream(channel).write("{}".getBytes(StandardCharsets.UTF_8));
-                }
+                // Invalid headers permit immediate disconnect; submit the fixture in one write.
+                String response = header + (header.startsWith("HTTP/1.1 100 ") ? "" : "{}");
+                Channels.newOutputStream(channel).write(response.getBytes(StandardCharsets.US_ASCII));
             })) {
                 assertThatThrownBy(() -> exchange(peer.client(channel -> {}), Duration.ofSeconds(2)))
                         .isInstanceOf(WorkerUnavailableException.class);

@@ -1,7 +1,16 @@
 package io.github.core607.poketto.executor.internal;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
 import java.time.Duration;
+import java.util.HexFormat;
 import java.util.Objects;
 
 /** Native service calls execute once; the consumer retains identities and owns reconciliation. */
@@ -52,6 +61,84 @@ final class SandcrabClient {
 
     SandcrabProtocol.Info info() {
         return request("GET", "/v1/info", null, SandcrabProtocol.Info.class, 200);
+    }
+
+    /** Keep the creation plan before dispatch; a transport failure must not allocate another ID. */
+    SandcrabVolume createVolume(SandcrabVolume.Plan plan) {
+        SandcrabVolume volume = request("POST", "/v1/volumes", plan, SandcrabVolume.class, 200, 202);
+        require(
+                plan.id().equals(volume.id()) && plan.profile().equals(volume.profile()),
+                "Volume admission changed its identity or profile");
+        require(Objects.equals(plan.cloneFrom(), volume.cloneFrom()), "Volume admission changed its clone source");
+        require(
+                plan.byteLimit() == null || plan.byteLimit() == volume.byteLimit(),
+                "Volume admission changed its byte limit");
+        require(
+                plan.inodeLimit() == null || plan.inodeLimit() == volume.inodeLimit(),
+                "Volume admission changed its inode limit");
+        return volume;
+    }
+
+    SandcrabVolume volume(String id) {
+        SandcrabVolume volume = request("GET", volumePath(id), null, SandcrabVolume.class, 200);
+        require(id.equals(volume.id()), "Volume lookup returned another identity");
+        return volume;
+    }
+
+    SandcrabVolume volume(SandcrabVolume expected) {
+        SandcrabVolume actual = volume(expected.id());
+        sameVolume(expected, actual);
+        return actual;
+    }
+
+    SandcrabVolume.Page volumes(String after) {
+        SandcrabVolume.Page page = request("GET", pagePath("volumes", after), null, SandcrabVolume.Page.class, 200);
+        require(
+                after == null
+                        || page.volumes().stream()
+                                .allMatch(volume -> volume.id().compareTo(after) > 0),
+                "Volume inventory cursor moved backwards");
+        return page;
+    }
+
+    /** Deletion is asynchronous; a deleting or closing receipt is not proof that storage was released. */
+    SandcrabVolume deleteVolume(SandcrabVolume expected) {
+        require(!expected.busy(), "An exclusively held volume cannot be deleted");
+        SandcrabVolume actual = request(
+                "POST",
+                volumePath(expected.id()) + "/delete",
+                new SandcrabProtocol.Empty(),
+                SandcrabVolume.class,
+                200,
+                202);
+        sameVolume(expected, actual);
+        return actual;
+    }
+
+    void forget(SandcrabVolume volume) {
+        require(volume.forgettable(), "Active or uncontained volume storage cannot be forgotten");
+        request(
+                "POST",
+                volumePath(volume.id()) + "/forget",
+                new SandcrabProtocol.Empty(),
+                SandcrabProtocol.Forgotten.class,
+                200);
+    }
+
+    private static String volumePath(String id) {
+        return "/v1/volumes/" + ProtocolValues.uuid(id, "volume ID");
+    }
+
+    private static void sameVolume(SandcrabVolume expected, SandcrabVolume actual) {
+        require(
+                expected.id().equals(actual.id()) && expected.planDigest().equals(actual.planDigest()),
+                "Durable volume reply changed its identity or creation digest");
+        require(
+                expected.profile().equals(actual.profile()) && Objects.equals(expected.cloneFrom(), actual.cloneFrom()),
+                "Durable volume reply changed its storage scope");
+        require(
+                expected.byteLimit() == actual.byteLimit() && expected.inodeLimit() == actual.inodeLimit(),
+                "Durable volume reply changed its storage bounds");
     }
 
     SandcrabProtocol.Run start(SandcrabProtocol.RunRequest plan) {
@@ -153,6 +240,40 @@ final class SandcrabClient {
         return upload;
     }
 
+    /** The consumer retains this staged file until the upload is reconciled; no response loss resends it. */
+    SandcrabProtocol.Upload send(SandcrabProtocol.UploadPlan plan, Path content) {
+        MessageDigest digest = SandcrabProtocol.digest();
+        try (InputStream file = openUploadFile(plan, content);
+                var input = new DigestInputStream(file, digest)) {
+            SandcrabProtocol.Upload upload = http.upload(
+                    uploadPath(plan.reference()) + "/content",
+                    input,
+                    plan.bytes(),
+                    UPLOAD_TIMEOUT,
+                    (head, response) -> readResponse(head, response, SandcrabProtocol.Upload.class, 200));
+            require(
+                    HexFormat.of().formatHex(digest.digest()).equals(plan.sha256()),
+                    "Staged upload bytes changed from their registered digest");
+            manifest(plan, upload);
+            return upload;
+        } catch (IOException failure) {
+            throw new WorkerUnavailableException(failure);
+        }
+    }
+
+    private static InputStream openUploadFile(SandcrabProtocol.UploadPlan plan, Path content) {
+        try {
+            BasicFileAttributes attributes =
+                    Files.readAttributes(content, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            if (!attributes.isRegularFile() || attributes.size() != plan.bytes()) {
+                throw new IOException("Staged upload must be a regular file with its registered length");
+            }
+            return Files.newInputStream(content, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException failure) {
+            throw new WorkerUnavailableException(failure, false);
+        }
+    }
+
     SandcrabProtocol.Upload upload(SandcrabProtocol.Reference reference) {
         SandcrabProtocol.Upload upload =
                 request("GET", uploadPath(reference), null, SandcrabProtocol.Upload.class, 200);
@@ -242,28 +363,38 @@ final class SandcrabClient {
             Duration timeout,
             Class<T> type,
             int... accepted) {
-        return http.exchange(method, path, contentType, body, timeout, Duration.ZERO, (head, input) -> {
-            require(head.length() > 0 && head.length() <= MAX_JSON, "Native JSON response exceeds its bound");
-            require("application/json".equals(head.contentType()), "Native reply is not JSON");
-            byte[] bytes = input.readNBytes((int) head.length());
-            require(bytes.length == head.length(), "Native response was truncated");
-            for (int status : accepted) {
-                if (head.status() == status) {
-                    return SandcrabProtocol.read(bytes, type);
-                }
+        return http.exchange(
+                method,
+                path,
+                contentType,
+                body,
+                timeout,
+                Duration.ZERO,
+                (head, input) -> readResponse(head, input, type, accepted));
+    }
+
+    private static <T> T readResponse(SandboxHttp.Head head, InputStream input, Class<T> type, int... accepted)
+            throws IOException {
+        require(head.length() > 0 && head.length() <= MAX_JSON, "Native JSON response exceeds its bound");
+        require("application/json".equals(head.contentType()), "Native reply is not JSON");
+        byte[] bytes = input.readNBytes((int) head.length());
+        require(bytes.length == head.length(), "Native response was truncated");
+        for (int status : accepted) {
+            if (head.status() == status) {
+                return SandcrabProtocol.read(bytes, type);
             }
-            if (head.status() >= 400) {
-                String code = SandcrabProtocol.read(bytes, SandcrabProtocol.Failure.class)
-                        .error()
-                        .code();
-                if (head.status() < 500) {
-                    throw new Rejected(head.status(), code);
-                }
-                throw new WorkerUnavailableException(
-                        new IOException("Native sandbox returned " + head.status() + " " + code));
+        }
+        if (head.status() >= 400) {
+            String code = SandcrabProtocol.read(bytes, SandcrabProtocol.Failure.class)
+                    .error()
+                    .code();
+            if (head.status() < 500) {
+                throw new Rejected(head.status(), code);
             }
-            throw new WorkerUnavailableException(new IOException("Unexpected native sandbox status " + head.status()));
-        });
+            throw new WorkerUnavailableException(
+                    new IOException("Native sandbox returned " + head.status() + " " + code));
+        }
+        throw new WorkerUnavailableException(new IOException("Unexpected native sandbox status " + head.status()));
     }
 
     private static void require(boolean valid, String message) {
