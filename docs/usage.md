@@ -483,22 +483,17 @@ retained copies count until discard/expiry. Withdrawn, expired or unavailable pu
 blocks execution and artifact/media reads and contains affected idle/busy runtimes.
 Gaining full-read permission never enlarges an explicitly named public copy.
 
-`poketto edit PATH --old TEXT --new TEXT` replaces one exact occurrence in an existing
-local text file, refusing missing or ambiguous text. `poketto create PATH --text TEXT`
-creates a file only when the path is absent. For long text, `create` accepts `--stdin`
-or `--text-file FILE`, and `edit` accepts `--old-file FILE` for `--old` and
-`--new-stdin` or `--new-file FILE` for `--new`. Input is UTF-8 and keeps final
-newlines; input files resolve from the shell's current directory, while target paths
-stay repository-relative. These options do not raise the command or frame bounds.
-Both commands recheck the local bytes before writing, unlike plain shell writes, and
-change nothing remote until `poketto save`.
+Use ordinary shell, Python or editor tools for local edits. They change nothing
+remote until `poketto save`. For example, create an absent file without replacing an
+existing one:
 
 ```sh
-poketto create private/article.md --stdin <<'MARKDOWN'
+(set -C; cat >private/article.md <<'MARKDOWN'
 # Article
 
 Quotes, `$variables` and backticks remain ordinary Markdown.
 MARKDOWN
+)
 ```
 
 `poketto save` checks selected files and explicit deletions against remote revisions,
@@ -513,14 +508,21 @@ the confirmed base (`MATCHES_BASE`, `DIFFERS_FROM_BASE` or `UNAVAILABLE`). It ne
 inspects Git HEAD nor changes files. Previews give receipt bytes, digest and `omitted`;
 `poketto receipt save` or `poketto receipt import` reads the complete receipt.
 
-`poketto sync` merges the whole workspace with one remote
-revision, keeping local-only files and conflicting binary bytes and marking
-overlapping text edits with LOCAL/BASE/REMOTE sections; it saves nothing remotely.
-After an interruption, status shows `syncPending`; `poketto recover` continues and
-`poketto recover --skip-local` releases the operation without undoing installed
-files. A sync that runs short of command time stops with `SYNC_INCOMPLETE` and keeps
-its progress; run `poketto sync` again or give `repo_exec` a larger `timeoutSeconds`.
-See [workspace synchronization](../notes/implemented/2026-09-15-workspace-synchronization.md).
+`poketto sync` or `sync prepare` retains one remote revision, originals and merge
+candidates without changing working files or remote Git. Repeat prepare to resume
+staging the same plan; `poketto plan show ID` pages affected paths and hashes.
+Resolve LOCAL/BASE/REMOTE conflicts using ordinary editing tools. Then
+`poketto sync accept ID --expect PATH=SHA256 [--absent PATH]` verifies selected bytes
+or absence and advances only those remote baselines. Partial acceptance survives
+restart; the host base advances when every planned path is accepted. Unchanged remote
+paths need no capture or acceptance.
+
+`poketto plan file ID PATH --version original --output NEW_PATH` recovers retained
+originals; `--version candidate` retrieves a candidate. Different existing output
+bytes are preserved. `poketto plan release ID` explicitly deletes application plan
+backups, preserving working files, accepted baselines and local staging files. Release
+the plan before saving or preparing another. Plans and originals otherwise remain
+until copy discard/expiry; capacity failures retain acknowledged preparation.
 
 `poketto move SOURCE DESTINATION` moves saved files, directories and indexed media
 and repairs Markdown references in one remote commit; dirty selected files and

@@ -45,7 +45,9 @@ Poketto owns repositories, publication, writes and recovery. It may redesign cop
 
 The [native repository owner](../../src/main/java/io/github/core607/poketto/executor/internal/NativeRepositoryExecutor.java) bounds roots by copy, scope and current grant, with per-command authority and cancellation. Normal completion retains background processes; revocation and idle expiry close roots. Public-proof checks cover idle/busy roots, output, artifacts and media. Changed copies remain; `new` may allocate current publication within quota. Mutable Git state cannot authorize deletion, replacing [public projection](../implemented/2026-09-09-public-execution-projection.md)'s inspection/rebuild choice at cutover.
 
-The durable journal owns baselines independently of writable Git HEAD. Per-path captures feed the atomic remote writer. Media import/link propose explicit index edits; artifacts survive runtime replacement. Local status has an explicit remote query, and bounded previews preserve complete receipts ([usage](../../docs/usage.md#mcp-and-isolated-execution)). Migration inventory, activation, sync/move integration and real consumer/performance acceptance remain cutover requirements; these classes do not activate the backend.
+The durable journal owns baselines independently of writable Git HEAD. Per-path captures feed the atomic remote writer. Media import/link propose explicit index edits; artifacts survive runtime replacement. Local status has an explicit remote query, and bounded previews preserve complete receipts ([usage](../../docs/usage.md#mcp-and-isolated-execution)). Preparation retains private originals and candidates beside the account journal; users edit working files, then accept explicit path/content expectations. This avoids treating uploads without compare-and-replace as safe automatic edits. Partial confirmations survive restart; one plan retains backups until explicit release or copy disposal/expiry. Migration, activation, move integration and real consumer/performance acceptance remain cutover requirements; these classes do not activate the backend.
+
+**Migration inventory.** Volumes and consumer initialization replace OPEN/ATTACH/DISCARD; frozen snapshots replace CAPTURE and ARTIFACT_CREATE; opaque host calls replace BRIDGE_POLL/COMPLETE. Consumers retain artifacts. MATERIALIZE, MOVE and BASELINE become application workflows; new atomic/frozen-job primitives still require independent uses and recovery contracts.
 
 ### Phases
 
@@ -60,18 +62,6 @@ The durable journal owns baselines independently of writable Git HEAD. Per-path 
 Recorded on 2026-10-27 against OpenSandbox `main` and the tags `release-1.1.0` and `release-1.2.0-rc.2`.
 
 **SDK reachability.** Kotlin constructs `protocol://endpoint` and forwards endpoint headers, allowing path-routed execd and token authentication. Its OkHttp integration exposes a connection pool, not Unix transport. Python accepts an httpx transport. Neither observation proves SDK conformance.
-
-**Operation map.** Original-protocol migration inventory:
-
-| Extension | Replaces |
-|---|---|
-| Volumes and consumer initialization: create, clone, exclusive attach, delete, quota | OPEN, ATTACH, DISCARD |
-| Frozen snapshot: listed files with sizes and SHA-256, streamed as tar | the five CAPTURE operations, ARTIFACT_CREATE |
-| Atomic apply: writes, deletions and renames with SHA-256 or absence preconditions, applied while frozen, rolled back on failure, idempotent by receipt | the four MATERIALIZE and five MOVE operations |
-| Frozen job: a run under another profile on the session's volume while the session is frozen | BASELINE |
-| Host calls | BRIDGE_POLL, BRIDGE_COMPLETE |
-
-Consumers retain downloaded artifacts. Migration decides which transaction and recovery guarantees belong to generic primitives or Poketto.
 
 **Specification changes.** The compared tags changed command/session error fields and sandbox lifecycle/network options. Versioned conformance must detect these differences; unsupported lifecycle and network options remain rejected.
 

@@ -35,7 +35,8 @@ class NativeRepositoryStatusTests {
             saves,
             mock(NativeRepositoryHost.SnapshotReader.class),
             mock(NativeArtifactCommands.class),
-            mock(NativeMediaCommands.class));
+            mock(NativeMediaCommands.class),
+            mock(NativePlanCommands.class));
 
     @BeforeEach
     void initialize() {

@@ -193,7 +193,7 @@ final class RepositoryMcpTools {
                                 "commit",
                                 described(
                                         nullableCommit(),
-                                        "Usually omitted. A new copy opens at this exact commit; an existing copy refuses any commit but its baseline, so use poketto sync to move it."),
+                                        "Usually omitted. A new copy opens at this exact commit; an existing copy requires its acknowledged host baseline. sync prepares candidates; edit files and accept explicit hashes to advance that baseline."),
                                 "timeoutSeconds",
                                 described(
                                         Map.of("type", "integer", "minimum", 1, "maximum", 60),

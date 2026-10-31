@@ -100,6 +100,39 @@ class NativeRepositoryCliLinuxTests {
     }
 
     @Test
+    void explicitPreparationAcceptanceAndRecoveryCommandsKeepTheirSelections() throws Exception {
+        String plan = UUID.randomUUID().toString();
+        Finished installed = installed(python("""
+                        import json,subprocess
+                        plan='%s'
+                        commands=[['poketto','sync'],['poketto','sync','prepare'],
+                                  ['poketto','sync','accept',plan,'--expect','private/汉=字.md='+'a'*64,'--absent','private/old.md'],
+                                  ['poketto','plan','show',plan,'--offset','2','--limit','3'],
+                                  ['poketto','plan','file',plan,'private/汉=字.md','--version','original','--output','private/recovered.md'],
+                                  ['poketto','plan','release',plan]]
+                        replies=[json.loads(subprocess.run(command,check=True,stdout=subprocess.PIPE).stdout)
+                                 for command in commands]
+                        print(json.dumps(replies))
+                        """.formatted(plan)), "echo");
+        assertThat(installed.exit()).as(installed.error()).isZero();
+        JsonNode replies = json.readTree(installed.output());
+        assertThat(replies.get(0).at("/result/operation").stringValue()).isEqualTo("sync_prepare");
+        assertThat(replies.get(1).at("/result/operation").stringValue()).isEqualTo("sync_prepare");
+        assertThat(replies.get(2).at("/result/arguments/planId").stringValue()).isEqualTo(plan);
+        assertThat(replies.get(2).at("/result/arguments/files/0/path").stringValue())
+                .isEqualTo("private/汉=字.md");
+        assertThat(replies.get(2).at("/result/arguments/files/0/sha256").stringValue())
+                .isEqualTo("a".repeat(64));
+        assertThat(replies.get(2).at("/result/arguments/files/1/sha256").stringValue())
+                .isEqualTo("absent");
+        assertThat(replies.get(3).at("/result/arguments/offset").intValue()).isEqualTo(2);
+        assertThat(replies.get(4).at("/result/arguments/version").stringValue()).isEqualTo("original");
+        assertThat(replies.get(4).at("/result/arguments/output").stringValue()).isEqualTo("private/recovered.md");
+        assertThat(replies.get(5).at("/result/operation").stringValue()).isEqualTo("plan_release");
+        assertThat(installed.requests()).hasSize(6);
+    }
+
+    @Test
     void executableClientReachesPythonAndShChildrenWhereAnExportedFunctionCannot() throws Exception {
         Finished old = run("poketto() { return 0; }; export -f poketto; " + python("""
                                 import subprocess

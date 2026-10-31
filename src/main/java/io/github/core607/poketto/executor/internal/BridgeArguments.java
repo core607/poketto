@@ -7,6 +7,7 @@ import static io.github.core607.poketto.executor.internal.ProtocolValues.uuid;
 import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.content.RepositoryPatch;
+import io.github.core607.poketto.content.RepositoryPaths;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -38,6 +39,81 @@ final class BridgeArguments {
     }
 
     record Status(boolean remote) {}
+
+    static PlanAccept planAccept(JsonNode arguments) {
+        JsonNode fields = exactly(arguments, PlanAccept.class);
+        JsonNode entries = fields.path("files");
+        require(
+                entries.isArray() && entries.size() <= 64,
+                "accepted files",
+                "must be an array of at most 64 expectations");
+        var files = new ArrayList<PlanExpected>();
+        for (JsonNode entry : entries) {
+            JsonNode expected = exactly(entry, PlanExpected.class);
+            files.add(new PlanExpected(string(expected, "path"), string(expected, "sha256")));
+        }
+        return new PlanAccept(string(fields, "planId"), files);
+    }
+
+    static PlanPage planPage(JsonNode arguments) {
+        JsonNode fields = exactly(arguments, PlanPage.class);
+        return new PlanPage(string(fields, "planId"), integer(fields, "offset"), integer(fields, "limit"));
+    }
+
+    static PlanIdentity planIdentity(JsonNode arguments) {
+        return new PlanIdentity(string(exactly(arguments, PlanIdentity.class), "planId"));
+    }
+
+    static PlanFile planFile(JsonNode arguments) {
+        JsonNode fields = exactly(arguments, PlanFile.class);
+        return new PlanFile(
+                string(fields, "planId"), string(fields, "path"), string(fields, "version"), string(fields, "output"));
+    }
+
+    record PlanExpected(String path, String sha256) {
+        PlanExpected {
+            path = RepositoryPaths.validate(path);
+            sha256 = NativeRepositoryPlan.identity(sha256);
+        }
+    }
+
+    record PlanAccept(String planId, List<PlanExpected> files) {
+        PlanAccept {
+            planId = uuid(planId, "plan identity");
+            files = List.copyOf(files);
+            require(
+                    files.size() <= 64
+                            && files.stream().map(PlanExpected::path).distinct().count() == files.size(),
+                    "accepted files",
+                    "must contain at most 64 distinct paths");
+        }
+    }
+
+    record PlanPage(String planId, int offset, int limit) {
+        PlanPage {
+            planId = uuid(planId, "plan identity");
+            ProtocolValues.inRange(offset, 0, WorkspaceSyncInputs.MAX_PATHS, "plan page offset");
+            ProtocolValues.inRange(limit, 1, 64, "plan page limit");
+        }
+    }
+
+    record PlanIdentity(String planId) {
+        PlanIdentity {
+            planId = uuid(planId, "plan identity");
+        }
+    }
+
+    record PlanFile(String planId, String path, String version, String output) {
+        PlanFile {
+            planId = uuid(planId, "plan identity");
+            path = RepositoryPaths.validate(path);
+            output = RepositoryPaths.validate(output);
+            require(
+                    Set.of("original", "candidate").contains(version),
+                    "plan file version",
+                    "must be original or candidate");
+        }
+    }
 
     static Receipt receipt(JsonNode arguments) {
         JsonNode fields = exactly(arguments, Receipt.class);

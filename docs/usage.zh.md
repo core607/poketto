@@ -182,21 +182,24 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 完整读取会话含授权文件和 Git 历史。公开副本仅含当前发布投影，无历史、私密元数据，返回合成的 `PUBLIC_PROJECTION` 提交，不能保存。发布变化返回 `PUBLICATION_CHANGED`，保留旧副本，不凭 Git 状态决定删除。`new` 可在配额内取得当前投影；旧副本占用配额直到丢弃或过期。快照撤回、过期或不可用会拒绝执行和制品、媒体读取，并收容相关空闲或忙碌沙箱。权限提升不扩大显式指定的公开副本。
 
-`poketto edit PATH --old TEXT --new TEXT` 替换已有本地文本文件中唯一、完全匹配的一段原文，原文不存在或匹配多处时拒绝。`poketto create PATH --text TEXT` 仅在路径不存在时新建文件。长文本可用 `create` 的 `--stdin` 或 `--text-file FILE`，以及 `edit` 的 `--old-file FILE`（代替 `--old`）和 `--new-stdin` 或 `--new-file FILE`（代替 `--new`）。输入为 UTF-8，保留末尾换行；输入文件路径按当前 shell 目录解析，目标路径仍相对于仓库根。这些选项不提高命令或桥接帧上限。两个命令写入前都会再次核对本地内容，普通 shell 写入没有这项检查；在 `poketto save` 之前都不改变远端。
+用普通 shell、Python 或编辑工具修改本地文件；`poketto save` 前不改变远端。例如，仅在文件不存在时创建，保留已有文件：
 
 ```sh
-poketto create private/article.md --stdin <<'MARKDOWN'
+(set -C; cat >private/article.md <<'MARKDOWN'
 # 文章
 
 引号、`$variables` 和反引号都会保留为普通 Markdown。
 MARKDOWN
+)
 ```
 
 `poketto save` 逐项检查选定文件和明确删除与远端的冲突，再原子提交；其他编辑留在本地。文件分别在冻结时捕获，集合不是同时快照。保存推进主机逐文件基线，不重置文件或 Git HEAD。`repo_exec.commit`/`status.initialCommit` 标识初始检出，`status.baseCommit` 标识已确认基线。不确定的保存须先用 `poketto recover` 核对，再写入。
 
 `poketto status` 读取本地确认状态；完整读取副本加 `--remote` 比较当前 main 与基线，返回 `MATCHES_BASE`、`DIFFERS_FROM_BASE` 或 `UNAVAILABLE`。它不检查 Git HEAD，也不改文件。预览给出回执字节数、摘要和 `omitted`；`poketto receipt save` 或 `poketto receipt import` 读取完整回执。
 
-`poketto sync` 将整个工作空间与同一个远端版本合并，保留仅存在于本地的文件及冲突的二进制内容，重叠的文本修改写入 LOCAL/BASE/REMOTE 冲突标记；它不会保存远端。中断后，状态显示 `syncPending`；`poketto recover` 继续执行，`poketto recover --skip-local` 解除待处理状态，但不撤销已安装的文件。命令时间不足时，同步以 `SYNC_INCOMPLETE` 提前停止并保留进度；再次运行 `poketto sync`，或为 `repo_exec` 设置更大的 `timeoutSeconds`。详见[工作空间同步](../notes/implemented/2026-09-15-workspace-synchronization.md)。
+`poketto sync` 或 `sync prepare` 固定一个远端版本，保留原件和合并候选，不改工作文件或远端 Git。重复 prepare 继续同一计划；`poketto plan show ID` 分页列出受影响路径和摘要。用普通编辑工具解决 LOCAL/BASE/REMOTE 冲突，再执行 `poketto sync accept ID --expect PATH=SHA256 [--absent PATH]`，核对选定字节或缺失状态，仅推进对应远端基线。部分确认跨重启保留，全部确认后推进主机基线；远端未变路径无需捕获或确认。
+
+`poketto plan file ID PATH --version original --output NEW_PATH` 取回原件，`--version candidate` 取候选；已有不同内容不会被覆盖。`poketto plan release ID` 显式删除应用保留的计划备份，保留工作文件、已确认基线和本地暂存文件。保存或准备新计划前须先 release；否则计划和原件保留至副本丢弃或过期。容量不足仍保留已确认的准备进度。
 
 `poketto move SOURCE DESTINATION` 移动已保存的文件、目录和索引媒体，并在同一次远端提交中修复 Markdown 引用；选定文件有未保存修改或目标已占用时拒绝。随后本地安装待完成时，先使用 `poketto recover`，再继续保存、移动或同步。本地修改导致无法安装时，`poketto recover --skip-local` 确认远端移动且不改动本地文件；保存相关路径前先运行 `poketto sync`。
 

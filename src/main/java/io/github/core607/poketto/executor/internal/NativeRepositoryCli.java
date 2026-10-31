@@ -16,6 +16,26 @@ final class NativeRepositoryCli {
             save=commands.add_parser('save')
             save.add_argument('paths',nargs='*')
             save.add_argument('--delete',action='append',default=[])
+            sync=commands.add_parser('sync',help='Prepare candidates without replacing working files; edit, then accept explicit hashes')
+            syncing=sync.add_subparsers(dest='sync_operation')
+            syncing.add_parser('prepare')
+            sync.set_defaults(sync_operation='prepare')
+            accepted=syncing.add_parser('accept',help='Verify selected working bytes and acknowledge only their remote baselines')
+            accepted.add_argument('plan_id')
+            accepted.add_argument('--expect',action='append',default=[],metavar='PATH=SHA256')
+            accepted.add_argument('--absent',action='append',default=[],metavar='PATH')
+            plan=commands.add_parser('plan').add_subparsers(dest='plan_operation',required=True)
+            shown=plan.add_parser('show',help='Page prepared paths, hashes and candidate locations')
+            shown.add_argument('plan_id')
+            shown.add_argument('--offset',type=int,default=0)
+            shown.add_argument('--limit',type=int,default=64)
+            recovered=plan.add_parser('file',help='Recover an immutable original or candidate to an absent output path')
+            recovered.add_argument('plan_id')
+            recovered.add_argument('path')
+            recovered.add_argument('--version',choices=['original','candidate'],required=True)
+            recovered.add_argument('--output',required=True)
+            released=plan.add_parser('release',help='Delete retained application plan backups; keep working files and accepted baselines')
+            released.add_argument('plan_id')
             artifact=commands.add_parser('artifact').add_subparsers(dest='artifact_operation',required=True)
             create=artifact.add_parser('create',help='Capture a temporary file for get_artifact')
             create.add_argument('path')
@@ -53,6 +73,24 @@ final class NativeRepositoryCli {
                 if not args.paths and not args.delete:
                     parser.error('save requires selected files or explicit --delete paths')
                 arguments={'writes':args.paths,'deletes':args.delete}
+            elif operation=='sync':
+                operation='sync_'+args.sync_operation
+                if args.sync_operation=='accept':
+                    expected=[]
+                    for value in args.expect:
+                        if '=' not in value:
+                            parser.error('--expect requires PATH=SHA256')
+                        path,digest=value.rsplit('=',1)
+                        expected.append({'path':path,'sha256':digest})
+                    expected.extend({'path':path,'sha256':'absent'} for path in args.absent)
+                    arguments={'planId':args.plan_id,'files':expected}
+            elif operation=='plan':
+                operation='plan_'+args.plan_operation
+                arguments={'planId':args.plan_id}
+                if args.plan_operation=='show':
+                    arguments.update(offset=args.offset,limit=args.limit)
+                elif args.plan_operation=='file':
+                    arguments.update(path=args.path,version=args.version,output=args.output)
             elif operation=='artifact':
                 operation='artifact_'+args.artifact_operation
                 arguments=({'path':args.path,'mediaType':args.media_type} if args.artifact_operation=='create'

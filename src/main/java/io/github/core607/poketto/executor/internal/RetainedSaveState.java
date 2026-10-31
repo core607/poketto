@@ -26,7 +26,8 @@ record RetainedSaveState(
         Move move,
         BridgeReplies.RestoredReceipt lastSave,
         BridgeReplies.RestoredReceipt lastImport,
-        PendingWorkspaceSync sync) {
+        PendingWorkspaceSync sync,
+        NativeRepositoryPlan nativePlan) {
     RetainedSaveState {
         originalCommit = commit(originalCommit);
         baseCommit = commit(baseCommit);
@@ -55,6 +56,10 @@ record RetainedSaveState(
         Objects.requireNonNull(lastSave, "last save receipt must be present");
         Objects.requireNonNull(lastImport, "last import receipt must be present");
         require(sync == null || (!uncertain && move == null), "pending sync", "cannot coexist with a remote write");
+        require(
+                nativePlan == null || (!uncertain && move == null && sync == null),
+                "native preparation",
+                "cannot coexist with another pending operation");
     }
 
     void requireRecoverable() {

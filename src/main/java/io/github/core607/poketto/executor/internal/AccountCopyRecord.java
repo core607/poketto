@@ -35,6 +35,8 @@ record AccountCopyRecord(
                 phase != Phase.REFRESHING || !owner.fullRead(), "refreshing copy", "must be a public projection");
         if (!owner.fullRead()) {
             ProtocolValues.require(original == null, "public baseline", "must not contain a private archive");
+            ProtocolValues.require(
+                    state.nativePlan() == null, "public copy", "must not retain a private preparation plan");
         } else if (phase != Phase.INITIALIZING && phase != Phase.DISCARDING) {
             Objects.requireNonNull(original, "a ready full copy requires its immutable original baseline");
         }

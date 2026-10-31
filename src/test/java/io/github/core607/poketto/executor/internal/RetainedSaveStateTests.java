@@ -242,6 +242,7 @@ class RetainedSaveStateTests {
                         null,
                         receipt,
                         receipt,
+                        null,
                         null))
                 .isInstanceOf(IllegalArgumentException.class);
         var oversized = JSON.createObjectNode().put("message", "x".repeat(65536));
@@ -275,6 +276,7 @@ class RetainedSaveStateTests {
                         null,
                         receipt,
                         receipt,
+                        null,
                         null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tracked path commit");

@@ -30,7 +30,8 @@ final class NativeRepositoryRuntime {
                 saves,
                 files,
                 new NativeArtifactCommands(files, artifacts),
-                new NativeMediaCommands(files, media, saves, auth));
+                new NativeMediaCommands(files, media, saves, auth),
+                new NativePlanCommands(files, saves));
         var workspaces =
                 new NativeRepositoryWorkspace(client, auth, exports, saves, accounts, profile, copyBytes, copyInodes);
         return new NativeRepositoryExecutor(

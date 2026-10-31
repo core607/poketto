@@ -68,7 +68,8 @@ class NativeRepositoryHostTests {
                 new SelectedFileSaves(auth, fixture.reader(auth), fixture.patches(auth), fixture.moves(auth)),
                 files,
                 mock(NativeArtifactCommands.class),
-                mock(NativeMediaCommands.class));
+                mock(NativeMediaCommands.class),
+                mock(NativePlanCommands.class));
     }
 
     private JsonNode reply(NativeRepositoryHost host, String request) {

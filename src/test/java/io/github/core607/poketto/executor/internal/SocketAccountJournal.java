@@ -135,7 +135,7 @@ final class SocketAccountJournal {
         when(lease.captureOriginal(any())).thenReturn(new AccountCopyRecord.Original("b".repeat(64), 64, 0));
         doAnswer(call -> {
                     AccountCopyRecord next = call.getArgument(0);
-                    AccountCopyStore.requireTransition(owner, entry.record.get(), next, store.nextExpiry());
+                    AccountCopyTransitions.requireTransition(owner, entry.record.get(), next, store.nextExpiry());
                     entry.record.set(next);
                     afterWrite.accept(next);
                     return null;

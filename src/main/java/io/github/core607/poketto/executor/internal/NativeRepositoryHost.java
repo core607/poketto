@@ -11,6 +11,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -26,16 +27,19 @@ final class NativeRepositoryHost {
     private final SnapshotReader files;
     private final NativeArtifactCommands artifacts;
     private final NativeMediaCommands media;
+    private final NativePlanCommands plans;
 
     NativeRepositoryHost(
             SelectedFileSaves saves,
             SnapshotReader files,
             NativeArtifactCommands artifacts,
-            NativeMediaCommands media) {
+            NativeMediaCommands media,
+            NativePlanCommands plans) {
         this.saves = saves;
         this.files = files;
         this.artifacts = artifacts;
         this.media = media;
+        this.plans = plans;
     }
 
     byte[] reply(AuthPrincipal principal, AccountCommand held, NativeRepositoryLease lease, byte[] bytes) {
@@ -49,6 +53,14 @@ final class NativeRepositoryHost {
                 case "status" -> status(principal, workspace, request, held);
                 case "receipt" ->
                     NativeRepositoryReceipts.page(held.record().state(), BridgeArguments.receipt(request.arguments()));
+                case "sync_prepare", "sync_accept", "plan_show", "plan_file", "plan_release" ->
+                    plans.command(
+                            principal,
+                            held,
+                            lease,
+                            request.operation(),
+                            request.arguments(),
+                            () -> lease.outOfTime(Duration.ofSeconds(5)));
                 case "save" -> save(principal, workspace, held, lease, state, request.arguments());
                 case "recover" -> recover(principal, workspace, state, request.arguments());
                 case "artifact_create", "artifact_remove" ->
@@ -95,6 +107,7 @@ final class NativeRepositoryHost {
                 record.state().originalCommit(),
                 query.remote() ? remoteStatus(principal, workspace, record) : null,
                 record.state().uncertain(),
+                NativePlanReplies.summary(record.state().nativePlan()),
                 NativeRepositoryReceipts.preview(record.state().lastSave()),
                 NativeRepositoryReceipts.preview(record.state().lastImport())));
     }
@@ -205,6 +218,7 @@ final class NativeRepositoryHost {
             String initialCommit,
             BridgeReplies.RemoteStatus remote,
             boolean writeOutcomeUnknown,
+            NativePlanReplies.Summary plan,
             NativeRepositoryReceipts.Preview lastSave,
             NativeRepositoryReceipts.Preview lastImport) {}
 

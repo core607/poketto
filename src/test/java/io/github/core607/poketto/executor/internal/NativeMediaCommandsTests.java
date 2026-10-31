@@ -119,7 +119,8 @@ class NativeMediaCommandsTests {
                 saves,
                 files,
                 new NativeArtifactCommands(files, artifacts),
-                new NativeMediaCommands(files, fixture.media(auth), saves, auth));
+                new NativeMediaCommands(files, fixture.media(auth), saves, auth),
+                new NativePlanCommands(files, saves));
         when(lease.upload(anyString(), any())).thenAnswer(call -> install(call.getArgument(0), call.getArgument(1)));
     }
 

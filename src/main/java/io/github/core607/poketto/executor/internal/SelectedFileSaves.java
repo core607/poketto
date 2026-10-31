@@ -71,11 +71,7 @@ final class SelectedFileSaves {
         if (state.uncertain || state.move != null) {
             throw new IllegalArgumentException("recover the pending write before synchronizing");
         }
-        String remoteCommit = state.sync == null
-                ? reader.currentCommit(actor, workspace)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException("synchronization requires an existing remote commit"))
-                : state.sync.commit();
+        String remoteCommit = syncCommit(actor, workspace, state);
         var limits = new RepositoryBaselineLimits(
                 WorkspaceSyncInputs.MAX_PATHS, WorkspaceSyncInputs.MAX_TEXT_BYTES, Duration.ofSeconds(20));
         var inputs = new WorkspaceSyncInputs.Collector(state.baseCommit, remoteCommit);
@@ -96,6 +92,21 @@ final class SelectedFileSaves {
         return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> result);
     }
 
+    private String syncCommit(AuthPrincipal actor, WorkspaceId workspace, State state) {
+        if (state.nativePlan != null) {
+            ProtocolValues.require(
+                    state.nativePlan.kind() == NativeRepositoryPlan.Kind.SYNC,
+                    "synchronization",
+                    "must not replace a pending move plan");
+            return state.nativePlan.remoteCommit();
+        }
+        return state.sync == null
+                ? reader.currentCommit(actor, workspace)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException("synchronization requires an existing remote commit"))
+                : state.sync.commit();
+    }
+
     BridgeReplies.Reply save(
             AuthPrincipal actor, WorkspaceId workspace, State state, Map<String, String> writes, List<String> deletes) {
         auth.authorize(actor, workspace);
@@ -107,6 +118,10 @@ final class SelectedFileSaves {
         }
         if (state.uncertain) {
             return BridgeReplies.failed("WRITE_OUTCOME_UNKNOWN");
+        }
+        if (state.nativePlan != null) {
+            return BridgeReplies.failed(
+                    "PLAN_PENDING", "Accept or explicitly release the retained preparation before saving.");
         }
         RepositoryPatch patch = selectedPatch(actor, workspace, state, writes, deletes);
         prepareRetainedWrite(state, patch);
@@ -255,6 +270,7 @@ final class SelectedFileSaves {
         BridgeReplies.Recorded lastImport = new BridgeReplies.Absent();
         SessionMoves.Pending move;
         PendingWorkspaceSync sync;
+        NativeRepositoryPlan nativePlan;
 
         State(String baseCommit) {
             this(baseCommit, SaveStateJournal.NONE);
@@ -293,6 +309,7 @@ final class SelectedFileSaves {
             lastImport = proposed.lastImport;
             move = proposed.move;
             sync = proposed.sync;
+            nativePlan = proposed.nativePlan;
         }
 
         /** The disk record's redundant commit index is derived only at the serialization boundary. */
@@ -314,7 +331,8 @@ final class SelectedFileSaves {
                     RetainedSaveState.Move.capture(move),
                     BridgeReplies.RestoredReceipt.capture(lastSave),
                     BridgeReplies.RestoredReceipt.capture(lastImport),
-                    sync);
+                    sync,
+                    nativePlan);
         }
 
         static State restore(RetainedSaveState snapshot) {
@@ -337,7 +355,30 @@ final class SelectedFileSaves {
             state.lastSave = snapshot.lastSave();
             state.lastImport = snapshot.lastImport();
             state.sync = snapshot.sync();
+            state.nativePlan = snapshot.nativePlan();
             return state;
+        }
+
+        void retainPlan(NativeRepositoryPlan plan) {
+            State proposed = copy();
+            proposed.nativePlan = plan;
+            install(proposed);
+        }
+
+        void acceptPlanFiles(Map<String, String> expected) {
+            NativeRepositoryPlan plan = Objects.requireNonNull(nativePlan, "preparation must be present");
+            ProtocolValues.require(
+                    plan.kind() == NativeRepositoryPlan.Kind.SYNC, "plan acceptance", "must be a synchronization");
+            requireTracking(expected.keySet());
+            State proposed = copy();
+            proposed.nativePlan = plan.accept(expected);
+            expected.keySet()
+                    .forEach(path -> proposed.fileBaselines.put(
+                            path, plan.files().get(path).remote()));
+            if (proposed.nativePlan.complete()) {
+                proposed.baseCommit = plan.remoteCommit();
+            }
+            install(proposed);
         }
 
         void retainSync(PendingWorkspaceSync pendingSync) {

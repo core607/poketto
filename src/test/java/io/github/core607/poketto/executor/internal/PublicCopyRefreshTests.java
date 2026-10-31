@@ -496,7 +496,8 @@ class PublicCopyRefreshTests {
                 null,
                 state.lastSave(),
                 state.lastImport(),
-                new PendingWorkspaceSync("9".repeat(40), List.of("article/index.md"), 0, List.of(), null));
+                new PendingWorkspaceSync("9".repeat(40), List.of("article/index.md"), 0, List.of(), null),
+                null);
         return new AccountCopyRecord(
                 record.owner(),
                 record.copyId(),

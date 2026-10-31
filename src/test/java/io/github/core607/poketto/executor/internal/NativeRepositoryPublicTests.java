@@ -274,7 +274,8 @@ class NativeRepositoryPublicTests extends NativeRepositoryTestFixture {
                 saves,
                 (lease, path, limit) -> new byte[0],
                 mock(NativeArtifactCommands.class),
-                new NativeMediaCommands(mock(NativeRepositoryFiles.class), publication.media(auth), saves, auth));
+                new NativeMediaCommands(mock(NativeRepositoryFiles.class), publication.media(auth), saves, auth),
+                mock(NativePlanCommands.class));
     }
 
     private NativeRepositoryExecutor executor(int copies, NativeRepositoryExecutor.CommandObserver observer) {

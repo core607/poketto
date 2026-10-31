@@ -5,6 +5,7 @@ import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.RepositoryExecutor.CopyRetention;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
@@ -66,6 +67,16 @@ final class AccountCommand implements AutoCloseable {
 
     AccountCopyRecord record() {
         return lease.record().orElse(null);
+    }
+
+    void publishPlanFile(UUID plan, NativePlanFile file, NativeTransferStore.Source source, Runnable authorize) {
+        requireLive();
+        lease.publishPlanFile(plan, file, source, authorize);
+    }
+
+    void copyPlanFile(UUID plan, NativePlanFile file, OutputStream output, Runnable authorize) throws IOException {
+        requireLive();
+        lease.copyPlanFile(plan, file, output, authorize);
     }
 
     /** A discarding copy is gone, and a refreshing one is usable only through its rebuild. */
