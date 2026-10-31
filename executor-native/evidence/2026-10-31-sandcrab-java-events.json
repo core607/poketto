@@ -1,6 +1,6 @@
 {
   "scope": "Java public API, streamed synthetic Git bundle, snapshots, opaque host calls, SSE output, durable volumes and restart; no product cutover or model calls",
-  "binarySha256": "45346add19a67f4165b1c1b9fb6416fc1adab187638c1b0cf80c56a409488f02",
+  "binarySha256": "9f824d90c86cd0c085a3d14fad60da845a586518f3a2116703240afd38fae374",
   "probeSha256": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
   "checks": [
     {
@@ -15,7 +15,7 @@
   "cleanup": "PASS",
   "volumeProbeSha256": "56a37936319179a93f28e89df82588cd00a639ba6821c213a3e1cb995bab0568",
   "controllerSha256": "a124e57c69d585d03fc7d9e24cb6a753776ffa72c9f7e7c87dc5b0a4506054f8",
-  "runtimeManifestSha256": "2121b5ad80fea46d57f633ce5d85c458c161e2e2427eb6a8b1323711205184cd",
+  "runtimeManifestSha256": "328ff17b8bb9563f90c847e41700d94c60b39bfd97e0afa896a91c0ece257a15",
   "corpus": {
     "commit": "1671ef85de5a864b5df7c8e73e6c48cae9f7665e",
     "bundleSha256": "ace418401e0b01a206838f45930040ea07d0eb82a9ca8413055b670806b92c02",
@@ -42,14 +42,15 @@
   },
   "result": "PASS",
   "date": "2026-10-31",
+  "sourceTree": "8f3a4e2dc6de54e4bb3215118af3ff27161055c7",
   "sourceSha256": {
     "src/main/java/io/github/core607/poketto/executor/internal/ExecutorConfiguration.java": "7ea50b57536ed889d27daf263fa34d1fae7b6062dad667c80ebfbe73413e3d9f",
     "src/main/java/io/github/core607/poketto/executor/internal/ProtocolValues.java": "ed621e2656928ceaebec1fff1f0b2de6b4653c3021aabb563a82ad66ab167129",
     "src/main/java/io/github/core607/poketto/executor/internal/SandboxChunks.java": "07a7d7cbb26cddcb2fd3a890e72ecbefeb6dcbe7fa155d723ee86bd15e1239f6",
-    "src/main/java/io/github/core607/poketto/executor/internal/SandboxHttp.java": "e4c77ab41a6ee64caac15c8cc1c14c455ea9540bc3e8d09641da7c29fc8b2b13",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandboxHttp.java": "1d70ebfeea46ba70e66b2aa8c06d9cf9a7df2b2dc77cd941e4c2b3b4dd86dc26",
     "src/main/java/io/github/core607/poketto/executor/internal/SandcrabClient.java": "a4f83fd328a336c263bfa99da74522c3457aef857aff1329350791383ed2b8b8",
-    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabEventProtocol.java": "60bd40fad54ced831f3a71c2a59b87d6fd3f19cba77e43b1ba80e7f4f1b418cf",
-    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabEvents.java": "e99ca817e663836a064b77e41ed8629212f726b538deac25d36cd4263893adde",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabEventProtocol.java": "394b0b3a79b318157d1a5460ea47cb0dca80858a28c37a83accf2688cd41f7cc",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabEvents.java": "c8f5fa1ac75d03500d5619de0f6dc5b68008436289384c8f28bb50a7ec3613b5",
     "src/main/java/io/github/core607/poketto/executor/internal/SandcrabEventStream.java": "907059d41bb5a52f3364e6fc76968b1c061e9b8e71dcc9800a91a663336234c4",
     "src/main/java/io/github/core607/poketto/executor/internal/SandcrabFiles.java": "c49296c5dc34f399052dd07ed4394df3763b9541e9da94ab890f8e6c875cae8f",
     "src/main/java/io/github/core607/poketto/executor/internal/SandcrabProtocol.java": "f8b37b91badb8f7047fb9055bbed848345e51c830eef30a9bcb9fd2f615ea720",
@@ -102,6 +103,5 @@
     "gradle/executor-service.gradle.kts": "da8ad97d6f15553c690e52e0f0f97b641740dc3555ace61fa9509083fbac09be",
     "gradle/executor-native.gradle.kts": "5a8c585d1ee5ce2906b19c51fa919d42d72d28f34d7090af4ffb7e83714c54a9"
   },
-  "sourceArchiveSha256": "4547aba0040bc9cd86f7eab7f74d0e2ff2c724d1be220adad6fde8e3f1764bb3",
-  "sourceTree": "fba6b6cb8902371863eda06d34621d75a6cb9292"
+  "sourceArchiveSha256": "a9869e1a2a5ed572dad58a74c206c860e8202a8359309735e5425a0d7b584302"
 }
