@@ -64,29 +64,40 @@ final class SandcrabFiles {
 
     /** The destination must be absent in a caller-owned directory; a failed transfer retains existing files. */
     Snapshot download(SandcrabProtocol.Session session, Plan plan, long maxBytes, Path target, Runnable authorize) {
-        Path temporary = null;
-        try {
-            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-                throw new IOException("Snapshot destination already exists");
-            }
-            temporary = Files.createTempFile(target.toAbsolutePath().getParent(), ".sandcrab-", ".snapshot");
+        try (var pending = new PendingSnapshot(target)) {
             Snapshot snapshot;
-            try (OutputStream output = Files.newOutputStream(temporary)) {
+            try (OutputStream output = Files.newOutputStream(pending.path)) {
                 snapshot = capture(session, plan, maxBytes, authorize, output);
             }
             authorize.run();
-            Files.move(temporary, target);
-            temporary = null;
+            pending.install(target);
             return snapshot;
         } catch (IOException failure) {
             throw new WorkerUnavailableException(failure);
-        } finally {
-            if (temporary != null) {
-                try {
-                    Files.deleteIfExists(temporary);
-                } catch (IOException failure) {
-                    throw new WorkerUnavailableException(failure);
-                }
+        }
+    }
+
+    /** Resource cleanup preserves the original refusal or transfer failure and suppresses a failed deletion. */
+    private static final class PendingSnapshot implements AutoCloseable {
+        private final Path path;
+        private boolean installed;
+
+        PendingSnapshot(Path target) throws IOException {
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("Snapshot destination already exists");
+            }
+            path = Files.createTempFile(target.toAbsolutePath().getParent(), ".sandcrab-", ".snapshot");
+        }
+
+        void install(Path target) throws IOException {
+            Files.move(path, target);
+            installed = true;
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (!installed) {
+                Files.deleteIfExists(path);
             }
         }
     }
