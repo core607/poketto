@@ -150,6 +150,57 @@ class NativeOomControllerTests(unittest.TestCase):
         sleep.assert_called_once_with(.05)
         self.assertEqual([line], item['kernelOom'])
 
+    def session_fixture(self):
+        probe = self.unit_fixture()
+        probe.pool_group = probe.unit_file.parent / 'pool'
+        group = probe.pool_group / 'session.slice'
+        group.mkdir(parents=True)
+        (group / 'cgroup.procs').write_text('')
+        probe.session_groups = {'session': group}
+        probe.socket = probe.unit_file.parent / 'runtime/control.sock'
+        session = {'id': 'session', 'serverId': 'epoch', 'profile': 'python', 'volumeId': 'volume'}
+        result = {**session, 'state': 'failed', 'activeRunId': None, 'code': None, 'parentSessionId': None}
+        volume = {'id': 'volume', 'profile': 'python', 'state': 'ready', 'busy': False, 'attachedTo': None}
+        probe.session_wait = Mock(return_value=result)
+        probe.session_forget = Mock()
+        return probe, session, result, volume
+
+    @patch('oom_probe.http')
+    def test_parent_oom_failed_session_is_forgotten_only_after_release_checks(self, http):
+        probe, session, result, volume = self.session_fixture()
+        item = {}
+        http.side_effect = [(200, result), (200, volume)]
+        def forgetting(expected):
+            self.assertEqual(session, expected)
+            self.assertTrue(item['sessionReleases'][0]['contained'])
+            self.assertEqual(volume, item['sessionReleases'][0]['volume'])
+        probe.session_forget.side_effect = forgetting
+        probe.release_pressure_session(session, item)
+        probe.session_forget.assert_called_once_with(session)
+        self.assertEqual(['POST', 'GET'], [call.args[1] for call in http.call_args_list])
+
+    @patch('oom_probe.http')
+    def test_unconfirmed_or_still_attached_pressure_sessions_are_never_forgotten(self, http):
+        for fault in ('closing', 'activeRunId', 'serverId', 'cgroup', 'workspace', 'attachment'):
+            with self.subTest(fault=fault):
+                probe, session, result, volume = self.session_fixture()
+                if fault == 'closing':
+                    result['state'] = 'closing'
+                elif fault == 'activeRunId':
+                    result['activeRunId'] = 'run'
+                elif fault == 'serverId':
+                    result['serverId'] = 'another-epoch'
+                elif fault == 'cgroup':
+                    (probe.session_groups['session'] / 'cgroup.procs').write_text('42\n')
+                elif fault == 'workspace':
+                    (probe.socket.parent / 'jobs/session').mkdir(parents=True)
+                else:
+                    volume['attachedTo'] = 'session'
+                http.side_effect = [(200, result), (200, volume)]
+                with self.assertRaises(AssertionError):
+                    probe.release_pressure_session(session, {})
+                probe.session_forget.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

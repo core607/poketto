@@ -13,7 +13,8 @@ import time
 import uuid
 
 from native_probe import call, http
-from oom_evidence import PendingKernelEvidence, increased, kernel_victims, process_topology, reject_global_oom, unit_policy
+from oom_evidence import (PendingKernelEvidence, detached_volume, increased, kernel_victims, process_topology,
+                          reject_global_oom, session_identity, session_resources_released, terminal_session, unit_policy)
 from volume_probe import VolumeProbe
 
 MIB = 1024 * 1024
@@ -71,6 +72,7 @@ class OomProbe(VolumeProbe):
         self.policy = 'stop'
         self.volumes = []
         self.sessions = []
+        self.session_groups = {}
         source = self.config.read_text()
         replacements = {'max_records = 8\n': 'max_records = 128\n',
                         'max_output_bytes = 1048576\n': 'max_output_bytes = 67108864\n',
@@ -248,7 +250,16 @@ class OomProbe(VolumeProbe):
             for pid in path.read_text().split():
                 guests.append(process(int(pid)))
         process_topology(main, relays, guests, main['cgroup'], '/' + self.pool_group.relative_to('/sys/fs/cgroup').as_posix())
-        self.receipt['topology'] = {'main': main, 'relays': relays, 'independentGuests': guests}
+        for session in self.sessions:
+            unit = self.name + '-' + session['id'] + '.service'
+            paths = {Path('/sys/fs/cgroup') / guest['cgroup'].lstrip('/') for guest in guests
+                     if Path(guest['cgroup']).name == unit}
+            assert len(paths) == 1, 'The admitted session has no unique observed unit cgroup'
+            aggregate = paths.pop().parent
+            assert aggregate.parent == self.pool_group, 'The session aggregate escaped the owned pressure pool'
+            self.session_groups[session['id']] = aggregate
+        self.receipt['topology'] = {'main': main, 'relays': relays, 'independentGuests': guests,
+                                    'sessionGroups': {key: str(value) for key, value in self.session_groups.items()}}
         self.done('native-supervision-and-relay-score-inheritance')
 
     def parent_oom(self):
@@ -266,10 +277,35 @@ class OomProbe(VolumeProbe):
         assert self.guard() == item['main']
         assert http(self.socket, 'GET', '/v1/info')[1]['serverId'] == item['epoch']
         for session in self.sessions:
-            self.session_close(session)
-            self.session_forget(session)
+            self.release_pressure_session(session, item)
         self.readbacks()
         self.complete(item, 'native-parent-pool-oom-retains-main-epoch-and-both-volumes')
+
+    def release_pressure_session(self, session, item):
+        status, reply = http(self.socket, 'POST', '/v1/sessions/' + session['id'] + '/close', {})
+        observation = {'closeStatus': status, 'closeReply': reply, 'contained': False}
+        item.setdefault('sessionReleases', []).append(observation)
+        self.save()
+        assert status == 200, reply
+        session_identity(session, reply)
+        result = self.session_wait(session, terminal=True)
+        observation['session'] = result
+        self.save()
+        # A killed shell remains failed after close; only confirmed cleanup permits forgetting or reattachment.
+        terminal_session(session, result)
+        group = self.session_groups[session['id']]
+        assert group.parent == self.pool_group, 'The observed session group is outside the owned pool'
+        session_resources_released(self.socket.parent / 'jobs' / session['id'], group,
+                                   Path('/proc/self/mountinfo').read_text())
+        status, volume = http(self.socket, 'GET', '/v1/volumes/' + session['volumeId'])
+        observation['volumeStatus'] = status
+        observation['volume'] = volume
+        self.save()
+        assert status == 200, volume
+        detached_volume(session, volume)
+        observation['contained'] = True
+        self.save()
+        self.session_forget(session)
 
     def contained(self):
         wait_until(lambda: properties(self.unit)['MainPID'] == '0', 'Service did not stop after its member OOM')

@@ -1,4 +1,5 @@
 """Evidence required by the owned native OOM fixture; exit signals alone are insufficient."""
+import os
 import re
 
 
@@ -62,3 +63,37 @@ def process_topology(main, relays, guests, service_group, pool_group):
         assert guest['cgroup'].startswith(pool_group + '/')
         assert guest['cgroup'] != service_group
         assert guest['oomScoreAdjust'] == 0, 'Independent units inherited supervisor protection'
+
+
+def session_identity(expected, actual):
+    for field in ('id', 'serverId', 'profile', 'volumeId'):
+        assert actual[field] == expected[field], 'Session identity changed during pressure cleanup'
+    assert actual['parentSessionId'] is None, 'Expected the admitted parent session'
+
+
+def terminal_session(expected, actual):
+    session_identity(expected, actual)
+    assert actual['state'] in ('closed', 'expired', 'failed'), 'Session containment is not terminal'
+    assert actual['activeRunId'] is None, 'A terminal session still reports active work'
+    assert actual['code'] != 'CONTAINMENT_UNCONFIRMED', 'Session containment is unconfirmed'
+
+
+def session_resources_released(job, group, mountinfo):
+    assert not os.path.lexists(job), 'The old session workspace still exists'
+    workspace = job.as_posix()
+    for line in mountinfo.splitlines():
+        fields = line.split()
+        assert len(fields) >= 6, 'Malformed mount observation'
+        target = fields[4]
+        assert target != workspace and not target.startswith(workspace + '/'), 'The old session mount remains'
+    assert not group.is_symlink(), 'The observed session cgroup was replaced'
+    if group.exists():
+        assert group.is_dir(), 'The observed session cgroup is not a directory'
+        for path in group.rglob('cgroup.procs'):
+            assert not path.read_text().strip(), 'The observed session cgroup still owns processes'
+
+
+def detached_volume(expected, actual):
+    assert actual['id'] == expected['volumeId'] and actual['profile'] == expected['profile'], 'Volume identity changed'
+    assert actual['state'] == 'ready', 'Pressure did not preserve the ready volume'
+    assert actual['busy'] is False and actual['attachedTo'] is None, 'The old volume attachment remains'

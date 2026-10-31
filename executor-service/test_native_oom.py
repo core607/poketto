@@ -1,6 +1,7 @@
 """Classifier fixtures do not replace a real native/kernel OOM receipt."""
 import importlib.util
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -96,6 +97,58 @@ class NativeInstalledPolicyTests(unittest.TestCase):
         score.return_value = '0'
         with self.assertRaises(PoolUnavailable):
             check_service('native.service')
+
+
+class NativeOomSessionEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        self.job = root / 'jobs/session'
+        self.group = root / 'session.slice'
+        self.group.mkdir()
+        (self.group / 'cgroup.procs').write_text('')
+        self.session = {'id': 'session', 'serverId': 'epoch', 'profile': 'python', 'volumeId': 'volume'}
+        self.terminal = {**self.session, 'state': 'failed', 'activeRunId': None, 'code': None, 'parentSessionId': None}
+        self.volume = {'id': 'volume', 'profile': 'python', 'state': 'ready', 'busy': False, 'attachedTo': None}
+
+    def test_failed_closed_and_expired_are_terminal_only_with_independent_release_proof(self):
+        for state in ('failed', 'closed', 'expired'):
+            evidence.terminal_session(self.session, {**self.terminal, 'state': state})
+            evidence.session_resources_released(self.job, self.group, '')
+            evidence.detached_volume(self.session, self.volume)
+
+    def test_wrong_identity_active_work_and_unconfirmed_containment_are_refused(self):
+        changes = [{'state': 'closing'}, {'state': 'stopping'}, {'activeRunId': 'run'},
+                   {'code': 'CONTAINMENT_UNCONFIRMED'}, {'parentSessionId': 'parent'}]
+        changes += [{field: 'another'} for field in ('id', 'serverId', 'profile', 'volumeId')]
+        for change in changes:
+            with self.subTest(change=change), self.assertRaises(AssertionError):
+                evidence.terminal_session(self.session, {**self.terminal, **change})
+
+    def test_failed_label_cannot_hide_a_live_descendant_or_workspace(self):
+        child = self.group / 'unit.service'
+        child.mkdir()
+        processes = child / 'cgroup.procs'
+        processes.write_text('42\n')
+        with self.assertRaises(AssertionError):
+            evidence.session_resources_released(self.job, self.group, '')
+        processes.write_text('')
+        self.job.mkdir(parents=True)
+        with self.assertRaises(AssertionError):
+            evidence.session_resources_released(self.job, self.group, '')
+
+    def test_mount_observation_is_required_even_when_the_workspace_path_is_absent(self):
+        for target in (self.job, self.job / 'child'):
+            mounts = f'10 9 0:1 / {target.as_posix()} rw - tmpfs tmpfs rw\n'
+            with self.subTest(target=target), self.assertRaises(AssertionError):
+                evidence.session_resources_released(self.job, self.group, mounts)
+
+    def test_failed_label_cannot_release_an_attached_missing_or_changed_volume(self):
+        for change in ({'busy': True}, {'attachedTo': 'session'}, {'state': 'failed'},
+                       {'id': 'another'}, {'profile': 'another'}):
+            with self.subTest(change=change), self.assertRaises(AssertionError):
+                evidence.detached_volume(self.session, {**self.volume, **change})
 
 
 if __name__ == '__main__':
