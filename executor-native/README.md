@@ -4,8 +4,8 @@ This probe runs the production Java executor adapter, Unix peer checks, Ed25519 
 repository supervisor and sandbox against a real Linux systemd host, so a failure here names the isolation layer.
 Authentication and the Git authority are synthetic fixtures on purpose. The probe does not replace
 PostgreSQL integration tests, the HTTP MCP entrance, or [client acceptance](../acceptance/clients/README.md)
-with real login, issued API keys and actual Codex and Claude Code clients. The worker's own contract and
-probes are in the [worker reference](../executor-service/README.md).
+with real login, issued API keys and actual Codex and Claude Code clients. See the
+[worker contract and probes](../executor-service/README.md) or [native Sandcrab consumer](sandcrab.md).
 
 ## Prepare
 
