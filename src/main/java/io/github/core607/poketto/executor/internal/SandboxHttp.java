@@ -31,7 +31,7 @@ final class SandboxHttp {
         this.verifyPeer = verifyPeer;
     }
 
-    record Head(int status, String contentType, long length) {}
+    record Head(int status, String contentType, long length, String etag, String serverId) {}
 
     /** Reads while the connection is owned by exchange; the caller must bound and validate its body. */
     @FunctionalInterface
@@ -66,6 +66,18 @@ final class SandboxHttp {
     }
 
     private <T> T exchange(Request request, Duration timeout, Duration idle, Reader<T> reader) {
+        return exchange(request, timeout, idle, reader, false);
+    }
+
+    <T> T events(String path, String after, Duration timeout, Duration idle, Reader<T> reader) {
+        if (after != null) {
+            require(after.length() <= 128 && !after.isEmpty() && after.chars().allMatch(c -> c > 32 && c < 127));
+        }
+        ByteBuffer header = requestHead("GET", path, "application/json", 0, after);
+        return exchange(new MemoryRequest(header), timeout, idle, reader, true);
+    }
+
+    private <T> T exchange(Request request, Duration timeout, Duration idle, Reader<T> reader, boolean events) {
         try {
             verifySocket.run();
         } catch (WorkerUnavailableException failure) {
@@ -89,7 +101,7 @@ final class SandboxHttp {
             writing = true;
             writeRequest(channel, selector, request, deadline);
             phase = "response-header";
-            Response response = response(channel, selector, deadline, idle.toNanos());
+            Response response = response(channel, selector, deadline, idle.toNanos(), events);
             phase = "response-body";
             reading = true;
             return reader.read(response.head(), response.body());
@@ -167,6 +179,10 @@ final class SandboxHttp {
     }
 
     private static ByteBuffer requestHead(String method, String path, String contentType, long length) {
+        return requestHead(method, path, contentType, length, null);
+    }
+
+    private static ByteBuffer requestHead(String method, String path, String contentType, long length, String after) {
         require(method.matches("GET|POST|PUT|DELETE"));
         require(path.startsWith("/") && path.chars().allMatch(c -> c > 32 && c < 127));
         require(contentType.equals("application/json") || contentType.equals("application/octet-stream"));
@@ -174,6 +190,7 @@ final class SandboxHttp {
                         + (length > 0 || method.equals("POST") || method.equals("PUT")
                                 ? "Content-Type: " + contentType + "\r\nContent-Length: " + length + "\r\n"
                                 : "")
+                        + (after == null ? "" : "Last-Event-ID: " + after + "\r\n")
                         + "Connection: close\r\n\r\n")
                 .getBytes(StandardCharsets.US_ASCII);
         require(head.length <= MAX_HEAD);
@@ -183,7 +200,7 @@ final class SandboxHttp {
     private record Response(Head head, InputStream body) {}
 
     /** The response head and its declared body, beginning with the bytes that arrived with the head. */
-    private static Response response(SocketChannel channel, Selector selector, long deadline, long idle)
+    private static Response response(SocketChannel channel, Selector selector, long deadline, long idle, boolean events)
             throws IOException {
         ByteBuffer head = ByteBuffer.allocate(MAX_HEAD + 4);
         int end;
@@ -196,8 +213,14 @@ final class SandboxHttp {
             }
             head.position(head.position() + read);
         }
-        Head parsed = head(new String(head.array(), 0, end, StandardCharsets.US_ASCII));
+        Head parsed = head(new String(head.array(), 0, end, StandardCharsets.US_ASCII), events);
         int received = head.position() - end - 4;
+        if (parsed.length() == -1) {
+            var input = new ChannelInput(
+                    channel, selector, deadline, idle, Long.MAX_VALUE, head.array(), end + 4, received);
+            input.bounded = true;
+            return new Response(parsed, new SandboxChunks(input));
+        }
         require(received <= parsed.length());
         return new Response(
                 parsed,
@@ -219,7 +242,7 @@ final class SandboxHttp {
     }
 
     /** A final status and exactly one Content-Length; streamed or ambiguous framing is refused. */
-    private static Head head(String head) {
+    private static Head head(String head, boolean events) {
         String[] lines = head.split("\r\n", -1);
         String[] statusLine = lines[0].split(" ", 3);
         require(statusLine.length == 3 && statusLine[0].equals("HTTP/1.1"));
@@ -227,6 +250,9 @@ final class SandboxHttp {
         int status = Integer.parseInt(statusLine[1]);
         Long length = null;
         String type = null;
+        String etag = null;
+        String serverId = null;
+        boolean chunked = false;
         for (int index = 1; index < lines.length; index++) {
             int colon = lines[index].indexOf(':');
             require(colon > 0);
@@ -241,12 +267,23 @@ final class SandboxHttp {
             } else if (name.equalsIgnoreCase("Content-Type")) {
                 require(type == null);
                 type = value;
-            } else {
-                require(!name.equalsIgnoreCase("Transfer-Encoding"));
+            } else if (name.equalsIgnoreCase("ETag")) {
+                require(etag == null);
+                etag = value;
+            } else if (name.equalsIgnoreCase("X-Sandcrab-Server-Id")) {
+                require(serverId == null);
+                serverId = value;
+            } else if (name.equalsIgnoreCase("Transfer-Encoding")) {
+                require(events && !chunked && value.equalsIgnoreCase("chunked"));
+                chunked = true;
             }
         }
+        if (chunked) {
+            require(length == null && "text/event-stream".equals(type));
+            return new Head(status, type, -1, etag, serverId);
+        }
         require(length != null && (length == 0 || type != null));
-        return new Head(status, type, length);
+        return new Head(status, type, length, etag, serverId);
     }
 
     /**
@@ -257,6 +294,8 @@ final class SandboxHttp {
         private final SocketChannel channel;
         private final Selector selector;
         private final long idle;
+        private final long totalDeadline;
+        private boolean bounded;
         private final byte[] prefix;
         private long deadline;
         private long remaining;
@@ -275,6 +314,7 @@ final class SandboxHttp {
             this.channel = channel;
             this.selector = selector;
             this.deadline = deadline;
+            this.totalDeadline = deadline;
             this.idle = idle;
             this.remaining = remaining;
             this.prefix = prefix;
@@ -290,6 +330,9 @@ final class SandboxHttp {
 
         @Override
         public int read(byte[] bytes, int offset, int length) throws IOException {
+            if (bounded) {
+                deadline(totalDeadline);
+            }
             if (remaining == 0) {
                 return -1;
             }
@@ -306,7 +349,7 @@ final class SandboxHttp {
             } else {
                 ByteBuffer target = ByteBuffer.wrap(bytes, offset, wanted);
                 while (true) {
-                    deadline(deadline);
+                    deadline(bounded ? Math.min(deadline, totalDeadline) : deadline);
                     read = channel.read(target);
                     if (read < 0) {
                         throw new IOException("incomplete worker response");
@@ -314,7 +357,11 @@ final class SandboxHttp {
                     if (read > 0) {
                         break;
                     }
-                    ready(channel, selector, SelectionKey.OP_READ, deadline);
+                    ready(
+                            channel,
+                            selector,
+                            SelectionKey.OP_READ,
+                            bounded ? Math.min(deadline, totalDeadline) : deadline);
                 }
                 if (idle > 0) {
                     deadline = System.nanoTime() + idle;

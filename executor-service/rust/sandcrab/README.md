@@ -387,6 +387,10 @@ admission until restart. Temporary staging counts against workspace or volume qu
 | `POST /v1/uploads/ID/forget` with `{}` | Forget a waiting or terminal record when no stage remains |
 | `POST /v1/sessions/ID/snapshot` | Send `path`, `format`, optional `freeze`; receive a fixed-length body with a quoted SHA-256 ETag |
 
+Native snapshot replies include `X-Sandcrab-Server-Id`, the serving daemon epoch.
+Clients retaining a session handle must match this header against its `serverId`
+before exposing snapshot bytes; a missing or different epoch cannot identify that session.
+
 Bulk requests close their connection. Upload bodies support `Expect: 100-continue`
 after admission; other expectations are refused. Profile `transfer_bytes` bounds
 both stream bytes and expanded regular-file content. Archives also have a 10,000-entry

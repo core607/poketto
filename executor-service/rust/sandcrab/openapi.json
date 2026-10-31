@@ -1173,8 +1173,16 @@
         },
         "responses": {
           "200": {
-            "description": "Snapshot bytes; validate both declared length and ETag before installing locally.",
+            "description": "Snapshot bytes; validate declared length and ETag before installing locally. Clients retaining a session handle must match X-Sandcrab-Server-Id against its serverId before exposing bytes; a missing or different epoch cannot identify that session.",
             "headers": {
+              "X-Sandcrab-Server-Id": {
+                "required": true,
+                "description": "The serving daemon epoch, matching serverId in native session records.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
               "ETag": {
                 "required": true,
                 "schema": {
@@ -1336,14 +1344,14 @@
             }
           }
         ],
-        "description": "Read per-command call metadata. Only the request stream carries payloads. Replied records confirm file publication, not guest consumption or an outside business commit. Pending calls become abandoned when their command ends; records last until the run is forgotten or the daemon restarts. HOST_CALLS_DISABLED means the profile did not enable this facility.",
+        "description": "Read per-command call metadata bound to runId, serverId and incarnation. Only the request stream carries payloads. Replied records confirm file publication, not guest consumption or an outside business commit. Pending calls become abandoned when their command ends; records last until the run is forgotten or the daemon restarts. HOST_CALLS_DISABLED means the profile did not enable this facility.",
         "responses": {
           "200": {
             "description": "Current retained state.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HostCallList"
+                  "$ref": "#/components/schemas/HostCallInventory"
                 }
               }
             }
@@ -2834,6 +2842,49 @@
           }
         }
       },
+      "HostCallInventory": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "runId",
+          "serverId",
+          "incarnation",
+          "closed",
+          "error",
+          "calls"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "incarnation": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 64
+          },
+          "calls": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/components/schemas/HostCall"
+            }
+          }
+        }
+      },
       "HostCallReply": {
         "type": "object",
         "additionalProperties": false,
@@ -2860,12 +2911,18 @@
         "additionalProperties": false,
         "required": [
           "runId",
+          "serverId",
           "calls"
         ],
         "properties": {
           "runId": {
             "type": "string",
             "format": "uuid"
+          },
+          "serverId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Daemon epoch owning this run; validate before dispatching an outside effect."
           },
           "calls": {
             "$ref": "#/components/schemas/HostCallList"
