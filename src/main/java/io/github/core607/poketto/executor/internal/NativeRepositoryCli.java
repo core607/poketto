@@ -24,6 +24,16 @@ final class NativeRepositoryCli {
             accepted.add_argument('plan_id')
             accepted.add_argument('--expect',action='append',default=[],metavar='PATH=SHA256')
             accepted.add_argument('--absent',action='append',default=[],metavar='PATH')
+            move=commands.add_parser('move',help='Prepare repaired links and index; edit and accept paths before the remote move')
+            moving=move.add_subparsers(dest='move_operation',required=True)
+            prepared=moving.add_parser('prepare')
+            prepared.add_argument('source')
+            prepared.add_argument('destination')
+            moved=moving.add_parser('accept',help='Record per-path candidate verification; the last acceptance requests the saved remote move')
+            moved.add_argument('plan_id')
+            moved.add_argument('--expect',action='append',default=[],metavar='PATH=SHA256')
+            moved.add_argument('--absent',action='append',default=[],metavar='PATH')
+            moving.add_parser('recover',help='Reconcile the same retained remote attempt').add_argument('plan_id')
             plan=commands.add_parser('plan').add_subparsers(dest='plan_operation',required=True)
             shown=plan.add_parser('show',help='Page prepared paths, hashes and candidate locations')
             shown.add_argument('plan_id')
@@ -73,9 +83,10 @@ final class NativeRepositoryCli {
                 if not args.paths and not args.delete:
                     parser.error('save requires selected files or explicit --delete paths')
                 arguments={'writes':args.paths,'deletes':args.delete}
-            elif operation=='sync':
-                operation='sync_'+args.sync_operation
-                if args.sync_operation=='accept':
+            elif operation in ('sync','move'):
+                action=args.sync_operation if operation=='sync' else args.move_operation
+                operation=operation+'_'+action
+                if action=='accept':
                     expected=[]
                     for value in args.expect:
                         if '=' not in value:
@@ -84,6 +95,10 @@ final class NativeRepositoryCli {
                         expected.append({'path':path,'sha256':digest})
                     expected.extend({'path':path,'sha256':'absent'} for path in args.absent)
                     arguments={'planId':args.plan_id,'files':expected}
+                elif operation=='move_prepare':
+                    arguments={'source':args.source,'destination':args.destination}
+                elif operation=='move_recover':
+                    arguments={'planId':args.plan_id}
             elif operation=='plan':
                 operation='plan_'+args.plan_operation
                 arguments={'planId':args.plan_id}

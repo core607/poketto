@@ -381,6 +381,34 @@ final class SelectedFileSaves {
             install(proposed);
         }
 
+        void acknowledgeMovePlanFiles(Map<String, RetainedFileBaseline> versions) {
+            NativeRepositoryPlan plan = Objects.requireNonNull(nativePlan, "move preparation must be present");
+            NativeMoveState moveState = Objects.requireNonNull(plan.moveState(), "move state must be present");
+            RepositoryPatchResult result = Objects.requireNonNull(moveState.result(), "move must be confirmed");
+            ProtocolValues.require(
+                    plan.files().keySet().containsAll(versions.keySet()),
+                    "move baselines",
+                    "must belong to prepared paths");
+            requireTracking(versions.keySet());
+            versions.forEach((path, file) -> {
+                file.requirePath(path);
+                ProtocolValues.require(
+                        file.commit().equals(result.commit()),
+                        "move baseline",
+                        "must match the confirmed remote commit");
+            });
+            var acknowledged = new HashSet<>(moveState.baselined());
+            acknowledged.addAll(versions.keySet());
+            State proposed = copy();
+            proposed.fileBaselines.putAll(versions);
+            proposed.nativePlan = plan.withMoveState(new NativeMoveState(
+                    moveState.definition(), true, moveState.attempt(), result, false, acknowledged));
+            if (proposed.nativePlan.complete()) {
+                proposed.baseCommit = result.commit();
+            }
+            install(proposed);
+        }
+
         void retainSync(PendingWorkspaceSync pendingSync) {
             State proposed = copy();
             proposed.sync = pendingSync;

@@ -1,5 +1,6 @@
 package io.github.core607.poketto.executor.internal;
 
+import java.util.Arrays;
 import java.util.Objects;
 
 /** Durable copy identity and baseline transitions shared by storage and its peer fixtures. */
@@ -59,6 +60,10 @@ final class AccountCopyTransitions {
     }
 
     private static void requirePlanTransition(NativeRepositoryPlan current, NativeRepositoryPlan next) {
+        ProtocolValues.require(
+                current == null || next != null || current.releasable(),
+                "plan release",
+                "must retain unresolved remote recovery data");
         if (current == null || next == null) {
             return;
         }
@@ -67,21 +72,58 @@ final class AccountCopyTransitions {
         ProtocolValues.require(
                 current.kind() == next.kind()
                         && current.baseCommit().equals(next.baseCommit())
-                        && current.remoteCommit().equals(next.remoteCommit())
+                        && Objects.equals(current.remoteCommit(), next.remoteCommit())
                         && Objects.equals(current.move(), next.move())
                         && current.paths().equals(next.paths()),
                 "plan authority",
                 "must retain its captured inventory and commits");
         ProtocolValues.require(!current.prepared() || next.prepared(), "prepared plan", "must not become incomplete");
-        ProtocolValues.require(
-                next.files().entrySet().containsAll(current.files().entrySet()),
-                "plan originals",
-                "must preserve every prepared file");
+        current.files().forEach((path, file) -> {
+            NativeRepositoryPlan.File kept = next.files().get(path);
+            ProtocolValues.require(
+                    kept != null
+                            && Objects.equals(kept.original(), file.original())
+                            && (!file.prepared() || kept.equals(file)),
+                    "plan originals",
+                    "must preserve every prepared file");
+        });
         ProtocolValues.require(
                 next.accepted().keySet().containsAll(current.accepted().keySet()),
                 "plan acceptance",
                 "must not lose acknowledged progress");
         ProtocolValues.require(
                 next.staged().containsAll(current.staged()), "plan staging", "must not lose acknowledged progress");
+        requireMoveTransition(current.moveState(), next.moveState());
+    }
+
+    private static void requireMoveTransition(NativeMoveState current, NativeMoveState next) {
+        if (current == null) {
+            return;
+        }
+        ProtocolValues.require(
+                current.definition() == null || current.definition().equals(next.definition()),
+                "move definition",
+                "must retain its original bytes");
+        if (current.attempt() != null) {
+            ProtocolValues.require(
+                    next.attempt() != null
+                            && current.attempt().commit().equals(next.attempt().commit())
+                            && Arrays.equals(
+                                    current.attempt().object(), next.attempt().object()),
+                    "move attempt",
+                    "must retain the same candidate until release");
+        }
+        ProtocolValues.require(
+                current.result() == null || current.result().equals(next.result()),
+                "move acknowledgement",
+                "must retain its confirmed result");
+        ProtocolValues.require(
+                !current.conflicted() || next.conflicted(),
+                "move conflict",
+                "requires explicit release before replanning");
+        ProtocolValues.require(
+                next.baselined().containsAll(current.baselined()),
+                "move baselines",
+                "must retain acknowledged progress");
     }
 }

@@ -2,6 +2,7 @@ package io.github.core607.poketto.executor.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -32,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -62,6 +64,7 @@ abstract class NativePlanFixture {
     final AtomicReference<RetainedSaveState> state = new AtomicReference<>();
     final AtomicBoolean denied = new AtomicBoolean();
     final AtomicBoolean loseMaterialization = new AtomicBoolean();
+    final EnumSet<Capability> capabilities = EnumSet.allOf(Capability.class);
     PublicExecutionNativeFixture repository;
     NativeTransferStore transfers;
     SelectedFileSaves saves;
@@ -76,10 +79,21 @@ abstract class NativePlanFixture {
         when(actor.subjectId()).thenReturn(UUID.randomUUID());
         when(auth.authorize(any(), any(), any(Capability[].class))).thenAnswer(call -> {
             authorize();
-            return new WorkspaceAccess(workspace, actor, MembershipRole.OWNER, EnumSet.allOf(Capability.class));
+            for (Capability required : (Capability[]) call.getRawArguments()[2]) {
+                if (!capabilities.contains(required)) {
+                    throw new AuthException(AuthException.Code.DENIED);
+                }
+            }
+            return new WorkspaceAccess(workspace, actor, MembershipRole.OWNER, capabilities);
         });
         when(auth.withAuthorization(any(), any(), any(), any())).thenAnswer(call -> {
             authorize();
+            Set<Capability> requiredCapabilities = call.getArgument(2);
+            for (Capability required : requiredCapabilities) {
+                if (!capabilities.contains(required)) {
+                    throw new AuthException(AuthException.Code.DENIED);
+                }
+            }
             return ((Supplier<?>) call.getArgument(3)).get();
         });
         doAnswer(call -> {
@@ -88,7 +102,7 @@ abstract class NativePlanFixture {
                 })
                 .when(lease)
                 .authorize();
-        repository = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace);
+        repository = new PublicExecutionNativeFixture(root, root.resolve("exports"), auth, workspace, loseFirstReply());
         saves = new SelectedFileSaves(auth, repository.reader(auth), repository.patches(auth), repository.moves(auth));
         state.set(new SelectedFileSaves.State(repository.sourceCommit()).snapshot());
         var owner = new AccountCopyRecord.Owner(account, workspace.value(), true);
@@ -120,6 +134,10 @@ abstract class NativePlanFixture {
     }
 
     private void storagePeers() throws Exception {
+        when(files.optional(any(), anyString(), anyInt())).thenAnswer(call -> {
+            authorize();
+            return Optional.ofNullable(local.get((String) call.getArgument(1)));
+        });
         when(files.capture(any(), anyString(), anyLong())).thenAnswer(call -> {
             authorize();
             byte[] bytes = local.get((String) call.getArgument(1));
@@ -163,6 +181,22 @@ abstract class NativePlanFixture {
             }
             return previous == null || Arrays.equals(previous, proposed);
         });
+    }
+
+    boolean loseFirstReply() {
+        return false;
+    }
+
+    void resetBaseline(String commit) {
+        state.set(new SelectedFileSaves.State(commit).snapshot());
+        local.clear();
+        saves.visitOriginal(
+                actor,
+                workspace,
+                commit,
+                new RepositoryBaselineLimits(100, 1024 * 1024, Duration.ofSeconds(5)),
+                file -> file.source()
+                        .ifPresent(source -> local.put(file.path(), source.getBytes(StandardCharsets.UTF_8))));
     }
 
     JsonNode call(String operation, Object arguments) {

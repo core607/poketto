@@ -13,11 +13,21 @@ final class NativePlanReplies {
             String baseCommit,
             String remoteCommit,
             int totalPaths,
+            int capturedPaths,
             int preparedPaths,
             int stagedPaths,
             int acceptedPaths,
             boolean prepared,
-            boolean complete) {}
+            boolean complete,
+            MoveStatus move) {}
+
+    record MoveStatus(
+            boolean recoveryRequired,
+            boolean conflicted,
+            boolean remoteConfirmed,
+            boolean remoteCommitted,
+            String attemptCommit,
+            int baselinedPaths) {}
 
     record Entry(
             String path,
@@ -38,13 +48,31 @@ final class NativePlanReplies {
                         plan.id().toString(),
                         plan.kind(),
                         plan.baseCommit(),
-                        plan.remoteCommit(),
+                        plan.moveState() != null && plan.moveState().result() != null
+                                ? plan.moveState().result().commit()
+                                : plan.remoteCommit(),
                         plan.paths().size(),
                         plan.files().size(),
+                        (int) plan.files().values().stream()
+                                .filter(NativeRepositoryPlan.File::prepared)
+                                .count(),
                         plan.staged().size(),
                         plan.accepted().size(),
                         plan.prepared(),
-                        plan.complete());
+                        plan.complete(),
+                        move(plan.moveState()));
+    }
+
+    private static MoveStatus move(NativeMoveState state) {
+        return state == null
+                ? null
+                : new MoveStatus(
+                        state.recoveryRequired(),
+                        state.conflicted(),
+                        state.result() != null,
+                        state.result() != null && state.result().committed(),
+                        state.attempt() == null ? null : state.attempt().commit(),
+                        state.baselined().size());
     }
 
     static BridgeReplies.Reply progress(NativeRepositoryPlan plan) {
@@ -84,7 +112,7 @@ final class NativePlanReplies {
                 ? new Entry(path, false, null, null, null, null, false, null)
                 : new Entry(
                         path,
-                        true,
+                        file.prepared(),
                         file.original(),
                         file.candidate(),
                         NativePlanIo.destination(plan.id(), "original", file.original()),

@@ -109,7 +109,10 @@ class NativeRepositoryCliLinuxTests {
                                   ['poketto','sync','accept',plan,'--expect','private/汉=字.md='+'a'*64,'--absent','private/old.md'],
                                   ['poketto','plan','show',plan,'--offset','2','--limit','3'],
                                   ['poketto','plan','file',plan,'private/汉=字.md','--version','original','--output','private/recovered.md'],
-                                  ['poketto','plan','release',plan]]
+                                  ['poketto','plan','release',plan],
+                                  ['poketto','move','prepare','private/汉=字.md','public/moved.md'],
+                                  ['poketto','move','accept',plan,'--expect','public/moved.md='+'b'*64,'--absent','private/汉=字.md'],
+                                  ['poketto','move','recover',plan]]
                         replies=[json.loads(subprocess.run(command,check=True,stdout=subprocess.PIPE).stdout)
                                  for command in commands]
                         print(json.dumps(replies))
@@ -129,7 +132,14 @@ class NativeRepositoryCliLinuxTests {
         assertThat(replies.get(4).at("/result/arguments/version").stringValue()).isEqualTo("original");
         assertThat(replies.get(4).at("/result/arguments/output").stringValue()).isEqualTo("private/recovered.md");
         assertThat(replies.get(5).at("/result/operation").stringValue()).isEqualTo("plan_release");
-        assertThat(installed.requests()).hasSize(6);
+        assertThat(replies.get(6).at("/result/operation").stringValue()).isEqualTo("move_prepare");
+        assertThat(replies.get(6).at("/result/arguments/source").stringValue()).isEqualTo("private/汉=字.md");
+        assertThat(replies.get(7).at("/result/operation").stringValue()).isEqualTo("move_accept");
+        assertThat(replies.get(7).at("/result/arguments/files/0/sha256").stringValue())
+                .isEqualTo("b".repeat(64));
+        assertThat(replies.get(8).at("/result/operation").stringValue()).isEqualTo("move_recover");
+        assertThat(replies.get(8).at("/result/arguments/planId").stringValue()).isEqualTo(plan);
+        assertThat(installed.requests()).hasSize(9);
     }
 
     @Test

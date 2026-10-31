@@ -15,6 +15,23 @@ public interface RepositoryMoveService {
 
     RepositoryPatchResult move(AuthPrincipal principal, WorkspaceId workspace, RepositoryMoveRequest request);
 
+    /** Compares the retained domain candidate under the write lock before checkpointing or advancing main. */
+    RepositoryPatchResult movePrepared(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            String writeSha256,
+            RepositoryWriteCheckpoint checkpoint);
+
+    /** Reconciles only the retained candidate and its original prepared change set. */
+    RepositoryPatchResult recoverPrepared(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            String writeSha256,
+            RepositoryWriteAttempt attempt,
+            RepositoryWriteCheckpoint checkpoint);
+
     /** Requires the host checkpoint to complete before any remote pointer advance. */
     default RepositoryPatchResult move(
             AuthPrincipal principal,

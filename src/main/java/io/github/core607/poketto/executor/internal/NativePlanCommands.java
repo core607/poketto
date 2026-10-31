@@ -8,10 +8,12 @@ import tools.jackson.databind.JsonNode;
 final class NativePlanCommands {
     private final NativePlanIo files;
     private final NativeSynchronization sync;
+    private final NativeMoves moves;
 
     NativePlanCommands(NativeRepositoryFiles files, SelectedFileSaves saves) {
         this.files = new NativePlanIo(files, saves);
         sync = new NativeSynchronization(saves, this.files);
+        moves = new NativeMoves(saves, this.files);
     }
 
     BridgeReplies.Reply command(
@@ -56,6 +58,16 @@ final class NativePlanCommands {
                 yield sync.prepare(principal, held, lease, outOfTime);
             }
             case "sync_accept" -> sync.accept(held, lease, BridgeArguments.planAccept(arguments));
+            case "move_prepare" -> moves.prepare(principal, held, lease, BridgeArguments.move(arguments), outOfTime);
+            case "move_accept" ->
+                moves.accept(principal, held, lease, BridgeArguments.planAccept(arguments), outOfTime);
+            case "move_recover" ->
+                moves.recover(
+                        principal,
+                        held,
+                        lease,
+                        BridgeArguments.planIdentity(arguments).planId(),
+                        outOfTime);
             case "plan_show" -> show(held, BridgeArguments.planPage(arguments));
             case "plan_file" -> materialize(held, lease, BridgeArguments.planFile(arguments));
             case "plan_release" -> release(held, BridgeArguments.planIdentity(arguments));
@@ -72,6 +84,10 @@ final class NativePlanCommands {
         NativeRepositoryPlan plan = require(held.state(), query.planId());
         NativeRepositoryPlan.File selected = plan.files().get(query.path());
         ProtocolValues.require(selected != null, "plan file", "must be prepared before materialization");
+        ProtocolValues.require(
+                query.version().equals("original") || selected.prepared(),
+                "candidate file",
+                "must finish preparation before materialization");
         NativePlanFile file = query.version().equals("original") ? selected.original() : selected.candidate();
         if (file == null) {
             return BridgeReplies.failed(
@@ -85,6 +101,12 @@ final class NativePlanCommands {
     private static BridgeReplies.Reply release(AccountCommand held, BridgeArguments.PlanIdentity query) {
         SelectedFileSaves.State state = held.state();
         NativeRepositoryPlan plan = require(state, query.planId());
+        if (!plan.releasable()) {
+            return BridgeReplies.failedWith(
+                    "RECOVER_MOVE_FIRST",
+                    NativePlanReplies.summary(plan),
+                    "Reconcile the retained remote attempt and baselines before releasing its recovery data.");
+        }
         state.retainPlan(null);
         return BridgeReplies.succeededWithMessage(
                 new Released(plan.id().toString(), true),

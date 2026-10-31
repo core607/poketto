@@ -43,6 +43,24 @@ final class SessionMoves {
             String source,
             String destination,
             Optional<String> localIndex) {
+        RepositoryMovePlan plan = localPlan(actor, workspace, state, source, destination, localIndex);
+        Set<String> affected = affected(plan);
+        byte[] payload = payload(source, destination, plan.originals(), plan.relocations(), plan.replacements());
+        return new Pending(plan.request(), payload, affected);
+    }
+
+    RepositoryMoveService service() {
+        return service;
+    }
+
+    /** Shares domain link repair and local-index preservation without creating a worker operation payload. */
+    RepositoryMovePlan localPlan(
+            AuthPrincipal actor,
+            WorkspaceId workspace,
+            SelectedFileSaves.State state,
+            String source,
+            String destination,
+            Optional<String> localIndex) {
         if (state.uncertain || state.move != null || state.sync != null) {
             throw new IllegalArgumentException("recover the pending write first");
         }
@@ -68,12 +86,17 @@ final class SessionMoves {
         } else {
             local.requireNoGitCollisions(gitTargets);
         }
-        var affected = new HashSet<>(originals.keySet());
+        var result = new RepositoryMovePlan(
+                workspace, request, originals, plan.relocations(), replacements, plan.writeSha256());
+        state.requireTracking(affected(result));
+        return result;
+    }
+
+    static Set<String> affected(RepositoryMovePlan plan) {
+        var affected = new HashSet<>(plan.originals().keySet());
         affected.addAll(plan.relocations().values());
-        affected.addAll(replacements.keySet());
-        state.requireTracking(affected);
-        byte[] payload = payload(source, destination, originals, plan.relocations(), replacements);
-        return new Pending(request, payload, Set.copyOf(affected));
+        affected.addAll(plan.replacements().keySet());
+        return Set.copyOf(affected);
     }
 
     // The media index baseline is the base commit's own; a read that answered another commit is refused.

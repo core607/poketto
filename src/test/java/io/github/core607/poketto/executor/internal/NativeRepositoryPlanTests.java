@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.core607.poketto.content.RepositoryMoveRequest;
+import io.github.core607.poketto.content.RepositoryWriteAttempt;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +40,8 @@ class NativeRepositoryPlanTests {
                 Map.of(),
                 Set.of(),
                 Map.of(),
-                false);
+                false,
+                null);
         var file = new NativeRepositoryPlan.File(
                 new NativePlanFile(1, "c".repeat(64)),
                 new NativePlanFile(1, "d".repeat(64)),
@@ -66,11 +69,55 @@ class NativeRepositoryPlanTests {
                 ready.files(),
                 ready.staged(),
                 ready.accepted(),
-                true);
+                true,
+                null);
         assertThatThrownBy(() -> transition(ready, replacement))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("explicit release");
         assertThatCode(() -> transition(accepted, null)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void uncertainMoveCannotLoseItsDefinitionAttemptOrRecoveryData() {
+        var file = new NativePlanFile(1, "c".repeat(64));
+        var initial = new NativeRepositoryPlan(
+                UUID.randomUUID(),
+                NativeRepositoryPlan.Kind.MOVE,
+                BASE,
+                null,
+                new RepositoryMoveRequest(BASE, PATH, "private/moved.md"),
+                List.of(PATH),
+                Map.of(PATH, new NativeRepositoryPlan.File(file, null, null, false)),
+                Set.of(PATH),
+                Map.of(),
+                true,
+                new NativeMoveState(file, false, null, null, false, Set.of()));
+        assertThatThrownBy(() -> initial.accept(Map.of(PATH, file.sha256())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("prepared candidate");
+        NativeRepositoryPlan accepted = initial.accept(Map.of(PATH, "absent"));
+        NativeRepositoryPlan started =
+                accepted.withMoveState(accepted.moveState().starting());
+        assertThatThrownBy(() -> transition(started, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("recovery data");
+        var attempt = new RepositoryWriteAttempt(REMOTE, new byte[] {1});
+        NativeRepositoryPlan uncertain =
+                started.withMoveState(started.moveState().withAttempt(attempt));
+        assertThatThrownBy(() -> transition(uncertain, started))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("same candidate");
+        NativeRepositoryPlan differentDefinition = uncertain.withMoveState(
+                new NativeMoveState(new NativePlanFile(1, "d".repeat(64)), true, attempt, null, false, Set.of()));
+        assertThatThrownBy(() -> transition(uncertain, differentDefinition))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("original bytes");
+        assertThatCode(() -> transition(
+                        uncertain, uncertain.withMoveState(uncertain.moveState().refused())))
+                .doesNotThrowAnyException();
+        assertThatCode(() ->
+                        transition(uncertain.withMoveState(uncertain.moveState().refused()), null))
+                .doesNotThrowAnyException();
     }
 
     @Test

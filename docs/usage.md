@@ -524,12 +524,14 @@ backups, preserving working files, accepted baselines and local staging files. R
 the plan before saving or preparing another. Plans and originals otherwise remain
 until copy discard/expiry; capacity failures retain acknowledged preparation.
 
-`poketto move SOURCE DESTINATION` moves saved files, directories and indexed media
-and repairs Markdown references in one remote commit; dirty selected files and
-occupied destinations are refused. If local installation is then pending, run
-`poketto recover` before another save, move or sync. If local changes block it,
-`poketto recover --skip-local` accepts the remote move without touching local files;
-run `poketto sync` before saving affected paths.
+`poketto move prepare SOURCE DESTINATION` retains candidates and repaired links
+without local or remote writes. Dirty files, changed mappings or occupied targets
+refuse preparation. Apply candidates, then
+`poketto move accept ID --expect PATH=SHA256 [--absent PATH]` to verify them.
+
+Final acceptance commits the saved plan under current permissions/CAS.
+`localVerified`/`verifiedPaths` record per-path acceptance; later edits remain unsaved. `remoteCommitted` is separate. Unknown outcomes or pending baselines require
+`poketto move recover ID` or `poketto recover` before release; recovery installs nothing. [Move details](../executor-service/README.md) cover index preservation and limits.
 
 `repo_discard` with the exact `expectedCopyId` deletes the copy and its unsaved work.
 It needs execution permission and ownership of the copy; busy copies are refused.

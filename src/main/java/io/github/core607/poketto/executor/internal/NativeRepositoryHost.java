@@ -53,7 +53,14 @@ final class NativeRepositoryHost {
                 case "status" -> status(principal, workspace, request, held);
                 case "receipt" ->
                     NativeRepositoryReceipts.page(held.record().state(), BridgeArguments.receipt(request.arguments()));
-                case "sync_prepare", "sync_accept", "plan_show", "plan_file", "plan_release" ->
+                case "sync_prepare",
+                        "sync_accept",
+                        "move_prepare",
+                        "move_accept",
+                        "move_recover",
+                        "plan_show",
+                        "plan_file",
+                        "plan_release" ->
                     plans.command(
                             principal,
                             held,
@@ -62,7 +69,7 @@ final class NativeRepositoryHost {
                             request.arguments(),
                             () -> lease.outOfTime(Duration.ofSeconds(5)));
                 case "save" -> save(principal, workspace, held, lease, state, request.arguments());
-                case "recover" -> recover(principal, workspace, state, request.arguments());
+                case "recover" -> recover(principal, workspace, held, lease, state, request.arguments());
                 case "artifact_create", "artifact_remove" ->
                     artifacts.command(held, lease, request.operation(), request.arguments());
                 case "media_list", "media_fetch", "media_import", "media_link" ->
@@ -106,7 +113,10 @@ final class NativeRepositoryHost {
                 record.state().baseCommit(),
                 record.state().originalCommit(),
                 query.remote() ? remoteStatus(principal, workspace, record) : null,
-                record.state().uncertain(),
+                record.state().uncertain()
+                        || (record.state().nativePlan() != null
+                                && record.state().nativePlan().moveState() != null
+                                && record.state().nativePlan().moveState().recoveryRequired()),
                 NativePlanReplies.summary(record.state().nativePlan()),
                 NativeRepositoryReceipts.preview(record.state().lastSave()),
                 NativeRepositoryReceipts.preview(record.state().lastImport())));
@@ -175,12 +185,28 @@ final class NativeRepositoryHost {
     }
 
     private BridgeReplies.Reply recover(
-            AuthPrincipal principal, WorkspaceId workspace, SelectedFileSaves.State state, JsonNode arguments) {
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            AccountCommand held,
+            NativeRepositoryLease lease,
+            SelectedFileSaves.State state,
+            JsonNode arguments) {
         if (!arguments.isEmpty()) {
             throw new IllegalArgumentException("Native save recovery takes no arguments");
         }
         if (state.move != null || state.sync != null) {
             return BridgeReplies.failed("RECOVERY_REQUIRED");
+        }
+        if (state.nativePlan != null) {
+            if (state.nativePlan.kind() == NativeRepositoryPlan.Kind.MOVE) {
+                JsonNode identity = SandcrabProtocol.read(
+                        SandcrabProtocol.write(new BridgeArguments.PlanIdentity(
+                                state.nativePlan.id().toString())),
+                        JsonNode.class);
+                return plans.command(
+                        principal, held, lease, "move_recover", identity, () -> lease.outOfTime(Duration.ofSeconds(5)));
+            }
+            return NativePlanReplies.progress(state.nativePlan);
         }
         return saves.recover(principal, workspace, state);
     }

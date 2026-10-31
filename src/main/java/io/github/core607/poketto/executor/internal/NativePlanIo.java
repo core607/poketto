@@ -2,14 +2,17 @@ package io.github.core607.poketto.executor.internal;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.ContentLimits;
+import io.github.core607.poketto.content.RepositoryMediaIndex;
 import io.github.core607.poketto.content.RepositorySyncEntry;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -90,6 +93,28 @@ final class NativePlanIo {
         var reference = new NativePlanFile(bytes.length, SandcrabProtocol.sha256(bytes));
         held.publishPlanFile(plan, reference, output -> output.write(bytes), lease::authorize);
         return reference;
+    }
+
+    Optional<String> index(NativeRepositoryLease lease) {
+        return files.optional(lease, RepositoryMediaIndex.PATH, RepositoryMediaIndex.MAX_BYTES)
+                .map(bytes -> {
+                    String value = text(bytes);
+                    if (value == null) {
+                        throw new IllegalArgumentException("The local media index must be UTF-8 text");
+                    }
+                    return value;
+                });
+    }
+
+    byte[] read(AccountCommand held, NativeRepositoryLease lease, UUID plan, NativePlanFile file, int maximum) {
+        ProtocolValues.inRange(file.bytes(), 0, maximum, "plan definition bytes");
+        var output = new ByteArrayOutputStream((int) file.bytes());
+        try {
+            held.copyPlanFile(plan, file, output, lease::authorize);
+            return output.toByteArray();
+        } catch (IOException failure) {
+            throw new WorkerUnavailableException(failure);
+        }
     }
 
     void stage(AccountCommand held, NativeRepositoryLease lease, NativeRepositoryPlan plan, String path) {

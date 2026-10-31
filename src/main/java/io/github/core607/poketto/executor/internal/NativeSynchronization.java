@@ -43,7 +43,8 @@ final class NativeSynchronization {
                     Map.of(),
                     Set.of(),
                     Map.of(),
-                    false));
+                    false,
+                    null));
         }
         NativeRepositoryPlan plan = state.nativePlan;
         boolean advanced = false;

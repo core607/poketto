@@ -201,7 +201,9 @@ MARKDOWN
 
 `poketto plan file ID PATH --version original --output NEW_PATH` 取回原件，`--version candidate` 取候选；已有不同内容不会被覆盖。`poketto plan release ID` 显式删除应用保留的计划备份，保留工作文件、已确认基线和本地暂存文件。保存或准备新计划前须先 release；否则计划和原件保留至副本丢弃或过期。容量不足仍保留已确认的准备进度。
 
-`poketto move SOURCE DESTINATION` 移动已保存的文件、目录和索引媒体，并在同一次远端提交中修复 Markdown 引用；选定文件有未保存修改或目标已占用时拒绝。随后本地安装待完成时，先使用 `poketto recover`，再继续保存、移动或同步。本地修改导致无法安装时，`poketto recover --skip-local` 确认远端移动且不改动本地文件；保存相关路径前先运行 `poketto sync`。
+`poketto move prepare SOURCE DESTINATION` 准备候选及修复链接，不改本地或远端；文件未保存、映射变化或目标占用则拒绝。应用候选后，用 `poketto move accept ID --expect PATH=SHA256 [--absent PATH]` 核对。
+
+最后一次确认以当前权限/CAS 提交保存的计划。`localVerified`/`verifiedPaths` 表示各路径在各自确认时已核对，后续编辑仍未保存；`remoteCommitted` 另报。结果未知或基线未完成时，用 `poketto move recover ID` 或 `poketto recover` 恢复原尝试，再 release；恢复不安装文件。[移动详情](../executor-service/README.md)说明索引保留与限制。
 
 `repo_discard` 传入准确的 `expectedCopyId`，删除副本及其未保存的工作。此操作要求执行权限和副本归属；忙碌副本会被拒绝。`DISCARDED` 或 `ABSENT` 确认副本已不存在，随后可用 `new` 创建新副本。未确认的丢弃只能用同一 ID 重试。丢弃不会撤销远端提交。
 

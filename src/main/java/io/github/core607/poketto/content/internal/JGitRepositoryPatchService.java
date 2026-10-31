@@ -192,7 +192,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                             }
                         }
                         return new RepositoryMovePlan(
-                                workspace, request, originals, relocations, changes.replacements());
+                                workspace, request, originals, relocations, changes.replacements(), changes.sha256());
                     } catch (IOException error) {
                         throw new ContentRepositoryException("move preconditions could not be prepared", error);
                     }
@@ -244,7 +244,36 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             WorkspaceId workspace,
             RepositoryMoveRequest request,
             RepositoryWriteCheckpoint checkpoint) {
-        return move(principal, workspace, request, Optional.empty(), checkpoint);
+        return move(principal, workspace, request, Optional.empty(), checkpoint, null);
+    }
+
+    @Override
+    public RepositoryPatchResult movePrepared(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            String writeSha256,
+            RepositoryWriteCheckpoint checkpoint) {
+        requireWriteDigest(writeSha256);
+        return move(principal, workspace, request, Optional.empty(), checkpoint, writeSha256);
+    }
+
+    @Override
+    public RepositoryPatchResult recoverPrepared(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            RepositoryMoveRequest request,
+            String writeSha256,
+            RepositoryWriteAttempt attempt,
+            RepositoryWriteCheckpoint checkpoint) {
+        requireWriteDigest(writeSha256);
+        return move(principal, workspace, request, Optional.of(attempt), checkpoint, writeSha256);
+    }
+
+    private static void requireWriteDigest(String value) {
+        if (value == null || !value.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("prepared move requires its remote candidate digest");
+        }
     }
 
     @Override
@@ -263,7 +292,7 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             RepositoryMoveRequest request,
             RepositoryWriteAttempt attempt,
             RepositoryWriteCheckpoint checkpoint) {
-        return move(principal, workspace, request, Optional.of(attempt), checkpoint);
+        return move(principal, workspace, request, Optional.of(attempt), checkpoint, null);
     }
 
     private RepositoryPatchResult move(
@@ -271,7 +300,8 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
             WorkspaceId workspace,
             RepositoryMoveRequest request,
             Optional<RepositoryWriteAttempt> recovery,
-            RepositoryWriteCheckpoint checkpoint) {
+            RepositoryWriteCheckpoint checkpoint,
+            String writeSha256) {
         return writes.write(
                 principal,
                 workspace,
@@ -285,6 +315,10 @@ final class JGitRepositoryPatchService implements RepositoryPatchService, Reposi
                     var media = JGitRepositoryWrites.mediaIndex(repository, index);
                     var changes = RepositoryMovePlanner.prepare(repository, index, request, currentPolicy, media);
                     authorizeMoveChanges(principal, workspace, currentPolicy, media, changes, false);
+                    if (writeSha256 != null && !changes.sha256().equals(writeSha256)) {
+                        throw new RepositoryConflictException(
+                                "prepared move candidate changed before the remote write");
+                    }
                     return changes;
                 });
     }
