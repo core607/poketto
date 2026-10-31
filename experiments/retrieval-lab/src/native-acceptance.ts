@@ -4,6 +4,8 @@ import { Store } from "./store.js";
 import { Worker, type CorpusManifest } from "./worker.js";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { randomBytes, randomUUID } from "node:crypto";
+import { unlink, writeFile } from "node:fs/promises";
 
 if (process.env.LAB_ENV_FILE) process.loadEnvFile(process.env.LAB_ENV_FILE);
 const settings = config();
@@ -13,6 +15,12 @@ const manifest = readJson<
 const store = new Store(join(settings.data, "native-acceptance.db"));
 const worker = new Worker(settings, store, manifest);
 const q = (s: string) => "'" + s.replaceAll("'", "'\\''") + "'";
+const hostSentinel = join(
+  settings.data,
+  `native-host-probe-${randomUUID()}.txt`,
+);
+await writeFile(hostSentinel, randomBytes(32), { flag: "wx", mode: 0o600 });
+const hostPaths = [hostSentinel, join(settings.data, "corpus-manifest.json")];
 try {
   const session = await worker.open(AbortSignal.timeout(180_000));
   try {
@@ -25,7 +33,7 @@ try {
     assert.deepEqual(counts.queries, []);
     assert.ok(counts.navigation > 32);
     const boundary = await session.execute(
-      `python -c ${q("import pathlib,socket; blocked=[]\nfor p in ['/etc/retrieval-lab/private.pem','/var/lib/retrieval-lab/data/fiqa.db']:\n try: pathlib.Path(p).read_bytes()\n except (PermissionError,FileNotFoundError): blocked.append(p)\nassert len(blocked)==2\ns=socket.socket();s.settimeout(2)\ntry: s.connect(('1.1.1.1',443));raise AssertionError('network available')\nexcept OSError: print('HOST_AND_NETWORK_DENIED')")}`,
+      `python -c ${q(`import pathlib,socket; blocked=[]\nfor p in ${JSON.stringify(hostPaths)}:\n try: pathlib.Path(p).read_bytes()\n except (PermissionError,FileNotFoundError): blocked.append(p)\nassert len(blocked)==2\ns=socket.socket();s.settimeout(2)\ntry: s.connect(('1.1.1.1',443));raise AssertionError('network available')\nexcept OSError: print('HOST_AND_NETWORK_DENIED')`)}`,
     );
     assert.equal(boundary.exitCode, 0);
     assert.match(boundary.stdout, /HOST_AND_NETWORK_DENIED/);
@@ -65,20 +73,17 @@ try {
     assert.equal(result.exitCode, 0);
     const timeout = await second.execute("sleep 35");
     assert.equal(timeout.timedOut, true);
-    assert.equal(
-      (await second.execute("printf recovered")).stdout,
-      "recovered",
-    );
+    await assert.rejects(second.execute("printf must-not-replay"));
     console.log(
       JSON.stringify({
-        test: "fresh question copy and timeout containment",
+        test: "fresh question copy and timeout ends the shell without replay",
         result: "PASS",
       }),
     );
   } finally {
     await second.close();
   }
-  assert.deepEqual(store.metadata("workerCopies"), []);
+  assert.deepEqual(store.metadata("sandboxCopies"), []);
   const child = spawn(
     process.execPath,
     ["dist/test/worker-process-fixture.js"],
@@ -87,39 +92,56 @@ try {
         PATH: process.env.PATH,
         LAB_DATA: settings.data,
         LAB_WORKER_SOCKET: settings.workerSocket,
-        LAB_SIGNING_KEY: settings.signingKey,
-        LAB_EXPORT_ROOT: settings.exportRoot,
+        LAB_WORKER_PROFILE: settings.workerProfile,
       },
       stdio: ["ignore", "pipe", "inherit"],
     },
   );
   await new Promise<void>((resolve, reject) => {
+    let output = "";
+    let observed = false;
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new Error("Process-loss fixture did not open a lease"));
+      reject(
+        new Error(
+          "Process-loss fixture did not observe an active native command",
+        ),
+      );
     }, 150_000);
     child.once("error", reject);
-    child.stdout.once("data", (bytes) => {
-      if (!bytes.toString().includes("READY_FOR_PROCESS_LOSS")) return;
-      clearTimeout(timer);
-      child.kill("SIGKILL");
+    child.stdout.on("data", (bytes) => {
+      output += bytes.toString();
+      if (Buffer.byteLength(output) > 4096) {
+        child.kill("SIGKILL");
+        reject(
+          new Error("Process-loss fixture exceeded its control output bound"),
+        );
+      } else if (
+        !observed &&
+        output.split("\n").includes("READY_FOR_PROCESS_LOSS")
+      ) {
+        observed = true;
+        clearTimeout(timer);
+        child.kill("SIGKILL");
+      }
     });
     child.once("exit", (_, signal) => {
       clearTimeout(timer);
-      signal === "SIGKILL"
+      signal === "SIGKILL" && observed
         ? resolve()
         : reject(new Error("Unexpected fixture exit"));
     });
   });
-  assert.equal(store.metadata<unknown[]>("workerCopies")!.length, 1);
+  assert.equal(store.metadata<unknown[]>("sandboxCopies")!.length, 1);
   await worker.cleanup();
-  assert.deepEqual(store.metadata("workerCopies"), []);
+  assert.deepEqual(store.metadata("sandboxCopies"), []);
   console.log(
     JSON.stringify({
-      test: "process loss retains cleanup identity and releases copy/export",
+      test: "process loss retains cleanup identity and releases native volume",
       result: "PASS",
     }),
   );
 } finally {
   store.close();
+  await unlink(hostSentinel);
 }

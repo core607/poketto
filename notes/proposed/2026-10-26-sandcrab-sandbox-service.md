@@ -4,7 +4,7 @@ Date: 2026-10-26
 
 ## Problem
 
-Repository execution and games share Rust mechanisms ([in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md), [shared process runner](../implemented/2026-10-27-sandcrab-in-repository-split.md)). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases through TypeScript.
+Repository execution and games share Rust mechanisms ([in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md), [shared process runner](../implemented/2026-10-27-sandcrab-in-repository-split.md)). The independent [retrieval lab](../../experiments/retrieval-lab/README.md) consumes the public API through TypeScript.
 
 The [retained-session service](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still requires Poketto identities, revisions and signed requests. [Native runs, sessions, volumes, files, command events and host calls](../../executor-service/rust/sandcrab/README.md) are independent. [OpenSandbox integration](../../executor-service/rust/sandcrab/opensandbox.md) documents the implemented SDK subset. Repository adoption remains in scope; replicating repository operations would retain product coupling.
 
