@@ -15,14 +15,14 @@ Build the runtime with Java 26:
 ./gradlew stageExecutorNativeTest stageExecutorWorker
 ```
 
-`build/executor-native/runtime` contains only compiled classes, resolved JARs and a SHA-256 manifest;
+`build/executor-native/runtime` contains compiled classes, game resources, resolved JARs and a SHA-256 manifest;
 the probe verifies every manifest entry and rejects unlisted files. Copy that directory, `probe.py`,
 `rejected_peer.py` and `build/executor-service/worker` to isolated host staging. Preserve the latter's
 root-level `poketto-supervisor` and `poketto-launch`, `bin/` directory and executable permissions. Never stage operator settings or credentials.
 
-For `--scenario games`, also stage `game_fixture.py` beside `probe.py`. Run
-`./gradlew stageGameWorker` and add its `poketto-games`, `game-entry.mjs`,
-`game-runtime.mjs` and `game-example.mjs` to the staged worker sources.
+For `--scenario games`, stage `game_fixture.py` beside `probe.py`. Add `sandcrab`
+and `game-example.mjs` from `./gradlew stageGameWorker` to the worker sources.
+Poketto supplies its game runtime.
 
 The host needs cgroup v2, systemd, root access, Git, Python with the worker's pinned dependencies and
 its prepared sandbox toolchain. The probe requires a Java 26 runtime; `prepare-jdk.sh NEW_DIRECTORY`

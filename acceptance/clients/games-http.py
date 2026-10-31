@@ -43,7 +43,7 @@ def wander(client, command, code='OK'):
 
 def count(root):
     """Game job units systemd has started for the fixture's supervisor, after a journal flush."""
-    prefix = json.loads((root / 'game-config.json').read_text())['unitPrefix']
+    prefix = json.loads((root / 'client.json').read_text())['gameUnitPrefix']
     subprocess.run(['journalctl', '--sync'], check=True, timeout=30)
     lines = subprocess.run(['journalctl', '--no-pager', '-o', 'json', '_PID=1', 'JOB_TYPE=start'],
                            check=True, capture_output=True, text=True, timeout=60).stdout.splitlines()

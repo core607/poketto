@@ -108,35 +108,5 @@
       "denyWrite": []
     },
     "enableWeakerNestedSandbox": false
-  },
-  "game": {
-    "network": {
-      "allowedDomains": [],
-      "deniedDomains": [],
-      "allowAllUnixSockets": false
-    },
-    "filesystem": {
-      "denyRead": [
-        "/",
-        "/sys"
-      ],
-      "allowRead": [
-        "/usr",
-        "/bin",
-        "/lib",
-        "/lib64",
-        "/dev",
-        "/proc",
-        "/etc/ld.so.cache",
-        "/opt/poketto/tools",
-        "/run/poketto/sessions/00000000-0000-4000-8000-000000000001/bootstrap",
-        "/run/poketto/sessions/00000000-0000-4000-8000-000000000001/input.json"
-      ],
-      "allowWrite": [
-        "/tmp"
-      ],
-      "denyWrite": []
-    },
-    "enableWeakerNestedSandbox": false
   }
 }

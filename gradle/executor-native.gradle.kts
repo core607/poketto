@@ -10,6 +10,10 @@ tasks.register<Sync>("stageExecutorNativeTest") {
     into(nativeRuntime)
     val sources = project.extensions.getByType<SourceSetContainer>()
     from(sources.named("main").get().output.classesDirs) { into("classes") }
+    from(checkNotNull(sources.named("main").get().output.resourcesDir)) {
+        include("io/github/core607/poketto/executor/*.mjs")
+        into("classes")
+    }
     from(sources.named("test").get().output.classesDirs) { into("classes") }
     from(configurations.named("testRuntimeClasspath")) { into("jars") }
     doLast {

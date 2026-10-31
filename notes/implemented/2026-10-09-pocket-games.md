@@ -24,11 +24,26 @@ startup fails in the tested sandboxed Chrome context. The frame pins script
 addresses to the public request origin rather than the internal proxy listener.
 Platform controls explicitly
 save untrusted state; author code has no platform operation channel. Native games
-reuse [supervisor containment](2026-09-05-local-execution-supervisor.md), but have a
-separate worker, account, admission pool and resource slice. Repository copy and
-shell lifetime rules remain unchanged. A failed containment check cannot release
-the slot before processes and mounts are gone. Shared-host CPU contention remains
-possible despite independent admission.
+use [Sandcrab's public API](../../executor-service/rust/sandcrab/README.md) in a
+separate service, execution account, admission pool and resource slice. Repository
+copies and shell lifetimes retain their own contract. Keeping admission when
+containment is unknown prevents repeated failures from exhausting the host;
+revocation does not turn a closing reply into proof of termination. Shared-host
+CPU contention remains possible despite independent admission.
+
+Poketto owns player authorization, revocation and game JSON. A catalogue validation
+has no player identity. Registering a job before rechecking current player grants
+lets concurrent revocation find pending admission. A dedicated service and one
+shared application owner lock permit recovery without a durable journal for
+every ephemeral game step; that recovery must never target a shared consumer's
+sessions or volumes.
+
+The application uploads its game runtime with each step. This keeps browser and
+native execution on the same source without synchronizing privileged host assets,
+at the cost of transferring the runtime again. A separate product supervisor would
+duplicate admission and cleanup; platform identity and game parsing must remain
+outside the generic daemon. The [shared process runner](2026-10-27-sandcrab-in-repository-split.md)
+owns bounded output, cancellation and containment mechanisms.
 
 Account transactions reserve versioned attempts, release locks before execution,
 then recheck authorization and publication before committing. Attempt UUIDs prevent

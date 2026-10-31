@@ -15,7 +15,15 @@ victorialogs="$(image victoriametrics/victoria-logs)"
 fluentbit="$(image fluent/fluent-bit)"
 image prom/node-exporter >/dev/null
 
-"$DOCKER" compose --project-directory "$DIR" -f "$DIR/compose.yaml" config --quiet
+"$DOCKER" compose --project-directory "$DIR" -f "$DIR/compose.yaml" config --format json | python3 -c '
+import json, re, sys
+command = json.load(sys.stdin)["services"]["node-exporter"]["command"]
+pattern = next(value.split("=", 1)[1] for value in command if value.startswith("--collector.systemd.unit-include="))
+for unit in ("poketto-executor.service", "poketto-exec-example.service", "sandcrab-games.service", "sandcrab-games-example.service"):
+    assert re.fullmatch(pattern, unit), "missing monitored unit: " + unit
+for unit in ("sshd.service", "sandcrab-other.service", "other-sandcrab-games.service"):
+    assert not re.fullmatch(pattern, unit), "unrelated monitored unit: " + unit
+'
 "$DOCKER" run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true \
     --mount "type=bind,source=$DIR/prometheus.yml,target=/etc/prometheus/prometheus.yml,readonly" \
     --mount "type=bind,source=$DIR/alerts.yml,target=/etc/prometheus/alerts.yml,readonly" \
@@ -27,14 +35,16 @@ image prom/node-exporter >/dev/null
 # A dry run accepts any URI, so ship a record through the real filter and output into a real
 # VictoriaLogs and read it back. A dummy input stands in for journald, which CI runners lack.
 work="$(mktemp -d)"
-network="poketto-observability-probe-$$"
+probe="poketto-observability-probe-$$"
 cleanup() {
-    "$DOCKER" rm -f "$network-logs" "$network-shipper" >/dev/null 2>&1 || true
-    "$DOCKER" network rm "$network" >/dev/null 2>&1 || true
+    "$DOCKER" rm -f "$probe-shipper" "$probe-logs" >/dev/null 2>&1 || true
     rm -rf "$work"
 }
 trap cleanup EXIT
-sed -e 's/127\.0\.0\.1/logs/' -e '/^\[INPUT\]/,/^$/c\
+# Replay the host-networked examples on one isolated loopback namespace.
+"$DOCKER" run -d --name "$probe-logs" --network none \
+    "$victorialogs" -httpListenAddr=127.0.0.1:9428 -storageDataPath=/tmp/victoria-logs >/dev/null
+sed -e '/^\[INPUT\]/,/^$/c\
 [INPUT]\
     Name     dummy\
     Tag      poketto\
@@ -44,28 +54,38 @@ sed -e 's/127\.0\.0\.1/logs/' -e '/^\[INPUT\]/,/^$/c\
 ' "$DIR/fluent-bit.conf" > "$work/shipper.conf"
 printf '%s\n' '' '[INPUT]' '    Name   dummy' '    Tag    poketto' \
     '    Dummy  {"MESSAGE":"unrelated host line","SYSLOG_IDENTIFIER":"sshd"}' '    Samples 3' >> "$work/shipper.conf"
-"$DOCKER" network create "$network" >/dev/null
-"$DOCKER" run -d --name "$network-logs" --network "$network" --network-alias logs \
-    "$victorialogs" -httpListenAddr=:9428 -storageDataPath=/tmp/victoria-logs >/dev/null
-"$DOCKER" run -d --name "$network-shipper" --network "$network" \
+printf '%s\n' '' '[INPUT]' '    Name   dummy' '    Tag    poketto' \
+    '    Dummy  {"MESSAGE":"{\"message\":\"game probe record\"}","SYSLOG_IDENTIFIER":"sandcrab","_SYSTEMD_UNIT":"sandcrab-games.service","_SYSTEMD_SLICE":"pokettogames.slice"}' \
+    '    Samples 3' '' '[INPUT]' '    Name   dummy' '    Tag    poketto' \
+    '    Dummy  {"MESSAGE":"unrelated sandbox line","SYSLOG_IDENTIFIER":"sandcrab","_SYSTEMD_UNIT":"sandcrab-other.service","_SYSTEMD_SLICE":"sandcrab.slice"}' \
+    '    Samples 3' >> "$work/shipper.conf"
+"$DOCKER" run -d --name "$probe-shipper" --network "container:$probe-logs" \
     --mount "type=bind,source=$work/shipper.conf,target=/fluent-bit/etc/poketto.conf,readonly" \
     "$fluentbit" /fluent-bit/bin/fluent-bit -c /fluent-bit/etc/poketto.conf >/dev/null
 query() {
-    "$DOCKER" run --rm --network "$network" --entrypoint wget "$prometheus" -qO- \
-        "http://logs:9428/select/logsql/query?query=$1" 2>/dev/null || true
+    "$DOCKER" run --rm --network "container:$probe-logs" --entrypoint wget "$prometheus" -T 5 -qO- \
+        "http://127.0.0.1:9428/select/logsql/query?query=$1" 2>"$work/query-error"
 }
 for _ in $(seq 1 30); do
-    found="$(query 'SYSLOG_IDENTIFIER:poketto-app-1%20%7C%20unpack_json')"
-    case "$found" in *'"message":"probe record"'*) break ;; esac
+    found="$(query 'SYSLOG_IDENTIFIER:poketto-app-1%20%7C%20unpack_json')" || found=''
+    game="$(query '_SYSTEMD_UNIT:sandcrab-games.service%20%7C%20unpack_json')" || game=''
+    case "$found:$game" in *'"message":"probe record"'*'"message":"game probe record"'*) break ;; esac
     sleep 2
 done
-case "$found" in
-    *'"message":"probe record"'*) ;;
-    *) echo 'the shipped application record never reached VictoriaLogs' >&2
-       "$DOCKER" logs "$network-shipper" >&2 || true
+case "$found:$game" in
+    *'"message":"probe record"'*'"message":"game probe record"'*) ;;
+    *) echo 'the shipped application or game record never reached VictoriaLogs' >&2
+       cat "$work/query-error" >&2
+       "$DOCKER" logs "$probe-logs" >&2 || true
+       "$DOCKER" logs "$probe-shipper" >&2 || true
        exit 1 ;;
 esac
-case "$(query 'SYSLOG_IDENTIFIER:sshd')" in
+unrelated="$(query 'SYSLOG_IDENTIFIER:sshd')"
+case "$unrelated" in
     *'unrelated host line'*) echo 'a non-Poketto journal line passed the shipper filter' >&2; exit 1 ;;
+esac
+unrelated="$(query '_SYSTEMD_UNIT:sandcrab-other.service')"
+case "$unrelated" in
+    *'unrelated sandbox line'*) echo 'another Sandcrab consumer passed the shipper filter' >&2; exit 1 ;;
 esac
 echo "monitoring examples load, and only Poketto records reach VictoriaLogs as structured fields"

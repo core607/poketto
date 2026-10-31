@@ -10,6 +10,7 @@ import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.micrometer.core.instrument.binder.MeterBinder;
 import java.io.IOException;
+import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -102,20 +103,27 @@ class ExecutorConfiguration {
                 socket,
                 privateKey(key),
                 () -> socketPermissions(socket),
-                channel -> {
-                    try {
-                        if (!channel.getOption(ExtendedSocketOptions.SO_PEERCRED)
-                                .user()
-                                .getName()
-                                .equals("root")) {
-                            throw new WorkerUnavailableException();
-                        }
-                    } catch (IOException exception) {
-                        throw new WorkerUnavailableException();
-                    }
-                },
+                ExecutorConfiguration::verifyPeer,
                 json,
                 Clock.systemUTC());
+    }
+
+    static SandcrabClient sandcrabClient(Path socket) {
+        return new SandcrabClient(
+                new SandboxHttp(socket, () -> socketPermissions(socket), ExecutorConfiguration::verifyPeer));
+    }
+
+    private static void verifyPeer(SocketChannel channel) {
+        try {
+            if (!channel.getOption(ExtendedSocketOptions.SO_PEERCRED)
+                    .user()
+                    .getName()
+                    .equals("root")) {
+                throw new WorkerUnavailableException();
+            }
+        } catch (IOException exception) {
+            throw new WorkerUnavailableException(exception);
+        }
     }
 
     private static PrivateKey privateKey(Path path) {

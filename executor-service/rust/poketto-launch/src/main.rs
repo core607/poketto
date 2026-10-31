@@ -52,23 +52,17 @@ fn plan(record: &Value) -> Result<Launch, Error> {
     let tools = PathBuf::from(text(record, "tools")?);
     let (bwrap, seccomp) = verify_tools(&tools)?;
     let mode = text(record, "mode")?;
-    let programs = if mode == "game" {
-        None
-    } else {
-        let directory = program_directory()?;
-        verify_programs(&directory, &PROGRAMS)?;
-        Some(directory)
-    };
+    let programs = program_directory()?;
+    verify_programs(&programs, &PROGRAMS)?;
     let policy = read_json(Path::new(text(record, "settings")?))?;
     enter_bootstrap(&root)?;
     let (root_text, tools_text) = (root.display().to_string(), tools.display().to_string());
     // The compile cache is read-only here: install-compile-cache.sh, run as root, is its only writer.
-    let mut path =
-        format!("{root_text}/bootstrap:{tools_text}:{tools_text}/extracted/usr/bin:/usr/bin:/bin");
-    if let Some(programs) = &programs {
-        path = format!("{}:{path}", programs.display());
-    }
-    let mut environment = vec![
+    let path = format!(
+        "{}:{root_text}/bootstrap:{tools_text}:{tools_text}/extracted/usr/bin:/usr/bin:/bin",
+        programs.display()
+    );
+    let environment = vec![
         ("HOME".into(), format!("{root_text}/home")),
         ("TMPDIR".into(), "/tmp".into()),
         ("PATH".into(), path),
@@ -81,8 +75,8 @@ fn plan(record: &Value) -> Result<Launch, Error> {
         ("GIT_CONFIG_GLOBAL".into(), "/dev/null".into()),
         ("SANDBOX_RUNTIME".into(), "1".into()),
     ];
-    let command: Vec<String> = match (mode, &programs) {
-        ("initialize", _) => vec![
+    let command: Vec<String> = match mode {
+        "initialize" => vec![
             "/bin/bash".into(),
             "-c".into(),
             INITIALIZE.into(),
@@ -90,26 +84,17 @@ fn plan(record: &Value) -> Result<Launch, Error> {
             root_text.clone(),
             text(record, "commit")?.into(),
         ],
-        ("shell", Some(programs)) => vec![
+        "shell" => vec![
             programs.join("poketto-shell").display().to_string(),
             format!("{root_text}/work/repository"),
         ],
-        ("baseline", _) => vec![
+        "baseline" => vec![
             "/usr/bin/python3".into(),
             "-c".into(),
             INSTALL_BASELINE.into(),
             root_text.clone(),
             text(record, "commit")?.into(),
         ],
-        ("game", _) => {
-            environment.retain(|(name, _)| name != "POKETTO_BRIDGE");
-            vec![
-                format!("{tools_text}/node"),
-                "--max-old-space-size=64".into(),
-                format!("{root_text}/bootstrap/game-entry.mjs"),
-                format!("{root_text}/input.json"),
-            ]
-        }
         _ => return Err(Error("Invalid execution mode".into())),
     };
     let arguments = sandbox_arguments(&bwrap, &seccomp, &policy, &command)?;
@@ -157,7 +142,7 @@ mod tests {
         let command: Vec<String> = ["/bin/bash", "-c", "printf \"$HOME\""]
             .map(String::from)
             .to_vec();
-        for mode in ["initialize", "shell", "baseline", "game"] {
+        for mode in ["initialize", "shell", "baseline"] {
             let args = sandbox_arguments(
                 Path::new("/tools/bwrap"),
                 Path::new("/tools/apply-seccomp"),

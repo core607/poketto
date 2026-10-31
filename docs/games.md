@@ -102,58 +102,64 @@ terminates affected jobs and prevents their result from becoming a saved move.
 ## Deployment
 
 Games are disabled unless `poketto.games.enabled=true`. Configure
-`poketto.games.socket`, a private Ed25519 `poketto.games.signing-key`, and
-`poketto.games.max-jobs` (default 2, range 1–16). The application must run on Linux.
-Disabled games have no active marker or execution entrance; stored saves remain in
-PostgreSQL. This switch is independent of plaza interactions.
+`poketto.games.socket` and `poketto.games.max-jobs` (default 2, range 1–16).
+The application must run on Linux. Disabled games have no active marker or
+execution entrance; stored saves remain in PostgreSQL. This switch is independent
+of plaza interactions.
 
-`./gradlew stageGameWorker` stages the static Rust `poketto-games` supervisor, its
-`poketto-launch` and the exact browser rule runtime (`game-entry.mjs`,
-`game-runtime.mjs`). Install them in one root-owned directory; the supervisor uses only
-the launcher and runtime beside itself. Use [the configuration
-example](../executor-service/game-config.example.json),
-[service](../executor-service/poketto-games.service) and
-[slice](../executor-service/pokettogames.slice) with the existing pinned sandbox
-toolchain described in the [worker reference](../executor-service/README.md). The
-configuration file must be root-owned mode 0600 in a root-owned directory no other
-account can write. Replace example paths and IDs with operator configuration outside
-the repository.
+Run a dedicated [Sandcrab service](../executor-service/rust/sandcrab/README.md)
+with only the `games` profile, no durable volumes and no host calls. The application
+checks these constraints and the native inventory endpoints at startup. Its peer
+UID must match `client_uid`; it needs access to the root-owned socket, not a signing
+key, root privileges or a Docker socket.
+
+`./gradlew stageGameWorker` stages the static `sandcrab` binary and example host
+configuration. Install the binary in a protected root-owned directory and use the
+[profile](../executor-service/game-config.example.toml),
+[service](../executor-service/sandcrab-games.service) and
+[slice](../executor-service/pokettogames.slice) with the pinned toolchain described
+by Sandcrab's installation reference. Create a separate unprivileged game account.
+Adjust the profile's paths, client UID/GID and account for the installation; the
+bundled application defaults to UID/GID 10001. Keep the configuration root-owned
+mode 0600 with protected ancestors. The service's unit prefix must equal its
+supervisor unit name, without `.service`, followed by `-`.
+
+Each step uploads the application's entry program, the same rule runtime served
+to browsers, and bounded game input as one tar archive into a fresh session.
+The host needs no game scripts or repository mounts. The command replaces its
+shell with Node, so completion terminates the session and descendants. Input stays
+bounded to 512 KiB; the package including runtime code is at most 1 MiB.
 
 With the bundled deployment entrance, set `POKETTO_GAMES_ENABLED=true`,
-`POKETTO_GAMES_RUNTIME_DIR_HOST`, `POKETTO_GAMES_SIGNING_KEY_HOST` and optionally
-`POKETTO_GAMES_MAX_JOBS` in `.env`. `deploy.sh` then adds
-[the games overlay](../deploy/compose.games.yaml) only after `poketto-games.service` is
-active, its root-owned runtime directory is mode 0751, its root-owned socket is mode 0660
-with the application's group, and the signing key
-is application-owned mode 0600, none of them shared with the executor. Existing
-installations set the same application properties in their own Compose file; their
-settings channel accepts no host-prerequisite keys, as with the executor.
-The root supervisor verifies signed requests and launches code under a separate
-unprivileged game account. The application needs only its signing key and access to
-the root-owned game socket, never root privileges or a Docker socket.
+`POKETTO_GAMES_RUNTIME_DIR_HOST` and optionally `POKETTO_GAMES_MAX_JOBS` in `.env`.
+`deploy.sh` adds [the games overlay](../deploy/compose.games.yaml) after
+`sandcrab-games.service` is active, its root-owned runtime directory is mode 0751,
+and its root-owned socket is mode 0660 with the application's group. Existing
+installations set the application properties in their own Compose file; their
+settings channel accepts no host-prerequisite keys.
 
-Use a different socket, signing key, runtime directory, execution account, unit
-prefix and resource slice from the repository worker. Startup rejects overlapping
-runtime directories, matching execution accounts or shared slice names. The game
-protocol offers only jobs and revocation, without repository exports, retained
-copies or a command bridge. No containment failure falls back to a host process.
-A cancelled or expired job returns `GAME_EXPIRED`, and a job whose output is not one
-JSON step returns `INVALID_GAME_OUTPUT`.
+Use a different socket, runtime directory, execution account and resource slice
+from the repository worker. One application exclusively owns the game service
+through `game-service.lock` in `poketto.data-dir`; instances using that service must
+share this file and preserve it across restarts. Recovery closes unowned ephemeral
+sessions and releases their receipts. Never share this service with another
+consumer. No containment failure falls back to a host process.
 
-The example allows two jobs, each bounded to five seconds, 128 MiB RAM, 48 tasks,
-50% CPU, 2 MiB temporary storage and 96 KiB output. Tasks include bubblewrap and Node's own
-threads; configurations with fewer than 48 tasks per job are rejected. The independent slice caps aggregate use
-at 384 MiB, 128 tasks and 100% CPU with swap disabled. Failed containment retains
-admission, and revocation reports that job as closing, until a supervisor restart
-confirms cleanup. Separate limits protect
-repository admission; shared host CPU can still increase latency.
+The example allows two jobs with five-second commands, 15-second sessions,
+128 MiB RAM, 48 tasks, 50% CPU, 2 MiB temporary storage and 96 KiB output per job.
+The independent slice caps aggregate use at 384 MiB, 128 tasks and 100% CPU with
+swap disabled. Failed containment or uncertain admission retains local capacity
+until reconciliation or service restart confirms release. Revocation cancels the
+matching application-owned session; the daemon receives no account or workspace
+identity. Separate admission protects repository capacity, while shared-host CPU
+can still increase latency.
 
 ## Verification
 
 `GameSavesIntegrationIT`, `GameCatalogueTests`, `GameContentSnapshotsTests`,
 `IsolatedGameRunnerTests` and the frontend game tests cover their respective
-contracts. Worker protocol tests include cancellation, shutdown and cleanup
-admission. Run the [native probe](../executor-native/README.md) with `--scenario
+contracts. `GameSandboxJobTests` covers uncertain admission and cleanup; native acceptance
+checks actual cancellation, recovery and retained capacity. Run the [native probe](../executor-native/README.md) with `--scenario
 games` to check real containment and mixed workload behavior. Browser acceptance
 must separately exercise opaque-origin execution, withdrawal, account save
 conflicts and browser/agent handoff; DOM tests do not prove browser isolation.

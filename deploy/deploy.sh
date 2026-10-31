@@ -65,7 +65,7 @@ CONFIG_KEYS=(
     POKETTO_EXECUTOR_ACCOUNT_COPIES_VIEWER POKETTO_EXECUTOR_ACCOUNT_COPIES_COMMUNITY
     POKETTO_EXECUTOR_ACCOUNT_COPIES_CREATOR
     POKETTO_EXECUTOR_MAX_BUNDLE_BYTES POKETTO_EXECUTOR_EXPORT_TIMEOUT_SECONDS
-    POKETTO_GAMES_ENABLED POKETTO_GAMES_RUNTIME_DIR_HOST POKETTO_GAMES_SIGNING_KEY_HOST POKETTO_GAMES_MAX_JOBS
+    POKETTO_GAMES_ENABLED POKETTO_GAMES_RUNTIME_DIR_HOST POKETTO_GAMES_MAX_JOBS
     POKETTO_HEALTH_TIMEOUT POKETTO_MIN_FREE_MB POKETTO_APP_UID
     POKETTO_LOG_FORMAT
     POKETTO_METRICS_ENABLED
@@ -613,25 +613,25 @@ check_executor() {
     check_free_space "$staging"
 }
 
-# Games run in their own supervisor, which refuses to share a runtime directory, account or slice
-# with the repository worker; this checks only what the application container is handed.
+# The dedicated native service owns game containment; the application verifies its API on startup.
 check_games() {
     [ "${POKETTO_GAMES_ENABLED:-false}" = true ] || return 0
-    local key runtime signing
-    for key in POKETTO_GAMES_RUNTIME_DIR_HOST POKETTO_GAMES_SIGNING_KEY_HOST; do
-        [[ "${!key:-}" = /* ]] || fail "$key must be an absolute path to an installed game supervisor prerequisite"
-    done
-    systemctl is-active --quiet poketto-games.service         || fail "the installed poketto-games.service must be active before enabling games"
+    local runtime
+    [[ "${POKETTO_GAMES_RUNTIME_DIR_HOST:-}" = /* ]] \
+        || fail "POKETTO_GAMES_RUNTIME_DIR_HOST must be an absolute path to an installed game service prerequisite"
+    systemctl is-active --quiet sandcrab-games.service \
+        || fail "the installed sandcrab-games.service must be active before enabling games"
     runtime="$POKETTO_GAMES_RUNTIME_DIR_HOST"
-    signing="$POKETTO_GAMES_SIGNING_KEY_HOST"
     [ -f "$ROOT/compose.games.yaml" ] || fail "missing games Compose overlay"
-    [ "$runtime" != "${POKETTO_EXECUTOR_RUNTIME_DIR_HOST:-}" ] && [ "$signing" != "${POKETTO_EXECUTOR_SIGNING_KEY_HOST:-}" ]         || fail "games need their own runtime directory and signing key, separate from the executor"
-    [ -d "$runtime" ] && [ ! -L "$runtime" ] && [ "$(owner_uid "$runtime")" = 0 ]         || fail "game runtime directory must already exist and be owned by root"
+    [ "$runtime" != "${POKETTO_EXECUTOR_RUNTIME_DIR_HOST:-}" ] \
+        || fail "games need a runtime directory separate from the executor"
+    [ -d "$runtime" ] && [ ! -L "$runtime" ] && [ "$(owner_uid "$runtime")" = 0 ] \
+        || fail "game runtime directory must already exist and be owned by root"
     [ "$(stat -c %a "$runtime")" = 751 ] || fail "game runtime directory must have mode 0751"
-    [ -S "$runtime/control.sock" ] && [ ! -L "$runtime/control.sock" ]         || fail "game control.sock is unavailable; install/start the game supervisor first"
-    [ "$(owner_uid "$runtime/control.sock")" = 0 ] && [ "$(stat -c %a "$runtime/control.sock")" = 660 ] && [ "$(stat -c %g "$runtime/control.sock")" = "$APP_UID" ]         || fail "game socket must be root-owned mode 0660 with the application's group"
-    [ -f "$signing" ] && [ ! -L "$signing" ] && [ "$(owner_uid "$signing")" = "$APP_UID" ]         || fail "game signing key must already exist and be owned by the application uid"
-    [ "$(stat -c %a "$signing")" = 600 ] || fail "game signing key must have mode 0600"
+    [ -S "$runtime/control.sock" ] && [ ! -L "$runtime/control.sock" ] \
+        || fail "game control.sock is unavailable; install/start the native game service first"
+    [ "$(owner_uid "$runtime/control.sock")" = 0 ] && [ "$(stat -c %a "$runtime/control.sock")" = 660 ] && [ "$(stat -c %g "$runtime/control.sock")" = "$APP_UID" ] \
+        || fail "game socket must be root-owned mode 0660 with the application's group"
 }
 
 check_host() {
