@@ -30,3 +30,30 @@ The [native receipt](evidence/2026-10-31-sandcrab-java-events.json) records eigh
 Java checks, fixture cleanup and source hashes. The earlier
 [volume receipt](evidence/2026-10-31-sandcrab-java-volumes.json) retains its six
 checks and setup failure.
+
+## Live observer faults
+
+`sandcrab_recovery_java_probe.py` keeps one Java process alive while its disposable
+daemon is killed and restarted during output observation, call observation and a
+host handler. Synthetic host effects stay in the fixture; a refused late reply
+does not undo them or prove that the earlier command never executed. The probe
+checks narrow event-capacity and call-cursor refusals separately from stream loss
+and unconfirmed containment, then executes new identities in the replacement epoch.
+Recovery commands are finite native runs; an interrupted observation supplies no
+terminal result for the old command.
+
+```sh
+sudo python3 executor-native/sandcrab_recovery_java_probe.py \
+  --runtime build/executor-native/runtime \
+  --binary build/executor-service/bin/sandcrab \
+  --tools /prepared/tools --java /prepared/jdk/bin/java \
+  --report /tmp/sandcrab-recovery-java.json
+```
+
+Use the same staged runtime and repository layout. This fixture uses the native
+controller's 384 MiB slice and a 192 MiB Java cap, without a volume image. A temporary
+helper refuses cleanup for one owned job; its flag is removed before recovery and
+final cleanup. The controller verifies old cgroups, units and runtime directories
+after each restart. Stream failure itself never supplies that proof. All four Java
+recoveries and final `cleanup: PASS` are required; every attempt uses a new report
+path. These checks do not establish complete Poketto consumer acceptance.
