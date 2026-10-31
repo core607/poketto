@@ -67,7 +67,7 @@ class NativeRepositoryMigrationLinuxTests extends NativeRepositoryTestFixture {
         python(PACK, source.resolve("work"), workArchive);
         python(PACK, home, homeArchive);
         before = legacyCopy();
-        migration = new NativeRepositoryMigration(client, workspaces());
+        migration = new NativeRepositoryMigration(client);
         plan = NativeRepositoryMigration.plan(
                 before, client.info(), archive(workArchive), archive(homeArchive), "repository", 8_388_608, 256);
         doAnswer(call -> null).when(client).register(any(), any());
@@ -79,10 +79,10 @@ class NativeRepositoryMigrationLinuxTests extends NativeRepositoryTestFixture {
         var loseReply = new AtomicBoolean(true);
         transfers(lostRoot, loseReply);
         try (var held = new AccountCommand(journal.store(), owner, cancellation)) {
-            assertThatThrownBy(() -> migration.importCopy(principal, held, plan, workArchive, homeArchive, () -> {}))
+            assertThatThrownBy(() -> migration.importCopy(held, plan, workArchive, homeArchive, () -> {}))
                     .isInstanceOf(WorkerUnavailableException.class);
             assertThat(held.record()).isEqualTo(before);
-            migration.importCopy(principal, held, plan, workArchive, homeArchive, () -> {});
+            migration.importCopy(held, plan, workArchive, homeArchive, () -> {});
             assertThat(held.record().writer()).isEqualTo(plan.writer());
             assertThat(held.record().state()).isEqualTo(before.state());
             assertThat(held.record().original()).isEqualTo(before.original());
@@ -104,13 +104,13 @@ class NativeRepositoryMigrationLinuxTests extends NativeRepositoryTestFixture {
         transfers("none", new AtomicBoolean(false));
         closeFails.set(true);
         try (var held = new AccountCommand(journal.store(), owner, cancellation)) {
-            assertThatThrownBy(() -> migration.importCopy(principal, held, plan, workArchive, homeArchive, () -> {}))
+            assertThatThrownBy(() -> migration.importCopy(held, plan, workArchive, homeArchive, () -> {}))
                     .isInstanceOf(WorkerUnavailableException.class);
             assertThat(held.record()).isEqualTo(before);
             assertThat(destination.resolve("home")).doesNotExist();
             verify(client, never()).forget(any(SandcrabProtocol.Upload.class));
             closeFails.set(false);
-            migration.importCopy(principal, held, plan, workArchive, homeArchive, () -> {});
+            migration.importCopy(held, plan, workArchive, homeArchive, () -> {});
             assertThat(held.record().writer()).isEqualTo(plan.writer());
         }
         verify(client, times(2)).send(any(), any(Path.class));
@@ -121,7 +121,7 @@ class NativeRepositoryMigrationLinuxTests extends NativeRepositoryTestFixture {
     void finalFenceFailureRetainsBothReceiptsUntilTheSamePlanCanPublish() throws Exception {
         transfers("none", new AtomicBoolean(false));
         try (var held = new AccountCommand(journal.store(), owner, cancellation)) {
-            assertThatThrownBy(() -> migration.importCopy(principal, held, plan, workArchive, homeArchive, () -> {
+            assertThatThrownBy(() -> migration.importCopy(held, plan, workArchive, homeArchive, () -> {
                         if (uploads.size() == 2) {
                             throw new WorkerUnavailableException();
                         }
@@ -129,7 +129,7 @@ class NativeRepositoryMigrationLinuxTests extends NativeRepositoryTestFixture {
                     .isInstanceOf(WorkerUnavailableException.class);
             assertThat(held.record()).isEqualTo(before);
             verify(client, never()).forget(any(SandcrabProtocol.Upload.class));
-            migration.importCopy(principal, held, plan, workArchive, homeArchive, () -> {});
+            migration.importCopy(held, plan, workArchive, homeArchive, () -> {});
             assertThat(held.record().writer()).isEqualTo(plan.writer());
         }
         verify(client, times(2)).send(any(), any(Path.class));

@@ -1,11 +1,12 @@
 # Local execution service
 
-This worker supplies the Linux process boundary for repository execution. Spring
-authorizes the principal and exports a credential-free Git bundle; the worker
-accepts a signed lease and starts a bubblewrap sandbox as a separate unprivileged account.
-It never opens an application repository or accepts a caller-specified host path.
-The [supervisor decision](../notes/implemented/2026-09-05-local-execution-supervisor.md)
+This worker supplies the Linux process boundary: Spring authorizes principals and
+exports credential-free Git bundles; signed leases start bubblewrap under a separate
+unprivileged account. It accepts no caller-specified host paths and never opens
+application repositories. The [supervisor decision](../notes/implemented/2026-09-05-local-execution-supervisor.md)
 owns topology, rationale and alternatives.
+
+The [offline native import](native-migration.md) preserves retained work and home for explicit operator cutover.
 
 ## Runtime
 

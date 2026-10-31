@@ -1,22 +1,20 @@
 package io.github.core607.poketto.executor.internal;
 
-import io.github.core607.poketto.auth.AuthPrincipal;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Imports a contained copy without deleting its source or replacing its application-owned save history. */
+/** Offline operator-owned storage import; it neither impersonates a user nor executes repository commands. */
 final class NativeRepositoryMigration {
     private static final Logger log = LoggerFactory.getLogger(NativeRepositoryMigration.class);
     private final SandcrabClient client;
-    private final NativeRepositoryWorkspace workspaces;
 
-    NativeRepositoryMigration(SandcrabClient client, NativeRepositoryWorkspace workspaces) {
+    NativeRepositoryMigration(SandcrabClient client) {
         this.client = client;
-        this.workspaces = workspaces;
     }
 
     /** The operator persists this exact plan beside both unchanged archives before calling importCopy. */
@@ -28,13 +26,11 @@ final class NativeRepositoryMigration {
             String profile,
             long byteLimit,
             long inodeLimit) {
-        if (current.writer().storage() != null || current.phase() == AccountCopyRecord.Phase.DISCARDING) {
-            throw new IllegalArgumentException("Import requires a retained legacy copy that is not being discarded");
-        }
-        if (current.state().move() != null || current.state().sync() != null) {
-            throw new IllegalArgumentException(
-                    "Complete the retained move or synchronization before importing its copy");
-        }
+        requireEligible(current);
+        ProtocolValues.require(
+                info.capabilities().containsAll(Set.of("sessions", "volumes", "files", "calls")),
+                "import service",
+                "must support repository storage and execution");
         SandcrabProtocol.Profile settings = info.profiles().get(profile);
         if (settings == null) {
             throw new IllegalArgumentException("Import requires an advertised native profile");
@@ -42,6 +38,14 @@ final class NativeRepositoryMigration {
         if (!settings.hostCalls()) {
             throw new IllegalArgumentException("Import requires a native profile with host calls");
         }
+        ProtocolValues.require(
+                workArchive.bytes() <= settings.transferBytes(),
+                "import work archive",
+                "exceeds the selected profile transfer bound");
+        ProtocolValues.require(
+                homeArchive.bytes() <= settings.transferBytes(),
+                "import home archive",
+                "exceeds the selected profile transfer bound");
         Part work = part(current, info, workArchive, profile, settings.sessionTtlMillis(), NativeRepositoryLayout.WORK);
         Part home = part(current, info, homeArchive, profile, settings.sessionTtlMillis(), NativeRepositoryLayout.HOME);
         var storage = new AccountCopyRecord.NativeStorage(current.copyId(), profile, byteLimit, inodeLimit);
@@ -58,6 +62,17 @@ final class NativeRepositoryMigration {
                         current.copyId().toString(), info.serverId(), profile, null, byteLimit, inodeLimit),
                 work,
                 home);
+    }
+
+    static void requireEligible(AccountCopyRecord current) {
+        Objects.requireNonNull(current, "Import requires an existing copy");
+        ProtocolValues.require(current.writer().storage() == null, "import storage", "must still be legacy");
+        ProtocolValues.require(current.phase() == AccountCopyRecord.Phase.READY, "import phase", "must be READY");
+        ProtocolValues.require(current.executionId() == null, "import execution", "must be absent");
+        ProtocolValues.require(current.expiresAt() > System.currentTimeMillis(), "import expiry", "must remain live");
+        ProtocolValues.require(current.state().move() == null, "import move", "must be explicitly completed first");
+        ProtocolValues.require(current.state().sync() == null, "import sync", "must be explicitly completed first");
+        ProtocolValues.require(!current.state().uncertain(), "import save", "must be explicitly reconciled first");
     }
 
     private static Part part(
@@ -89,39 +104,34 @@ final class NativeRepositoryMigration {
     }
 
     /**
-     * The caller holds the account journal and the operator's exclusive migration lock. The fence
-     * verifies actual legacy process containment before any transfer and again before journal publication.
+     * The app-UID operator holds the account journal and an inherited exclusive source FLOCK. The
+     * root controller continuously fences legacy admission and verifies containment through the callback.
      */
-    void importCopy(
-            AuthPrincipal principal,
-            AccountCommand held,
-            Plan plan,
-            Path workArchive,
-            Path homeArchive,
-            Runnable requireContained) {
-        workspaces.authorize(principal, held.owner(), held.record());
+    void importCopy(AccountCommand held, Plan plan, Path workArchive, Path homeArchive, Runnable requireContained) {
+        requireContained.run();
         if (alreadyImported(held.record(), plan)) {
             return;
         }
         ProtocolValues.require(plan.expected().equals(held.record()), "import journal", "changed since planning");
-        requireContained.run();
-        workspaces.authorize(principal, held.owner(), held.record());
-        SandcrabVolume volume = ready(client.createVolume(plan.volume()), principal, held);
+        requireEligible(held.record());
+        held.requireLive();
+        SandcrabVolume volume = ready(client.createVolume(plan.volume()), requireContained);
         plan.writer().storage().requireVolume(volume);
-        SandcrabProtocol.Upload work = importPart(plan.work(), workArchive, principal, held);
-        SandcrabProtocol.Upload home = importPart(plan.home(), homeArchive, principal, held);
+        SandcrabProtocol.Upload work = importPart(plan.work(), workArchive, requireContained);
+        SandcrabProtocol.Upload home = importPart(plan.home(), homeArchive, requireContained);
         requireContained.run();
-        workspaces.authorize(principal, held.owner(), held.record());
+        requireEligible(held.record());
         held.bind(plan.writer());
+        requirePreserved(held.record(), plan);
         forget(work);
         forget(home);
     }
 
-    private SandcrabProtocol.Upload importPart(Part part, Path archive, AuthPrincipal principal, AccountCommand held) {
-        workspaces.authorize(principal, held.owner(), held.record());
+    private SandcrabProtocol.Upload importPart(Part part, Path archive, Runnable requireContained) {
+        requireContained.run();
         SandcrabProtocol.Upload upload = existing(part);
         if (upload == null) {
-            upload = transfer(part, archive, principal, held);
+            upload = transfer(part, archive, requireContained);
         }
         requireImported(part, upload);
         contain(part);
@@ -132,6 +142,26 @@ final class NativeRepositoryMigration {
         if (current == null || !current.writer().equals(plan.writer())) {
             return false;
         }
+        requirePreserved(current, plan);
+        return true;
+    }
+
+    private static void requirePreserved(AccountCopyRecord current, Plan plan) {
+        ProtocolValues.require(current.owner().equals(plan.expected().owner()), "imported owner", "must be preserved");
+        ProtocolValues.require(
+                current.expiresAt() == plan.expected().expiresAt(), "imported expiry", "must be preserved");
+        ProtocolValues.require(
+                Objects.equals(current.publicExport(), plan.expected().publicExport()),
+                "imported projection",
+                "must be preserved");
+        ProtocolValues.require(
+                current.phase() == AccountCopyRecord.Phase.READY && current.executionId() == null,
+                "imported phase",
+                "must remain idle and ready");
+        ProtocolValues.require(
+                Objects.equals(current.lastInterruptedCommand(), plan.expected().lastInterruptedCommand()),
+                "imported interruption",
+                "must be preserved");
         ProtocolValues.require(
                 current.copyId().equals(plan.expected().copyId()), "imported identity", "must be preserved");
         ProtocolValues.require(
@@ -140,16 +170,15 @@ final class NativeRepositoryMigration {
                 Objects.equals(current.original(), plan.expected().original()),
                 "imported original baseline",
                 "must be preserved");
-        return true;
     }
 
-    private SandcrabVolume ready(SandcrabVolume volume, AuthPrincipal principal, AccountCommand held) {
+    private SandcrabVolume ready(SandcrabVolume volume, Runnable requireContained) {
         long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
         while (!volume.state().equals("ready")) {
             if (!volume.state().equals("creating")) {
                 throw new WorkerUnavailableException();
             }
-            NativeRepositoryLease.pause(deadline, () -> workspaces.authorize(principal, held.owner(), held.record()));
+            NativeRepositoryLease.pause(deadline, requireContained);
             volume = client.volume(volume);
         }
         return volume;
@@ -166,7 +195,7 @@ final class NativeRepositoryMigration {
         }
     }
 
-    private SandcrabProtocol.Upload transfer(Part plan, Path archive, AuthPrincipal principal, AccountCommand held) {
+    private SandcrabProtocol.Upload transfer(Part plan, Path archive, Runnable requireContained) {
         boolean opened = false;
         try {
             SandcrabProtocol.Session session = client.open(plan.session());
@@ -176,11 +205,10 @@ final class NativeRepositoryMigration {
                 if (session.terminal()) {
                     throw new WorkerUnavailableException();
                 }
-                NativeRepositoryLease.pause(
-                        deadline, () -> workspaces.authorize(principal, held.owner(), held.record()));
+                NativeRepositoryLease.pause(deadline, requireContained);
                 session = client.session(plan.session().reference());
             }
-            workspaces.authorize(principal, held.owner(), held.record());
+            requireContained.run();
             client.register(session, plan.upload());
             return client.send(plan.upload(), archive);
         } catch (RuntimeException failure) {

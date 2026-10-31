@@ -158,6 +158,29 @@ val stageLinuxStorageTest = tasks.register<Sync>("stageLinuxStorageTest") {
     }
     from(sourceSets.test.get().output.classesDirs) { into("classes") }
     from(configurations.testRuntimeClasspath) { into("jars") }
+    from("executor-service") {
+        include("native_migration_*.py", "migrate_native_repository.py")
+        into("migration-tests")
+    }
+    from("deploy") {
+        include("update-existing.py", "worker_release.py")
+        into("migration-tests/deploy")
+    }
+    from("deploy/native_service.py") { into("migration-tests") }
+}
+
+val stageRepositoryMigrationOperator = tasks.register<Sync>("stageRepositoryMigrationOperator") {
+    group = "distribution"
+    description = "Stages the offline data-only migration helper without starting the application."
+    dependsOn(tasks.classes)
+    into(layout.buildDirectory.dir("repositoryMigrationOperator"))
+    from(sourceSets.main.get().output.classesDirs) { into("classes") }
+    from(configurations.runtimeClasspath) { into("jars") }
+    from("executor-service") {
+        include("migrate_native_repository.py", "native_migration_files.py", "native_migration_guard.py")
+        into("operator")
+    }
+    from("deploy/native_service.py") { into("operator") }
 }
 
 val linuxStorageImage = layout.buildDirectory.file("linuxStorageTest/image.id")

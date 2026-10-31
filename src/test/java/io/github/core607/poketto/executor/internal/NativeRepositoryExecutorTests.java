@@ -118,7 +118,7 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
     void verifiedImportSwitchesOnlyTheWriterAndRetainsSourceAndEverySaveBaseline() throws Exception {
         AccountCopyRecord before = legacyCopy();
         Path archive = Files.write(root.resolve("kept-source.tar"), new byte[1024]);
-        var migration = new NativeRepositoryMigration(client, workspaces());
+        var migration = new NativeRepositoryMigration(client);
         var plan = NativeRepositoryMigration.plan(
                 before,
                 client.info(),
@@ -129,7 +129,7 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
                 256);
         var fences = new AtomicInteger();
         try (var held = new AccountCommand(journal.store(), owner, cancellation)) {
-            migration.importCopy(principal, held, plan, archive, archive, () -> {
+            migration.importCopy(held, plan, archive, archive, () -> {
                 assertThat(held.record()).isEqualTo(before);
                 fences.incrementAndGet();
             });
@@ -140,12 +140,10 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
             assertThat(after.state()).isEqualTo(before.state());
             assertThat(after.expiresAt()).isEqualTo(before.expiresAt());
             assertThat(after.writer()).isEqualTo(plan.writer());
-            migration.importCopy(principal, held, plan, archive, archive, () -> {
-                throw new AssertionError("already imported");
-            });
+            migration.importCopy(held, plan, archive, archive, () -> {});
         }
         assertThat(Files.readAllBytes(archive)).hasSize(1024);
-        assertThat(fences.get()).isEqualTo(2);
+        assertThat(fences.get()).isEqualTo(6);
         verify(client, times(2)).send(any(), any(Path.class));
         verify(client, never()).deleteVolume(any());
     }
@@ -154,7 +152,7 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
     void lostImportReplyReconcilesTheSameReceiptWithoutReplacingEitherCopy() throws Exception {
         AccountCopyRecord before = legacyCopy();
         Path archive = Files.write(root.resolve("kept-source.tar"), new byte[1024]);
-        var migration = new NativeRepositoryMigration(client, workspaces());
+        var migration = new NativeRepositoryMigration(client);
         var plan = NativeRepositoryMigration.plan(
                 before,
                 client.info(),
@@ -171,10 +169,10 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
             return uploaded;
         });
         try (var held = new AccountCommand(journal.store(), owner, cancellation)) {
-            assertThatThrownBy(() -> migration.importCopy(principal, held, plan, archive, archive, () -> {}))
+            assertThatThrownBy(() -> migration.importCopy(held, plan, archive, archive, () -> {}))
                     .isInstanceOf(WorkerUnavailableException.class);
             assertThat(held.record()).isEqualTo(before);
-            migration.importCopy(principal, held, plan, archive, archive, () -> {});
+            migration.importCopy(held, plan, archive, archive, () -> {});
             assertThat(held.record().writer()).isEqualTo(plan.writer());
             assertThat(held.record().state()).isEqualTo(before.state());
         }
@@ -185,7 +183,7 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
     @Test
     void unverifiedLegacyContainmentCannotStartAnImportOrChangeItsJournal() throws Exception {
         AccountCopyRecord before = legacyCopy();
-        var migration = new NativeRepositoryMigration(client, workspaces());
+        var migration = new NativeRepositoryMigration(client);
         var plan = NativeRepositoryMigration.plan(
                 before,
                 client.info(),
@@ -196,7 +194,7 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
                 256);
         try (var held = new AccountCommand(journal.store(), owner, cancellation)) {
             assertThatThrownBy(() -> migration.importCopy(
-                            principal, held, plan, root.resolve("unread.tar"), root.resolve("unread-home.tar"), () -> {
+                            held, plan, root.resolve("unread.tar"), root.resolve("unread-home.tar"), () -> {
                                 throw new WorkerUnavailableException();
                             }))
                     .isInstanceOf(WorkerUnavailableException.class);
@@ -227,6 +225,24 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
         var archive = new NativeRepositoryMigration.Archive(1024, "f".repeat(64));
         assertThatThrownBy(
                         () -> NativeRepositoryMigration.plan(before, info, archive, archive, profile, 8_388_608, 256))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(client, never()).createVolume(any());
+        verify(client, never()).open(any());
+        assertThat(journal.record(owner)).contains(before);
+    }
+
+    @Test
+    void preparationRejectsEitherArchiveAboveTheAdvertisedTransferBound() {
+        AccountCopyRecord before = legacyCopy();
+        var settings = new SandcrabProtocol.Profile(60_000, 65536, "none", 120_000, 1024, true);
+        var info = new SandcrabProtocol.Info(1, epoch, client.info().capabilities(), Map.of("repository", settings));
+        var small = new NativeRepositoryMigration.Archive(1024, "f".repeat(64));
+        var large = new NativeRepositoryMigration.Archive(2048, "e".repeat(64));
+        assertThatThrownBy(
+                        () -> NativeRepositoryMigration.plan(before, info, small, large, "repository", 8_388_608, 256))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(
+                        () -> NativeRepositoryMigration.plan(before, info, large, small, "repository", 8_388_608, 256))
                 .isInstanceOf(IllegalArgumentException.class);
         verify(client, never()).createVolume(any());
         verify(client, never()).open(any());
