@@ -10,6 +10,7 @@ import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
     private final AccountOperations operations;
     private final Map<SiteGroup, Integer> quotas;
     private final Semaphore capacity;
+    private final int maxOperations;
     private final Map<UUID, Active> active = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform()
@@ -89,11 +91,19 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
         operations = new AccountOperations(limits.accountOperations(), auth::siteGroup);
         quotas = limits.accountCopies();
         capacity = new Semaphore(limits.maxOperations());
+        maxOperations = limits.maxOperations();
         heartbeat.scheduleWithFixedDelay(this::maintainDue, 250, 250, TimeUnit.MILLISECONDS);
     }
 
     void checkWorker() {
+        if (closed.get()) {
+            throw new WorkerUnavailableException();
+        }
         workspaces.info();
+    }
+
+    void bindMetrics(MeterRegistry registry) {
+        pool.metrics.bind(registry, pool::size, () -> maxOperations - capacity.availablePermits());
     }
 
     @Override
@@ -110,13 +120,38 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.BUSY, false);
         }
         var owner = owner(principal, workspace);
-        try (AccountCommand held = command(owner, principal, expected, cancellation)) {
+        ExecutionResult completed = null;
+        try (AccountCommand held = admittedCommand(owner, principal, expected, cancellation)) {
             try {
                 requireCopy(held, expected);
-                return executeHeld(principal, held, requested, command, timeout, cancellation);
+                completed = executeHeld(principal, held, requested, command, timeout, cancellation);
+                return completed;
             } catch (RuntimeException failure) {
                 throw IsolatedRepositoryExecutor.admissionFailure(failure, held.record());
             }
+        } catch (RetainedCopyException failure) {
+            if (completed == null) {
+                throw failure;
+            }
+            log.warn("Completed native command journal could not be released", failure);
+            throw new ExecutionUnconfirmedException(completed.copyId(), completed.retention(), true, failure);
+        }
+    }
+
+    private AccountCommand admittedCommand(
+            AccountCopyRecord.Owner owner,
+            AuthPrincipal principal,
+            CopyRequest expected,
+            ExecutionCancellation cancellation) {
+        try {
+            return command(owner, principal, expected, cancellation);
+        } catch (RetainedCopyException failure) {
+            if (failure.reason() == RetainedCopyException.Reason.BUSY) {
+                pool.metrics.refused("session_busy");
+            } else if (failure.reason() == RetainedCopyException.Reason.LIMIT) {
+                pool.metrics.refused("copy_limit");
+            }
+            throw IsolatedRepositoryExecutor.admissionFailure(failure, null);
         }
     }
 
@@ -203,15 +238,17 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
     private void requireCopyCapacity(AuthPrincipal principal, AccountCopyRecord.Owner owner) {
         Integer quota = quotas.isEmpty() ? null : quotas.get(auth.siteGroup(principal));
         if (quota != null && accounts.copiesOf(owner.accountId(), owner.workspaceId()) >= quota) {
+            pool.metrics.refused("copy_limit");
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.CAPACITY, false);
         }
     }
 
-    private static void requireCopy(AccountCommand held, CopyRequest expected) {
+    private void requireCopy(AccountCommand held, CopyRequest expected) {
         if (expected.id().equals(NEW_COPY)) {
             return;
         }
         if (held.record() == null || !held.record().copyId().toString().equals(expected.id())) {
+            pool.metrics.refused("copy_mismatch");
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.MISSING_COPY, false);
         }
     }
@@ -328,7 +365,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
             claim.retain(held.record(), observed);
         }
         running.attempted = false;
-        return result(completed, held, output, claim.fresh());
+        return NativeRepositoryResults.create(completed, held, output, claim.fresh());
     }
 
     private SandcrabProtocol.Run submit(
@@ -375,50 +412,26 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
 
     private AccountOperations.Slot acquire(AuthPrincipal principal) {
         if (closed.get() || !capacity.tryAcquire()) {
+            pool.metrics.refused("operation_limit");
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.CAPACITY, false);
         }
+        boolean acquired = false;
         try {
             AccountOperations.Slot account = operations.acquire(principal, Duration.ofSeconds(5));
             if (account == null) {
-                capacity.release();
+                pool.metrics.refused("account_limit");
                 throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.CAPACITY, false);
             }
+            acquired = true;
             return account;
         } catch (InterruptedException interrupted) {
-            capacity.release();
             Thread.currentThread().interrupt();
             throw new WorkerUnavailableException(interrupted);
+        } finally {
+            if (!acquired) {
+                capacity.release();
+            }
         }
-    }
-
-    private static ExecutionResult result(
-            SandcrabProtocol.Run run, AccountCommand held, NativeArtifacts.Output output, boolean fresh) {
-        SandcrabProtocol.Result value = run.result();
-        TerminationReason reason =
-                switch (run.state()) {
-                    case "timed_out" -> TerminationReason.TIMEOUT;
-                    case "output_limit" -> TerminationReason.OUTPUT_LIMIT;
-                    case "resource_limit" -> TerminationReason.RESOURCE_LIMIT;
-                    case "cancelled" -> TerminationReason.CANCELLED;
-                    case "succeeded", "failed" ->
-                        value.code() == null ? TerminationReason.NORMAL : TerminationReason.SANDBOX_FAILURE;
-                    default -> TerminationReason.SANDBOX_FAILURE;
-                };
-        return new ExecutionResult(
-                held.record().copyId().toString(),
-                held.record().state().originalCommit(),
-                value.exitCode() == null ? -1 : value.exitCode(),
-                output.stdout(),
-                output.stderr(),
-                output.stdoutTruncated(),
-                output.stderrTruncated(),
-                reason == TerminationReason.TIMEOUT,
-                fresh,
-                false,
-                reason,
-                output.artifacts(),
-                output.errors(),
-                held.view());
     }
 
     private static void releaseReceipts(NativeRepositoryLease lease, boolean retainSession) {

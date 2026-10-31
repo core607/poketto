@@ -1028,31 +1028,6 @@ class WorkerSocketTests {
     }
 
     @Test
-    void executorHealthChecksTheLiveProtocolWithoutOpeningACopy() throws Exception {
-        var exports = exports();
-        try (var peer = new Peer();
-                var executor = executor(fullAuth(), exports, peer)) {
-            var health = new ExecutorHealthIndicator(Optional.of(executor));
-            assertThat(health.health().getStatus().getCode()).isEqualTo("UP");
-            peer.codeActProtocol = 2;
-            assertThat(health.health().getStatus().getCode()).isEqualTo("DOWN");
-            assertThat(health.health().getDetails()).isEmpty();
-            peer.codeActProtocol = 3;
-            assertThat(health.health().getStatus().getCode()).isEqualTo("UP");
-            peer.dropHello = true;
-            assertThat(health.health().getStatus().getCode()).isEqualTo("DOWN");
-            assertThat(peer.operations("OPEN")).isEmpty();
-            assertThat(peer.operations("EXEC")).isEmpty();
-            verify(exports, never()).create(any(), any(), any());
-        }
-        assertThat(new ExecutorHealthIndicator(Optional.empty())
-                        .health()
-                        .getStatus()
-                        .getCode())
-                .isEqualTo("UP");
-    }
-
-    @Test
     void closingATransportKeepsAccountOwnedExportsAndLease() throws Exception {
         var actor = principal();
         var packages = mock(PortableContentExports.class);

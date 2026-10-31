@@ -60,6 +60,8 @@ public final class LinuxStorageTestLauncher {
             "io.github.core607.poketto.executor.internal.NativeMoveRecoveryTests",
             "io.github.core607.poketto.executor.internal.NativeRepositoryPublicTests",
             "io.github.core607.poketto.executor.internal.NativeRepositoryCliLinuxTests",
+            "io.github.core607.poketto.executor.internal.NativeRepositoryConfigurationTests",
+            "io.github.core607.poketto.executor.internal.NativeRepositoryLifecycleTests",
             "io.github.core607.poketto.executor.internal.AccountFileBaselinesTests",
             "io.github.core607.poketto.executor.internal.AccountPlanFilesTests",
             "io.github.core607.poketto.executor.internal.SessionMovesTests",

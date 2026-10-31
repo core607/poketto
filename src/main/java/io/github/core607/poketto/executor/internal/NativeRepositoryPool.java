@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 
 /** Retains bounded, grant-bound sessions; command authority and cancellation remain with each caller. */
 final class NativeRepositoryPool implements AutoCloseable {
+    final NativeRepositoryMetrics metrics = new NativeRepositoryMetrics();
     private static final Logger log = LoggerFactory.getLogger(NativeRepositoryPool.class);
     private final SandcrabClient client;
     private final int maximum;
@@ -101,6 +102,7 @@ final class NativeRepositoryPool implements AutoCloseable {
                     if (discard == null) {
                         var entry = new Entry(key, principal, authority, info);
                         entries.put(key, entry);
+                        metrics.created();
                         return new Claim(entry, true);
                     }
                 }
@@ -148,8 +150,13 @@ final class NativeRepositoryPool implements AutoCloseable {
         return idle;
     }
 
-    private static ExecutionAdmissionException refused(ExecutionAdmissionException.Reason reason) {
+    private ExecutionAdmissionException refused(ExecutionAdmissionException.Reason reason) {
+        metrics.refused(reason == ExecutionAdmissionException.Reason.BUSY ? "session_busy" : "session_limit");
         return new ExecutionAdmissionException(reason, false);
+    }
+
+    synchronized int size() {
+        return entries.size();
     }
 
     final class Claim implements AutoCloseable {
@@ -542,7 +549,9 @@ final class NativeRepositoryPool implements AutoCloseable {
         entry.retired = true;
         entry.starting = false;
         entry.contained = true;
-        entries.remove(entry.key, entry);
+        if (entries.remove(entry.key, entry)) {
+            metrics.released();
+        }
     }
 
     private static final class Entry {

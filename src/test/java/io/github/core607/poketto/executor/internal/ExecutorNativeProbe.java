@@ -232,7 +232,7 @@ public final class ExecutorNativeProbe {
 
     private IsolatedRepositoryExecutor adapter(
             Path socket, int maxSessions, RepositorySnapshotExports selectedExports, AccountCopyStore accounts) {
-        return new ExecutorConfiguration()
+        return new LegacyExecutorFixture()
                 .isolatedRepositoryExecutor(
                         accounts,
                         auth,
@@ -708,7 +708,7 @@ public final class ExecutorNativeProbe {
             for (boolean full : List.of(true, false)) {
                 privateRead.set(full);
                 String session = full ? "export-full" : "export-public";
-                try (var executor = new ExecutorConfiguration()
+                try (var executor = new LegacyExecutorFixture()
                         .isolatedRepositoryExecutor(
                                 AccountCopyTestData.disk(path("accountMetadata")),
                                 auth,
@@ -920,7 +920,7 @@ public final class ExecutorNativeProbe {
         for (int i = 0; i < bytes.length; i++) {
             bytes[i] = (byte) i;
         }
-        try (var executor = new ExecutorConfiguration()
+        try (var executor = new LegacyExecutorFixture()
                 .isolatedRepositoryExecutor(
                         AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
@@ -1167,7 +1167,7 @@ public final class ExecutorNativeProbe {
                 + asset.reference().revision();
         String replacement = " --asset " + other.reference().assetId() + " --revision "
                 + other.reference().revision();
-        try (var executor = new ExecutorConfiguration()
+        try (var executor = new LegacyExecutorFixture()
                 .isolatedRepositoryExecutor(
                         AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
@@ -1312,7 +1312,7 @@ public final class ExecutorNativeProbe {
         byte[] updated = "new-private-original".getBytes(StandardCharsets.UTF_8);
         String originalCommit = fixture.seedMedia(auth, principal, original, original);
         var reader = fixture.reader(auth);
-        try (var executor = new ExecutorConfiguration()
+        try (var executor = new LegacyExecutorFixture()
                 .isolatedRepositoryExecutor(
                         AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
@@ -1387,7 +1387,7 @@ public final class ExecutorNativeProbe {
             passed("full-scope-media-fetch-retains-historical-originals-and-never-overwrites-local-edits");
         }
         privateRead.set(false);
-        try (var executor = new ExecutorConfiguration()
+        try (var executor = new LegacyExecutorFixture()
                 .isolatedRepositoryExecutor(
                         AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
@@ -1468,7 +1468,7 @@ public final class ExecutorNativeProbe {
     }
 
     private IsolatedRepositoryExecutor moveAdapter(PublicExecutionNativeFixture fixture) {
-        return new ExecutorConfiguration()
+        return new LegacyExecutorFixture()
                 .isolatedRepositoryExecutor(
                         AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
@@ -1490,7 +1490,7 @@ public final class ExecutorNativeProbe {
         var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("local-move-reply"), path("exports"), auth, workspace);
         // Inject a dropped real reply before composing the adapter and its command handlers.
-        var original = new ExecutorConfiguration().workerClient(JSON, path("socket"), path("privateKey"));
+        var original = new LegacyExecutorFixture().workerClient(JSON, path("socket"), path("privateKey"));
         var intercepted = spy(original);
         var dropped = new AtomicBoolean();
         var refuseInstall = new AtomicBoolean();
@@ -1761,7 +1761,7 @@ public final class ExecutorNativeProbe {
         var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("recovery"), path("exports"), auth, workspace, true);
         var reader = fixture.reader(auth);
-        try (var executor = new ExecutorConfiguration()
+        try (var executor = new LegacyExecutorFixture()
                 .isolatedRepositoryExecutor(
                         AccountCopyTestData.disk(path("accountMetadata")),
                         auth,
@@ -1828,7 +1828,7 @@ public final class ExecutorNativeProbe {
         var fixture = new PublicExecutionNativeFixture(
                 path("publicFixture").resolve("saves"), path("exports"), auth, workspace);
         var reader = fixture.reader(auth);
-        try (var executor = new ExecutorConfiguration()
+        try (var executor = new LegacyExecutorFixture()
                 .isolatedRepositoryExecutor(
                         AccountCopyTestData.disk(path("accountMetadata")),
                         auth,

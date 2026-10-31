@@ -29,6 +29,7 @@ final class SocketAccountJournal {
     private volatile Consumer<AccountCopyRecord> afterWrite = record -> {};
     private volatile boolean full;
     private volatile boolean recent;
+    private final AtomicReference<IOException> closeFailure = new AtomicReference<>();
 
     SocketAccountJournal() throws IOException {
         when(store.nextExpiry())
@@ -83,6 +84,10 @@ final class SocketAccountJournal {
     /** Fills the copy pool: acquiring an owner that has never been acquired fails with LIMIT. */
     void fillPool() {
         full = true;
+    }
+
+    void failNextClose() {
+        closeFailure.set(new IOException("Synthetic journal release failure"));
     }
 
     /** Makes every recorded copy a collection candidate, as an expiry would. */
@@ -158,6 +163,10 @@ final class SocketAccountJournal {
                 .remove(any());
         doAnswer(call -> {
                     entry.lock.unlock();
+                    IOException failure = closeFailure.getAndSet(null);
+                    if (failure != null) {
+                        throw failure;
+                    }
                     return null;
                 })
                 .when(lease)
