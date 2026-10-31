@@ -1,5 +1,8 @@
 package io.github.core607.poketto.executor.internal;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
 /** The repository CLI is consumer code, carried by Poketto rather than compiled into Sandcrab. */
 final class NativeRepositoryCli {
     private static final String SOURCE = """
@@ -108,6 +111,20 @@ final class NativeRepositoryCli {
     private NativeRepositoryCli() {}
 
     static String install() {
-        return "poketto() { python3 -c '" + SOURCE.replace("'", "'\"'\"'") + "' \"$@\"; }; export -f poketto";
+        String encoded = Base64.getEncoder().encodeToString(SOURCE.getBytes(StandardCharsets.UTF_8));
+        String installer = """
+                import base64,os,sys,tempfile
+                os.umask(0o077)
+                directory=tempfile.mkdtemp(prefix='poketto-cli.',dir='/tmp')
+                client=os.path.join(directory,'poketto')
+                descriptor=os.open(client,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o700)
+                with os.fdopen(descriptor,'wb') as output:
+                    output.write(('#!'+sys.executable+' -I\\n').encode()+base64.b64decode('%s'))
+                print(directory)
+                """.formatted(encoded);
+        // The source and its imports never come from the user's current directory. PATH is
+        // published only after a complete executable exists in this session's private /tmp.
+        return "poketto_cli_directory=$(python3 -I -c '" + installer.replace("'", "'\"'\"'")
+                + "') && export PATH=\"$poketto_cli_directory${PATH:+:$PATH}\" && unset poketto_cli_directory";
     }
 }

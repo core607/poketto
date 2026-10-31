@@ -56,7 +56,7 @@ final class McpCopyAdmission {
                 false,
                 exception.recoveryAvailable(),
                 exception.reason() == ExecutionAdmissionException.Reason.PUBLICATION_CHANGED
-                        ? "This command did not execute. Published content changed after this public copy was opened, and the copy has local changes or pending operations, or could not be confirmed clean, so it was left untouched. Public copies cannot save or run commands against outdated publication: run repo_discard with copyId to drop the local changes, then retry with expectedCopyId=new."
+                        ? "This command did not execute. Published content changed after this public copy was opened. Its files are retained, but it cannot save or run against outdated publication. Use expectedCopyId=new for a current projection within your account quota. The old copy still counts toward quota; repo_discard with its copyId explicitly deletes its local work."
                         : "This command did not execute. Inspect the reason and retry a read-only command against the intended copy ID when available. Earlier interrupted commands may have partially completed; inspect local and remote state before retrying writes.",
                 exception.copyId().orElse(null));
         return McpSchema.CallToolResult.builder()

@@ -21,14 +21,15 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -46,10 +47,10 @@ abstract class NativeRepositoryTestFixture {
     final UUID account = UUID.randomUUID();
     final String epoch = UUID.randomUUID().toString();
     final String commit = "a".repeat(40);
-    final Map<String, SandcrabProtocol.Session> sessions = new HashMap<>();
-    final Map<String, SandcrabProtocol.Run> runs = new HashMap<>();
-    final Map<String, SandcrabVolume> volumes = new HashMap<>();
-    final Map<String, SandcrabProtocol.Upload> uploads = new HashMap<>();
+    final Map<String, SandcrabProtocol.Session> sessions = new ConcurrentHashMap<>();
+    final Map<String, SandcrabProtocol.Run> runs = new ConcurrentHashMap<>();
+    final Map<String, SandcrabVolume> volumes = new ConcurrentHashMap<>();
+    final Map<String, SandcrabProtocol.Upload> uploads = new ConcurrentHashMap<>();
     final List<String> commands = new ArrayList<>();
     final AtomicBoolean closeFails = new AtomicBoolean();
     String stdout = "output";
@@ -212,23 +213,25 @@ abstract class NativeRepositoryTestFixture {
     }
 
     NativeRepositoryExecutor executor(NativeRepositoryExecutor.CommandObserver observer) {
-        var host = new NativeRepositoryHost(
-                saves,
-                (lease, path, limit) -> new byte[0],
-                mock(NativeArtifactCommands.class),
-                mock(NativeMediaCommands.class));
+        return executor(observer, new ExecutionLimits(1, 1, Map.of(), Map.of()), System::nanoTime);
+    }
+
+    NativeRepositoryExecutor executor(
+            NativeRepositoryExecutor.CommandObserver observer, ExecutionLimits limits, LongSupplier clock) {
+        NativeRepositoryHost host = repositoryHost();
         var artifacts = new NativeArtifacts(
                 new NativeTransferStore(root.resolve(UUID.randomUUID().toString()), 16L * 1024 * 1024, 64),
                 Clock.systemUTC());
         return new NativeRepositoryExecutor(
-                client,
-                auth,
-                journal.store(),
-                workspaces(),
-                host,
-                artifacts,
-                observer,
-                new ExecutionLimits(1, 1, Map.of(), Map.of()));
+                client, auth, journal.store(), workspaces(), host, artifacts, observer, limits, clock);
+    }
+
+    NativeRepositoryHost repositoryHost() {
+        return new NativeRepositoryHost(
+                saves,
+                (lease, path, limit) -> new byte[0],
+                mock(NativeArtifactCommands.class),
+                mock(NativeMediaCommands.class));
     }
 
     RepositoryExecutor.ExecutionResult execute(NativeRepositoryExecutor executor, String copy) {

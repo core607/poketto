@@ -160,24 +160,42 @@ val stageLinuxStorageTest = tasks.register<Sync>("stageLinuxStorageTest") {
     from(configurations.testRuntimeClasspath) { into("jars") }
 }
 
+val linuxStorageImage = layout.buildDirectory.file("linuxStorageTest/image.id")
+val buildLinuxStorageImage = tasks.register<Exec>("buildLinuxStorageImage") {
+    onlyIf { storageTestsNeedLinux }
+    inputs.files("executor-native/Dockerfile.peer-tests", "executor-native/peer_probe.py", "executor-native/rejected_peer.py")
+    outputs.file(linuxStorageImage)
+    doFirst {
+        linuxStorageImage.get().asFile.parentFile.mkdirs()
+    }
+    commandLine(
+        "docker", "build", "--network", "none", "--iidfile", linuxStorageImage.get().asFile.absolutePath,
+        "-f", "executor-native/Dockerfile.peer-tests", "executor-native",
+    )
+}
+
 val linuxStorageTest = tasks.register<Exec>("linuxStorageTest") {
     group = "verification"
     description = "Runs the real durable-storage JUnit suite in Linux when the host is Windows."
-    dependsOn(stageLinuxStorageTest)
+    dependsOn(stageLinuxStorageTest, buildLinuxStorageImage)
     onlyIf { storageTestsNeedLinux }
     inputs.files(sourceSets.test.get().runtimeClasspath)
     outputs.upToDateWhen { false }
     // Stage only compiled classes and resolved dependency JARs; never mount operator files.
-    commandLine(
-        "docker", "run", "--rm", "--network", "none", "--read-only",
-        "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-        "--memory", "512m", "--pids-limit", "128", "--mount", "type=volume,target=/tmp",
-        "--mount", "type=bind,source=${linuxStorageRuntime.get().asFile.absolutePath},target=/runtime,readonly",
-        "--entrypoint", "java",
-        "eclipse-temurin@sha256:c0fe66ea21e972724000cf402f8081c7841d960839f69cb0754f40b40f74b2cc",
-        "-Xmx256m", "-Djava.io.tmpdir=/tmp", "-Duser.home=/tmp", "-cp", "/runtime/classes:/runtime/jars/*",
-        "io.github.core607.poketto.assets.internal.LinuxStorageTestLauncher",
-    )
+    doFirst {
+        val image = linuxStorageImage.get().asFile.readText().trim()
+        check(Regex("sha256:[0-9a-f]{64}").matches(image)) { "Invalid Linux storage test image identity" }
+        commandLine(
+            "docker", "run", "--rm", "--network", "none", "--read-only",
+            "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+            "--memory", "512m", "--pids-limit", "128", "--mount", "type=volume,target=/tmp",
+            "--mount", "type=bind,source=${linuxStorageRuntime.get().asFile.absolutePath},target=/runtime,readonly",
+            "--entrypoint", "java",
+            image,
+            "-Xmx256m", "-Djava.io.tmpdir=/tmp", "-Duser.home=/tmp", "-cp", "/runtime/classes:/runtime/jars/*",
+            "io.github.core607.poketto.assets.internal.LinuxStorageTestLauncher",
+        )
+    }
 }
 
 // Git for Windows ships bash beside git.exe; System32\bash.exe belongs to WSL and may be absent.

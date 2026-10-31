@@ -63,7 +63,10 @@ final class NativeRepositoryWorkspace {
         if (owner.fullRead()) {
             auth.authorize(principal, workspace, Capability.READ_PRIVATE, Capability.EXECUTE_REPOSITORY);
         } else if (record != null) {
-            exports.requireCurrentPublic(principal, workspace, record.publicExport());
+            if (exports.publicProjectionChanged(principal, workspace, record.publicExport())) {
+                throw ExecutionAdmissionException.publicationChanged(
+                        record.copyId().toString());
+            }
         } else {
             auth.authorize(principal, workspace, Capability.EXECUTE_REPOSITORY);
         }

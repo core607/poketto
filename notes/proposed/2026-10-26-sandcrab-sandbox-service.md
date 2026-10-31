@@ -43,6 +43,10 @@ Compatibility is checked through [both published SDKs](../../evals/sdk/README.md
 
 Poketto owns repositories, publication, writes and recovery. It may redesign copy semantics, updating owning decisions, docs and tests together. Cutover preserves existing data, including unsaved work, and current authorization. Repository and game accounts, units and slices remain separate ([pocket games](../implemented/2026-10-09-pocket-games.md)). Creator QA is an optional consumer.
 
+The [native repository owner](../../src/main/java/io/github/core607/poketto/executor/internal/NativeRepositoryExecutor.java) bounds roots by copy, scope and current grant, with per-command authority and cancellation. Normal completion retains background processes; revocation and idle expiry close roots. Public-proof checks cover idle/busy roots, output, artifacts and media. Changed copies remain; `new` may allocate current publication within quota. Mutable Git state cannot authorize deletion, replacing [public projection](../implemented/2026-09-09-public-execution-projection.md)'s inspection/rebuild choice at cutover.
+
+The durable journal owns baselines independently of writable Git HEAD. Per-path captures feed the atomic remote writer. Media import/link propose explicit index edits; artifacts survive runtime replacement. Local status has an explicit remote query, and bounded previews preserve complete receipts ([usage](../../docs/usage.md#mcp-and-isolated-execution)). Migration inventory, activation, sync/move integration and real consumer/performance acceptance remain cutover requirements; these classes do not activate the backend.
+
 ### Phases
 
 0. Validation without production code, recorded below.

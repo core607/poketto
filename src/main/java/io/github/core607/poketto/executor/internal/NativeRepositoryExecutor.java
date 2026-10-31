@@ -22,6 +22,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import java.util.function.LongSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -58,6 +59,19 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
             NativeArtifacts artifacts,
             CommandObserver observer,
             ExecutionLimits limits) {
+        this(client, auth, accounts, workspaces, host, artifacts, observer, limits, System::nanoTime);
+    }
+
+    NativeRepositoryExecutor(
+            SandcrabClient client,
+            AuthService auth,
+            AccountCopyStore accounts,
+            NativeRepositoryWorkspace workspaces,
+            NativeRepositoryHost host,
+            NativeArtifacts artifacts,
+            CommandObserver observer,
+            ExecutionLimits limits,
+            LongSupplier clock) {
         this.client = client;
         this.auth = auth;
         this.accounts = accounts;
@@ -68,7 +82,8 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
                 client,
                 limits,
                 binding ->
-                        workspaces.authorize(binding.principal(), binding.key().owner(), binding.record()));
+                        workspaces.authorize(binding.principal(), binding.key().owner(), binding.record()),
+                clock);
         disposal = new NativeRepositoryDisposal(client, auth, accounts, pool, workspaces, artifacts::removeCopy);
         this.observer = observer;
         operations = new AccountOperations(limits.accountOperations(), auth::siteGroup);
@@ -137,32 +152,59 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
         if (!expected.id().equals(NEW_COPY)) {
             return new AccountCommand(accounts, accounts.ownerFor(owner, expected.id()), cancellation);
         }
-        Optional<AccountCommand> idle = unclaimed(owner);
+        Optional<AccountCommand> idle = unclaimed(principal, owner);
         if (idle.isPresent()) {
             return idle.get();
         }
         for (AccountCopyRecord.Owner fork : accounts.unclaimedForksOf(owner, AGENT_CLAIM)) {
-            idle = unclaimed(fork);
+            idle = unclaimed(principal, fork);
             if (idle.isPresent()) {
                 return idle.get();
             }
         }
+        requireCopyCapacity(principal, owner);
+        return new AccountCommand(accounts, owner.forked(UUID.randomUUID()), cancellation);
+    }
+
+    private Optional<AccountCommand> unclaimed(AuthPrincipal principal, AccountCopyRecord.Owner owner) {
+        Optional<AccountCommand> candidate = AccountCommand.ifIdle(accounts, owner);
+        if (candidate.isEmpty()) {
+            return candidate;
+        }
+        AccountCommand held = candidate.get();
+        boolean selected = false;
+        try {
+            AccountCopyRecord record = held.record();
+            if (record == null) {
+                requireCopyCapacity(principal, owner);
+            } else {
+                try {
+                    workspaces.authorize(principal, owner, record);
+                } catch (ExecutionAdmissionException changed) {
+                    if (changed.reason() != ExecutionAdmissionException.Reason.PUBLICATION_CHANGED) {
+                        throw changed;
+                    }
+                    pool.closeCopy(record.copyId());
+                    return Optional.empty();
+                }
+                if (accounts.recentlyUsed(record, AGENT_CLAIM)) {
+                    return Optional.empty();
+                }
+            }
+            selected = true;
+            return candidate;
+        } finally {
+            if (!selected) {
+                held.close();
+            }
+        }
+    }
+
+    private void requireCopyCapacity(AuthPrincipal principal, AccountCopyRecord.Owner owner) {
         Integer quota = quotas.isEmpty() ? null : quotas.get(auth.siteGroup(principal));
         if (quota != null && accounts.copiesOf(owner.accountId(), owner.workspaceId()) >= quota) {
             throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.CAPACITY, false);
         }
-        return new AccountCommand(accounts, owner.forked(UUID.randomUUID()), cancellation);
-    }
-
-    private Optional<AccountCommand> unclaimed(AccountCopyRecord.Owner owner) {
-        Optional<AccountCommand> candidate = AccountCommand.ifIdle(accounts, owner);
-        if (candidate.isPresent()
-                && candidate.get().record() != null
-                && accounts.recentlyUsed(candidate.get().record(), AGENT_CLAIM)) {
-            candidate.get().close();
-            return Optional.empty();
-        }
-        return candidate;
     }
 
     private static void requireCopy(AccountCommand held, CopyRequest expected) {

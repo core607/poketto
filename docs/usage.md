@@ -454,36 +454,34 @@ by site group. A missing worker or unsupported isolation never
 falls back to an ordinary subprocess.
 
 Request bodies are limited to 128 KiB (413 before any tool runs), a command to 16,384
-characters and an encoded bridge frame to 512 KiB. Refusals carry `code` and
+characters and each opaque host-call request or reply to 64 KiB. Refusals carry `code` and
 `reason`. See [MCP request admission removal](../notes/implemented/2026-09-15-mcp-request-admission-removal.md).
 
-`repo_exec` requires `expectedCopyId`: pass `"new"` to open the account's default
-copy, creating it only when absent, or a separate copy while it is busy or recently
-used. Then pass the returned `copyId`, including one returned with
-`EXECUTION_REFUSED`. Reconnecting reattaches a copy, and closing the transport keeps it. Each
-successful operation renews its seven-day idle deadline (`retention.expiresAt`);
-expiry and discard remove local work. `SESSION_REPLACED` and `EXECUTION_REFUSED` mean the command did not run.
-`EXECUTION_UNCONFIRMED` means it may have partly run, including remote writes: do not
-replay it; inspect the same copy with a read-only command,
-`retention.lastInterruptedCommand` and `poketto status`, and use `poketto recover` when
-a remote save needs reconciliation. See
+`repo_exec` requires `expectedCopyId`. `"new"` selects the free current default or
+creates within quota if absent, busy, recently used or publicly stale. Afterwards name
+the returned `copyId`, including refusals. Reconnection and transport closure preserve
+work. Successful use renews the seven-day idle deadline (`retention.expiresAt`);
+expiry/discard deletes local work. `SESSION_REPLACED`/`EXECUTION_REFUSED` mean this
+command did not run. `EXECUTION_UNCONFIRMED` may include partial remote writes:
+never replay it. Inspect that copy read-only, `retention.lastInterruptedCommand` and
+`poketto status`; reconcile uncertain saves with `poketto recover`. See
 [working-copy identity](../executor-service/README.md#working-copy-identity).
 
-Commands in one live lease share the working directory, environment, shell functions,
-aliases, private `/tmp` and background processes. A timeout, output-limit stop, shell
-exit, idle cleanup or lease replacement discards that runtime state but keeps the
-copy's files, including partial work; the next command reports `freshSandbox: true`.
-Idle cleanup follows the worker's `idleUnitSeconds` (1 to 86400; 1800 in the example
-configuration). Background processes stop with the sandbox and cannot run `poketto`
-operations after their command ends.
+Commands share cwd, environment, functions, aliases, private `/tmp` and background
+processes within one live lease. Timeout, output-limit stop, shell exit, idle cleanup
+or replacement resets runtime state but retains copy files and partial work; the next
+command reports `freshSandbox: true`. Idle lifetime uses the operator profile's session
+TTL; maintenance rechecks current authority, including idle sessions. Background
+processes survive normal completion until sandbox closure, but cannot call host
+operations after their command. Scripts and subprocesses can invoke `poketto` on `PATH`.
 
-Full-read sessions hold authorized current files and Git history. Public-only
-sessions get the current public projection without history or private metadata,
-report `PUBLIC_PROJECTION` with a synthetic commit, and cannot save. When publication
-changes, a public copy without local changes is rebuilt under the same `copyId` before
-the next command, which reports `refreshed: true` and the new commit; a copy with local
-changes, including any file in `$HOME` or beside the repository, is left untouched and
-refused with `PUBLICATION_CHANGED` until `repo_discard` removes it.
+Full-read sessions hold authorized files and Git history. Public copies contain current
+publication without history/private metadata, report a synthetic `PUBLIC_PROJECTION`
+commit and cannot save. Changed publication yields `PUBLICATION_CHANGED`, retaining
+the copy regardless of Git status. `new` opens a current projection within quota;
+retained copies count until discard/expiry. Withdrawn, expired or unavailable publication
+blocks execution and artifact/media reads and contains affected idle/busy runtimes.
+Gaining full-read permission never enlarges an explicitly named public copy.
 
 `poketto edit PATH --old TEXT --new TEXT` replaces one exact occurrence in an existing
 local text file, refusing missing or ambiguous text. `poketto create PATH --text TEXT`
@@ -503,15 +501,19 @@ Quotes, `$variables` and backticks remain ordinary Markdown.
 MARKDOWN
 ```
 
-`poketto save` commits selected files and explicit deletions, keeping other edits
-local, and checks each selected file against the remote. In full-read copies an
-acknowledged save or move also updates local Git HEAD; `repo_exec.commit` and
-`poketto status.gitCommit` report that baseline. If status shows
-`localBaselinePending`, run `poketto recover` instead of saving again.
+`poketto save` checks selected files and explicit deletions against remote revisions,
+then commits atomically. Captures freeze each file separately, not the whole selection.
+Other edits stay local. Host baselines advance without resetting files or Git HEAD.
+`repo_exec.commit`/`status.initialCommit` identify the initial checkout;
+`status.baseCommit` identifies the acknowledged host baseline. Reconcile uncertain
+saves with `poketto recover` before writing again.
 
-`poketto status` in full-read copies compares remote `main` with the last confirmed
-base: `remote.state` is `MATCHES_BASE`, `DIFFERS_FROM_BASE` or `UNAVAILABLE`. Status
-never changes files. `poketto sync` merges the whole workspace with one remote
+`poketto status` reads local acknowledgements; `--remote` compares current main with
+the confirmed base (`MATCHES_BASE`, `DIFFERS_FROM_BASE` or `UNAVAILABLE`). It neither
+inspects Git HEAD nor changes files. Previews give receipt bytes, digest and `omitted`;
+`poketto receipt save` or `poketto receipt import` reads the complete receipt.
+
+`poketto sync` merges the whole workspace with one remote
 revision, keeping local-only files and conflicting binary bytes and marking
 overlapping text edits with LOCAL/BASE/REMOTE sections; it saves nothing remotely.
 After an interruption, status shows `syncPending`; `poketto recover` continues and
@@ -533,9 +535,11 @@ It needs execution permission and ownership of the copy; busy copies are refused
 Retry an unconfirmed discard only with the same ID. Discarding never undoes remote
 commits.
 
-`poketto media import` stores an immutable original and updates the local media
-index; save the index with the referring text to persist the reference.
-`poketto media link PATH --asset ID --revision REV` adds an already uploaded original.
+`poketto media import` stores an immutable original; `media link PATH --asset ID
+--revision REV` uses an uploaded original. Both return `indexEntry` and
+`indexUpdated: false`, preserving local index edits. Merge the entry into
+`.poketto/assets.json`'s `files` map and save it with referring text. Fetch installs
+absent files or accepts identical bytes; different bytes remain with `LOCAL_FILE_EXISTS`.
 `poketto media fetch` and `poketto media list` read the local index or, in full-read
 sessions, a historical `--commit`; public sessions see only approved media. Page
 `media list` with the returned `nextOffset` and `indexVersion`, keeping `--prefix` and
@@ -543,11 +547,11 @@ sessions, a historical `--commit`; public sessions see only approved media. Page
 original reads are busy. See `poketto --help` and the
 [worker reference](../executor-service/README.md) for limits and conflicts.
 
-`poketto artifact create FILE --type MIME` keeps an immutable, temporary result that
-`get_artifact` returns to any MCP request of the same account, workspace and reading
-scope, as a rendered image or text or binary pages; long command output also supplies
-artifact handles. Handles expire after five minutes or when the lease closes, for
-example when another credential of the account takes over the copy. See
+`poketto artifact create FILE --type MIME` retains immutable results; long output also
+returns handles. `get_artifact` renders images or pages text/binary for currently
+authorized grants of the same account, workspace and scope, rechecking publication.
+Handles expire after five minutes, copy disposal/expiry or application shutdown;
+runtime replacement alone preserves them. See
 [returned artifacts](../executor-service/README.md#returned-artifacts).
 
 `put_asset` imports an image and returns `assetId`, `revision`, `reference`,

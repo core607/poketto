@@ -202,7 +202,7 @@ class McpCopyIdentityTests {
     }
 
     @Test
-    void aChangedPublicationOverLocalWorkNamesTheKeptCopyAndHowToDiscardIt() {
+    void changedPublicationNamesTheKeptCopyAndAllowsANewProjectionWithinQuota() {
         String copy = UUID.randomUUID().toString();
         when(executor.execute(
                         any(), any(), eq(new RepositoryExecutor.CopyRequest("new")), any(), anyString(), any(), any()))
@@ -214,7 +214,12 @@ class McpCopyIdentityTests {
         assertThat(refused.path("recoveryAvailable").booleanValue()).isTrue();
         assertThat(refused.path("copyId").stringValue()).isEqualTo(copy);
         assertThat(refused.path("message").stringValue())
-                .contains("Published content changed", "left untouched", "repo_discard", "expectedCopyId=new");
+                .contains(
+                        "Published content changed",
+                        "files are retained",
+                        "repo_discard",
+                        "expectedCopyId=new",
+                        "account quota");
     }
 
     @Test

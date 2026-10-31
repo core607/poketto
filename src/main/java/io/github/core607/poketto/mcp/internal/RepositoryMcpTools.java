@@ -154,7 +154,7 @@ final class RepositoryMcpTools {
     private McpStatelessServerFeatures.SyncToolSpecification getArtifactTool() {
         return tool(
                 "get_artifact",
-                "Read an unexpired artifact from the account's current execution lease. A grant change or process restart can invalidate the handle; recreate it from the retained copy. Auto format renders validated images in full (up to 16 MiB), or pages text. Other files and format=bytes return exact binary pages. Byte offset and limit apply to pages; continue with nextOffset. Handles do not publish, save, or grant access to another session.",
+                "Read an unexpired artifact owned by your account's repository copy. Every page requires current reading scope and publication; another valid grant of the same account may read it. Handles expire after five minutes, copy disposal or expiry, or application restart. Auto format renders validated images in full (up to 16 MiB), or pages text. Other files and format=bytes return exact binary pages. Byte offset and limit apply to pages; continue with nextOffset. Handles do not publish, save, or grant access to another account or scope.",
                 object(
                         Map.of(
                                 "artifactId",
@@ -175,7 +175,7 @@ final class RepositoryMcpTools {
     private McpStatelessServerFeatures.SyncToolSpecification executeTool() {
         return tool(
                 "repo_exec",
-                "Run shell, Python and Git in your account's isolated copy of this space's repository. Read the root AGENTS.md and poketto --help first. Edits stay local until poketto save. The working directory, environment, /tmp and background processes persist between calls until a result reports freshSandbox=true. Files persist until the copy has been idle for seven days (retention.expiresAt) or repo_discard removes it, unsaved edits included. SESSION_REPLACED and EXECUTION_REFUSED mean the command did not run. EXECUTION_UNCONFIRMED means it may have run: inspect the same copy before writing again, and never replay an uncertain write. Public-only grants see the current public projection; when it changes, a clean copy is rebuilt (refreshed=true) and one with local changes is refused with PUBLICATION_CHANGED. Long output and poketto artifact create return handles for get_artifact. repo_discard removes a copy.",
+                "Run shell, Python and Git in your account's isolated copy of this space's repository. Read the root AGENTS.md and poketto --help first. Edits stay local until poketto save; media import/link propose an indexEntry that you must explicitly add to .poketto/assets.json before saving. The working directory, environment, /tmp and background processes can persist between calls; freshSandbox=true means runtime state was reset. Files persist until seven days idle (retention.expiresAt) or repo_discard, unsaved edits included. SESSION_REPLACED and EXECUTION_REFUSED mean this command did not run. EXECUTION_UNCONFIRMED means it may have run: inspect the same copy and never replay an uncertain write. Public-only grants see current publication; changed copies are refused with PUBLICATION_CHANGED and kept. Use new for a current projection within your copy quota. poketto status reads local acknowledgements; --remote also checks remote main. Long output and poketto artifact create return handles for get_artifact.",
                 object(
                         Map.of(
                                 "expectedCopyId",
@@ -187,7 +187,7 @@ final class RepositoryMcpTools {
                                                 36,
                                                 "pattern",
                                                 "^(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
-                                        "new opens a copy no other agent is working in: your account's default copy when it is free, otherwise a separate copy of your own. Afterwards always pass the copyId your results return; a later new may open a different copy. new is never a retry after an uncertain result."),
+                                        "new opens a current copy no other agent is working in: your account's free default copy, or another copy within quota. A stale public copy is retained and still counts toward quota. Afterwards pass the returned copyId; a later new may open a different copy. new is never a retry after an uncertain result."),
                                 "command",
                                 described(text(16384), "Shell command, evaluated by the copy's persistent bash."),
                                 "commit",
