@@ -1,13 +1,16 @@
 """Offline identity and evidence checks; these tests never create services or claim containment."""
 import json
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
 import uuid
 
-from native_game_java_probe import CHECKS, acknowledge, overlap, read_result, request
+from native_game_java_probe import CHECKS, acknowledge, check_java_and_bound_controller, overlap, read_result, request
 
 
 class NativeGameControllerTests(unittest.TestCase):
@@ -23,6 +26,31 @@ class NativeGameControllerTests(unittest.TestCase):
             {'test': name, 'result': 'PASS'} for name in CHECKS]},
             'repository': {'test': 'native-repository-copy-and-discard-through-public-service',
                            'result': 'PASS', 'copyId': str(uuid.uuid4()), 'commit': 'a' * 40, 'reads': 3}}
+
+    def test_java_version_runs_before_the_controller_address_space_limit(self):
+        order = []
+        def version(arguments, **options):
+            self.assertEqual(arguments, ['/fixture/java', '-version'])
+            self.assertEqual(order, [])
+            self.assertEqual(options['timeout'], 20)
+            order.append('java')
+            return SimpleNamespace(stderr='openjdk version "26.0.2"\n')
+        with patch('native_game_java_probe.subprocess.run', side_effect=version), \
+                patch('native_game_java_probe.resource.setrlimit', side_effect=lambda *args: order.append('limit')):
+            check_java_and_bound_controller(Path('/fixture/java'))
+        self.assertEqual(order, ['java', 'limit'])
+
+    def test_actual_java26_child_starts_before_its_python_parent_is_bounded(self):
+        java = shutil.which('java')
+        self.assertIsNotNone(java, 'The offline regression needs the pinned Java 26 runtime')
+        source = '''import json,resource,sys
+from native_game_java_probe import check_java_and_bound_controller
+check_java_and_bound_controller(sys.argv[1])
+print(json.dumps(resource.getrlimit(resource.RLIMIT_AS)))
+'''
+        result = subprocess.run([sys.executable, '-B', '-c', source, java], check=True, capture_output=True,
+                                text=True, timeout=25, cwd=Path(__file__).resolve().parent)
+        self.assertEqual(json.loads(result.stdout), [256 * 1024 * 1024] * 2)
 
     def test_exact_fixture_request_is_acknowledged_without_unit_names(self):
         value = {'token': self.token, 'sequence': 1, 'action': 'game-restart-worker'}

@@ -39,6 +39,14 @@ def run(arguments):
     return subprocess.run(arguments, check=True, capture_output=True, text=True, timeout=40).stdout.strip()
 
 
+def check_java_and_bound_controller(java):
+    # The version JVM needs its normal virtual address reservation; only this controller and
+    # its later ordinary helpers inherit RLIMIT_AS. systemd bounds the actual Java service.
+    assert 'version "26.' in subprocess.run([str(java), '-version'], check=True, capture_output=True,
+                                           text=True, timeout=20).stderr
+    resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
+
+
 def ordinary(path, limit):
     assert path.is_file() and not path.is_symlink() and path.stat().st_size <= limit
     return path.read_bytes()
@@ -212,14 +220,12 @@ def main():
         parser.add_argument('--' + name, type=Path, required=True)
     args = parser.parse_args()
     assert os.geteuid() == 0
-    # Privileged orchestration stays small; systemd applies each service's independent cgroup caps.
-    resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 256 * 1024 * 1024))
     def interrupted(signum, frame):
         raise KeyboardInterrupt('Owned native game fixture interrupted')
     signal.signal(signal.SIGTERM, interrupted)
     args.runtime, args.binary, args.tools, args.java = [path.resolve(strict=True) for path in
                                                     (args.runtime, args.binary, args.tools, args.java)]
-    assert 'version "26.' in subprocess.run([str(args.java), '-version'], check=True, capture_output=True, text=True).stderr
+    check_java_and_bound_controller(args.java)
     manifest = verify_runtime(args.runtime)
     # Reserve the exact evidence name before creating any host resources.
     with args.report.open('x', encoding='utf-8') as stream:
