@@ -223,7 +223,10 @@ final class SandcrabEventProtocol {
         CallResult {
             Objects.requireNonNull(run, "call terminal run must be present");
             Objects.requireNonNull(calls, "call terminal inventory must be present");
-            require(run.terminal() && calls.closed(), "call result", "must confirm command containment");
+            require(
+                    run.terminal() && calls.closed(),
+                    "call result",
+                    "must confirm command completion and mailbox closure");
         }
     }
 

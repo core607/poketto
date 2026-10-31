@@ -270,7 +270,7 @@ final class SandcrabEvents {
     private static void failed(SandcrabEventStream.Frame frame) throws IOException {
         if (frame.kind().equals("error")) {
             SandcrabProtocol.Error error = SandcrabProtocol.read(frame.data(), SandcrabProtocol.Error.class);
-            throw new IOException("Native observation ended without confirmed containment: " + error.code());
+            throw new IOException("Native observation ended without confirmed completion: " + error.code());
         }
         throw new IOException("Unexpected native event kind");
     }

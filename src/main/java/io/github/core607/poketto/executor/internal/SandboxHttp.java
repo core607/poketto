@@ -348,8 +348,13 @@ final class SandboxHttp {
                 prefixLeft -= read;
             } else {
                 ByteBuffer target = ByteBuffer.wrap(bytes, offset, wanted);
+                long readDeadline = bounded ? totalDeadline : deadline;
+                if (bounded && idle > 0) {
+                    // A caller may handle an event between reads; idle bounds this network wait, not its callback.
+                    readDeadline = Math.min(readDeadline, System.nanoTime() + idle);
+                }
                 while (true) {
-                    deadline(bounded ? Math.min(deadline, totalDeadline) : deadline);
+                    deadline(readDeadline);
                     read = channel.read(target);
                     if (read < 0) {
                         throw new IOException("incomplete worker response");
@@ -357,13 +362,9 @@ final class SandboxHttp {
                     if (read > 0) {
                         break;
                     }
-                    ready(
-                            channel,
-                            selector,
-                            SelectionKey.OP_READ,
-                            bounded ? Math.min(deadline, totalDeadline) : deadline);
+                    ready(channel, selector, SelectionKey.OP_READ, readDeadline);
                 }
-                if (idle > 0) {
+                if (idle > 0 && !bounded) {
                     deadline = System.nanoTime() + idle;
                 }
             }

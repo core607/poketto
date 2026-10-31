@@ -65,8 +65,10 @@ SSE starts with `state`, naming `runId`, `serverId` and the call inventory. Its
 cursor identifies the command incarnation and position. Validate these against
 the retained run reference before handling requests; one call stream carries the
 identity needed for that check. `call` events carry request bytes in `base64`, and
-`result` confirms command containment. An `error`, heartbeat or EOF does not prove
-completion. Request IDs, payloads and digests do not authorize an outside action.
+`result` confirms command completion and closure of its host-call mailbox; the
+[command lifecycle](README.md#command-events) determines whether background
+processes remain alive. An `error`, heartbeat or EOF does not prove completion.
+Request IDs, payloads and digests do not authorize an outside action.
 
 The call inventory also names `runId`, `serverId` and `incarnation` alongside its
 retained metadata, so reconciliation can verify which command owns the records.

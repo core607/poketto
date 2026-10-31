@@ -1245,7 +1245,7 @@
     "/v1/runs/{id}/events": {
       "get": {
         "operationId": "observeRun",
-        "description": "Observe a finite run or session command without starting, cancelling or forgetting it. A state event precedes stdout/stderr blocks and one result event. Output order is preserved within each stream; cross-stream order is unspecified. Every complete event carries an id cursor. Reconnect explicitly with Last-Event-ID to continue after its bytes. The result event is published only after containment is confirmed; EOF, heartbeat or an error event does not imply completion. Retain the run until observation finishes. Slow readers lose only their subscription. Maximum observation time is 350 seconds; an unfinished run remains inspectable. Requests and non-stream responses still require fixed HTTP lengths.",
+        "description": "Observe a finite run or session command without starting, cancelling or forgetting it. A state event precedes stdout/stderr blocks and one result event. Output order is preserved within each stream; cross-stream order is unspecified. Every complete event carries an id cursor. Reconnect explicitly with Last-Event-ID to continue after its bytes. A finite run emits result after its process tree stops; a normal session command may retain background processes until session closure. EOF, heartbeat or an error does not imply completion. Retain the run until observation finishes. Slow readers lose only their subscription. Maximum observation time is 350 seconds; an unfinished run remains inspectable. Requests and non-stream responses still require fixed HTTP lengths.",
         "parameters": [
           {
             "name": "id",
@@ -1452,7 +1452,7 @@
     "/v1/runs/{id}/calls/events": {
       "get": {
         "operationId": "observeHostCalls",
-        "description": "Observe unresolved calls with state, call, result and error events. The daemon interprets neither request nor reply bytes and runs no host handler. Observations do not claim work: callers authorize requests and reconcile duplicate IDs before repeating outside effects. Reconnect explicitly without a cursor to re-offer pending calls, or with Last-Event-ID to continue after delivered requests. Replies already recorded before selection are skipped; in-flight observations may be stale. Host-call and output streams share observer capacity and the 350-second observation deadline. Each complete frame is at most 131072 bytes and may span HTTP chunks. Result requires confirmed command containment; an error or EOF does not prove completion.",
+        "description": "Observe unresolved calls with state, call, result and error events. The daemon interprets neither request nor reply bytes and runs no host handler. Observations do not claim work: callers authorize requests and reconcile duplicate IDs before repeating outside effects. Reconnect explicitly without a cursor to re-offer pending calls, or with Last-Event-ID to continue after delivered requests. Replies already recorded before selection are skipped; in-flight observations may be stale. Host-call and output streams share observer capacity and the 350-second observation deadline. Each complete frame is at most 131072 bytes and may span HTTP chunks. Result confirms command completion and mailbox closure, not the exit of normal session background processes; an error or EOF does not prove completion.",
         "parameters": [
           {
             "name": "id",

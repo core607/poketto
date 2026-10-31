@@ -187,8 +187,10 @@ event carries an opaque `id`; explicit reconnects send it as `Last-Event-ID`.
 The initial `state` carries run metadata without output. `stdout` and `stderr`
 carry a starting byte `offset` and `base64` block of at most 4096 raw bytes. Ordering
 is per stream; blocks need not end at UTF-8 boundaries. `result` carries the
-terminal summary and both total byte counts after command containment is confirmed.
-EOF, heartbeat comments and `error` events do not acknowledge completion.
+terminal summary and both total byte counts. A finite run publishes it after
+its process tree stops. A normal session command may leave background processes
+alive; close the session to stop that tree, or use a frozen snapshot to capture
+files while it remains open. EOF, heartbeats and `error` do not acknowledge completion.
 
 An observer owns no command lifetime. Disconnect, a five-second frame write
 deadline or the 350-second observation deadline ends only the subscription.
