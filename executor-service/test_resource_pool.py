@@ -72,9 +72,11 @@ class ResourcePoolTests(unittest.TestCase):
     @patch('resource_pool.process_group')
     @patch('resource_pool.properties')
     @patch('resource_pool.Path.stat')
-    def test_deploy_checks_actual_root_main_process_and_service_membership(self, stat, properties, process, pool):
+    @patch('resource_pool.Path.read_text', return_value='-900')
+    def test_deploy_checks_actual_root_main_process_and_service_membership(self, score, stat, properties, process, pool):
         stat.return_value.st_uid = 0
         properties.return_value = {'ActiveState': 'active', 'User': 'root', 'MainPID': '42',
+                                   'OOMScoreAdjust': '-900', 'OOMPolicy': 'stop',
                                    'Slice': 'poketto-executor.slice',
                                    'ControlGroup': '/poketto.slice/poketto-executor.slice/worker.service'}
         process.return_value = properties.return_value['ControlGroup']
