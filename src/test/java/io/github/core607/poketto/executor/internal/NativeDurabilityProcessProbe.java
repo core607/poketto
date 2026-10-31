@@ -301,6 +301,7 @@ public final class NativeDurabilityProcessProbe {
         assertThat(result.retention().resumed()).isTrue();
         assertThat(after.lastInterruptedCommand()).isEqualTo(before.executionId());
         assertThat(after.phase()).isEqualTo(AccountCopyRecord.Phase.READY);
+        readOriginal(before);
         publish(root.resolve("restored.json"), after);
         if (scenario.equals("uncertain")) {
             execute(executor, after.copyId().toString(), "poketto recover");
@@ -318,6 +319,26 @@ public final class NativeDurabilityProcessProbe {
             publish(root.resolve("recovered.json"), recovered);
         }
         discard(executor, before.copyId());
+    }
+
+    private void readOriginal(AccountCopyRecord before) throws IOException {
+        try (var held = records.acquire(owner())) {
+            var original = held.file(actor, workspace, before.state().originalCommit(), "private/secret.md");
+            var absent = held.file(actor, workspace, before.state().originalCommit(), "private/saved-before.md");
+            assertThat(original.source()).contains("current-secret-needle");
+            assertThat(absent.expectedAbsence()).isTrue();
+            assertThat(before.state()
+                            .fileBaselines()
+                            .get("private/saved-before.md")
+                            .source())
+                    .isEqualTo("saved before loss");
+            publish(
+                    root.resolve("original-readback.json"),
+                    new OriginalReadback(
+                            before.state().originalCommit(),
+                            original.source().orElseThrow(),
+                            absent.expectedAbsence()));
+        }
     }
 
     private void dispose(
@@ -434,6 +455,8 @@ public final class NativeDurabilityProcessProbe {
     }
 
     record Identity(UUID subject, UUID account, UUID workspace) {}
+
+    record OriginalReadback(String initialCommit, String source, boolean savedFileInitiallyAbsent) {}
 
     record Barrier(
             String scenario,
