@@ -1,5 +1,8 @@
 package io.github.core607.poketto.executor.internal;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
@@ -18,6 +21,14 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Constructs the retiring signed backend only for its containment and migration probes. */
 final class LegacyExecutorFixture {
+    static SelectedFileSaves mockSaves() {
+        SelectedFileSaves saves = mock(SelectedFileSaves.class);
+        AuthorizedRepositoryReader reader = mock(AuthorizedRepositoryReader.class);
+        when(saves.repository()).thenReturn(reader);
+        when(saves.moves()).thenReturn(new WorkingCopyMoves(reader, mock(RepositoryMoveService.class)));
+        return saves;
+    }
+
     IsolatedRepositoryExecutor isolatedRepositoryExecutor(
             AccountCopyStore accounts,
             AuthService auth,

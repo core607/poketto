@@ -533,7 +533,7 @@ class PublicCopyRefreshTests {
                 worker.accounts.store(),
                 mock(PortableContentExports.class),
                 mock(MediaFileService.class),
-                mock(SelectedFileSaves.class),
+                LegacyExecutorFixture.mockSaves(),
                 auth,
                 exports,
                 worker.client(),
