@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
@@ -97,6 +98,7 @@ class NativeRepositoryConfigurationTests {
         context.registerBean(RepositoryPatchService.class, () -> mock(RepositoryPatchService.class));
         context.registerBean(RepositoryMoveService.class, () -> mock(RepositoryMoveService.class));
         context.registerBean(MediaFileService.class, () -> mock(MediaFileService.class));
+        context.registerBean(PortableContentExports.class, () -> mock(PortableContentExports.class));
         context.register(
                 ExecutorConfiguration.class, ExecutorAccountConfiguration.class, ExecutorHealthIndicator.class);
         boolean refreshed = false;

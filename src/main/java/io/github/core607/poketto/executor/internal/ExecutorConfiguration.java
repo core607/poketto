@@ -4,6 +4,7 @@ import io.github.core607.poketto.assets.MediaFileService;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.SiteGroup;
 import io.github.core607.poketto.content.AuthorizedRepositoryReader;
+import io.github.core607.poketto.content.PortableContentExports;
 import io.github.core607.poketto.content.RepositoryMoveService;
 import io.github.core607.poketto.content.RepositoryPatchService;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
@@ -40,6 +41,7 @@ class ExecutorConfiguration {
             AuthService auth,
             RepositorySnapshotExports exports,
             MediaFileService media,
+            PortableContentExports packages,
             AuthorizedRepositoryReader reader,
             RepositoryPatchService patches,
             RepositoryMoveService moves,
@@ -62,6 +64,7 @@ class ExecutorConfiguration {
                 exports,
                 new SelectedFileSaves(auth, reader, patches, moves),
                 media,
+                packages,
                 limits,
                 transfers,
                 transferBytes,
@@ -125,7 +128,7 @@ class ExecutorConfiguration {
             }
             // The endpoint must be a socket owned by root and closed to everyone outside its
             // group: a regular file or a socket someone else can bind would let another account
-            // answer in the worker's place, and the application would sign real leases to it.
+            // impersonate the sandbox service.
             var permissions = Files.getPosixFilePermissions(path, LinkOption.NOFOLLOW_LINKS);
             int mode = (Integer) Files.getAttribute(path, "unix:mode", LinkOption.NOFOLLOW_LINKS);
             if ((mode & 0170000) != 0140000
