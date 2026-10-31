@@ -1,4 +1,6 @@
+import java.security.MessageDigest
 import java.time.Duration
+import java.util.HexFormat
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 
 plugins {
@@ -143,6 +145,24 @@ tasks.register<Sync>("stageAcceptanceRuntime") {
     from(layout.projectDirectory.dir("examples/pocket-game")) { into("game-example") }
     from(layout.projectDirectory.dir("acceptance/qa")) { into("qa-fixture") }
     from(configurations[integrationTestSourceSet.runtimeClasspathConfigurationName]) { into("jars") }
+    doLast {
+        val root = destinationDir
+        val manifest = root.walkTopDown().filter { it.isFile && it != root.resolve("manifest.sha256") }
+            .sortedBy { it.relativeTo(root).invariantSeparatorsPath }
+            .joinToString("\n", postfix = "\n") { file ->
+                val digest = MessageDigest.getInstance("SHA-256")
+                file.inputStream().use { input ->
+                    val buffer = ByteArray(65536)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        digest.update(buffer, 0, count)
+                    }
+                }
+                HexFormat.of().formatHex(digest.digest()) + "  " + file.relativeTo(root).invariantSeparatorsPath
+            }
+        root.resolve("manifest.sha256").writeText(manifest)
+    }
 }
 
 val storageTestsNeedLinux = System.getProperty("os.name").startsWith("Windows")

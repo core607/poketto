@@ -84,7 +84,7 @@ usable without application hydration. [Screenshots and method](https://github.co
 distinguish this mode from a global browser preference. Modal enlargement remains a
 JavaScript interaction. The fixture and its CSP override were removed after the run.
 
-Local HTTP acceptance does not satisfy the phase-one requirement for the final HTTPS domain, real content corpus, or currently callable MCP clients. The production executor is also absent until its separate service and signed-lease configuration are supplied. Record the source revision and the observed result of each completed browser scenario; a successful container start alone is not acceptance. Unavailable external clients are not completion conditions and must not be reported as tested.
+Local HTTP acceptance does not satisfy the phase-one requirement for the final HTTPS domain, real content corpus, or currently callable MCP clients. Repository execution requires an independent Sandcrab service, native volume bounds and private transfer settings. Record the source revision and the observed result of each completed browser scenario; a successful container start alone is not acceptance. Unavailable external clients are not completion conditions and must not be reported as tested.
 
 For MCP image transfers, `python acceptance/image-transfer-smoke.py --base-url URL --report FILE` drives real HTTP and MCP uploads and downloads against a running synthetic acceptance service, with the `owner` account password in `POKETTO_ACCEPTANCE_PASSWORD` and an optional CA in `POKETTO_ACCEPTANCE_CA`.
 

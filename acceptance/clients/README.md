@@ -1,7 +1,7 @@
 # Actual MCP client acceptance
 
 This is where the real path is exercised: account login, normally issued API keys, PostgreSQL, the
-HTTP MCP entrance and native SRT running together. Each run below links the evidence file it
+HTTP MCP entrance and native sandbox service running together. Each run below links the evidence file it
 produced, naming the scenarios, the tested revision and the observed result. The layered probe in
 [sandbox verification](../../executor-native/README.md) stubs authentication on purpose so that its
 result names the isolation layer alone; these runs are the authenticated counterpart.
@@ -55,11 +55,44 @@ inspection confirms the synthetic remote still contains only its initial commit.
 This run uses real Spring authentication, PostgreSQL, HTTP MCP and native SRT;
 public projection isolation remains covered by the native executor probe.
 
-On a native systemd host, `native-host.py` runs the synthetic Spring application, a pinned disposable PostgreSQL container and root worker for external clients. It takes `--runtime`, `--worker-source`, `--tools`, and `--java` paths plus an optional loopback `--port`, and `--agents N` (default 4) sizes the worker, the application's execution ceilings and the probe slice for N concurrent agents. Stage `stageAcceptanceRuntime stageExecutorWorker`, use `build/executor-service/worker` for `--worker-source`, then write a `manifest.sha256` covering every runtime file in the format `stageExecutorNativeTest` writes; the acceptance task does not produce one. Run the controller as root with the worker's Python dependencies available. It prints a ready receipt with the generated fixture root; only root can read the disposable password from that root's `client.json`. Obtain client keys through normal HTTP administration. Forward only the loopback application port when the clients run elsewhere. Create `stop` in the reported fixture root when finished; the controller also enforces a bounded lifetime and removes its services, database, accounts, mounts and secrets. Require its `cleanup: PASS` result. A ready receipt is setup evidence, not a successful model-driven workflow.
+On Linux systemd, `native-host.py` runs synthetic Spring, pinned disposable
+PostgreSQL and independent Sandcrab services.
+Stage `./gradlew stageAcceptanceRuntime buildExecutorRust`; the runtime includes
+a sorted SHA-256 manifest checked before startup. Pass `--runtime`, `--binary`
+(`build/executor-service/bin/sandcrab`), `--tools` and `--java`, plus optional
+loopback `--port`. `--agents N` (default 4) sets native admission, application
+ceilings and the fixture slice, without establishing measured capacity.
 
-`native-load.py` takes the same paths and `--evidence FILE`, starts the controller, issues a full key through the real login, runs one judged [load suite](../README.md) stage of eight agents and requires the controller's cleanup; the stage passes when at least 99% of calls after its first 30 seconds succeed and their 95th percentile stays under one second. The CI `load` lane runs it on its runner.
+Run as root. The ready receipt names the fixture root;
+only root can read its disposable password in `client.json`. Obtain API
+keys through normal HTTP administration. Forward only the loopback application
+port when clients run elsewhere. Create `stop` in the fixture root when finished.
+The controller bounds its lifetime and confirms owned process
+containment before removing mounts, accounts and secrets. Require `cleanup: PASS`;
+failure retains the private fixture for inspection. Readiness alone is setup evidence.
 
-The controller uses a dedicated 512 MiB XFS fixture pool with enforced project quotas. Its application journal, worker copies and export staging share that pool. It has no separate archived-checkpoint mode. Run `account-http.py --fixture FIXTURE_ROOT` on the same host after the ready receipt. The client logs in through the real browser endpoints, issues two full grants and one restricted grant, and opens a new MCP transport for every call. It verifies journal-index contention during initialization, shared copy identity, restricted-scope refusal, timeout preservation, consecutive saves and authoritative readback, whole-workspace synchronization of new/deleted paths, text and binary conflict preservation, public-copy scope preservation, grant revocation and account-owned disposal. Require `accountHttp: PASS` and controller `cleanup: PASS`.
+`native-load.py` takes these paths and a fresh `--evidence FILE`. It runs the
+consumer checks, issues a full key through real login, then runs one judged
+[load suite](../README.md) stage of eight agents. Passing requires
+at least 99% successful calls and a 95th percentile below one second after the
+first 30 seconds. Logs, process identity, consumer results and cleanup
+are retained beside the load receipt. An exclusive marker preserves earlier runs.
+CI's `load` lane uses this entrance; its separate
+legacy supervisor OOM guard is not evidence for Sandcrab service OOM recovery.
+
+The controller owns two 512 MiB XFS filesystems: one for application journal,
+export staging and transfers, and another for native volume data with enforced
+project quotas. Sandcrab's control metadata stays outside the volume data
+filesystem. Repository copies have 64 MiB and 8,192-inode limits, and the profile
+permits opaque host calls while keeping the guest network disabled.
+
+`native-smoke.py --fixture FIXTURE_ROOT --evidence NEW_FILE` exercises real login,
+issued grants and independent MCP transports. It correlates the returned
+copy with the native volume API, verifies shared unsaved bytes, revoked-key
+denial, selected save/delete with authoritative HTTP readback, and idempotent
+disposal. Require its `result: PASS` and controller `cleanup: PASS`. The historical
+receipts above retain their own backend and scenario scope; these basic checks do
+not establish complete CLI, browser, model-client or production acceptance.
 
 Use the isolated [acceptance stack](../README.md) first. Create a workspace API key through administration with `READ_PRIVATE`, `WRITE_PRIVATE`, and explicitly selected `EXECUTE_REPOSITORY`. Keep the key and endpoint in process-local `POKETTO_MCP_TOKEN` and `POKETTO_MCP_URL`. Do not commit real endpoints, tokens, or client transcripts containing private content.
 

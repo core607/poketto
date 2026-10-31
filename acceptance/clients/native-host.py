@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Hold disposable Spring/PostgreSQL/SRT services for real MCP clients on a Linux host."""
+"""Hold disposable Spring/PostgreSQL/Sandcrab services for real MCP clients on Linux."""
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
 import pwd
 import secrets
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -16,29 +16,20 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
+from native_repository_fixture import (COPY_BYTES, COPY_INODES, POOL_BYTES, TRANSFER_BYTES,
+                                       NativeRepositoryFixture, sha, stop_unit, verify_runtime)
 
 POSTGRES = 'postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0'
-MODULES = ('poketto-supervisor', 'disk_pool.py', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'poketto-launch', 'resource_pool.py', 'bridge.py', 'bin/poketto',
-           'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py')
+REPOSITORY = Path(__file__).resolve().parents[2]
 
 
 def run(args, **kwargs):
     return subprocess.run(args, check=True, capture_output=True, text=True, timeout=60, **kwargs).stdout.strip()
 
 
-def sha(path):
-    digest = hashlib.sha256()
-    with path.open('rb') as stream:
-        while block := stream.read(65536):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ('runtime', 'worker-source', 'tools', 'java'):
+    for name in ('runtime', 'binary', 'tools', 'java'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--port', type=int, default=38189)
     parser.add_argument('--lifetime-seconds', type=int, default=1800)
@@ -48,30 +39,24 @@ def main():
     args = parser.parse_args()
     assert os.geteuid() == 0 and 1024 <= args.port <= 65535 and 60 <= args.lifetime_seconds <= 3600
     assert 1 <= args.agents <= 64
-    runtime, source, tools, java = [p.resolve(strict=True) for p in
-                                  (args.runtime, args.worker_source, args.tools, args.java)]
-    expected = set()
-    for line in (runtime / 'manifest.sha256').read_text().split('\n'):
-        if not line:
-            continue
-        digest, relative = line.split('  ', 1)
-        target = (runtime / relative).resolve(strict=True)
-        assert target.is_relative_to(runtime) and sha(target) == digest
-        expected.add(relative)
-    assert expected == {str(p.relative_to(runtime)) for p in runtime.rglob('*')
-                        if p.is_file() and p.name != 'manifest.sha256'}
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt('Disposable native consumer fixture interrupted')
+    signal.signal(signal.SIGTERM, interrupted)
+    runtime, binary, tools, java = [p.resolve(strict=True) for p in
+                                  (args.runtime, args.binary, args.tools, args.java)]
+    verify_runtime(runtime)
     with socket.socket() as port_check:
         port_check.bind(('127.0.0.1', args.port))
-    sys.path.insert(0, str(source))
+    sys.path.insert(0, str(REPOSITORY / 'executor-service'))
     from native_pool import NativePool
     token = uuid.uuid4().hex[:8]
-    # An idle sandbox charges about 45 MB and 22 tasks, and the copy pool's page cache shares the slice.
+    # This is the fixture's resource ceiling, not a measured capacity guarantee.
     pool = NativePool(token, f'{max(512, 128 * args.agents)}M', max(256, 48 * args.agents))
     root = Path(tempfile.mkdtemp(prefix='poketto-client-', dir='/var/lib'))
     root.chmod(0o751)
     app_user, exec_user = 'pkt-capp-' + token, 'pkt-cexec-' + token
-    worker_unit, app_unit, db = ['poketto-client-' + token + '-' + name for name in ('worker', 'app', 'db')]
-    users, db_attempted, worker_config = [], False, None
+    app_unit, db = ['poketto-client-' + token + '-' + name for name in ('app', 'db')]
+    users, db_attempted, native = [], False, None
     disk_pool, disk_mounted = root / "pool", False
     exports = disk_pool / "exports"
     game_fixture = None
@@ -87,40 +72,11 @@ def main():
         run(['mkfs.xfs', '-f', str(image)])
         run(['mount', '-o', 'loop,prjquota,nosuid,nodev', str(image), str(disk_pool)])
         disk_mounted = True
-        for path in (exports, disk_pool / 'metadata', root / 'content', root / 'home'):
+        for path in (exports, disk_pool / 'metadata', disk_pool / 'transfers', root / 'content', root / 'home'):
             path.mkdir(mode=0o700)
             os.chown(path, app_account.pw_uid, app_account.pw_gid)
-        for name in MODULES:
-            (root / name).parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-            shutil.copyfile(source / name, root / name)
-            (root / name).chmod(0o555 if name.startswith('bin/') or name in ('poketto-supervisor', 'poketto-launch') else 0o644)
-        (root / 'bin').chmod(0o755)
-        key = Ed25519PrivateKey.generate()
-        private = root / 'private.pem'
-        private.write_bytes(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
-        private.chmod(0o600)
-        os.chown(private, app_account.pw_uid, app_account.pw_gid)
-        (root / 'public.pem').write_bytes(key.public_key().public_bytes(Encoding.PEM, PublicFormat.SubjectPublicKeyInfo))
-        worker_config = root / 'worker.json'
-        worker_settings = {
-            'runtimeRoot': str(root / 'runtime'), 'exportRoot': str(exports),
-            'socketPath': str(root / 'runtime/control.sock'), 'publicKey': str(root / 'public.pem'),
-            'toolsRoot': str(tools), 'execUser': exec_user,
-            'appUid': app_account.pw_uid, 'appGid': app_account.pw_gid,
-            'unitPrefix': 'poketto-exec-c' + token + '-', 'supervisorUnit': worker_unit + '.service',
-            'resourceSlice': pool.name, 'leaseSeconds': 30, 'renewAfterSeconds': 10,
-            'maxRequests': 8192, 'maxConnections': max(32, 4 * args.agents), 'maxExecutionsPerSession': 128,
-            'maxSessions': max(4, args.agents), 'maxBundleBytes': 16777216, 'diskBytes': 67108864,
-            'diskInodes': 8192, 'temporaryBytes': 8388608, 'temporaryInodes': 1024,
-            'memoryBytes': 201326592, 'tasksMax': 48, 'cpuQuotaPercent': 50,
-            'idleUnitSeconds': 1800, 'maxTimeoutMillis': 60000, 'initTimeoutMillis': 15000}
-        worker_settings.update(copyRoot=str(disk_pool), poolBytes=512 * 1024 * 1024)
-        worker_config.write_text(json.dumps(worker_settings))
-        worker_config.chmod(0o600)
-        run(['systemd-run', '--quiet', '--unit', worker_unit, '--slice', pool.name,
-             '-p', 'User=root', '-p', 'UMask=0077', '-p', 'TimeoutStopSec=15',
-             '-p', f'ExecStopPost={root}/poketto-supervisor --config {worker_config} --cleanup',
-             str(root / 'poketto-supervisor'), '--config', str(worker_config)])
+        native = NativeRepositoryFixture(root, binary, tools, app_account, exec_user, pool.name, token, args.agents)
+        native_info = native.start()
         password = secrets.token_urlsafe(32)
         environment = root / 'database.env'
         environment.write_text('POSTGRES_USER=acceptance\nPOSTGRES_DB=acceptance\nPOSTGRES_PASSWORD=' + password + '\n')
@@ -140,9 +96,13 @@ def main():
         app_environment = root / 'app.env'
         game_settings = {}
         if args.games:
-            sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'executor-native'))
+            sys.path.insert(0, str(REPOSITORY / 'executor-native'))
             from game_fixture import GameFixture
-            game_fixture = GameFixture(root, source, tools, app_account, exec_user, pool.name)
+            game_source = root / 'game-source'
+            game_source.mkdir(mode=0o755)
+            shutil.copyfile(binary, game_source / 'sandcrab')
+            shutil.copyfile(REPOSITORY / 'examples/pocket-game/rules.mjs', game_source / 'game-example.mjs')
+            game_fixture = GameFixture(root, game_source, tools, app_account, exec_user, pool.name)
             game_settings = game_fixture.start()
         app_environment.write_text('\n'.join([
             'SPRING_DATASOURCE_URL=jdbc:postgresql://' + binding + '/acceptance',
@@ -155,7 +115,12 @@ def main():
         app_environment.chmod(0o600)
         copy_args = [
             '--poketto.executor.copies.metadata-root=' + str(disk_pool / 'metadata'),
-            '--poketto.executor.copies.pool-bytes=536870912',
+            '--poketto.executor.copies.pool-bytes=' + str(POOL_BYTES),
+            '--poketto.executor.copies.bytes=' + str(COPY_BYTES),
+            '--poketto.executor.copies.inodes=' + str(COPY_INODES),
+            '--poketto.executor.profile=repository',
+            '--poketto.executor.transfers.directory=' + str(disk_pool / 'transfers'),
+            '--poketto.executor.transfers.max-bytes=' + str(TRANSFER_BYTES),
             '--poketto.executor.copies.original-bytes=67108864',
             '--poketto.executor.copies.original-expanded-bytes=268435456',
             '--poketto.executor.max-sessions=' + str(max(4, args.agents)),
@@ -163,16 +128,17 @@ def main():
         if args.games:
             copy_args.extend(['--poketto.games.enabled=true', '--poketto.games.max-jobs=1',
                 '--poketto.games.socket=' + game_settings['gameSocket']])
+        lifetime_deadline = time.monotonic() + args.lifetime_seconds
         run(['systemd-run', '--quiet', '--unit', app_unit, '-p', 'User=' + app_user,
              '-p', 'EnvironmentFile=' + str(app_environment), '-p', 'UMask=0077',
-             '-p', 'MemoryMax=768M', '-p', 'TasksMax=256', '-p', 'CPUQuota=100%',
+             '-p', 'MemoryMax=768M', '-p', 'MemorySwapMax=0', '-p', 'TasksMax=256', '-p', 'CPUQuota=100%',
+             '-p', 'TimeoutStopSec=30', '-p', 'KillMode=control-group',
              '-p', 'RuntimeMaxSec=' + str(args.lifetime_seconds),
              str(java), '-Xmx384m', '-XX:MaxMetaspaceSize=192m', '-Duser.home=' + str(root / 'home'),
              '-Djava.awt.headless=true', '-cp', str(runtime / 'classes') + ':' + str(runtime / 'jars/*'),
              'io.github.core607.poketto.acceptance.AcceptanceApplication',
              '--server.address=127.0.0.1', '--server.port=' + str(args.port),
-             '--poketto.executor.enabled=true', '--poketto.executor.socket=' + str(root / 'runtime/control.sock'),
-             '--poketto.executor.signing-key=' + str(private),
+             '--poketto.executor.enabled=true', '--poketto.executor.socket=' + str(native.socket),
              '--poketto.executor.staging-directory=' + str(exports)] + copy_args)
         endpoint = 'http://127.0.0.1:' + str(args.port)
         deadline = time.monotonic() + 90
@@ -190,21 +156,23 @@ def main():
             print(json.dumps({'nativeHealth': {'status': health.get('status'),
                 'components': {name: component.get('status')
                                for name, component in health.get('components', {}).items()}}}), flush=True)
-            # The fixture is removed below, so preserve its worker startup failure before cleanup.
+            # Preserve the native startup failure before removing the fixture.
             # App and database environments contain temporary credentials and are never dumped.
-            print(json.dumps({'nativeWorkerStartup': run([
-                'journalctl', '-u', worker_unit, '--no-pager', '-n', '40', '-o', 'cat'])}), flush=True)
+            print(json.dumps({'nativeServiceStartup': run([
+                'journalctl', '-u', native.unit, '--no-pager', '-n', '40', '-o', 'cat'])}), flush=True)
             raise
         receipt = root / 'client.json'
         receipt.write_text(json.dumps({'endpoint': endpoint, 'password': password, 'root': str(root),
+                                     'nativeBinary': str(native.binary), 'nativeSocket': str(native.socket),
+                                     'nativeEpoch': native_info['serverId'], 'appUser': app_user,
                                      'gameUnitPrefix': game_fixture.prefix if game_fixture is not None else None}))
         receipt.chmod(0o600)
         print(json.dumps({'ready': True, 'root': str(root), 'endpoint': endpoint,
-                          'accountDiskCopies': True, 'supervisorKind': 'rust', 'controllerSha256': sha(Path(__file__)),
+                          'accountDiskCopies': True, 'backend': 'sandcrab-native-v1', 'controllerSha256': sha(Path(__file__)),
                           'runtimeManifestSha256': sha(runtime / 'manifest.sha256'),
-                          'workerSources': {name: sha(root / name) for name in MODULES}}), flush=True)
-        deadline = time.monotonic() + args.lifetime_seconds
-        while not (root / 'stop').exists() and time.monotonic() < deadline:
+                          'binarySha256': sha(native.binary), 'nativeConfigSha256': sha(native.config),
+                          'fixtureSha256': sha(Path(__file__).with_name('native_repository_fixture.py'))}), flush=True)
+        while not (root / 'stop').exists() and time.monotonic() < lifetime_deadline:
             assert run(['systemctl', 'is-active', app_unit]) == 'active'
             time.sleep(1)
     finally:
@@ -216,18 +184,16 @@ def main():
             except Exception as error:
                 failures.append(label + ': ' + type(error).__name__)
 
-        for unit in (app_unit, worker_unit):
-            attempt('stop ' + unit, lambda unit=unit: run(['systemctl', 'stop', unit]))
-            attempt('reset ' + unit, lambda unit=unit: subprocess.run(
-                ['systemctl', 'reset-failed', unit], capture_output=True, timeout=10))
-        if worker_config is not None:
-            attempt('worker cleanup', lambda: run([
-                str(root / 'poketto-supervisor'), '--config', str(worker_config), '--cleanup']))
+        attempt('application containment', lambda: stop_unit(app_unit))
+        if native is not None:
+            attempt('native service containment', native.stop)
         if game_fixture is not None:
-            attempt('game worker cleanup', game_fixture.close)
+            attempt('game service cleanup', game_fixture.close)
         # Stop the owned slice even when another component failed. Never remove a
         # mounted fixture or an unverified container just to report successful cleanup.
         attempt('resource pool cleanup', pool.close)
+        if native is not None:
+            attempt('native volume unmount', native.unmount)
         if disk_mounted:
             attempt('copy pool unmount', lambda: run(['umount', str(disk_pool)]))
         if db_attempted:
