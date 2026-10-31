@@ -382,11 +382,19 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs_only == 'false'
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: ${{ matrix.job_minutes }}
     strategy:
       fail-fast: false
       matrix:
-        scenario: [migration, retained-process]
+        include:
+          - scenario: migration
+            job_minutes: 35
+          - scenario: retained-process
+            job_minutes: 35
+          - scenario: durability
+            job_minutes: 45
+          - scenario: games
+            job_minutes: 35
     env:
       MIGRATION_FIXTURE_IMAGE: python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
     steps:
@@ -401,11 +409,13 @@ jobs:
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
         with:
           gradle-home-cache-cleanup: true
-      - name: Stage native migration and consumer runtimes
+      - name: Stage native consumer runtimes
         run: ./gradlew stageExecutorNativeTest stageAcceptanceRuntime buildExecutorRust --no-daemon
       - name: Check recovery controller boundaries
         run: |
           python3 -m unittest discover -s executor-native -p test_migration_probe_evidence.py -v
+          python3 -m unittest discover -s executor-native -p test_durability_probe.py -v
+          python3 -m unittest discover -s executor-native -p test_native_game_java_probe.py -v
           python3 -m unittest discover -s acceptance/clients -p 'test_native_*.py' -v
       - name: Prepare the isolated recovery host
         run: |
@@ -459,6 +469,27 @@ jobs:
             --binary "$PWD/build/executor-service/bin/sandcrab" --tools /var/lib/poketto-recovery/tools \
             --java /var/lib/poketto-recovery/jdk/bin/java --revision "$(git rev-parse HEAD)" \
             --evidence "$PWD/build/native-recovery/retained-process.json"
+      - name: Recover every native journal checkpoint after owned JVM loss
+        if: matrix.scenario == 'durability'
+        run: |
+          sudo systemd-run --quiet --wait --pipe --collect --unit="sandcrab-durability-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -p MemoryMax=128M -p MemorySwapMax=0 -p TasksMax=64 -p CPUQuota=50% \
+            -p RuntimeMaxSec=1800 -p TimeoutStopSec=180 -p KillMode=control-group -p UMask=0077 \
+            /usr/bin/python3 "$PWD/executor-native/sandcrab_durability_probe.py" \
+            --runtime /var/lib/poketto-recovery/journal-runtime \
+            --binary "$PWD/build/executor-service/bin/sandcrab" --tools /var/lib/poketto-recovery/tools \
+            --java /var/lib/poketto-recovery/jdk/bin/java --revision "$(git rev-parse HEAD)" \
+            --report "$PWD/build/native-recovery/durability.json"
+      - name: Exercise native games alongside the native repository consumer
+        if: matrix.scenario == 'games'
+        run: |
+          sudo systemd-run --quiet --wait --pipe --collect --unit="sandcrab-games-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -p MemoryMax=128M -p MemorySwapMax=0 -p TasksMax=64 -p CPUQuota=50% \
+            -p RuntimeMaxSec=900 -p TimeoutStopSec=180 -p KillMode=control-group -p UMask=0077 \
+            /usr/bin/python3 "$PWD/executor-native/native_game_java_probe.py" \
+            --runtime /var/lib/poketto-recovery/journal-runtime \
+            --binary "$PWD/build/executor-service/bin/sandcrab" --tools /var/lib/poketto-recovery/tools \
+            --java /var/lib/poketto-recovery/jdk/bin/java --report "$PWD/build/native-recovery/games.json"
       - name: Give the uploader ownership of the private fixture observations
         if: always()
         run: |
@@ -469,7 +500,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: native-recovery-${{ matrix.scenario }}-${{ github.run_id }}
+          name: native-recovery-${{ matrix.scenario }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/native-recovery/
           if-no-files-found: ignore
           retention-days: 7
