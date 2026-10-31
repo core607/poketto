@@ -19,6 +19,12 @@ def native(settings, domain, operation, *arguments):
     return json.loads(result.stdout)
 
 
+def absent(browser, path, commit):
+    observed = browser.file(path)
+    assert observed['expectedAbsence'] is True and observed['source'] is None and observed['revision'] is None
+    assert observed['path'] == path and observed['commit'] == commit
+
+
 def verify(settings, checks):
     browser = Browser(settings['endpoint'], settings['password'])
     full = ['READ_PRIVATE', 'WRITE_PRIVATE', 'EXECUTE_REPOSITORY']
@@ -57,12 +63,12 @@ def verify(settings, checks):
         authoritative = browser.file('private/native-draft.md')
         assert authoritative['source'] == 'native-retained'
         assert authoritative['commit'] == save_receipt['result']['commit']
-        browser.api('GET', browser.admin + '/repository/file?path=private%2Fnative-scratch.md', expected=404)
+        absent(browser, 'private/native-scratch.md', save_receipt['result']['commit'])
         checks.append('revocation-preserves-copy-and-selected-save-has-authoritative-http-readback')
         removed = left.call('repo_exec', {'expectedCopyId': copy, 'command':
             'rm private/native-draft.md && poketto save --delete private/native-draft.md'})
         assert removed['exitCode'] == 0
-        browser.api('GET', browser.admin + '/repository/file?path=private%2Fnative-draft.md', expected=404)
+        absent(browser, 'private/native-draft.md', json.loads(removed['stdout'])['result']['commit'])
         assert left.call('repo_discard', {'expectedCopyId': copy})['status'] == 'DISCARDED'
         assert left.call('repo_discard', {'expectedCopyId': copy})['status'] == 'ABSENT'
         assert copy not in {volume['id'] for volume in native(settings, 'volume', 'list')['volumes']}
