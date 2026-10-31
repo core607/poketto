@@ -23,6 +23,7 @@ final class NativeRepositoryLease {
     private volatile boolean submitted;
     private volatile boolean contained;
     private volatile boolean stopped;
+    private boolean volumeMayExist;
     private volatile Long commandDeadline;
 
     NativeRepositoryLease(
@@ -109,23 +110,58 @@ final class NativeRepositoryLease {
     }
 
     void createVolume() {
-        authorize();
-        SandcrabVolume volume = client.createVolume(new SandcrabVolume.Plan(
+        createVolume(Duration.ofSeconds(60));
+    }
+
+    void createVolume(Duration budget) {
+        long deadline = System.nanoTime() + budget.toNanos();
+        var requested = new SandcrabVolume.Plan(
                 storage.volumeId().toString(),
                 plan.serverId(),
                 storage.profile(),
                 null,
                 storage.byteLimit(),
-                storage.inodeLimit()));
-        long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+                storage.inodeLimit());
+        SandcrabVolume volume = admitVolume(requested, deadline);
         while (!volume.state().equals("ready")) {
             if (!volume.state().equals("creating")) {
                 throw new WorkerUnavailableException();
             }
             pause(deadline, authorize);
-            volume = client.volume(volume);
+            volume = client.volume(volume, volumeRemaining(deadline));
         }
         storage.requireVolume(volume);
+    }
+
+    private SandcrabVolume admitVolume(SandcrabVolume.Plan requested, long deadline) {
+        while (true) {
+            authorize();
+            Duration remaining = volumeRemaining(deadline);
+            volumeMayExist = true;
+            try {
+                return client.createVolume(requested, remaining);
+            } catch (SandcrabClient.Rejected refused) {
+                if (refused.status() != 429 || !refused.code().equals("STORAGE_CAPACITY")) {
+                    throw refused;
+                }
+                // This refusal precedes native record creation. No earlier uncertain request is retried.
+                volumeMayExist = false;
+                pause(deadline, authorize);
+            }
+        }
+    }
+
+    /** False only before dispatch or after this creation request's definite storage-capacity refusal. */
+    boolean volumeMayExist() {
+        return volumeMayExist;
+    }
+
+    private static Duration volumeRemaining(long deadline) {
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) {
+            throw new WorkerUnavailableException();
+        }
+        return Duration.ofNanos(remaining);
     }
 
     void open() {

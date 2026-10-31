@@ -11,6 +11,7 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
@@ -30,6 +31,7 @@ final class SocketAccountJournal {
     private volatile boolean full;
     private volatile boolean recent;
     private final AtomicReference<IOException> closeFailure = new AtomicReference<>();
+    private final AtomicReference<RetainedCopyException> discardFailure = new AtomicReference<>();
 
     SocketAccountJournal() throws IOException {
         when(store.nextExpiry())
@@ -90,6 +92,11 @@ final class SocketAccountJournal {
         closeFailure.set(new IOException("Synthetic journal release failure"));
     }
 
+    /** Like a failed store write, leaves this held lease unreadable until it is closed. */
+    void failNextDiscard(RetainedCopyException failure) {
+        discardFailure.set(failure);
+    }
+
     /** Makes every recorded copy a collection candidate, as an expiry would. */
     void expireAll() {
         when(store.collectible(any())).thenReturn(true);
@@ -136,11 +143,24 @@ final class SocketAccountJournal {
             throw new RetainedCopyException(RetainedCopyException.Reason.BUSY);
         }
         var lease = mock(AccountCopyStore.Lease.class);
-        when(lease.record()).thenAnswer(call -> Optional.ofNullable(entry.record.get()));
+        var uncertain = new AtomicBoolean();
+        when(lease.record()).thenAnswer(call -> {
+            if (uncertain.get()) {
+                throw new RetainedCopyException(RetainedCopyException.Reason.UNCERTAIN);
+            }
+            return Optional.ofNullable(entry.record.get());
+        });
         when(lease.captureOriginal(any())).thenReturn(new AccountCopyRecord.Original("b".repeat(64), 64, 0));
         doAnswer(call -> {
                     AccountCopyRecord next = call.getArgument(0);
                     AccountCopyTransitions.requireTransition(owner, entry.record.get(), next, store.nextExpiry());
+                    if (next.phase() == AccountCopyRecord.Phase.DISCARDING) {
+                        RetainedCopyException failure = discardFailure.getAndSet(null);
+                        if (failure != null) {
+                            uncertain.set(true);
+                            throw failure;
+                        }
+                    }
                     entry.record.set(next);
                     afterWrite.accept(next);
                     return null;

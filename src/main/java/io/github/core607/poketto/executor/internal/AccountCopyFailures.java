@@ -15,6 +15,17 @@ final class AccountCopyFailures {
 
     private AccountCopyFailures() {}
 
+    static RuntimeException admissionFromJournal(RuntimeException failure, AccountCommand held) {
+        AccountCopyRecord record = null;
+        try {
+            record = held.record();
+        } catch (RetainedCopyException unreadable) {
+            failure.addSuppressed(unreadable);
+            log.warn("Failed admission journal cannot be inspected", unreadable);
+        }
+        return admission(failure, record);
+    }
+
     static RuntimeException admission(RuntimeException failure, AccountCopyRecord record) {
         if (failure instanceof ExecutionAdmissionException refused) {
             return record == null ? refused : refused.withCopyId(record.copyId().toString());

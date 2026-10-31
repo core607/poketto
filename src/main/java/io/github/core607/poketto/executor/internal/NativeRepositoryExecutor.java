@@ -127,7 +127,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
                 completed = executeHeld(principal, held, requested, command, timeout, cancellation);
                 return completed;
             } catch (RuntimeException failure) {
-                throw AccountCopyFailures.admission(failure, held.record());
+                throw AccountCopyFailures.admissionFromJournal(failure, held);
             }
         } catch (RetainedCopyException failure) {
             if (completed == null) {
@@ -400,13 +400,17 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
     }
 
     private void removeFailedArtifacts(AccountCommand held, Active running, RuntimeException failure) {
-        if (held.record() != null && running.execution != null) {
-            try {
-                artifacts.removeExecution(held.record().copyId(), running.execution);
-            } catch (WorkerUnavailableException cleanup) {
-                failure.addSuppressed(cleanup);
-                log.warn("Failed command artifacts remain charged pending cleanup", cleanup);
+        if (running.execution == null) {
+            return;
+        }
+        try {
+            AccountCopyRecord record = held.record();
+            if (record != null) {
+                artifacts.removeExecution(record.copyId(), running.execution);
             }
+        } catch (WorkerUnavailableException | RetainedCopyException cleanup) {
+            failure.addSuppressed(cleanup);
+            log.warn("Failed command artifacts remain charged pending cleanup", cleanup);
         }
     }
 

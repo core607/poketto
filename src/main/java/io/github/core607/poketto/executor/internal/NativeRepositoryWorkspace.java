@@ -132,7 +132,7 @@ final class NativeRepositoryWorkspace {
                 held.owner().fullRead() ? null : exports.createPublic(principal, workspace);
         RepositorySnapshotExports.Export export =
                 projection == null ? exports.create(principal, workspace, requested) : projection.export();
-        try {
+        try (var release = new ExportRelease(exports, export.exportId())) {
             UUID copy = copyId;
             var storage = new AccountCopyRecord.NativeStorage(copy, profile, bytes, inodes);
             var lease = lease(principal, held, storage, info, cancellation, claim);
@@ -146,8 +146,6 @@ final class NativeRepositoryWorkspace {
                             principal, workspace, export.commit(), accounts.traversalLimits(), sink),
                     AccountCopyRecord.Phase.INITIALIZING);
             return initializeVolume(lease, held, principal, workspace, export, claim);
-        } finally {
-            exports.release(export.exportId());
         }
     }
 
@@ -158,12 +156,32 @@ final class NativeRepositoryWorkspace {
             WorkspaceId workspace,
             RepositorySnapshotExports.Export export,
             NativeRepositoryPool.Claim claim) {
-        lease.createVolume();
+        try (var initialization = new UnallocatedJournal(held, lease)) {
+            lease.createVolume();
+        }
         openRegistered(lease, held, claim);
         exports.withBundle(principal, workspace, export, path -> lease.uploadBundle(export, path));
         lease.setup(NativeRepositoryLayout.initialize(export.commit()));
         held.bind(lease.writer());
         return lease;
+    }
+
+    /** No session is submitted in this scope; an uncertain or accepted volume keeps its journal. */
+    private record UnallocatedJournal(AccountCommand held, NativeRepositoryLease lease) implements AutoCloseable {
+        @Override
+        public void close() {
+            if (!lease.volumeMayExist()) {
+                held.beginDiscard();
+                held.remove();
+            }
+        }
+    }
+
+    private record ExportRelease(RepositorySnapshotExports exports, UUID id) implements AutoCloseable {
+        @Override
+        public void close() {
+            exports.release(id);
+        }
     }
 
     private NativeRepositoryLease lease(

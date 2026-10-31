@@ -90,7 +90,19 @@ final class SandcrabClient {
 
     /** Keep the creation plan before dispatch; a transport failure must not allocate another ID. */
     SandcrabVolume createVolume(SandcrabVolume.Plan plan) {
-        SandcrabVolume volume = request("POST", "/v1/volumes", plan, SandcrabVolume.class, 200, 202);
+        return createVolume(plan, REQUEST_TIMEOUT);
+    }
+
+    SandcrabVolume createVolume(SandcrabVolume.Plan plan, Duration timeout) {
+        SandcrabVolume volume = exchange(
+                "POST",
+                "/v1/volumes",
+                "application/json",
+                SandcrabProtocol.write(plan),
+                bounded(timeout, REQUEST_TIMEOUT),
+                SandcrabVolume.class,
+                200,
+                202);
         require(
                 plan.id().equals(volume.id()) && plan.profile().equals(volume.profile()),
                 "Volume admission changed its identity or profile");
@@ -105,13 +117,28 @@ final class SandcrabClient {
     }
 
     SandcrabVolume volume(String id) {
-        SandcrabVolume volume = request("GET", volumePath(id), null, SandcrabVolume.class, 200);
+        return volume(id, REQUEST_TIMEOUT);
+    }
+
+    private SandcrabVolume volume(String id, Duration timeout) {
+        SandcrabVolume volume = exchange(
+                "GET",
+                volumePath(id),
+                "application/json",
+                null,
+                bounded(timeout, REQUEST_TIMEOUT),
+                SandcrabVolume.class,
+                200);
         require(id.equals(volume.id()), "Volume lookup returned another identity");
         return volume;
     }
 
     SandcrabVolume volume(SandcrabVolume expected) {
-        SandcrabVolume actual = volume(expected.id());
+        return volume(expected, REQUEST_TIMEOUT);
+    }
+
+    SandcrabVolume volume(SandcrabVolume expected, Duration timeout) {
+        SandcrabVolume actual = volume(expected.id(), timeout);
         sameVolume(expected, actual);
         return actual;
     }

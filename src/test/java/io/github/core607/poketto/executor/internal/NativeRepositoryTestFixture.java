@@ -108,7 +108,16 @@ abstract class NativeRepositoryTestFixture {
             volumes.put(volume.id(), volume);
             return volume;
         });
+        doAnswer(call -> client.createVolume((SandcrabVolume.Plan) call.getArgument(0)))
+                .when(client)
+                .createVolume(any(), any());
         when(client.volume(anyString())).thenAnswer(call -> volumes.get(call.getArgument(0)));
+        doAnswer(call -> client.volume(((SandcrabVolume) call.getArgument(0)).id()))
+                .when(client)
+                .volume(any(SandcrabVolume.class));
+        doAnswer(call -> client.volume((SandcrabVolume) call.getArgument(0)))
+                .when(client)
+                .volume(any(SandcrabVolume.class), any());
         when(client.open(any())).thenAnswer(call -> {
             SandcrabProtocol.SessionPlan plan = call.getArgument(0);
             var session = new SandcrabProtocol.Session(
