@@ -333,7 +333,9 @@ jobs:
       - name: Stage the acceptance runtime
         run: ./gradlew stageAcceptanceRuntime buildExecutorRust --no-daemon
       - name: Check native acceptance controller boundaries
-        run: python3 -m unittest discover -s acceptance/clients -p 'test_native_*.py' -v
+        run: |
+          python3 -m unittest discover -s acceptance -p 'test_*.py' -v
+          python3 -m unittest discover -s acceptance/clients -p 'test_native_*.py' -v
       - name: Prepare the sandbox host
         run: |
           # Native bubblewrap and seccomp need capability-bearing user namespaces on this runner.
