@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,7 +36,7 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
             assertThat(retained.phase()).isEqualTo(AccountCopyRecord.Phase.READY);
             assertThat(retained.writer().storage().volumeId().toString()).isEqualTo(result.copyId());
             assertThat(retained.original()).isNotNull();
-            assertThat(commands).anyMatch(source -> source.startsWith("git clone"));
+            assertThat(commands).anyMatch(source -> source.contains("git clone"));
             assertThat(commands.getLast()).isEqualTo("printf user-command");
             assertThat(sessions.values()).allMatch(session -> session.state().equals("ready"));
             verify(client, never()).deleteVolume(any());
@@ -119,12 +120,13 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
                 before,
                 client.info(),
                 new NativeRepositoryMigration.Archive(1024, "f".repeat(64)),
+                new NativeRepositoryMigration.Archive(1024, "e".repeat(64)),
                 "repository",
                 8_388_608,
                 256);
         var fences = new AtomicInteger();
         try (var held = new AccountCommand(journal.store(), owner, cancellation)) {
-            migration.importCopy(principal, held, plan, archive, () -> {
+            migration.importCopy(principal, held, plan, archive, archive, () -> {
                 assertThat(held.record()).isEqualTo(before);
                 fences.incrementAndGet();
             });
@@ -135,13 +137,13 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
             assertThat(after.state()).isEqualTo(before.state());
             assertThat(after.expiresAt()).isEqualTo(before.expiresAt());
             assertThat(after.writer()).isEqualTo(plan.writer());
-            migration.importCopy(principal, held, plan, archive, () -> {
+            migration.importCopy(principal, held, plan, archive, archive, () -> {
                 throw new AssertionError("already imported");
             });
         }
         assertThat(Files.readAllBytes(archive)).hasSize(1024);
         assertThat(fences.get()).isEqualTo(2);
-        verify(client).send(any(), any(Path.class));
+        verify(client, times(2)).send(any(), any(Path.class));
         verify(client, never()).deleteVolume(any());
     }
 
@@ -154,22 +156,26 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
                 before,
                 client.info(),
                 new NativeRepositoryMigration.Archive(1024, "f".repeat(64)),
+                new NativeRepositoryMigration.Archive(1024, "e".repeat(64)),
                 "repository",
                 8_388_608,
                 256);
         when(client.send(any(), any(Path.class))).thenAnswer(call -> {
-            upload(call.getArgument(0));
-            throw new WorkerUnavailableException();
+            SandcrabProtocol.Upload uploaded = upload(call.getArgument(0));
+            if (uploaded.path().equals("work")) {
+                throw new WorkerUnavailableException();
+            }
+            return uploaded;
         });
         try (var held = new AccountCommand(journal.store(), owner, cancellation)) {
-            assertThatThrownBy(() -> migration.importCopy(principal, held, plan, archive, () -> {}))
+            assertThatThrownBy(() -> migration.importCopy(principal, held, plan, archive, archive, () -> {}))
                     .isInstanceOf(WorkerUnavailableException.class);
             assertThat(held.record()).isEqualTo(before);
-            migration.importCopy(principal, held, plan, archive, () -> {});
+            migration.importCopy(principal, held, plan, archive, archive, () -> {});
             assertThat(held.record().writer()).isEqualTo(plan.writer());
             assertThat(held.record().state()).isEqualTo(before.state());
         }
-        verify(client).send(any(), any(Path.class));
+        verify(client, times(2)).send(any(), any(Path.class));
         assertThat(Files.readAllBytes(archive)).hasSize(1024);
     }
 
@@ -181,13 +187,15 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
                 before,
                 client.info(),
                 new NativeRepositoryMigration.Archive(1024, "f".repeat(64)),
+                new NativeRepositoryMigration.Archive(1024, "e".repeat(64)),
                 "repository",
                 8_388_608,
                 256);
         try (var held = new AccountCommand(journal.store(), owner, cancellation)) {
-            assertThatThrownBy(() -> migration.importCopy(principal, held, plan, root.resolve("unread.tar"), () -> {
-                        throw new WorkerUnavailableException();
-                    }))
+            assertThatThrownBy(() -> migration.importCopy(
+                            principal, held, plan, root.resolve("unread.tar"), root.resolve("unread-home.tar"), () -> {
+                                throw new WorkerUnavailableException();
+                            }))
                     .isInstanceOf(WorkerUnavailableException.class);
             assertThat(held.record()).isEqualTo(before);
         }

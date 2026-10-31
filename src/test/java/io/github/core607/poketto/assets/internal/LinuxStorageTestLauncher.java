@@ -45,6 +45,8 @@ public final class LinuxStorageTestLauncher {
             "io.github.core607.poketto.executor.internal.NativeTransferStoreTests",
             "io.github.core607.poketto.executor.internal.NativeMediaCommandsTests",
             "io.github.core607.poketto.executor.internal.NativeRepositoryExecutorTests",
+            "io.github.core607.poketto.executor.internal.NativeRepositoryLayoutTests",
+            "io.github.core607.poketto.executor.internal.NativeRepositoryMigrationLinuxTests",
             "io.github.core607.poketto.executor.internal.NativeRepositoryReuseTests",
             "io.github.core607.poketto.executor.internal.NativeRepositoryDisposalTests",
             "io.github.core607.poketto.executor.internal.NativeRepositoryPublicTests",

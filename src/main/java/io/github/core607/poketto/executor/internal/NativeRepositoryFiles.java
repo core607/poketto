@@ -24,7 +24,7 @@ final class NativeRepositoryFiles implements NativeRepositoryHost.SnapshotReader
     }
 
     NativeTransferStore.File capture(NativeRepositoryLease lease, String path, long maximum) {
-        return captureNative(lease, "repository/" + RepositoryPaths.validate(path), maximum);
+        return captureNative(lease, NativeRepositoryLayout.repository(path), maximum);
     }
 
     private NativeTransferStore.File captureNative(NativeRepositoryLease lease, String path, long maximum) {
@@ -52,7 +52,7 @@ final class NativeRepositoryFiles implements NativeRepositoryHost.SnapshotReader
 
     Optional<byte[]> optional(NativeRepositoryLease lease, String path, int maximum) {
         try {
-            return Optional.of(read(lease, "repository/" + RepositoryPaths.validate(path), maximum));
+            return Optional.of(read(lease, NativeRepositoryLayout.repository(path), maximum));
         } catch (SandcrabClient.Rejected missing) {
             if (GameSandboxJob.missing(missing, "FILE_NOT_FOUND")) {
                 return Optional.empty();
@@ -68,7 +68,7 @@ final class NativeRepositoryFiles implements NativeRepositoryHost.SnapshotReader
             if (file.size() != bytes || !file.sha256().equals(sha256)) {
                 throw new IllegalArgumentException("Materialized original differs from its declared length or digest");
             }
-            SandcrabProtocol.Upload uploaded = lease.upload("repository/" + path, file);
+            SandcrabProtocol.Upload uploaded = lease.upload(NativeRepositoryLayout.repository(path), file);
             if (uploaded.succeeded()) {
                 return true;
             }

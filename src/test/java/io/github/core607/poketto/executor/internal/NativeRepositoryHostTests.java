@@ -89,7 +89,7 @@ class NativeRepositoryHostTests {
                     {"operation":"save","arguments":{"writes":["private/secret.md"],"deletes":[]}}
                     """);
             assertThat(result.path("ok").booleanValue()).isTrue();
-            assertThat(captured).containsExactly("repository/private/secret.md");
+            assertThat(captured).containsExactly("work/repository/private/secret.md");
             assertThat(fixture.pushes()).isEqualTo(1);
             assertThat(fixture.reader(auth)
                             .getFile(actor, workspace, Optional.empty(), "private/secret.md")

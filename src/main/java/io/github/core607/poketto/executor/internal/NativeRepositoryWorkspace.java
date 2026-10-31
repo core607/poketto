@@ -107,7 +107,7 @@ final class NativeRepositoryWorkspace {
         }
         if (claim.fresh()) {
             openRegistered(lease, held, claim);
-            lease.setup("cd /workspace/repository");
+            lease.setup(NativeRepositoryLayout.attach());
             held.bind(lease.writer());
         } else if (!lease.resume(claim.session())) {
             throw new NativeRepositoryLease.Ended();
@@ -161,10 +161,7 @@ final class NativeRepositoryWorkspace {
         lease.createVolume();
         openRegistered(lease, held, claim);
         exports.withBundle(principal, workspace, export, path -> lease.uploadBundle(export, path));
-        lease.setup("git clone --quiet --no-checkout --no-hardlinks /workspace/seed.bundle /workspace/repository"
-                + " && git -C /workspace/repository checkout --quiet --detach "
-                + ProtocolValues.hex(export.commit(), 40, "export commit")
-                + " && rm /workspace/seed.bundle && cd /workspace/repository");
+        lease.setup(NativeRepositoryLayout.initialize(export.commit()));
         held.bind(lease.writer());
         return lease;
     }

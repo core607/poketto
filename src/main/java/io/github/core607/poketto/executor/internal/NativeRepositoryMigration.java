@@ -19,11 +19,12 @@ final class NativeRepositoryMigration {
         this.workspaces = workspaces;
     }
 
-    /** The operator persists this exact plan beside the unchanged archive before calling importCopy. */
+    /** The operator persists this exact plan beside both unchanged archives before calling importCopy. */
     static Plan plan(
             AccountCopyRecord current,
             SandcrabProtocol.Info info,
-            Archive archive,
+            Archive workArchive,
+            Archive homeArchive,
             String profile,
             long byteLimit,
             long inodeLimit) {
@@ -34,19 +35,28 @@ final class NativeRepositoryMigration {
             throw new IllegalArgumentException(
                     "Complete the retained move or synchronization before importing its copy");
         }
-        String session = UUID.randomUUID().toString();
+        Part work = part(current, info, workArchive, profile, NativeRepositoryLayout.WORK);
+        Part home = part(current, info, homeArchive, profile, NativeRepositoryLayout.HOME);
         var storage = new AccountCopyRecord.NativeStorage(current.copyId(), profile, byteLimit, inodeLimit);
         var writer = new AccountCopyRecord.Writer(
                 current.writer().principalId(),
                 UUID.fromString(info.serverId()),
                 UUID.randomUUID(),
-                UUID.fromString(session),
+                UUID.fromString(home.session().id()),
                 storage);
         return new Plan(
                 current,
                 writer,
                 new SandcrabVolume.Plan(
                         current.copyId().toString(), info.serverId(), profile, null, byteLimit, inodeLimit),
+                work,
+                home);
+    }
+
+    private static Part part(
+            AccountCopyRecord current, SandcrabProtocol.Info info, Archive archive, String profile, String path) {
+        String session = UUID.randomUUID().toString();
+        return new Part(
                 new SandcrabProtocol.SessionPlan(
                         session,
                         info.serverId(),
@@ -57,7 +67,7 @@ final class NativeRepositoryMigration {
                         UUID.randomUUID().toString(),
                         info.serverId(),
                         session,
-                        "repository",
+                        path,
                         "tar",
                         archive.bytes(),
                         archive.sha256(),
@@ -70,7 +80,13 @@ final class NativeRepositoryMigration {
      * The caller holds the account journal and the operator's exclusive migration lock. The fence
      * verifies actual legacy process containment before any transfer and again before journal publication.
      */
-    void importCopy(AuthPrincipal principal, AccountCommand held, Plan plan, Path archive, Runnable requireContained) {
+    void importCopy(
+            AuthPrincipal principal,
+            AccountCommand held,
+            Plan plan,
+            Path workArchive,
+            Path homeArchive,
+            Runnable requireContained) {
         workspaces.authorize(principal, held.owner(), held.record());
         if (alreadyImported(held.record(), plan)) {
             return;
@@ -80,16 +96,24 @@ final class NativeRepositoryMigration {
         workspaces.authorize(principal, held.owner(), held.record());
         SandcrabVolume volume = ready(client.createVolume(plan.volume()), principal, held);
         plan.writer().storage().requireVolume(volume);
-        SandcrabProtocol.Upload upload = existing(plan);
-        if (upload == null) {
-            upload = transfer(plan, archive, principal, held);
-        }
-        requireImported(plan, upload);
-        contain(plan);
+        SandcrabProtocol.Upload work = importPart(plan.work(), workArchive, principal, held);
+        SandcrabProtocol.Upload home = importPart(plan.home(), homeArchive, principal, held);
         requireContained.run();
         workspaces.authorize(principal, held.owner(), held.record());
         held.bind(plan.writer());
-        forget(upload);
+        forget(work);
+        forget(home);
+    }
+
+    private SandcrabProtocol.Upload importPart(Part part, Path archive, AuthPrincipal principal, AccountCommand held) {
+        workspaces.authorize(principal, held.owner(), held.record());
+        SandcrabProtocol.Upload upload = existing(part);
+        if (upload == null) {
+            upload = transfer(part, archive, principal, held);
+        }
+        requireImported(part, upload);
+        contain(part);
+        return upload;
     }
 
     private static boolean alreadyImported(AccountCopyRecord current, Plan plan) {
@@ -119,7 +143,7 @@ final class NativeRepositoryMigration {
         return volume;
     }
 
-    private SandcrabProtocol.Upload existing(Plan plan) {
+    private SandcrabProtocol.Upload existing(Part plan) {
         try {
             return client.upload(plan.upload().reference());
         } catch (SandcrabClient.Rejected missing) {
@@ -130,7 +154,7 @@ final class NativeRepositoryMigration {
         }
     }
 
-    private SandcrabProtocol.Upload transfer(Plan plan, Path archive, AuthPrincipal principal, AccountCommand held) {
+    private SandcrabProtocol.Upload transfer(Part plan, Path archive, AuthPrincipal principal, AccountCommand held) {
         boolean opened = false;
         try {
             SandcrabProtocol.Session session = client.open(plan.session());
@@ -159,16 +183,21 @@ final class NativeRepositoryMigration {
         }
     }
 
-    private static void requireImported(Plan plan, SandcrabProtocol.Upload upload) {
+    private static void requireImported(Part plan, SandcrabProtocol.Upload upload) {
         ProtocolValues.require(upload.succeeded(), "import upload", "must confirm durable publication");
         ProtocolValues.require(
                 plan.upload().reference().equals(upload.reference()), "import receipt", "must retain its identity");
         ProtocolValues.require(
-                plan.volume().id().equals(upload.volumeId()), "import receipt", "must name the retained volume");
+                plan.session().volumeId().equals(upload.volumeId()), "import receipt", "must name the retained volume");
         ProtocolValues.require(
-                upload.path().equals("repository") && upload.format().equals("tar"),
+                plan.session().id().equals(upload.sessionId())
+                        && plan.session().profile().equals(upload.profile()),
+                "import receipt",
+                "must name the planned session and profile");
+        ProtocolValues.require(
+                upload.path().equals(plan.upload().path()) && upload.format().equals("tar"),
                 "import layout",
-                "must preserve the complete repository directory");
+                "must preserve its complete retained directory");
         ProtocolValues.require(
                 upload.bytes() == plan.upload().bytes()
                         && upload.sha256().equals(plan.upload().sha256()),
@@ -176,7 +205,7 @@ final class NativeRepositoryMigration {
                 "must match the retained source archive");
     }
 
-    private void contain(Plan plan) {
+    private void contain(Part plan) {
         if (client.info().serverId().equals(plan.session().serverId())) {
             NativeRepositoryLease.close(client, plan.session().reference(), Duration.ofSeconds(15));
         }
@@ -201,43 +230,42 @@ final class NativeRepositoryMigration {
             AccountCopyRecord expected,
             AccountCopyRecord.Writer writer,
             SandcrabVolume.Plan volume,
-            SandcrabProtocol.SessionPlan session,
-            SandcrabProtocol.UploadPlan upload) {
+            Part work,
+            Part home) {
         Plan {
             Objects.requireNonNull(expected, "import source journal must be retained");
             Objects.requireNonNull(writer, "import writer must be retained");
             Objects.requireNonNull(volume, "import volume plan must be retained");
-            Objects.requireNonNull(session, "import session plan must be retained");
-            Objects.requireNonNull(upload, "import upload plan must be retained");
-            requireBindings(expected, writer, volume, session, upload);
+            Objects.requireNonNull(work, "import work plan must be retained");
+            Objects.requireNonNull(home, "import home plan must be retained");
+            requireBindings(expected, writer, volume);
+            work.requireBindings(writer, volume, NativeRepositoryLayout.WORK);
+            home.requireBindings(writer, volume, NativeRepositoryLayout.HOME);
+            ProtocolValues.require(
+                    home.session().id().equals(writer.leaseId().toString()),
+                    "import writer",
+                    "must match the final contained session");
+            ProtocolValues.require(
+                    !work.session().id().equals(home.session().id()),
+                    "import sessions",
+                    "must allow independent completion after a lost transfer reply");
+            ProtocolValues.require(
+                    !work.upload().id().equals(home.upload().id()),
+                    "import uploads",
+                    "must retain separate receipt identities");
         }
 
         private static void requireBindings(
-                AccountCopyRecord expected,
-                AccountCopyRecord.Writer writer,
-                SandcrabVolume.Plan volume,
-                SandcrabProtocol.SessionPlan session,
-                SandcrabProtocol.UploadPlan upload) {
+                AccountCopyRecord expected, AccountCopyRecord.Writer writer, SandcrabVolume.Plan volume) {
             var storage = Objects.requireNonNull(writer.storage(), "import requires native storage");
             ProtocolValues.require(
                     storage.volumeId().equals(expected.copyId()), "import storage", "must preserve the copy ID");
             ProtocolValues.require(
                     volume.id().equals(expected.copyId().toString()), "import volume", "must match its journal");
             ProtocolValues.require(
-                    volume.id().equals(session.volumeId()), "import session", "must attach its planned volume");
+                    storage.profile().equals(volume.profile()), "import profile", "must match every planned resource");
             ProtocolValues.require(
-                    session.id().equals(writer.leaseId().toString()), "import writer", "must match its session");
-            ProtocolValues.require(
-                    session.id().equals(upload.sessionId()), "import upload", "must target its planned session");
-            ProtocolValues.require(
-                    storage.profile().equals(volume.profile())
-                            && volume.profile().equals(session.profile()),
-                    "import profile",
-                    "must match every planned resource");
-            ProtocolValues.require(
-                    writer.workerBootId().toString().equals(session.serverId())
-                            && session.serverId().equals(volume.serverId())
-                            && session.serverId().equals(upload.serverId()),
+                    writer.workerBootId().toString().equals(volume.serverId()),
                     "import epoch",
                     "must match every planned request");
             ProtocolValues.require(
@@ -249,11 +277,34 @@ final class NativeRepositoryMigration {
                     "import inode limit",
                     "must match its journal");
             ProtocolValues.require(
-                    volume.cloneFrom() == null
-                            && upload.path().equals("repository")
-                            && upload.format().equals("tar"),
+                    volume.cloneFrom() == null,
                     "import source",
-                    "must populate an empty volume from the retained repository archive");
+                    "must populate an empty volume from retained archives");
+        }
+    }
+
+    record Part(SandcrabProtocol.SessionPlan session, SandcrabProtocol.UploadPlan upload) {
+        Part {
+            Objects.requireNonNull(session, "import session plan must be retained");
+            Objects.requireNonNull(upload, "import upload plan must be retained");
+        }
+
+        void requireBindings(AccountCopyRecord.Writer writer, SandcrabVolume.Plan volume, String path) {
+            ProtocolValues.require(
+                    volume.id().equals(session.volumeId()), "import session", "must attach its planned volume");
+            ProtocolValues.require(
+                    session.id().equals(upload.sessionId()), "import upload", "must target its planned session");
+            ProtocolValues.require(
+                    volume.profile().equals(session.profile()), "import profile", "must match its volume");
+            ProtocolValues.require(
+                    writer.workerBootId().toString().equals(session.serverId())
+                            && session.serverId().equals(upload.serverId()),
+                    "import epoch",
+                    "must match every planned request");
+            ProtocolValues.require(
+                    upload.path().equals(path) && upload.format().equals("tar"),
+                    "import source",
+                    "must populate its retained directory");
             ProtocolValues.require(
                     !upload.replace() && upload.freeze(), "import installation", "must not overwrite existing work");
         }

@@ -22,6 +22,7 @@ final class NativeRepositoryLease {
     private volatile boolean submitted;
     private volatile boolean contained;
     private volatile boolean stopped;
+    private volatile Long commandDeadline;
 
     NativeRepositoryLease(
             SandcrabClient client,
@@ -160,7 +161,7 @@ final class NativeRepositoryLease {
                 UUID.randomUUID().toString(),
                 plan.serverId(),
                 plan.id(),
-                "seed.bundle",
+                NativeRepositoryLayout.SEED,
                 "raw",
                 export.bundleBytes(),
                 export.bundleSha256(),
@@ -193,6 +194,7 @@ final class NativeRepositoryLease {
         var command = new SandcrabProtocol.CommandPlan(
                 id.toString(), plan.serverId(), source, timeout.toMillis(), outputLimit);
         commands.add(command.reference());
+        commandDeadline = System.nanoTime() + timeout.toNanos();
         try {
             return client.command(session, command);
         } catch (SandcrabClient.Rejected refused) {
@@ -201,6 +203,17 @@ final class NativeRepositoryLease {
             }
             throw refused;
         }
+    }
+
+    boolean outOfTime(Duration margin) {
+        if (margin.isNegative()) {
+            throw new IllegalArgumentException("Command time margin must not be negative");
+        }
+        Long deadline = commandDeadline;
+        if (deadline == null) {
+            throw new IllegalStateException("No command has established a deadline");
+        }
+        return deadline - System.nanoTime() <= margin.toNanos();
     }
 
     void close() {

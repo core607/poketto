@@ -80,7 +80,7 @@ class NativeMediaCommandsTests {
         storage = new NativeTransferStore(root.resolve("transfers"), 512L * 1024 * 1024, 64);
         artifacts = new NativeArtifacts(storage, Clock.systemUTC());
         files = new NativeRepositoryFiles(storage, (session, path, maximum, target, authorize) -> {
-            byte[] bytes = worktree.get(path.substring("repository/".length()));
+            byte[] bytes = worktree.get(path.substring("work/repository/".length()));
             if (bytes == null) {
                 throw new SandcrabClient.Rejected(404, "FILE_NOT_FOUND");
             }
@@ -125,7 +125,7 @@ class NativeMediaCommandsTests {
 
     private SandcrabProtocol.Upload install(String nativePath, NativeTransferStore.File file) throws Exception {
         installs.incrementAndGet();
-        String path = nativePath.substring("repository/".length());
+        String path = nativePath.substring("work/repository/".length());
         boolean exists = worktree.containsKey(path);
         if (!exists) {
             worktree.put(path, Files.readAllBytes(file.path()));

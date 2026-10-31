@@ -134,7 +134,8 @@ final class NativeRepositoryHost {
         long total = 0;
         for (String path : selected.writes()) {
             lease.authorize();
-            byte[] captured = files.read(lease, "repository/" + path, ContentLimits.MAX_DOCUMENT_BYTES);
+            byte[] captured =
+                    files.read(lease, NativeRepositoryLayout.repository(path), ContentLimits.MAX_DOCUMENT_BYTES);
             total += captured.length;
             if (total > 4L * 1024 * 1024) {
                 throw new IllegalArgumentException("Selected text exceeds the save bound");
@@ -142,7 +143,7 @@ final class NativeRepositoryHost {
             writes.put(path, text(captured));
         }
         for (String path : selected.deletes()) {
-            requireAbsent(lease, "repository/" + path);
+            requireAbsent(lease, NativeRepositoryLayout.repository(path));
         }
         lease.authorize();
         return saves.save(principal, workspace, state, writes, selected.deletes());
