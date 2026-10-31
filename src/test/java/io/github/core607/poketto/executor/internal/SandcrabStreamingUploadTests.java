@@ -16,6 +16,8 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -78,8 +80,11 @@ class SandcrabStreamingUploadTests {
         Path file = temporary.resolve("revoked");
         SandcrabProtocol.UploadPlan plan = staged(file, 256 * 1024);
         var checks = new AtomicInteger();
-        try (var peer = new SandboxPeer(
-                channel -> assertThat(receive(channel, plan).bytes()).isLessThan(plan.bytes()))) {
+        var receivedBody = new CountDownLatch(1);
+        try (var peer = new SandboxPeer(channel -> {
+            assertThat(receive(channel, plan).bytes()).isLessThan(plan.bytes());
+            receivedBody.countDown();
+        })) {
             var client = new SandcrabClient(peer.client(channel -> {}));
             assertThatThrownBy(() -> client.send(plan, file, Duration.ofSeconds(5), () -> {
                         if (checks.incrementAndGet() == 3) {
@@ -90,6 +95,7 @@ class SandcrabStreamingUploadTests {
                             WorkerUnavailableException.class,
                             failure -> assertThat(failure.mayHaveExecuted()).isTrue());
             assertThat(checks).hasValue(3);
+            assertThat(receivedBody.await(5, TimeUnit.SECONDS)).isTrue();
             assertThat(peer.requests()).isEqualTo(1);
         }
     }
@@ -136,9 +142,11 @@ class SandcrabStreamingUploadTests {
         for (boolean truncate : List.of(true, false)) {
             Path file = temporary.resolve("changed-" + truncate);
             SandcrabProtocol.UploadPlan plan = staged(file, 1024);
+            var receivedBody = new CountDownLatch(1);
             try (var peer = new SandboxPeer(channel -> {
                 Received received = receive(channel, plan);
                 assertThat(received.bytes()).isLessThan(plan.bytes());
+                receivedBody.countDown();
             })) {
                 var client = new SandcrabClient(peer.client(channel -> {
                     try {
@@ -155,6 +163,7 @@ class SandcrabStreamingUploadTests {
                         .isInstanceOfSatisfying(
                                 WorkerUnavailableException.class,
                                 failure -> assertThat(failure.mayHaveExecuted()).isTrue());
+                assertThat(receivedBody.await(5, TimeUnit.SECONDS)).isTrue();
                 assertThat(peer.requests()).isEqualTo(1);
             }
         }
