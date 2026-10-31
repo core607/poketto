@@ -69,7 +69,8 @@ keys through normal HTTP administration. Forward only the loopback application
 port when clients run elsewhere. Create `stop` in the fixture root when finished.
 The controller bounds its lifetime and confirms owned process
 containment before removing mounts, accounts and secrets. Require `cleanup: PASS`;
-failure retains the private fixture for inspection. Readiness alone is setup evidence.
+failure retains the private fixture for inspection. Readiness establishes setup;
+[process-loss acceptance](retained-process.md) covers recovery separately.
 
 `native-load.py` takes these paths and a fresh `--evidence FILE`. It runs the
 consumer checks, issues a full key through real login, then runs one judged

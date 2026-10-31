@@ -18,6 +18,7 @@ import urllib.request
 import uuid
 from native_repository_fixture import (COPY_BYTES, COPY_INODES, POOL_BYTES, TRANSFER_BYTES,
                                        NativeRepositoryFixture, sha, stop_unit, verify_runtime)
+from native_app_fixture import OwnedApplication
 
 POSTGRES = 'postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0'
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -34,6 +35,7 @@ def main():
     parser.add_argument('--port', type=int, default=38189)
     parser.add_argument('--lifetime-seconds', type=int, default=1800)
     parser.add_argument('--games', action='store_true')
+    parser.add_argument('--retained-process', action='store_true', help='Allow two identity-bound restarts of this fixture app')
     parser.add_argument('--agents', type=int, default=4, help='concurrent agents the services admit')
     parser.add_argument('--origin', help='Browser gateway origin; defaults to the API loopback origin')
     args = parser.parse_args()
@@ -59,7 +61,7 @@ def main():
     users, db_attempted, native = [], False, None
     disk_pool, disk_mounted = root / "pool", False
     exports = disk_pool / "exports"
-    game_fixture = None
+    game_fixture, application = None, None
     try:
         pool.start()
         for user in (app_user, exec_user):
@@ -112,6 +114,9 @@ def main():
             'POKETTO_PLAZA_PUBLIC_URL=' + (args.origin or 'http://127.0.0.1:' + str(args.port)),
             'POKETTO_ACCEPTANCE_GAME_PACKAGE=' + (str(runtime / 'game-example') if args.games else ''),
             'POKETTO_SESSION_COOKIE_SECURE=false', 'HOME=' + str(root / 'home')]) + '\n')
+        if args.retained_process:
+            with app_environment.open('a') as environment_file:
+                environment_file.write('POKETTO_ACCEPTANCE_RETAINED_IDENTITY=' + uuid.uuid4().hex + '\n')
         app_environment.chmod(0o600)
         copy_args = [
             '--poketto.executor.copies.metadata-root=' + str(disk_pool / 'metadata'),
@@ -129,28 +134,20 @@ def main():
             copy_args.extend(['--poketto.games.enabled=true', '--poketto.games.max-jobs=1',
                 '--poketto.games.socket=' + game_settings['gameSocket']])
         lifetime_deadline = time.monotonic() + args.lifetime_seconds
-        run(['systemd-run', '--quiet', '--unit', app_unit, '-p', 'User=' + app_user,
+        app_arguments = ['-p', 'User=' + app_user,
              '-p', 'EnvironmentFile=' + str(app_environment), '-p', 'UMask=0077',
              '-p', 'MemoryMax=768M', '-p', 'MemorySwapMax=0', '-p', 'TasksMax=256', '-p', 'CPUQuota=100%',
              '-p', 'TimeoutStopSec=30', '-p', 'KillMode=control-group',
-             '-p', 'RuntimeMaxSec=' + str(args.lifetime_seconds),
              str(java), '-Xmx384m', '-XX:MaxMetaspaceSize=192m', '-Duser.home=' + str(root / 'home'),
              '-Djava.awt.headless=true', '-cp', str(runtime / 'classes') + ':' + str(runtime / 'jars/*'),
              'io.github.core607.poketto.acceptance.AcceptanceApplication',
              '--server.address=127.0.0.1', '--server.port=' + str(args.port),
              '--poketto.executor.enabled=true', '--poketto.executor.socket=' + str(native.socket),
-             '--poketto.executor.staging-directory=' + str(exports)] + copy_args)
+             '--poketto.executor.staging-directory=' + str(exports)] + copy_args
         endpoint = 'http://127.0.0.1:' + str(args.port)
-        deadline = time.monotonic() + 90
-        while True:
-            logs = run(['journalctl', '-u', app_unit, '--no-pager', '-n', '30', '-o', 'cat'])
-            if 'Synthetic acceptance services are ready' in logs:
-                break
-            assert time.monotonic() < deadline, 'disposable application did not become ready'
-            time.sleep(.5)
+        application = OwnedApplication(root, app_unit, app_arguments, endpoint, lifetime_deadline, args.retained_process)
         try:
-            with urllib.request.urlopen(endpoint + '/actuator/health', timeout=5) as response:
-                assert response.status == 200
+            application.start()
         except urllib.error.HTTPError as error:
             health = json.loads(error.read(65536))
             print(json.dumps({'nativeHealth': {'status': health.get('status'),
@@ -165,6 +162,10 @@ def main():
         receipt.write_text(json.dumps({'endpoint': endpoint, 'password': password, 'root': str(root),
                                      'nativeBinary': str(native.binary), 'nativeSocket': str(native.socket),
                                      'nativeEpoch': native_info['serverId'], 'appUser': app_user,
+                                     'appIdentity': application.identity,
+                                     'appControl': str(application.control) if application.control else None,
+                                     'nativeUnit': native.unit,
+                                     'nativeSlice': pool.name,
                                      'gameUnitPrefix': game_fixture.prefix if game_fixture is not None else None}))
         receipt.chmod(0o600)
         print(json.dumps({'ready': True, 'root': str(root), 'endpoint': endpoint,
@@ -173,7 +174,7 @@ def main():
                           'binarySha256': sha(native.binary), 'nativeConfigSha256': sha(native.config),
                           'fixtureSha256': sha(Path(__file__).with_name('native_repository_fixture.py'))}), flush=True)
         while not (root / 'stop').exists() and time.monotonic() < lifetime_deadline:
-            assert run(['systemctl', 'is-active', app_unit]) == 'active'
+            application.poll()
             time.sleep(1)
     finally:
         failures = []
@@ -184,7 +185,7 @@ def main():
             except Exception as error:
                 failures.append(label + ': ' + type(error).__name__)
 
-        attempt('application containment', lambda: stop_unit(app_unit))
+        attempt('application containment', application.close if application else lambda: stop_unit(app_unit))
         if native is not None:
             attempt('native service containment', native.stop)
         if game_fixture is not None:
