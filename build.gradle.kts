@@ -275,7 +275,7 @@ val observabilityConfigCheck = tasks.register<Exec>("observabilityConfigCheck") 
 val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
     group = "verification"
     description = "Verifies existing-installation updates and interrupted-run reconciliation on Linux."
-    inputs.files("deploy/update-existing.py", "deploy/worker_release.py", "deploy/tests/test_existing_deployment.py", "deploy/tests/test_worker_deployment.py")
+    inputs.files("deploy/update-existing.py", "deploy/native_service.py", "deploy/tests/test_existing_deployment.py", "deploy/tests/test_native_deployment.py")
     outputs.upToDateWhen { false }
     commandLine(
         "docker", "run", "--rm", "--network", "none", "--read-only",
@@ -290,7 +290,7 @@ val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
 tasks.named("check") { dependsOn(existingDeploymentTests) }
 
 val appIdentityDirectory = layout.buildDirectory.dir("app-image-identity")
-val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src", "content-template", "frontend/public/games/runtime.mjs", "executor-service/rust", "executor-service/resource_pool.py")
+val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src", "content-template", "frontend/public/games/runtime.mjs")
 val appImageRevision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
 val buildAppIdentityImage = tasks.register<Exec>("buildAppIdentityImage") {
     group = "verification"

@@ -67,6 +67,19 @@ class NativeDeploymentTests(unittest.TestCase):
                 self.native.inspect()
         self.command.assert_not_called()
 
+    def test_consumer_checks_the_actual_process_root_socket_inode_and_peer(self):
+        with patch.object(self.native, "_process", return_value=self.process):
+            self.native.verify_consumer(os.getpid(), str(self.endpoint))
+            other = self.root / "other.sock"
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(str(other))
+                other.chmod(0o660)
+                listener.listen(1)
+                with self.assertRaisesRegex(DeploymentError, "socket inode differs"):
+                    self.native.verify_consumer(os.getpid(), str(other))
+        with self.assertRaisesRegex(DeploymentError, "running init process"):
+            self.native.verify_consumer(0, str(self.endpoint))
+
     def test_changed_binary_configuration_or_checker_never_reaches_host_commands(self):
         for path in (self.binary, self.configuration, self.checker):
             original = path.read_bytes()

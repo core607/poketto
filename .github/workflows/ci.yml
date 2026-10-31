@@ -522,7 +522,7 @@ jobs:
   # GitHub is authoritative for identity and GitHub App settings in both deployment layouts. Configure
   # their secrets/variables before enabling this job: empty values clear the provider/contact,
   # and an unset daily limit becomes 100. Host-only identity settings apply to manual deployment.
-  # Every existing installation must install both update-existing.py and worker_release.py
+  # Every existing installation must install both update-existing.py and native_service.py
   # before enabling this delivery version, including when execution is disabled;
   # transfer never replaces an operator's privileged executable.
   deploy:

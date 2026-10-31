@@ -603,8 +603,8 @@ Then create the first administrator with `./deploy.sh --initialize-admin`.
 
 For an operator-owned Compose installation,
 [existing-installation delivery](../notes/implemented/2026-09-08-existing-installation-delivery.md)
-updates app/frontend images, explicitly supplied identity settings, and matching
-[worker sources](../executor-service/README.md#automatic-source-updates) when execution is enabled.
+updates app/frontend images and explicitly supplied identity settings. Execution-enabled deployments
+verify the independently installed [native service](../deploy/README.md#native-service-dependency).
 Install the current protected updater and set `POKETTO_DEPLOY_LAYOUT=existing`.
 `POKETTO_DEPLOY_MODE` is `pull` (the host fetches both digests from the canonical
 registry with the deployment job's package-read token) or `transfer` (a checksummed

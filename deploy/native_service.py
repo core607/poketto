@@ -167,15 +167,46 @@ class NativeService:
         protected(path.parent, directory=True)
         if path.is_symlink():
             raise DeploymentError("native socket must not be a symbolic link")
+        self._socket_peer(path, process)
+
+    @staticmethod
+    def _socket_peer(path, process):
         info = path.stat()
         if not stat.S_ISSOCK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o007:
             raise DeploymentError("native socket must be root-owned and closed to other accounts")
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-            connection.settimeout(5)
-            connection.connect(str(path))
-            pid, uid, _ = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            owner = os.fstat(directory)
+            if owner.st_uid != 0 or owner.st_mode & 0o022:
+                raise DeploymentError("native socket parent must remain root-owned and protected")
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+                connection.settimeout(5)
+                # The directory FD also avoids overflowing sockaddr_un through a /proc/PID/root prefix.
+                connection.connect("/proc/self/fd/" + str(directory) + "/" + path.name)
+                pid, uid, _ = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        finally:
+            os.close(directory)
         if pid != process["pid"] or uid != 0:
             raise DeploymentError("native socket peer is not the selected service main process")
+
+    def verify_consumer(self, container_pid, container_socket):
+        if type(container_pid) is not int or container_pid < 1:
+            raise DeploymentError("application container has no running init process")
+        if not isinstance(container_socket, str):
+            raise DeploymentError("application socket path must be declared")
+        name = Path(container_socket)
+        if not name.is_absolute() or ".." in name.parts:
+            raise DeploymentError("application socket path must be absolute and normalized")
+        # Resolve the actual container mount namespace, not Docker's stored source-path text.
+        path = Path("/proc") / str(container_pid) / "root" / name.relative_to("/")
+        host = Path(self.config["socket"]).stat()
+        mounted = path.stat()
+        if (host.st_dev, host.st_ino) != (mounted.st_dev, mounted.st_ino):
+            raise DeploymentError("application socket inode differs from the pinned native endpoint")
+        process = self._process()
+        self._socket_peer(path, process)
+        if self._process() != process:
+            raise DeploymentError("native service restarted while verifying its application consumer")
 
     def inspect(self):
         self._files()

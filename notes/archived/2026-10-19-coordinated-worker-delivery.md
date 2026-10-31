@@ -1,10 +1,11 @@
 # Coordinated Worker Delivery
 
 Date: 2026-10-19
+Archived: 2026-10-31
 
 ## Problem
 
-[Existing-installation delivery](2026-09-08-existing-installation-delivery.md)
+[Existing-installation delivery](../implemented/2026-09-08-existing-installation-delivery.md)
 preserves host configuration but excludes workers. Application deployment can
 therefore leave repository execution rejecting the installed worker.
 
@@ -28,7 +29,7 @@ unchanged private configuration, the application's live handshake and a read-onl
 on an operator-reserved copy pass. Its API key remains private. Worker startup
 failure restores the previous generation. Failure after application replacement
 uses pending-state reconciliation, without implying persistent-format rollback.
-The [deployment reference](../../deploy/README.md#worker-source-updates) owns recovery.
+The [deployment reference](https://github.com/core607/poketto/blob/dc2bda33dbe98bc23f48c43d8f0f1c0a0c95519e/deploy/README.md#worker-source-updates) owns recovery.
 
 ## Alternatives
 
@@ -40,7 +41,7 @@ operator configuration and tools.
 
 The image carries the launcher, resource validator and static programs. Protected
 updater installation, explicit host configuration, sandbox provisioning and
-[native-service adoption](2026-10-21-rust-repository-supervisor.md) remain prerequisites.
+[native-service adoption](../implemented/2026-10-21-rust-repository-supervisor.md) remain prerequisites.
 Restarts end leases and artifacts, preserving copies and recoverable generations.
 
 `existingDeploymentTests`, `WorkerSocketTests` and `appImageIdentityCheck` pin

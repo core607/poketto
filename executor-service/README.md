@@ -73,9 +73,9 @@ Idle-shell measurements omit workload costs. The slice includes supervision, rel
 
 After startup cleanup and before listening, the supervisor raises `RLIMIT_NOFILE`'s soft limit to its existing hard limit. Bridge and command waits support descriptor numbers above 1023. Size the service's `LimitNOFILE` hard limit for leases, retained artifacts and active connections; cgroup memory and configured capacities still bound resource use.
 
-## Automatic source updates
+## Native service dependency
 
-[Setup and recovery](../deploy/README.md#worker-source-updates) for automatic source updates.
+Deployment verifies [independent Sandcrab](../deploy/README.md#native-service-dependency). Installation stays operator-owned.
 
 ## Account copy storage
 
