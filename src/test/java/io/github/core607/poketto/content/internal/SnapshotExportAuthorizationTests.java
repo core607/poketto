@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthService;
+import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PublicContentSnapshots;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
@@ -19,6 +20,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -80,6 +82,44 @@ class SnapshotExportAuthorizationTests {
         assertThat(directory.resolve("exports")).isEmptyDirectory();
     }
 
+    @Test
+    void nativeStreamingUsesOnlyTheLiveExportOwnedByThisAccountAndWorkspace() throws Exception {
+        var fixture = new Fixture();
+        var exported = fixture.exports.create(fixture.actor, fixture.workspace, Optional.empty());
+        fixture.exports.withBundle(fixture.actor, fixture.workspace, exported, path -> {
+            assertThat(fixture.guarded).isFalse();
+            assertThat(path).isRegularFile();
+            assertThat(path.getFileName().toString()).isEqualTo(exported.exportId() + ".bundle");
+        });
+        var another = mock(AuthPrincipal.class);
+        when(another.accountId()).thenReturn(UUID.randomUUID());
+        assertThatThrownBy(() -> fixture.exports.withBundle(another, fixture.workspace, exported, path -> {
+                    throw new AssertionError("foreign export was exposed");
+                }))
+                .isInstanceOf(ContentRepositoryException.class);
+        assertThatThrownBy(() -> fixture.exports.withBundle(fixture.actor, WorkspaceId.random(), exported, path -> {
+                    throw new AssertionError("foreign workspace was exposed");
+                }))
+                .isInstanceOf(ContentRepositoryException.class);
+        fixture.exports.release(exported.exportId());
+        assertThatThrownBy(() -> fixture.exports.withBundle(fixture.actor, fixture.workspace, exported, path -> {
+                    throw new AssertionError("released export was exposed");
+                }))
+                .isInstanceOf(ContentRepositoryException.class);
+    }
+
+    @Test
+    void authorizationIsRecheckedAfterTheNativeConsumerStreamsItsBundle() throws Exception {
+        var fixture = new Fixture();
+        var exported = fixture.exports.create(fixture.actor, fixture.workspace, Optional.empty());
+        assertThatThrownBy(() -> fixture.exports.withBundle(
+                        fixture.actor, fixture.workspace, exported, path -> fixture.revoked = true))
+                .isInstanceOf(SecurityException.class)
+                .hasMessage("revoked");
+        fixture.exports.release(exported.exportId());
+        assertThat(directory.resolve("exports")).isEmptyDirectory();
+    }
+
     private final class Fixture {
         private final WorkspaceId workspace = WorkspaceId.random();
         private final AuthPrincipal actor = mock(AuthPrincipal.class);
@@ -93,12 +133,19 @@ class SnapshotExportAuthorizationTests {
         private boolean credentialsRevoked;
 
         private Fixture() throws Exception {
+            when(actor.accountId()).thenReturn(UUID.randomUUID());
             var repositories = new RemoteRepositoryFixture(directory);
             head = repositories
                     .commitRemote(
                             workspace, Map.of("private/source.md", "Private fixture".getBytes(StandardCharsets.UTF_8)))
                     .name();
             var auth = mock(AuthService.class);
+            when(auth.authorize(any(), any(), any(Capability[].class))).thenAnswer(call -> {
+                if (revoked) {
+                    throw new SecurityException("revoked");
+                }
+                return null;
+            });
             when(auth.withAuthorization(any(), any(), any(), any())).thenAnswer(call -> {
                 if (revoked) {
                     throw new SecurityException("revoked");

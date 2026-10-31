@@ -63,6 +63,9 @@ final class CopyDisposal {
             if (record == null || !record.copyId().toString().equals(request.id())) {
                 return new DiscardResult(request.id(), DiscardStatus.ABSENT);
             }
+            if (record.writer().storage() != null) {
+                throw new WorkerUnavailableException();
+            }
             if (record.phase() != AccountCopyRecord.Phase.DISCARDING) {
                 registry.requireCopyMatch(record, new CopyRequest(request.id()));
             }
@@ -80,6 +83,9 @@ final class CopyDisposal {
     }
 
     void discardDisk(UUID principalId, AccountCopyRecord record, ExecutionSession.Key key, WorkerClient.Hello hello) {
+        if (record.writer().storage() != null) {
+            throw new WorkerUnavailableException();
+        }
         var identity = new WorkerClient.Identity(
                 principalId, key.account(), key.workspace().value(), key.scopeHash(), UUID.randomUUID());
         JsonNode response = worker.request(
@@ -109,7 +115,7 @@ final class CopyDisposal {
             }
             try (var lease = accounts.acquire(owner)) {
                 var record = lease.record().orElse(null);
-                if (record == null || !accounts.collectible(record)) {
+                if (record == null || record.writer().storage() != null || !accounts.collectible(record)) {
                     continue;
                 }
                 if (record.phase() != AccountCopyRecord.Phase.DISCARDING) {

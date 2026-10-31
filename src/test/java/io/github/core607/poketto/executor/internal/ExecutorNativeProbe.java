@@ -54,6 +54,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.zip.ZipInputStream;
@@ -129,6 +130,12 @@ public final class ExecutorNativeProbe {
             @Override
             public boolean publicProjectionChanged(AuthPrincipal actor, WorkspaceId selected, PublicExport exported) {
                 throw new UnsupportedOperationException("native fixture provides full repository exports only");
+            }
+
+            @Override
+            public void withBundle(
+                    AuthPrincipal actor, WorkspaceId selected, Export exported, Consumer<Path> consumer) {
+                consumer.accept(path("exports").resolve(exported.exportId() + ".bundle"));
             }
 
             @Override

@@ -40,8 +40,7 @@ import tools.jackson.databind.JsonNode;
 /** Owns account-copy admission, command execution and lease containment; the bridge handles CLI operations. */
 final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(IsolatedRepositoryExecutor.class);
-    // An agent thinks between its commands; a copy used within this window still belongs to it,
-    // so another agent asking for a new copy gets its own rather than a turn in this one.
+    // An agent retains its claim between commands; another agent asking for a new copy gets a fork.
     private static final Duration AGENT_CLAIM = Duration.ofMinutes(2);
     private final SessionWorker io;
     private final SessionRepositoryCommands repository;
@@ -248,6 +247,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             ExecutionCancellation cancellation) {
         ExecutionSession.Key key = lifecycle.keyFor(held.owner());
         var record = held.record();
+        if (record != null && record.writer().storage() != null) {
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, true);
+        }
         registry.requireCopyMatch(record, expected);
         WorkerClient.Hello hello = worker.hello();
         ExecutionSession previous = registry.openSession(key);

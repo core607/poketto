@@ -340,6 +340,11 @@ final class AccountCopyStore {
                 "must not replace existing work");
         if (current != null) {
             ProtocolValues.require(
+                    current.writer().storage() == null
+                            || current.writer().storage().equals(next.writer().storage()),
+                    "native storage",
+                    "must preserve the retained volume binding");
+            ProtocolValues.require(
                     current.phase() != AccountCopyRecord.Phase.DISCARDING
                             || next.phase() == AccountCopyRecord.Phase.DISCARDING,
                     "discarded copy",
