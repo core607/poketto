@@ -1,11 +1,11 @@
 # Java and sandbox execution acceptance
 
-This probe runs the production Java executor adapter, Unix peer checks, Ed25519 requests, the Rust
-repository supervisor and sandbox against a real Linux systemd host, so a failure here names the isolation layer.
-Authentication and the Git authority are synthetic fixtures on purpose. The probe does not replace
-PostgreSQL integration tests, the HTTP MCP entrance, or [client acceptance](../acceptance/clients/README.md)
-with real login, issued API keys and actual Codex and Claude Code clients. See the
-[worker contract and probes](../executor-service/README.md) or [native Sandcrab consumer](sandcrab.md).
+The [native Sandcrab consumer](sandcrab.md) and [client acceptance](../acceptance/clients/README.md)
+exercise the public service and current HTTP MCP entry. The isolated peer regression below uses the
+production native Java client. `probe.py` exercises the retained signed executor, with synthetic
+authentication and Git authority; its results do not establish native repository adoption. Its
+process-loss scenarios remain visible until their native replacements provide equivalent evidence.
+See the [worker contract and probes](../executor-service/README.md) for the signed protocol.
 
 ## Prepare
 
@@ -93,8 +93,9 @@ the scenario, runtime manifest and source hashes, and a different build requires
 
 ## Isolated peer regression
 
-This container check exercises the peer-identity assertion through the production configuration and
-socket client, with root-owned paths and a non-root peer. It does not run a sandbox or replace the host probe.
+`peer_probe.py` runs `NativePeerProbe` through the production native configuration and HTTP socket
+client, with root-owned paths and a non-root peer. It requires neither a signing key nor the retained
+executor. It does not run a sandbox or replace host containment or application authorization checks.
 
 ```sh
 ./gradlew stageExecutorNativeTest
