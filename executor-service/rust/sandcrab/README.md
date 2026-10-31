@@ -38,6 +38,13 @@ that unit's MainPID, verifies the pool and tools, takes the runtime lock and cle
 up previous runs. `sandcrab check --config FILE` checks protected configuration,
 accounts and tools; it does not prove the runtime slice or sandbox works.
 
+For deployment checks, install the read-only [resource-pool checker](../../resource_pool.py)
+at `/opt/sandcrab/resource_pool.py`, owned by root beneath protected directories.
+`python3 /opt/sandcrab/resource_pool.py --service sandcrab-example.service` verifies
+the running root process, its actual cgroup membership and finite pool limits.
+It needs no private service configuration and starts no sandbox. Application
+health and consumer acceptance remain separate checks.
+
 Each run executes as the profile's account in a fresh bounded tmpfs at
 `/workspace`, with a private `/tmp`, isolated network and PID namespaces and
 seccomp. It shares the host kernel; this is not a microVM boundary. Workspace bytes
