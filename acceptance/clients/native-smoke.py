@@ -28,7 +28,11 @@ def verify(settings, checks):
     restricted = Mcp(browser.endpoint, restricted_key['token'])
     issued = [left_key, right_key, restricted_key]
     try:
-        assert 'repo_exec' not in {tool['name'] for tool in restricted.rpc('tools/list', {})['tools']}
+        # Discovery is stable; current grants are enforced when the tool is called.
+        before_denial = native(settings, 'volume', 'list')
+        denied = restricted.call('repo_exec', {'expectedCopyId': 'new', 'command': 'printf forbidden'}, error=True)
+        assert denied['code'] == 'DENIED'
+        assert native(settings, 'volume', 'list') == before_denial
         checks.append('real-login-and-key-capability-control')
         first = left.call('repo_exec', {'expectedCopyId': 'new', 'command':
             'set -eu; test -d .git; printf native-retained > private/native-draft.md; '
@@ -61,7 +65,7 @@ def verify(settings, checks):
         browser.api('GET', browser.admin + '/repository/file?path=private%2Fnative-draft.md', expected=404)
         assert left.call('repo_discard', {'expectedCopyId': copy})['status'] == 'DISCARDED'
         assert left.call('repo_discard', {'expectedCopyId': copy})['status'] == 'ABSENT'
-        assert copy not in native(settings, 'volume', 'list')['ids']
+        assert copy not in {volume['id'] for volume in native(settings, 'volume', 'list')['volumes']}
         checks.append('selected-delete-and-idempotent-discard-release-the-native-volume')
     finally:
         for key in issued:
