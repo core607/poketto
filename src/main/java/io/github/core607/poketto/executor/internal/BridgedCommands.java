@@ -188,6 +188,22 @@ final class BridgedCommands implements AutoCloseable {
     // A bridge request belongs to this execution and names a well-formed request id; the session
     // must still be live and authorized both before and after the reply is computed.
     private void answerBridgeRequest(ExecutionSession session, String executionId, JsonNode polled, JsonNode request) {
+        var event = new WorkerRequestEvents.BridgeAnswer();
+        event.begin();
+        try {
+            answerBridgeRequest(session, executionId, polled, request, event);
+        } finally {
+            event.end();
+            event.commit();
+        }
+    }
+
+    private void answerBridgeRequest(
+            ExecutionSession session,
+            String executionId,
+            JsonNode polled,
+            JsonNode request,
+            WorkerRequestEvents.BridgeAnswer event) {
         if (!executionId.equals(polled.path("executionId").asString(""))) {
             throw new WorkerUnavailableException();
         }
@@ -196,17 +212,33 @@ final class BridgedCommands implements AutoCloseable {
             throw new WorkerUnavailableException();
         }
         requireLive(session);
-        io.authorize(session);
+        authorizeAnswer(session, event);
         var reply = bridge.bridgeReply(session, executionId, request);
         requireLive(session);
-        io.authorize(session);
-        requireOk(
-                io.request(
-                        session,
-                        "BRIDGE_COMPLETE",
-                        new WorkerRequests.BridgeComplete(executionId, requestId, reply),
-                        Duration.ofSeconds(3)),
-                session);
+        authorizeAnswer(session, event);
+        long completing = System.nanoTime();
+        event.completionAttempted = true;
+        try {
+            requireOk(
+                    io.request(
+                            session,
+                            "BRIDGE_COMPLETE",
+                            new WorkerRequests.BridgeComplete(executionId, requestId, reply),
+                            Duration.ofSeconds(3)),
+                    session);
+            event.completed = true;
+        } finally {
+            event.completionNanos = System.nanoTime() - completing;
+        }
+    }
+
+    private void authorizeAnswer(ExecutionSession session, WorkerRequestEvents.BridgeAnswer event) {
+        long authorizing = System.nanoTime();
+        try {
+            io.authorize(session);
+        } finally {
+            event.authorizationNanos += System.nanoTime() - authorizing;
+        }
     }
 
     @Override
