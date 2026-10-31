@@ -62,3 +62,7 @@ remain diagnostic streams. On Linux, running
 `python3 executor-native/test_sandcrab_recovery_java_probe.py` checks this result
 boundary without a host probe. These checks do not establish complete Poketto
 consumer acceptance.
+
+The [recovery receipt](evidence/2026-10-31-sandcrab-java-recovery.json) records five
+Java checks, four daemon recoveries and cleanup. It retains the earlier failed
+attempt whose controller parsed diagnostic output as JSON.
