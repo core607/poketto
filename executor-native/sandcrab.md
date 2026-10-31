@@ -105,3 +105,41 @@ retained outside the disposable root. Success requires all checks and
 `cleanup: PASS`; failed cleanup retains the root. Use a new report path for every
 run. `python3 executor-native/test_migration_probe_evidence.py` runs offline
 observation tests without starting a host fixture.
+
+## Independent game and repository acceptance
+
+`native_game_java_probe.py` runs `GameNativeProbe` through a separate Java entrance
+with the current native repository owner. Its synthetic account and Git authority
+do not establish HTTP login or PostgreSQL authorization. Both services use the
+public API; no signed executor participates.
+
+```sh
+./gradlew stageExecutorNativeTest buildExecutorRust
+sudo python3 executor-native/native_game_java_probe.py \
+  --runtime build/executor-native/runtime \
+  --binary build/executor-service/bin/sandcrab \
+  --tools /prepared/tools --java /prepared/jdk/bin/java \
+  --report /tmp/native-game-java.json
+```
+
+The root controller owns temporary application/repository/game accounts, two
+512 MiB XFS images, and separate repository/game slices capped at 512/384 MiB.
+Its address space is capped at 256 MiB; both native daemons have 128 MiB caps.
+The Java unit has 384 MiB, 64 tasks, 50% CPU and a 240-second deadline. Game and
+repository profiles retain their fixture limits. Cleanup verifies processes and
+mounts before deleting accounts or files; failures retain the restricted fixture.
+
+Seven game checks cover complete saves, host/network/Unix-socket denial, resource
+limits, descendants, orphan recovery, revocation, restart and independent
+admission. An eighth checks a native repository copy, its unsaved file, repeated
+reads and volume disposal. The controller must observe both live processes under
+different owned UIDs and cgroups during contention. Recorded timings describe
+this fixture, not performance equivalence.
+
+Require Java exit zero, all eight structured results, the overlap observation,
+volume removal and `cleanup.result: PASS`. Standard output is diagnostic only;
+each attempt needs a new report path. On Linux, `python3 -m unittest discover -s
+executor-native -p test_native_game_java_probe.py` checks controller identities
+and evidence handling without launching services. Local tests and compilation
+do not replace host acceptance; the retained signed game entrance remains until
+the independent host run passes.

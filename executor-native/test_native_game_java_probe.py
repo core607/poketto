@@ -1,0 +1,113 @@
+"""Offline identity and evidence checks; these tests never create services or claim containment."""
+import json
+from pathlib import Path
+from types import SimpleNamespace
+import tempfile
+import unittest
+from unittest.mock import patch
+import uuid
+
+from native_game_java_probe import CHECKS, acknowledge, overlap, read_result, request
+
+
+class NativeGameControllerTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.token = str(uuid.uuid4())
+        self.report = self.root / 'report.json'
+
+    def result(self):
+        return {'result': 'PASS', 'game': {'gameNative': 'PASS', 'checks': [
+            {'test': name, 'result': 'PASS'} for name in CHECKS]},
+            'repository': {'test': 'native-repository-copy-and-discard-through-public-service',
+                           'result': 'PASS', 'copyId': str(uuid.uuid4()), 'commit': 'a' * 40, 'reads': 3}}
+
+    def test_exact_fixture_request_is_acknowledged_without_unit_names(self):
+        value = {'token': self.token, 'sequence': 1, 'action': 'game-restart-worker'}
+        (self.root / 'request-1.json').write_text(json.dumps(value))
+        self.assertEqual(value, request(self.root, self.token, 1))
+        acknowledge(self.root, value)
+        self.assertEqual(value, json.loads((self.root / 'ack-1.json').read_text()))
+        with self.assertRaises(AssertionError):
+            acknowledge(self.root, value)
+
+    def test_changed_identity_sequence_action_or_extra_unit_is_rejected(self):
+        for field, change in [('token', str(uuid.uuid4())), ('sequence', 2),
+                              ('sequence', True), ('action', 'stop production'), ('unit', 'other.service')]:
+            with self.subTest(field=field, change=change):
+                value = {'token': self.token, 'sequence': 1, 'action': 'game-restart-worker', field: change}
+                (self.root / 'request-1.json').write_text(json.dumps(value))
+                with self.assertRaises(AssertionError):
+                    request(self.root, self.token, 1)
+
+    def test_oversized_control_request_is_rejected(self):
+        (self.root / 'request-1.json').write_bytes(b'x' * 4097)
+        with self.assertRaises(AssertionError):
+            request(self.root, self.token, 1)
+
+    def test_complete_result_requires_all_game_checks_and_native_repository(self):
+        value = self.result()
+        raw = json.dumps(value).encode()
+        (self.root / 'result.json').write_bytes(raw)
+        self.assertEqual(value, read_result(self.root, self.report))
+        self.assertEqual(raw, self.report.with_suffix('.java.json').read_bytes())
+
+    def test_diagnostic_stdout_cannot_substitute_for_a_structured_result(self):
+        self.report.with_suffix('.stdout').write_text(json.dumps(self.result()))
+        with self.assertRaises(AssertionError):
+            read_result(self.root, self.report)
+
+    def test_missing_duplicate_failed_game_check_or_fake_repository_proof_is_rejected(self):
+        for change in ('missing', 'duplicate', 'failed', 'repository'):
+            with self.subTest(change=change):
+                value = self.result()
+                checks = value['game']['checks']
+                if change == 'missing':
+                    checks.pop()
+                elif change == 'duplicate':
+                    checks[0] = checks[1]
+                elif change == 'failed':
+                    checks[0]['result'] = 'FAIL'
+                else:
+                    value['repository']['reads'] = 0
+                (self.root / 'result.json').write_text(json.dumps(value))
+                with self.assertRaises(AssertionError):
+                    read_result(self.root, self.root / (change + '.json'))
+
+    def test_malformed_result_is_retained_and_previous_evidence_cannot_be_overwritten(self):
+        raw = b'{"result":"PASS"}\n{"result":"FAIL"}'
+        (self.root / 'result.json').write_bytes(raw)
+        with self.assertRaises(json.JSONDecodeError):
+            read_result(self.root, self.report)
+        self.assertEqual(raw, self.report.with_suffix('.java.json').read_bytes())
+        (self.root / 'result.json').write_text(json.dumps(self.result()))
+        with self.assertRaises(FileExistsError):
+            read_result(self.root, self.report)
+
+    def test_overlap_requires_two_live_identities_in_different_native_pools(self):
+        repository = SimpleNamespace(execution_user='repo', resource_slice='repo.slice', unit='repo-unit')
+        game = SimpleNamespace(user='game', pool=SimpleNamespace(name='game.slice'), prefix='game-unit-')
+        left, right = {'uid': 10, 'cgroup': '/repo.slice/one'}, {'uid': 11, 'cgroup': '/game.slice/two'}
+        with patch('native_game_java_probe.owned_process', side_effect=[left, right]), \
+                patch('native_game_java_probe.still_live', return_value=True):
+            self.assertTrue(overlap(repository, game)['observedTogether'])
+        with patch('native_game_java_probe.owned_process', side_effect=[left, {**right, 'uid': 10}]), \
+                patch('native_game_java_probe.still_live', return_value=True):
+            with self.assertRaises(AssertionError):
+                overlap(repository, game)
+
+    def test_two_sequential_process_observations_do_not_establish_overlap(self):
+        repository = SimpleNamespace(execution_user='repo', resource_slice='repo.slice', unit='repo-unit')
+        game = SimpleNamespace(user='game', pool=SimpleNamespace(name='game.slice'), prefix='game-unit-')
+        with patch('native_game_java_probe.time.monotonic', side_effect=[0, 0, 5]), \
+                patch('native_game_java_probe.time.sleep'), \
+                patch('native_game_java_probe.owned_process', side_effect=[{'uid': 10}, {'uid': 11}]), \
+                patch('native_game_java_probe.still_live', return_value=False):
+            with self.assertRaisesRegex(AssertionError, 'not observed together'):
+                overlap(repository, game)
+
+
+if __name__ == '__main__':
+    unittest.main()
