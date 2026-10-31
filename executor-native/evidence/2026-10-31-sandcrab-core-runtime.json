@@ -1,0 +1,220 @@
+{
+  "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+  "binarySha256": "f0bac53d1e6df1276f3a33f380b5b7307058e8b6540e58c2de64aa9e9075557a",
+  "probeSha256": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
+  "checks": [
+    {
+      "name": "http-sequential-reuse-body-boundary-and-declared-close",
+      "result": "PASS"
+    },
+    {
+      "name": "http-invalid-framing-closes-without-dispatch",
+      "result": "PASS"
+    },
+    {
+      "name": "http-deadline-does-not-reset-on-progress",
+      "result": "PASS"
+    },
+    {
+      "name": "http-idle-expiry-closes-without-an-unsolicited-response",
+      "result": "PASS"
+    },
+    {
+      "name": "native-inventories-retain-active-and-terminal-identities-without-output",
+      "result": "PASS"
+    },
+    {
+      "name": "independent-cli",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-outcome-survives-forget-failure",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-reuses-connection-and-does-not-replay-incomplete-response",
+      "result": "PASS"
+    },
+    {
+      "name": "profile-identity-workspace-and-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "request-authority-and-profile-bounds",
+      "result": "PASS"
+    },
+    {
+      "name": "host-network-and-unix-socket-denial",
+      "result": "PASS"
+    },
+    {
+      "name": "exit-timeout-and-output-bounds",
+      "result": "PASS"
+    },
+    {
+      "name": "workspace-quota-and-descendant-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "admission-and-cancellation",
+      "result": "PASS"
+    },
+    {
+      "name": "bounded-results-and-release",
+      "result": "PASS"
+    },
+    {
+      "name": "peer-refusal-before-request",
+      "result": "PASS"
+    },
+    {
+      "name": "abrupt-loss-cleanup-and-stale-epoch",
+      "result": "PASS"
+    },
+    {
+      "name": "session-build-repair-state-isolation-and-descendant-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "session-cli-reconnects-and-explicit-lifecycle",
+      "result": "PASS"
+    },
+    {
+      "name": "session-shared-admission-exclusive-command-and-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "session-results-share-the-global-retention-bound",
+      "result": "PASS"
+    },
+    {
+      "name": "session-sigkill-and-exit-137-are-not-memory-evidence",
+      "result": "PASS"
+    },
+    {
+      "name": "session-timeout-output-memory-and-shell-exit-end-the-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-renewal-and-expiry-cancel-an-active-command",
+      "result": "PASS"
+    },
+    {
+      "name": "session-command-cancellation-closes-the-whole-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-supervisor-loss-cleans-units-and-invalidates-the-epoch",
+      "result": "PASS"
+    },
+    {
+      "name": "independent-build-test-example",
+      "result": "PASS"
+    },
+    {
+      "name": "session-unconfirmed-cleanup-holds-capacity-until-restart",
+      "result": "PASS"
+    },
+    {
+      "name": "cancellation-before-unit-registration",
+      "result": "PASS"
+    },
+    {
+      "name": "session-close-before-unit-registration",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "slowRequestDeadlineSeconds": 5.011,
+  "idleDisconnectSeconds": 5.42,
+  "exampleSha256": "48512f23c91d749b2860770974b907bae28b152f945d4c6ef656505a271a4517",
+  "startupCancellation": {
+    "initialKillExitCode": 1,
+    "killAttempts": 2,
+    "seconds": 0.572,
+    "state": "cancelled",
+    "limitSeconds": 3
+  },
+  "sessionStartupCancellation": {
+    "initialKillExitCode": 1,
+    "killAttempts": 2,
+    "seconds": 0.57,
+    "state": "closed",
+    "limitSeconds": 3
+  },
+  "result": "PASS",
+  "date": "2026-10-31",
+  "sourceTree": "d4094126dec7823654144c5b3e72292c4d7ecc75",
+  "sourceSha256": {
+    "executor-service/rust/sandcrab/native_probe.py": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
+    "examples/sandcrab-build-test.sh": "48512f23c91d749b2860770974b907bae28b152f945d4c6ef656505a271a4517",
+    "executor-service/rust/Cargo.toml": "234f98b7677da58ed1127f1eb7a3a8318d9ffbdd4f30e7eee5f6548daf7e1e15",
+    "executor-service/rust/Cargo.lock": "79fdefd6e36563ab056616ef826058c0323c06153a90314f1c12166aef37020e",
+    "executor-service/Dockerfile.tests": "65500ae44272687f676ea5456b55fa7f2aed52e9686528b369fe7393fcca3a7f",
+    "executor-service/rust/sandcrab/Cargo.toml": "466fa0862a5d5c71ae5f1a540812f3b39afc31cfe6f77d8a89678de7a55f5280",
+    "executor-service/rust/sandcrab/src/auth.rs": "192e18d77c32ece1886ba5f878ca1d7f4422cf4b9b88fafd193a482be6b0828d",
+    "executor-service/rust/sandcrab/src/call_client.rs": "242a07dfa6aaac746258ed2db51248ab07987e7c243f9d3ccd230df2ebc52afe",
+    "executor-service/rust/sandcrab/src/call_events.rs": "cf0ed19a8a80e714c80ecc9eb426c3462e5096747242b0c232406e48fd036294",
+    "executor-service/rust/sandcrab/src/client.rs": "e712830467515eb0228fb440a29c3278642fe9e3c78d69043f385fc792e4a2e1",
+    "executor-service/rust/sandcrab/src/config.rs": "87d310f55ccab59787f9844d3ac81688856c10d888f8dc2deda774aa7f23fdfb",
+    "executor-service/rust/sandcrab/src/event_client.rs": "0b7ceff8a0de41e9e2fb3b56f303adb601caa219ff4547ac85cba7530c3be34c",
+    "executor-service/rust/sandcrab/src/event_wire.rs": "90e8ef93f7396c60027e2a6ecf776621c2106016b9610a9c9d7f0962faecdeb3",
+    "executor-service/rust/sandcrab/src/events.rs": "eaf76627e5d09f60c7979a81a9e5a73ddcbd4385320d16a01f2d694098dddb8b",
+    "executor-service/rust/sandcrab/src/file_access.rs": "2ddac1ed21ff21fb2ace75ded331c78def832753503233982a900a131836a798",
+    "executor-service/rust/sandcrab/src/file_client.rs": "01859bcbfb70f77d94345c557039c99fbf1e2f4932d8c12c3240774ee56ee90f",
+    "executor-service/rust/sandcrab/src/file_io.rs": "4e8473ef541ab269500107217e619311c034b3b2b0236707a4b85792286fa0ef",
+    "executor-service/rust/sandcrab/src/file_records.rs": "67d277b84c52f8b0ac80cfd4936f533899db178879c0aefe4ca103d92880ab9b",
+    "executor-service/rust/sandcrab/src/files.rs": "368154981a82e0e17e20eebc1ea40935e06b49f525754916475e68d6b403812c",
+    "executor-service/rust/sandcrab/src/guest_call.rs": "fa579145bba9a5cf26cb992cfa7c467c301b5867cb222ebc0384284dbdef44d4",
+    "executor-service/rust/sandcrab/src/host_calls.rs": "7a18dd893bf8bc7d3515d3e6cd128a22d80c1813c51e36623fffa1c36e5411c4",
+    "executor-service/rust/sandcrab/src/inventory.rs": "f0720a1aca71d27357e72076a116bb85b693bda1fe002fc62a93996b3afe0ecb",
+    "executor-service/rust/sandcrab/src/main.rs": "37bd798e9c1c23408e1f153ac411d9784a03165043f052bca6302db4827017c7",
+    "executor-service/rust/sandcrab/src/multipart.rs": "8edab4610db1b5166db957f3e688ef7f31a6a406d892258677a52a9551b5c206",
+    "executor-service/rust/sandcrab/src/opensandbox.rs": "7527e94489b5ec4ffda830c41e574ed4ed33c7396d24bc3db91dbd8d0ce7808a",
+    "executor-service/rust/sandcrab/src/runtime.rs": "9aca530af1292f6ec2c513d133e8290224b74e87040a6fa2c974282f2f2099e4",
+    "executor-service/rust/sandcrab/src/sdk_commands.rs": "dd472a69ff8054dffb734959dcd6819730d9c0c112ebdb9c5c841f344a406d2b",
+    "executor-service/rust/sandcrab/src/sdk_contexts.rs": "90926e06231a3fc3408bc4912b8799c059667be664ca042a624cb1d4c9b870ef",
+    "executor-service/rust/sandcrab/src/sdk_download.rs": "b9dccc432fbdf318947f6e3bb941a8dc8e747770a5822c9cef4cac062cf27148",
+    "executor-service/rust/sandcrab/src/sdk_file_io.rs": "0e62b82d89a82a0bc0d4a2f525f3dc93456fd23217e226c6d4c9a571b25c339d",
+    "executor-service/rust/sandcrab/src/sdk_files.rs": "cdb054cc05a96ac55d6a613756e161317a2993fd9af69cc93b610f810d96f59a",
+    "executor-service/rust/sandcrab/src/sdk_fs.rs": "58994abb2c0c2029e62fdc62d48e826490fe57dc9c10a2fd8cc07e28f7f31f32",
+    "executor-service/rust/sandcrab/src/sdk_fs_io.rs": "5fb7180d0dab2cca858e1a6232393721e02cec26979a46f500c2d5f54c597e6a",
+    "executor-service/rust/sandcrab/src/sdk_glob.rs": "e46a1ee70106ed717a621cd8a73a3e3ad764694d39118e02a5245431836808cf",
+    "executor-service/rust/sandcrab/src/sdk_replace.rs": "7291338aa2db26d1799350a9526c981415ab1de54b34b9e060ec04b45137d77e",
+    "executor-service/rust/sandcrab/src/sdk_types.rs": "8190cf945974556da30e346073dbc6d001020033368dfda959c54a5dba5fd7fa",
+    "executor-service/rust/sandcrab/src/server.rs": "21c6ed57a6a9ffbd346768f8113e612bdc3b6d2820ba37e521a2807537a1a8bc",
+    "executor-service/rust/sandcrab/src/service.rs": "2a1e5802f075f7dfa3e9a163e8a056331e44b91c02ad96b86c4a030ce51b29cc",
+    "executor-service/rust/sandcrab/src/session_resources.rs": "fffb4ada26ce082e37f533319846a9d83ba7fa154449f41babbc61c7603bb267",
+    "executor-service/rust/sandcrab/src/sessions.rs": "2d6067576ee1b3b4749286a8bd097e795e407ba92e1d73d664cc834b7ae0fdca",
+    "executor-service/rust/sandcrab/src/spec.rs": "5eeeb3b1b54b382a457cc78c6188001f6e37b84d2e1effffa6ff38c0b54d31de",
+    "executor-service/rust/sandcrab/src/storage.rs": "4801d0d50e11c546d07060687d4709c15ba1237fb8daf0788f48b27e7be4008f",
+    "executor-service/rust/sandcrab/src/transport.rs": "4a3076b89047447b94a80e13582b3876ed793b9154f1c6c8347faddf990b522c",
+    "executor-service/rust/sandcrab/src/volumes.rs": "e280b8d2efb3b046ab74cb22bde56d41f729572763649ff4060ad9a5f4b7896a",
+    "executor-service/rust/sandcrab-core/Cargo.toml": "9e6ef89378005eea544f3e2f2af9ec5e1a7a5b3880d193571b633265597ab2e6",
+    "executor-service/rust/sandcrab-core/src/artifacts.rs": "44a06027b9c82f909bd1470146a3a8590fd4717a77ff0ef95cc72ca12ee09975",
+    "executor-service/rust/sandcrab-core/src/command.rs": "7c5f39953b8953837b39e5b7e6639f7df7ba3fa6154e4fbc5dc2553fe22cb2b4",
+    "executor-service/rust/sandcrab-core/src/fs.rs": "bf0776eab001c46cc13aad726c9fb9ed63cf7064b7386cd99e1408b571c36962",
+    "executor-service/rust/sandcrab-core/src/http.rs": "8fca4ce56f6e43340fc83cae064a9aa7ea6917102efa314df14932d4282d70f6",
+    "executor-service/rust/sandcrab-core/src/ids.rs": "d8306b4d59cbe390106f93ee589d7f35d05b77c1c4a6a11aa58637ebcd2dc8ca",
+    "executor-service/rust/sandcrab-core/src/install.rs": "8243123c32a30827ee3916f68b161bc3ab051ad7fb81bb918da1274bdb307776",
+    "executor-service/rust/sandcrab-core/src/job.rs": "a8ebd0b8436739b5d6fc3284275ad1163c740eca8564d3e8225fe0008b11fd96",
+    "executor-service/rust/sandcrab-core/src/json.rs": "64d8e81e6ed48df536b6680e5dc08ca8df842afb7280811ab759a8bd85fc2f82",
+    "executor-service/rust/sandcrab-core/src/lib.rs": "12cd2c3755d077d7b47b0df7baf537d9982350fcd0de556bdff0743f3c787236",
+    "executor-service/rust/sandcrab-core/src/mailbox.rs": "af3918c4ad9abd5f921018061cbb3e469ba29ff5cd476aedfa9398c0d108403d",
+    "executor-service/rust/sandcrab-core/src/raw.rs": "172da1cde092dcac5ebd07dcfb9e0630635d747ab3a8fc7af4b7c0aa40beda78",
+    "executor-service/rust/sandcrab-core/src/transfer.rs": "0bdef15e3727d32a6bc3e0457771c6b5fd336a347b0a81cdc4cb3e4f577d8e33",
+    "executor-service/rust/sandcrab-core/src/unit.rs": "e4d37c6a18fe8e01dfc43a7b49ded7828e6d0f7af2855ffb470a2631b9a67a0e",
+    "executor-service/rust/sandcrab-launch/Cargo.toml": "226b265808e4a25cdd97b148bff703284c123a8f838970f89281cbe2a5ce6e75",
+    "executor-service/rust/sandcrab-launch/src/lib.rs": "40fbbb0613e1810f9607e3d60844a5eb059d024b2253f9a5c6a05d71db3a932c",
+    "executor-service/rust/sandcrab-launch/src/tests.rs": "2bc57c4dc40c3d235f1a0f200fb30992008ef76fada9f5316380287873985e7f",
+    "executor-service/rust/sandcrab-shell/Cargo.toml": "ec294e68026a401130eaffffd3bc6b92f7686a512bae55e98fe497d3345fe0a0",
+    "executor-service/rust/sandcrab-shell/src/lib.rs": "9e58a833710d4a7401d427a7f37e6a5cf6a92394aeba266b6e328a436124897e"
+  },
+  "sourceArchiveSha256": "367eb109bddd04ab2e89ddfe3662584abf3816e04aed7cf60c9476675ab404b0",
+  "dependencyBoundary": {
+    "gate": "executorRustCheck evaluates the actual cargo tree for the native package",
+    "nativeGraph": "PASS",
+    "injectedSignedDaemon": "REJECTED",
+    "negativeControl": "An offline disposable container adds sandcrab-daemon to the native manifest; the same dependency guard rejects the resulting graph. No source checkout is changed."
+  }
+}
