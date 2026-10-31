@@ -15,11 +15,12 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** One authenticated Unix HTTP exchange, with no replay and at most one MiB of request bytes. */
+/** One authenticated Unix HTTP exchange, with bounded request buffers and no replay. */
 final class SandboxHttp {
     private static final Logger log = LoggerFactory.getLogger(SandboxHttp.class);
     private static final int MAX_HEAD = 8192;
     static final int MAX_REQUEST_BYTES = 1024 * 1024;
+    private static final long MAX_UPLOAD_BYTES = 1024L * 1024 * 1024;
     private final Path socket;
     private final Runnable verifySocket;
     private final Consumer<SocketChannel> verifyPeer;
@@ -46,12 +47,30 @@ final class SandboxHttp {
             Duration timeout,
             Duration idle,
             Reader<T> reader) {
+        byte[] bytes = body == null ? new byte[0] : body;
+        require(bytes.length <= MAX_REQUEST_BYTES);
+        ByteBuffer header = requestHead(method, path, contentType, bytes.length);
+        var packet = ByteBuffer.allocate(header.remaining() + bytes.length)
+                .put(header)
+                .put(bytes)
+                .flip();
+        var request = new MemoryRequest(packet);
+        return exchange(request, timeout, idle, reader);
+    }
+
+    /** Streams a caller-owned local source once; the caller closes it, including after an uncertain write. */
+    <T> T upload(String path, InputStream body, long length, Duration timeout, Reader<T> reader) {
+        require(length >= 0 && length <= MAX_UPLOAD_BYTES);
+        var request = new StreamRequest(requestHead("PUT", path, "application/octet-stream", length), body, length);
+        return exchange(request, timeout, Duration.ZERO, reader);
+    }
+
+    private <T> T exchange(Request request, Duration timeout, Duration idle, Reader<T> reader) {
         try {
             verifySocket.run();
         } catch (WorkerUnavailableException failure) {
             throw new WorkerUnavailableException(failure, false);
         }
-        ByteBuffer output = request(method, path, contentType, body == null ? new byte[0] : body);
         long deadline = System.nanoTime() + timeout.toNanos();
         String phase = "connect";
         boolean reading = false;
@@ -68,12 +87,7 @@ final class SandboxHttp {
             verifyPeer.accept(channel);
             phase = "request-write";
             writing = true;
-            while (output.hasRemaining()) {
-                deadline(deadline);
-                if (channel.write(output) == 0) {
-                    ready(channel, selector, SelectionKey.OP_WRITE, deadline);
-                }
-            }
+            writeRequest(channel, selector, request, deadline);
             phase = "response-header";
             Response response = response(channel, selector, deadline, idle.toNanos());
             phase = "response-body";
@@ -97,21 +111,73 @@ final class SandboxHttp {
                 : new WorkerUnavailableException(exception, writing);
     }
 
-    private static ByteBuffer request(String method, String path, String contentType, byte[] body) {
-        require(body.length <= MAX_REQUEST_BYTES);
+    private sealed interface Request permits MemoryRequest, StreamRequest {}
+
+    private record MemoryRequest(ByteBuffer packet) implements Request {}
+
+    private record StreamRequest(ByteBuffer head, InputStream input, long length) implements Request {}
+
+    private static void writeRequest(SocketChannel channel, Selector selector, Request request, long deadline)
+            throws IOException {
+        switch (request) {
+            case MemoryRequest memory -> write(channel, selector, memory.packet(), deadline);
+            case StreamRequest stream -> {
+                write(channel, selector, stream.head(), deadline);
+                writeStream(channel, selector, stream, deadline);
+            }
+        }
+    }
+
+    private static void writeStream(SocketChannel channel, Selector selector, StreamRequest body, long deadline)
+            throws IOException {
+        if (body.length() == 0) {
+            requireSourceEnded(body.input());
+            return;
+        }
+        byte[] buffer = new byte[(int) Math.min(64 * 1024, body.length())];
+        long remaining = body.length();
+        while (remaining > 0) {
+            deadline(deadline);
+            int read = body.input().read(buffer, 0, (int) Math.min(buffer.length, remaining));
+            if (read <= 0) {
+                throw new IOException("Sandbox request source ended before its declared length");
+            }
+            remaining -= read;
+            if (remaining == 0) {
+                requireSourceEnded(body.input());
+            }
+            write(channel, selector, ByteBuffer.wrap(buffer, 0, read), deadline);
+        }
+    }
+
+    private static void requireSourceEnded(InputStream body) throws IOException {
+        if (body.read() != -1) {
+            throw new IOException("Sandbox request source exceeds its declared length");
+        }
+    }
+
+    private static void write(SocketChannel channel, Selector selector, ByteBuffer bytes, long deadline)
+            throws IOException {
+        while (bytes.hasRemaining()) {
+            deadline(deadline);
+            if (channel.write(bytes) == 0) {
+                ready(channel, selector, SelectionKey.OP_WRITE, deadline);
+            }
+        }
+    }
+
+    private static ByteBuffer requestHead(String method, String path, String contentType, long length) {
         require(method.matches("GET|POST|PUT|DELETE"));
         require(path.startsWith("/") && path.chars().allMatch(c -> c > 32 && c < 127));
         require(contentType.equals("application/json") || contentType.equals("application/octet-stream"));
         byte[] head = (method + " " + path + " HTTP/1.1\r\nHost: sandcrab\r\n"
-                        + (body.length > 0 || method.equals("POST") || method.equals("PUT")
-                                ? "Content-Type: " + contentType + "\r\nContent-Length: " + body.length + "\r\n"
+                        + (length > 0 || method.equals("POST") || method.equals("PUT")
+                                ? "Content-Type: " + contentType + "\r\nContent-Length: " + length + "\r\n"
                                 : "")
                         + "Connection: close\r\n\r\n")
                 .getBytes(StandardCharsets.US_ASCII);
-        return ByteBuffer.allocate(head.length + body.length)
-                .put(head)
-                .put(body)
-                .flip();
+        require(head.length <= MAX_HEAD);
+        return ByteBuffer.wrap(head);
     }
 
     private record Response(Head head, InputStream body) {}

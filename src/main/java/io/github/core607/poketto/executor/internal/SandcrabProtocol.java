@@ -41,14 +41,18 @@ final class SandcrabProtocol {
     }
 
     static String sha256(byte[] bytes) {
+        return HexFormat.of().formatHex(digest().digest(bytes));
+    }
+
+    static MessageDigest digest() {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+            return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException unavailable) {
             throw new IllegalStateException("SHA-256 is required for native file transfers", unavailable);
         }
     }
 
-    private static String optionalUuid(String value, String field) {
+    static String optionalUuid(String value, String field) {
         return value == null ? null : ProtocolValues.uuid(value, field);
     }
 
@@ -79,12 +83,12 @@ final class SandcrabProtocol {
         }
     }
 
-    private static String profile(String value) {
+    static String profile(String value) {
         require(value != null && value.matches("[a-z][a-z0-9-]{0,47}"), "profile", "must be a native profile name");
         return value;
     }
 
-    private static String code(String value) {
+    static String code(String value) {
         require(value != null && value.matches("[A-Z_]{1,64}"), "native error code", "must be bounded uppercase text");
         return value;
     }

@@ -1,0 +1,66 @@
+{
+  "scope": "Java public API, streamed synthetic Git bundle, durable volumes and restart; no product cutover or model calls",
+  "binarySha256": "42c5bb0a8eaf692caae5b88baed64fd711a51c8d04365ae0d1163e2539a21518",
+  "probeSha256": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
+  "checks": [
+    {
+      "name": "volume-bootstrap-refuses-preexisting-data",
+      "result": "PASS"
+    },
+    {
+      "name": "java-streamed-repository-volume-restart-and-clone",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "volumeProbeSha256": "56a37936319179a93f28e89df82588cd00a639ba6821c213a3e1cb995bab0568",
+  "controllerSha256": "eca2d10fc0a4ebdcacda7dfc00730113fa67525456e202f122c21165fc633afb",
+  "runtimeManifestSha256": "2c491b473ae769036fe4b8ab33ee21ed7a6f8d3220d2f9ac6ec1053a3c4c2032",
+  "corpus": {
+    "commit": "1671ef85de5a864b5df7c8e73e6c48cae9f7665e",
+    "bundleSha256": "ace418401e0b01a206838f45930040ea07d0eb82a9ca8413055b670806b92c02",
+    "bundleBytes": 2098093,
+    "fileSha256": "5108a60c2dae91342586cbada707ec111d7736578a55b4b7ba26a9298563e935"
+  },
+  "prepare": {
+    "result": "PASS",
+    "checks": [
+      "java-streamed-git-bundle-initializes-durable-volume",
+      "java-session-close-preserves-unsaved-work-and-releases-volume"
+    ]
+  },
+  "resume": {
+    "result": "PASS",
+    "checks": [
+      "java-new-consumer-and-daemon-epoch-retain-git-baseline-and-unsaved-work",
+      "java-volume-refuses-a-second-live-workspace-owner",
+      "java-reflink-clone-preserves-files-and-isolates-later-edits",
+      "java-volume-session-command-and-upload-records-released"
+    ]
+  },
+  "result": "PASS",
+  "date": "2026-10-31",
+  "sourceSha256": {
+    "src/main/java/io/github/core607/poketto/executor/internal/SandboxHttp.java": "94b6c33dee06ba33a0e7d6575beb7b884a97668b7bd6c368c4bc47f3ebcaacd8",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabClient.java": "a0737f4306de69ce5d74f9373b690dc5e86f611a04db2bf09837dd03a0d39bde",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabProtocol.java": "f8b37b91badb8f7047fb9055bbed848345e51c830eef30a9bcb9fd2f615ea720",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabVolume.java": "f2ef40cead55a88d55e5905c526f9e303f3626f917a18c11fb4b72826ed4a187",
+    "src/main/java/io/github/core607/poketto/executor/internal/ExecutorConfiguration.java": "7ea50b57536ed889d27daf263fa34d1fae7b6062dad667c80ebfbe73413e3d9f",
+    "src/main/java/io/github/core607/poketto/executor/internal/ProtocolValues.java": "ed621e2656928ceaebec1fff1f0b2de6b4653c3021aabb563a82ad66ab167129",
+    "src/main/java/io/github/core607/poketto/executor/internal/WorkerUnavailableException.java": "eee2fbcaf7979664fde943dce85ebcdb5af13d1d7c898275fa3c559bf2de67a0",
+    "src/test/java/io/github/core607/poketto/executor/internal/SandcrabVolumeNativeProbe.java": "2b1a20de3135350f8b65d35762674faaa12304c1a588c7fe58633d326e00d0f7",
+    "executor-native/sandcrab_volume_java_probe.py": "eca2d10fc0a4ebdcacda7dfc00730113fa67525456e202f122c21165fc633afb",
+    "executor-service/rust/sandcrab/native_probe.py": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
+    "executor-service/rust/sandcrab/volume_probe.py": "56a37936319179a93f28e89df82588cd00a639ba6821c213a3e1cb995bab0568"
+  },
+  "sourceArchiveSha256": "57ddd811efcaec16bdf24ffa94450c79033f53a21acc7395ae24f8da79efed9b",
+  "priorAttempts": [
+    {
+      "result": "FAIL",
+      "phase": "fixture setup before Java execution",
+      "reason": "Strict umask hid traversal permission on the new fixture storage parents; explicit chmod corrected the fixture.",
+      "cleanup": "PASS",
+      "volumeProbeSha256": "35595119dc964e22220c23160a822478525f1c6d86a87a3905e2b558bc45df90"
+    }
+  ]
+}
