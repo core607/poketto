@@ -14,8 +14,13 @@ final class NativeRepositoryFiles implements NativeRepositoryHost.SnapshotReader
     NativeRepositoryFiles(SandcrabClient client, NativeTransferStore storage) {
         this(
                 storage,
-                (session, path, maximum, target, authorize) -> client.snapshot(
-                        session, new SandcrabFiles.Plan(path, "raw", true), maximum, target, authorize));
+                (lease, path, maximum, target, authorize) -> client.snapshot(
+                        lease.session(),
+                        new SandcrabFiles.Plan(path, "raw", true),
+                        maximum,
+                        target,
+                        lease.remaining(),
+                        authorize));
     }
 
     NativeRepositoryFiles(NativeTransferStore storage, Snapshotter snapshots) {
@@ -28,11 +33,11 @@ final class NativeRepositoryFiles implements NativeRepositoryHost.SnapshotReader
     }
 
     private NativeTransferStore.File captureNative(NativeRepositoryLease lease, String path, long maximum) {
-        lease.authorize();
+        authorize(lease);
         return storage.capture(
                 maximum,
-                lease::authorize,
-                target -> snapshots.capture(lease.session(), path, maximum, target, lease::authorize));
+                () -> authorize(lease),
+                target -> snapshots.capture(lease, path, maximum, target, () -> authorize(lease)));
     }
 
     @Override
@@ -43,7 +48,7 @@ final class NativeRepositoryFiles implements NativeRepositoryHost.SnapshotReader
             if (bytes.length != file.size()) {
                 throw new IOException("Native text capture changed after verification");
             }
-            lease.authorize();
+            authorize(lease);
             return bytes;
         } catch (IOException failure) {
             throw new WorkerUnavailableException(failure);
@@ -64,7 +69,7 @@ final class NativeRepositoryFiles implements NativeRepositoryHost.SnapshotReader
     boolean install(
             NativeRepositoryLease lease, String path, long bytes, String sha256, NativeTransferStore.Source source) {
         RepositoryPaths.validate(path);
-        try (NativeTransferStore.File file = storage.write(bytes, lease::authorize, source)) {
+        try (NativeTransferStore.File file = storage.write(bytes, () -> authorize(lease), source)) {
             if (file.size() != bytes || !file.sha256().equals(sha256)) {
                 throw new IllegalArgumentException("Materialized original differs from its declared length or digest");
             }
@@ -80,7 +85,7 @@ final class NativeRepositoryFiles implements NativeRepositoryHost.SnapshotReader
     }
 
     private boolean identical(NativeRepositoryLease lease, String path, NativeTransferStore.File expected) {
-        try (NativeTransferStore.File actual = capture(lease, path, NativeArtifacts.MAX_FILE)) {
+        try (NativeTransferStore.File actual = capture(lease, path, expected.size())) {
             return actual.size() == expected.size() && actual.sha256().equals(expected.sha256());
         } catch (SandcrabClient.Rejected refused) {
             if (refused.status() == 400 || refused.status() == 404 || refused.status() == 409) {
@@ -90,8 +95,13 @@ final class NativeRepositoryFiles implements NativeRepositoryHost.SnapshotReader
         }
     }
 
+    private static void authorize(NativeRepositoryLease lease) {
+        lease.authorize();
+        lease.remaining();
+    }
+
     @FunctionalInterface
     interface Snapshotter {
-        void capture(SandcrabProtocol.Session session, String path, long maximum, Path target, Runnable authorize);
+        void capture(NativeRepositoryLease lease, String path, long maximum, Path target, Runnable authorize);
     }
 }

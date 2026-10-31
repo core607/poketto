@@ -186,7 +186,13 @@ final class NativeRepositoryWorkspace {
                         storage)
                 : claim.writer();
         return new NativeRepositoryLease(
-                client, storage, writer, settings.sessionTtlMillis(), settings.outputLimitBytes(), () -> {
+                client,
+                storage,
+                writer,
+                settings.sessionTtlMillis(),
+                settings.outputLimitBytes(),
+                settings.transferBytes(),
+                () -> {
                     claim.requireUsable();
                     if (cancellation.isCancelled()) {
                         throw new WorkerUnavailableException();

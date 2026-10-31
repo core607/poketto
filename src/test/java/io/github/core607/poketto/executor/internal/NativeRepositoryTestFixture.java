@@ -183,7 +183,12 @@ abstract class NativeRepositoryTestFixture {
         });
         when(client.get(any())).thenAnswer(call -> runs.get(((SandcrabProtocol.Reference) call.getArgument(0)).id()));
         when(client.register(any(), any())).thenAnswer(call -> upload(call.getArgument(1)));
+        when(client.register(any(), any(), any())).thenAnswer(call -> upload(call.getArgument(1)));
         when(client.send(any(), any(Path.class))).thenAnswer(call -> upload(call.getArgument(0)));
+        when(client.send(any(), any(Path.class), any(), any())).thenAnswer(call -> {
+            ((Runnable) call.getArgument(3)).run();
+            return upload(call.getArgument(0));
+        });
         when(client.upload(any()))
                 .thenAnswer(call -> uploads.get(((SandcrabProtocol.Reference) call.getArgument(0)).id()));
     }

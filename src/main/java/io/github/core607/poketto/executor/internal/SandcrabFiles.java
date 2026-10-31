@@ -58,16 +58,27 @@ final class SandcrabFiles {
     Content read(SandcrabProtocol.Session session, String path, int maxBytes, Runnable authorize) {
         ProtocolValues.inRange(maxBytes, 0, 8 * 1024 * 1024, "in-memory snapshot bound");
         var output = new ByteArrayOutputStream();
-        Snapshot snapshot = capture(session, new Plan(path, "raw", true), maxBytes, authorize, output);
+        Snapshot snapshot =
+                capture(session, new Plan(path, "raw", true), maxBytes, Duration.ofSeconds(90), authorize, output);
         return new Content(output.toByteArray(), snapshot.sha256());
     }
 
     /** The destination must be absent in a caller-owned directory; a failed transfer retains existing files. */
     Snapshot download(SandcrabProtocol.Session session, Plan plan, long maxBytes, Path target, Runnable authorize) {
+        return download(session, plan, maxBytes, target, Duration.ofSeconds(90), authorize);
+    }
+
+    Snapshot download(
+            SandcrabProtocol.Session session,
+            Plan plan,
+            long maxBytes,
+            Path target,
+            Duration timeout,
+            Runnable authorize) {
         try (var pending = new PendingSnapshot(target)) {
             Snapshot snapshot;
             try (OutputStream output = Files.newOutputStream(pending.path)) {
-                snapshot = capture(session, plan, maxBytes, authorize, output);
+                snapshot = capture(session, plan, maxBytes, timeout, authorize, output);
             }
             authorize.run();
             pending.install(target);
@@ -103,7 +114,12 @@ final class SandcrabFiles {
     }
 
     private Snapshot capture(
-            SandcrabProtocol.Session session, Plan plan, long maxBytes, Runnable authorize, OutputStream output) {
+            SandcrabProtocol.Session session,
+            Plan plan,
+            long maxBytes,
+            Duration timeout,
+            Runnable authorize,
+            OutputStream output) {
         ProtocolValues.inRange(maxBytes, 0, MAX_BYTES, "snapshot byte bound");
         authorize.run();
         return http.exchange(
@@ -111,7 +127,7 @@ final class SandcrabFiles {
                 "/v1/sessions/" + session.id() + "/snapshot",
                 "application/json",
                 SandcrabProtocol.write(plan),
-                Duration.ofSeconds(90),
+                timeout,
                 Duration.ZERO,
                 (head, input) -> {
                     requireSuccess(head, input);

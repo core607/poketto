@@ -15,6 +15,7 @@ final class NativeRepositoryLease {
     private final SandcrabProtocol.SessionPlan plan;
     private final Runnable authorize;
     private final int outputLimit;
+    private final long transferLimit;
     private final List<SandcrabProtocol.Reference> commands = new ArrayList<>();
     private final List<SandcrabProtocol.Reference> uploads = new ArrayList<>();
     private SandcrabProtocol.Session session;
@@ -30,12 +31,14 @@ final class NativeRepositoryLease {
             AccountCopyRecord.Writer writer,
             long ttlMillis,
             int outputLimit,
+            long transferLimit,
             Runnable authorize) {
         this.client = client;
         this.storage = storage;
         this.writer = writer;
         this.authorize = authorize;
         this.outputLimit = ProtocolValues.inRange(outputLimit, 1, 1_048_576, "repository output limit");
+        this.transferLimit = ProtocolValues.inRange(transferLimit, 1024, 1_073_741_824, "repository transfer limit");
         plan = new SandcrabProtocol.SessionPlan(
                 writer.leaseId().toString(),
                 writer.workerBootId().toString(),
@@ -216,6 +219,22 @@ final class NativeRepositoryLease {
         return deadline - System.nanoTime() <= margin.toNanos();
     }
 
+    Duration remaining() {
+        Long deadline = commandDeadline;
+        if (deadline == null) {
+            throw new IllegalStateException("No command has established a deadline");
+        }
+        long nanos = deadline - System.nanoTime();
+        if (nanos <= 0) {
+            throw new WorkerUnavailableException(new IllegalStateException("Repository command deadline elapsed"));
+        }
+        return Duration.ofNanos(nanos);
+    }
+
+    long transferLimit() {
+        return transferLimit;
+    }
+
     void close() {
         stopped = true;
         if (opening) {
@@ -261,6 +280,10 @@ final class NativeRepositoryLease {
 
     SandcrabProtocol.Upload upload(String path, NativeTransferStore.File file) {
         authorize();
+        remaining();
+        if (file.size() > transferLimit) {
+            throw new NativeTransferStore.Capacity();
+        }
         var transfer = new SandcrabProtocol.UploadPlan(
                 UUID.randomUUID().toString(),
                 plan.serverId(),
@@ -273,9 +296,14 @@ final class NativeRepositoryLease {
                 true,
                 0600);
         uploads.add(transfer.reference());
-        client.register(session, transfer);
-        SandcrabProtocol.Upload result = client.send(transfer, file.path());
+        client.register(session, transfer, remaining());
         authorize();
+        SandcrabProtocol.Upload result = client.send(transfer, file.path(), remaining(), () -> {
+            authorize();
+            remaining();
+        });
+        authorize();
+        remaining();
         return result;
     }
 

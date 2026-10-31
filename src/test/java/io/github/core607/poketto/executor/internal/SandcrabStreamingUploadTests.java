@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -27,6 +28,71 @@ class SandcrabStreamingUploadTests {
 
     @TempDir
     Path temporary;
+
+    @Test
+    void anUploadUsesTheCallersRemainingDeadlineWithoutRepeatingAnUncertainWrite() throws Exception {
+        Path file = temporary.resolve("short-budget");
+        SandcrabProtocol.UploadPlan plan = staged(file, 1024);
+        try (var peer = new SandboxPeer(channel -> {
+            assertThat(receive(channel, plan)).isEqualTo(new Received(plan.bytes(), plan.sha256()));
+            assertThat(Channels.newInputStream(channel).read()).isEqualTo(-1);
+        })) {
+            var client = new SandcrabClient(peer.client(channel -> {}));
+            long started = System.nanoTime();
+            assertThatThrownBy(() -> client.send(plan, file, Duration.ofMillis(100), () -> {}))
+                    .isInstanceOfSatisfying(
+                            WorkerUnavailableException.class,
+                            failure -> assertThat(failure.mayHaveExecuted()).isTrue());
+            assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(3));
+            assertThat(peer.requests()).isEqualTo(1);
+            assertThat(Files.size(file)).isEqualTo(plan.bytes());
+        }
+    }
+
+    @Test
+    void uploadRegistrationUsesTheRemainingBudgetAndZeroBudgetCannotDispatch() throws Exception {
+        SandcrabProtocol.UploadPlan plan = staged(temporary.resolve("registration"), 1);
+        var session = new SandcrabProtocol.Session(SESSION, EPOCH, "python", "ready", 120000, null, null, null, null);
+        try (var peer = new SandboxPeer(channel -> {
+            assertThat(SandboxPeer.request(channel).head()).startsWith("POST /v1/uploads HTTP/1.1");
+            assertThat(Channels.newInputStream(channel).read()).isEqualTo(-1);
+        })) {
+            var client = new SandcrabClient(peer.client(channel -> {}));
+            assertThatThrownBy(() -> client.register(session, plan, Duration.ZERO))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> client.send(plan, temporary.resolve("registration"), Duration.ZERO, () -> {}))
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThat(peer.requests()).isZero();
+            long started = System.nanoTime();
+            assertThatThrownBy(() -> client.register(session, plan, Duration.ofMillis(100)))
+                    .isInstanceOfSatisfying(
+                            WorkerUnavailableException.class,
+                            failure -> assertThat(failure.mayHaveExecuted()).isTrue());
+            assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(3));
+            assertThat(peer.requests()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void callerRevocationIsCheckedBetweenStreamChunksAndNeverResendsTheBody() throws Exception {
+        Path file = temporary.resolve("revoked");
+        SandcrabProtocol.UploadPlan plan = staged(file, 256 * 1024);
+        var checks = new AtomicInteger();
+        try (var peer = new SandboxPeer(
+                channel -> assertThat(receive(channel, plan).bytes()).isLessThan(plan.bytes()))) {
+            var client = new SandcrabClient(peer.client(channel -> {}));
+            assertThatThrownBy(() -> client.send(plan, file, Duration.ofSeconds(5), () -> {
+                        if (checks.incrementAndGet() == 3) {
+                            throw new IllegalStateException("synthetic revoked caller");
+                        }
+                    }))
+                    .isInstanceOfSatisfying(
+                            WorkerUnavailableException.class,
+                            failure -> assertThat(failure.mayHaveExecuted()).isTrue());
+            assertThat(checks).hasValue(3);
+            assertThat(peer.requests()).isEqualTo(1);
+        }
+    }
 
     @Test
     void aStagedFileCrossesTheMemoryCeilingWithItsExactLengthAndDigest() throws Exception {

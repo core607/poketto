@@ -11,6 +11,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
@@ -31,6 +32,30 @@ class SandcrabSnapshotTests {
 
     @TempDir
     Path temporary;
+
+    @Test
+    void aSnapshotCannotWaitBeyondTheCallersRemainingBudgetOrPublishPartialBytes() throws Exception {
+        Path target = temporary.resolve("timed-out");
+        try (var peer = new SandboxPeer(channel -> {
+            request(channel, "raw", "file.bin");
+            assertThat(Channels.newInputStream(channel).read()).isEqualTo(-1);
+        })) {
+            var client = new SandcrabClient(peer.client(channel -> {}));
+            long started = System.nanoTime();
+            assertThatThrownBy(() -> client.snapshot(
+                            SESSION,
+                            new SandcrabFiles.Plan("file.bin", "raw", true),
+                            1024,
+                            target,
+                            Duration.ofMillis(100),
+                            () -> {}))
+                    .isInstanceOf(WorkerUnavailableException.class);
+            assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(3));
+            assertThat(Files.exists(target)).isFalse();
+            assertNoStagingFiles();
+            assertThat(peer.requests()).isEqualTo(1);
+        }
+    }
 
     @Test
     void rawSnapshotsVerifyEmptyAndBinaryFilesAndKeepTheirVerifiedBytesPrivate() throws Exception {

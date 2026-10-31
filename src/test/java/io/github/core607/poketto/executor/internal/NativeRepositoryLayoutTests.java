@@ -37,12 +37,14 @@ class NativeRepositoryLayoutTests extends NativeRepositoryTestFixture {
         var storage = new AccountCopyRecord.NativeStorage(before.copyId(), "repository", 8_388_608, 256);
         var writer = new AccountCopyRecord.Writer(
                 principal.subjectId(), UUID.fromString(epoch), UUID.randomUUID(), UUID.randomUUID(), storage);
-        var lease = new NativeRepositoryLease(client, storage, writer, 120_000, 65536, () -> {});
+        var lease = new NativeRepositoryLease(client, storage, writer, 120_000, 65536, 8_388_608, () -> {});
         lease.open();
         assertThatThrownBy(() -> lease.outOfTime(Duration.ZERO)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(lease::remaining).isInstanceOf(IllegalStateException.class);
         doAnswer(call -> {
                     assertThat(lease.outOfTime(Duration.ofSeconds(2))).isTrue();
                     assertThat(lease.outOfTime(Duration.ZERO)).isFalse();
+                    assertThat(lease.remaining()).isPositive().isLessThanOrEqualTo(Duration.ofSeconds(1));
                     return null;
                 })
                 .when(client)
@@ -50,6 +52,7 @@ class NativeRepositoryLayoutTests extends NativeRepositoryTestFixture {
         lease.command(UUID.randomUUID(), "short", Duration.ofSeconds(1));
         doAnswer(call -> {
                     assertThat(lease.outOfTime(Duration.ofSeconds(2))).isFalse();
+                    assertThat(lease.remaining()).isGreaterThan(Duration.ofSeconds(2));
                     return null;
                 })
                 .when(client)
