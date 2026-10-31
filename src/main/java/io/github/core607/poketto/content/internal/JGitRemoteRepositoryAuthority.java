@@ -244,7 +244,12 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
     private <T> T inCache(WorkspaceId workspaceId, Optional<String> knownMain, boolean read, CacheAction<T> action) {
         Objects.requireNonNull(workspaceId, "workspace id must not be null");
         CacheLock workspaceLock = acquireWorkspaceLock(workspaceId);
+        RepositoryReadEvent event = RepositoryReadEvent.start(read);
+        long waiting = event == null ? 0 : System.nanoTime();
         workspaceLock.lock.lock();
+        if (event != null) {
+            event.lockWaitNanos = System.nanoTime() - waiting;
+        }
         try {
             RepositoryBinding binding = binding(workspaceId);
             binding.requireCurrent();
@@ -259,19 +264,9 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
             }
             ObjectId commit;
             try {
-                Optional<ObjectId> recorded = knownMain.flatMap(known -> recordedMain(opened, known));
-                if (recorded.isEmpty() && knownMain.isEmpty() && read) {
-                    recorded = recentMain(workspaceId, opened);
-                }
-                if (recorded.isPresent()) {
-                    // A write's exact-ref push still checks remote main, and a named read pins it.
-                    commit = recorded.get();
-                } else {
-                    commit = transport.fetchMain(opened, binding);
-                    fetched.put(workspaceId, System.nanoTime());
-                    // An unborn remote removes local main. Readers of already selected immutable
-                    // objects may still be active, and the object store they read is kept.
-                    RepositoryCaches.updateObjectRef(opened, commit);
+                commit = resolveMain(workspaceId, knownMain, read, opened, binding, event);
+                if (event != null) {
+                    event.resolved();
                 }
             } catch (RuntimeException exception) {
                 opened.close();
@@ -286,6 +281,49 @@ final class JGitRemoteRepositoryAuthority implements RepositoryAuthority {
         } finally {
             workspaceLock.lock.unlock();
             releaseWorkspaceLock(workspaceId, workspaceLock);
+            if (event != null) {
+                event.finish();
+            }
+        }
+    }
+
+    private ObjectId resolveMain(
+            WorkspaceId workspaceId,
+            Optional<String> knownMain,
+            boolean read,
+            Repository repository,
+            RepositoryBinding binding,
+            RepositoryReadEvent event) {
+        Optional<ObjectId> recorded = knownMain.flatMap(known -> recordedMain(repository, known));
+        if (recorded.isEmpty() && knownMain.isEmpty() && read) {
+            recorded = recentMain(workspaceId, repository);
+        }
+        if (recorded.isPresent()) {
+            // A write's exact-ref push still checks remote main, and a named read pins it.
+            if (event != null) {
+                event.cacheReused = true;
+            }
+            return recorded.get();
+        }
+        ObjectId commit = fetchMain(repository, binding, event);
+        fetched.put(workspaceId, System.nanoTime());
+        // An unborn remote removes local main. Readers of already selected immutable
+        // objects may still be active, and the object store they read is kept.
+        RepositoryCaches.updateObjectRef(repository, commit);
+        return commit;
+    }
+
+    private ObjectId fetchMain(Repository repository, RepositoryBinding binding, RepositoryReadEvent event) {
+        long fetching = event == null ? 0 : System.nanoTime();
+        if (event != null) {
+            event.fetchAttempted = true;
+        }
+        try {
+            return transport.fetchMain(repository, binding);
+        } finally {
+            if (event != null) {
+                event.fetchNanos = System.nanoTime() - fetching;
+            }
         }
     }
 

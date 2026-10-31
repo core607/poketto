@@ -54,6 +54,24 @@ Its request time includes preparation and the socket exchange, and a poll can fi
 command. These events contain no payloads, keys or caller identities. Their elapsed durations
 overlap across requests and are not CPU time.
 
+`poketto.WorkerBridgeAnswer` measures the answer after a poll delivers a request. Its
+`authorizationNanos` sums the outer checks before and after the host operation;
+`completionNanos` covers `BRIDGE_COMPLETE` preparation, exchange and lease validation.
+`completionAttempted` distinguishes an unentered exchange from a failed one, and `completed`
+confirms the mailbox reply, not command containment or a successful host operation.
+
+`poketto.WorkerRemoteStatus` measures remote-status resolution inside that answer. `fullRead`
+distinguishes an authority lookup from a public projection; `resolved=false` includes a failed
+lookup even when the bridge successfully replies with an unavailable status.
+`poketto.RepositoryReadResolution` covers read-side main resolution before the reader callback:
+workspace-lock wait, remote-fetch time, and `cacheReused`, `fetchAttempted` and `resolved` flags.
+Reuse can use a known commit or the configured recent-fetch window. Failed attempts retain their
+elapsed time; `resolved` does not claim the subsequent reader succeeded.
+
+These three events add only elapsed times and booleans, with stack traces disabled. Relate nested
+events by their JFR thread and time interval; their overlapping durations must not be summed.
+They supplement command timings without changing admission, fetch reuse or load-test scoring.
+
 ## Running this stack
 
 Copy this directory to the host and run `docker compose up -d` in it. Every service shares the host

@@ -64,4 +64,38 @@ final class WorkerRequestEvents {
         @Label("Bridge request present")
         boolean requestPresent;
     }
+
+    @Name("poketto.WorkerBridgeAnswer")
+    @Label("Worker bridge answer")
+    @Category({"Poketto", "Executor"})
+    @StackTrace(false)
+    @Threshold("0 ns")
+    static final class BridgeAnswer extends Event {
+        @Label("Authorization elapsed")
+        @Timespan(Timespan.NANOSECONDS)
+        long authorizationNanos;
+
+        @Label("Completion exchange elapsed")
+        @Timespan(Timespan.NANOSECONDS)
+        long completionNanos;
+
+        @Label("Completion attempted")
+        boolean completionAttempted;
+
+        @Label("Completion confirmed")
+        boolean completed;
+    }
+
+    @Name("poketto.WorkerRemoteStatus")
+    @Label("Worker remote status")
+    @Category({"Poketto", "Executor"})
+    @StackTrace(false)
+    @Threshold("0 ns")
+    static final class RemoteStatus extends Event {
+        @Label("Full source read")
+        boolean fullRead;
+
+        @Label("Status resolved")
+        boolean resolved;
+    }
 }

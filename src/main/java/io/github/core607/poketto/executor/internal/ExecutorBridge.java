@@ -131,6 +131,20 @@ final class ExecutorBridge {
     }
 
     private BridgeReplies.RemoteStatus remoteStatus(ExecutionSession session) {
+        var event = new WorkerRequestEvents.RemoteStatus();
+        event.fullRead = session.fullRead;
+        event.begin();
+        try {
+            BridgeReplies.RemoteStatus status = resolveRemoteStatus(session);
+            event.resolved = true;
+            return status;
+        } finally {
+            event.end();
+            event.commit();
+        }
+    }
+
+    private BridgeReplies.RemoteStatus resolveRemoteStatus(ExecutionSession session) {
         // Public copies use a synthetic commit. The existing public-proof check guards each command;
         // do not reveal an authority commit or compare it with the unrelated projection commit.
         if (!session.fullRead) {
