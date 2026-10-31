@@ -1,0 +1,107 @@
+{
+  "scope": "Java public API, streamed synthetic Git bundle, snapshots, opaque host calls, SSE output, durable volumes and restart; no product cutover or model calls",
+  "binarySha256": "45346add19a67f4165b1c1b9fb6416fc1adab187638c1b0cf80c56a409488f02",
+  "probeSha256": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
+  "checks": [
+    {
+      "name": "volume-bootstrap-refuses-preexisting-data",
+      "result": "PASS"
+    },
+    {
+      "name": "java-streamed-repository-volume-restart-and-clone",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "volumeProbeSha256": "56a37936319179a93f28e89df82588cd00a639ba6821c213a3e1cb995bab0568",
+  "controllerSha256": "a124e57c69d585d03fc7d9e24cb6a753776ffa72c9f7e7c87dc5b0a4506054f8",
+  "runtimeManifestSha256": "2121b5ad80fea46d57f633ce5d85c458c161e2e2427eb6a8b1323711205184cd",
+  "corpus": {
+    "commit": "1671ef85de5a864b5df7c8e73e6c48cae9f7665e",
+    "bundleSha256": "ace418401e0b01a206838f45930040ea07d0eb82a9ca8413055b670806b92c02",
+    "bundleBytes": 2098093,
+    "fileSha256": "5108a60c2dae91342586cbada707ec111d7736578a55b4b7ba26a9298563e935"
+  },
+  "prepare": {
+    "result": "PASS",
+    "checks": [
+      "java-native-snapshot-readback-verifies-raw-bytes-and-digest",
+      "java-native-sse-host-call-reply-and-output-confirm-containment",
+      "java-streamed-git-bundle-initializes-durable-volume",
+      "java-session-close-preserves-unsaved-work-and-releases-volume"
+    ]
+  },
+  "resume": {
+    "result": "PASS",
+    "checks": [
+      "java-new-consumer-and-daemon-epoch-retain-git-baseline-and-unsaved-work",
+      "java-volume-refuses-a-second-live-workspace-owner",
+      "java-reflink-clone-preserves-files-and-isolates-later-edits",
+      "java-volume-session-command-and-upload-records-released"
+    ]
+  },
+  "result": "PASS",
+  "date": "2026-10-31",
+  "sourceSha256": {
+    "src/main/java/io/github/core607/poketto/executor/internal/ExecutorConfiguration.java": "7ea50b57536ed889d27daf263fa34d1fae7b6062dad667c80ebfbe73413e3d9f",
+    "src/main/java/io/github/core607/poketto/executor/internal/ProtocolValues.java": "ed621e2656928ceaebec1fff1f0b2de6b4653c3021aabb563a82ad66ab167129",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandboxChunks.java": "07a7d7cbb26cddcb2fd3a890e72ecbefeb6dcbe7fa155d723ee86bd15e1239f6",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandboxHttp.java": "e4c77ab41a6ee64caac15c8cc1c14c455ea9540bc3e8d09641da7c29fc8b2b13",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabClient.java": "a4f83fd328a336c263bfa99da74522c3457aef857aff1329350791383ed2b8b8",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabEventProtocol.java": "60bd40fad54ced831f3a71c2a59b87d6fd3f19cba77e43b1ba80e7f4f1b418cf",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabEvents.java": "e99ca817e663836a064b77e41ed8629212f726b538deac25d36cd4263893adde",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabEventStream.java": "907059d41bb5a52f3364e6fc76968b1c061e9b8e71dcc9800a91a663336234c4",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabFiles.java": "c49296c5dc34f399052dd07ed4394df3763b9541e9da94ab890f8e6c875cae8f",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabProtocol.java": "f8b37b91badb8f7047fb9055bbed848345e51c830eef30a9bcb9fd2f615ea720",
+    "src/main/java/io/github/core607/poketto/executor/internal/SandcrabVolume.java": "f2ef40cead55a88d55e5905c526f9e303f3626f917a18c11fb4b72826ed4a187",
+    "src/main/java/io/github/core607/poketto/executor/internal/WorkerUnavailableException.java": "eee2fbcaf7979664fde943dce85ebcdb5af13d1d7c898275fa3c559bf2de67a0",
+    "src/test/java/io/github/core607/poketto/executor/internal/SandcrabVolumeNativeProbe.java": "a137d3a4cdfd47a945c825ab212252983da5e37981eba171a1969ac5f50a4076",
+    "executor-native/sandcrab_volume_java_probe.py": "a124e57c69d585d03fc7d9e24cb6a753776ffa72c9f7e7c87dc5b0a4506054f8",
+    "executor-service/rust/sandcrab/native_probe.py": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
+    "executor-service/rust/sandcrab/volume_probe.py": "56a37936319179a93f28e89df82588cd00a639ba6821c213a3e1cb995bab0568",
+    "executor-service/rust/sandcrab/src/auth.rs": "192e18d77c32ece1886ba5f878ca1d7f4422cf4b9b88fafd193a482be6b0828d",
+    "executor-service/rust/sandcrab/src/call_client.rs": "242a07dfa6aaac746258ed2db51248ab07987e7c243f9d3ccd230df2ebc52afe",
+    "executor-service/rust/sandcrab/src/call_events.rs": "cf0ed19a8a80e714c80ecc9eb426c3462e5096747242b0c232406e48fd036294",
+    "executor-service/rust/sandcrab/src/client.rs": "e712830467515eb0228fb440a29c3278642fe9e3c78d69043f385fc792e4a2e1",
+    "executor-service/rust/sandcrab/src/config.rs": "db5274f60cc32f53f415c08b6f683400ecd660c95de93682069741505ab68420",
+    "executor-service/rust/sandcrab/src/event_client.rs": "0b7ceff8a0de41e9e2fb3b56f303adb601caa219ff4547ac85cba7530c3be34c",
+    "executor-service/rust/sandcrab/src/event_wire.rs": "90e8ef93f7396c60027e2a6ecf776621c2106016b9610a9c9d7f0962faecdeb3",
+    "executor-service/rust/sandcrab/src/events.rs": "eaf76627e5d09f60c7979a81a9e5a73ddcbd4385320d16a01f2d694098dddb8b",
+    "executor-service/rust/sandcrab/src/file_access.rs": "2ddac1ed21ff21fb2ace75ded331c78def832753503233982a900a131836a798",
+    "executor-service/rust/sandcrab/src/file_client.rs": "01859bcbfb70f77d94345c557039c99fbf1e2f4932d8c12c3240774ee56ee90f",
+    "executor-service/rust/sandcrab/src/file_io.rs": "4e8473ef541ab269500107217e619311c034b3b2b0236707a4b85792286fa0ef",
+    "executor-service/rust/sandcrab/src/file_records.rs": "67d277b84c52f8b0ac80cfd4936f533899db178879c0aefe4ca103d92880ab9b",
+    "executor-service/rust/sandcrab/src/files.rs": "368154981a82e0e17e20eebc1ea40935e06b49f525754916475e68d6b403812c",
+    "executor-service/rust/sandcrab/src/guest_call.rs": "fa579145bba9a5cf26cb992cfa7c467c301b5867cb222ebc0384284dbdef44d4",
+    "executor-service/rust/sandcrab/src/host_calls.rs": "7a18dd893bf8bc7d3515d3e6cd128a22d80c1813c51e36623fffa1c36e5411c4",
+    "executor-service/rust/sandcrab/src/inventory.rs": "f0720a1aca71d27357e72076a116bb85b693bda1fe002fc62a93996b3afe0ecb",
+    "executor-service/rust/sandcrab/src/main.rs": "37bd798e9c1c23408e1f153ac411d9784a03165043f052bca6302db4827017c7",
+    "executor-service/rust/sandcrab/src/multipart.rs": "8edab4610db1b5166db957f3e688ef7f31a6a406d892258677a52a9551b5c206",
+    "executor-service/rust/sandcrab/src/opensandbox.rs": "7527e94489b5ec4ffda830c41e574ed4ed33c7396d24bc3db91dbd8d0ce7808a",
+    "executor-service/rust/sandcrab/src/runtime.rs": "5a74f3b6a714cc7ed99faeddd5b2c1085982001ba8b7fdf379387f236cb83fed",
+    "executor-service/rust/sandcrab/src/sdk_commands.rs": "dd472a69ff8054dffb734959dcd6819730d9c0c112ebdb9c5c841f344a406d2b",
+    "executor-service/rust/sandcrab/src/sdk_contexts.rs": "90926e06231a3fc3408bc4912b8799c059667be664ca042a624cb1d4c9b870ef",
+    "executor-service/rust/sandcrab/src/sdk_download.rs": "b9dccc432fbdf318947f6e3bb941a8dc8e747770a5822c9cef4cac062cf27148",
+    "executor-service/rust/sandcrab/src/sdk_file_io.rs": "0e62b82d89a82a0bc0d4a2f525f3dc93456fd23217e226c6d4c9a571b25c339d",
+    "executor-service/rust/sandcrab/src/sdk_files.rs": "cdb054cc05a96ac55d6a613756e161317a2993fd9af69cc93b610f810d96f59a",
+    "executor-service/rust/sandcrab/src/sdk_fs.rs": "58994abb2c0c2029e62fdc62d48e826490fe57dc9c10a2fd8cc07e28f7f31f32",
+    "executor-service/rust/sandcrab/src/sdk_fs_io.rs": "5fb7180d0dab2cca858e1a6232393721e02cec26979a46f500c2d5f54c597e6a",
+    "executor-service/rust/sandcrab/src/sdk_glob.rs": "e46a1ee70106ed717a621cd8a73a3e3ad764694d39118e02a5245431836808cf",
+    "executor-service/rust/sandcrab/src/sdk_replace.rs": "7291338aa2db26d1799350a9526c981415ab1de54b34b9e060ec04b45137d77e",
+    "executor-service/rust/sandcrab/src/sdk_types.rs": "8190cf945974556da30e346073dbc6d001020033368dfda959c54a5dba5fd7fa",
+    "executor-service/rust/sandcrab/src/server.rs": "21c6ed57a6a9ffbd346768f8113e612bdc3b6d2820ba37e521a2807537a1a8bc",
+    "executor-service/rust/sandcrab/src/service.rs": "8fc3e515dc2238d2975a34f5ee70534f47bd3c5137147c19f6d5e35f0286b020",
+    "executor-service/rust/sandcrab/src/session_resources.rs": "9648f6aac3af10a59935e7ff6e99beb6d256c8a007c9da9031dd4a38b9118019",
+    "executor-service/rust/sandcrab/src/sessions.rs": "04fd787f86c71e9d72d1033bccb9be2ceac60d2512284a624ada1a9ee94c0928",
+    "executor-service/rust/sandcrab/src/spec.rs": "5eeeb3b1b54b382a457cc78c6188001f6e37b84d2e1effffa6ff38c0b54d31de",
+    "executor-service/rust/sandcrab/src/storage.rs": "458a6977116b7f121a09d348d19fd9fa6e153878afea9a5683e3cbed051abd4e",
+    "executor-service/rust/sandcrab/src/transport.rs": "4a3076b89047447b94a80e13582b3876ed793b9154f1c6c8347faddf990b522c",
+    "executor-service/rust/sandcrab/src/volumes.rs": "e0b43c5b30d06bc1a3836dd004187883dde3b332a84cc25df016433793a2a1cd",
+    "executor-service/rust/sandcrab/Cargo.toml": "606b2efb74de23e672f26ec046f87c5c1da23c72c6fbe012fc72e56c1fb9a9a3",
+    "executor-service/rust/Cargo.lock": "751fd7b399d8f885a248222ec5ff15c8fe88074c9f269cbff9fb289d6d3ab0d6",
+    "gradle/executor-service.gradle.kts": "da8ad97d6f15553c690e52e0f0f97b641740dc3555ace61fa9509083fbac09be",
+    "gradle/executor-native.gradle.kts": "5a8c585d1ee5ce2906b19c51fa919d42d72d28f34d7090af4ffb7e83714c54a9"
+  },
+  "sourceArchiveSha256": "4547aba0040bc9cd86f7eab7f74d0e2ff2c724d1be220adad6fde8e3f1764bb3",
+  "sourceTree": "fba6b6cb8902371863eda06d34621d75a6cb9292"
+}
