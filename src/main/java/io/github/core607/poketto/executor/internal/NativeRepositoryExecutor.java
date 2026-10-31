@@ -127,7 +127,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
                 completed = executeHeld(principal, held, requested, command, timeout, cancellation);
                 return completed;
             } catch (RuntimeException failure) {
-                throw IsolatedRepositoryExecutor.admissionFailure(failure, held.record());
+                throw AccountCopyFailures.admission(failure, held.record());
             }
         } catch (RetainedCopyException failure) {
             if (completed == null) {
@@ -151,7 +151,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
             } else if (failure.reason() == RetainedCopyException.Reason.LIMIT) {
                 pool.metrics.refused("copy_limit");
             }
-            throw IsolatedRepositoryExecutor.admissionFailure(failure, null);
+            throw AccountCopyFailures.admission(failure, null);
         }
     }
 

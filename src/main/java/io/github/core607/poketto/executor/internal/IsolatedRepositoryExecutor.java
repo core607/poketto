@@ -4,21 +4,17 @@ import static io.github.core607.poketto.executor.internal.SessionWorker.requireL
 import static io.github.core607.poketto.executor.internal.SessionWorker.requireOk;
 
 import io.github.core607.poketto.assets.MediaFileService;
-import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.SiteGroup;
-import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PortableContentExports;
-import io.github.core607.poketto.content.RepositoryEmptyException;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
-import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -142,11 +138,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         slot.close();
                     }
                 } catch (ExecutionAdmissionException refused) {
-                    throw refused.copyId().isPresent() ? refused : admissionFailure(refused, held.record());
+                    throw refused.copyId().isPresent()
+                            ? refused
+                            : AccountCopyFailures.admission(refused, held.record());
                 }
             } catch (RuntimeException failure) {
                 timings.failed();
-                throw admissionFailure(failure, null);
+                throw AccountCopyFailures.admission(failure, null);
             }
         } finally {
             timings.record();
@@ -382,7 +380,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 throw new ExecutionUnconfirmedException(
                         session.copyId.toString(), unconfirmedView(session, held), true, failure);
             }
-            throw admissionFailure(failure, held.record());
+            throw AccountCopyFailures.admission(failure, held.record());
         }
     }
 
@@ -423,35 +421,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             failure.addSuppressed(closing);
             log.warn("Account command containment remains unconfirmed", closing);
         }
-    }
-
-    static RuntimeException admissionFailure(RuntimeException failure, AccountCopyRecord record) {
-        if (failure instanceof ExecutionAdmissionException refused) {
-            return record == null ? refused : refused.withCopyId(record.copyId().toString());
-        }
-        if (failure instanceof ExecutionUnconfirmedException
-                || failure instanceof AuthException
-                || failure instanceof SecurityException
-                || failure instanceof IllegalArgumentException
-                || failure instanceof SessionReplacedException
-                || failure instanceof ContentRepositoryException
-                || failure instanceof RepositoryEmptyException) {
-            return failure;
-        }
-        log.warn("Account copy admission failed", failure);
-        ExecutionAdmissionException.Reason reason = failure instanceof RetainedCopyException retained
-                ? switch (retained.reason()) {
-                    case MISSING -> ExecutionAdmissionException.Reason.MISSING_COPY;
-                    case EXPIRED -> ExecutionAdmissionException.Reason.EXPIRED;
-                    case BUSY -> ExecutionAdmissionException.Reason.BUSY;
-                    case LIMIT -> ExecutionAdmissionException.Reason.CAPACITY;
-                    case STALE, UNCERTAIN -> ExecutionAdmissionException.Reason.RECOVERY_REQUIRED;
-                    case UNAVAILABLE -> ExecutionAdmissionException.Reason.UNAVAILABLE;
-                }
-                : ExecutionAdmissionException.Reason.UNAVAILABLE;
-        boolean available = record != null && record.expiresAt() > System.currentTimeMillis();
-        var refused = new ExecutionAdmissionException(reason, available, failure);
-        return record == null ? refused : refused.withCopyId(record.copyId().toString());
     }
 
     @Override

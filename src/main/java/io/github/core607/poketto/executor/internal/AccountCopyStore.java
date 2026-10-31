@@ -8,12 +8,14 @@ import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -330,7 +332,8 @@ final class AccountCopyStore {
     /** A default copy keeps its original address; a fork's address adds its copy ID. */
     private static String key(AccountCopyRecord.Owner owner) {
         String base = owner.accountId() + ":" + owner.workspaceId() + ":" + owner.fullRead();
-        return SessionWorker.hash(owner.fork() == null ? base : base + ":" + owner.fork());
+        String identity = owner.fork() == null ? base : base + ":" + owner.fork();
+        return HexFormat.of().formatHex(RetainedBaselineIo.sha256().digest(identity.getBytes(StandardCharsets.UTF_8)));
     }
 
     private static RetainedCopyException unavailable(IOException failure) {

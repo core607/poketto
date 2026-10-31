@@ -78,7 +78,7 @@ final class CopyDisposal {
             held.remove();
             return new DiscardResult(request.id(), DiscardStatus.DISCARDED);
         } catch (RuntimeException failure) {
-            throw IsolatedRepositoryExecutor.admissionFailure(failure, null);
+            throw AccountCopyFailures.admission(failure, null);
         }
     }
 

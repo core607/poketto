@@ -11,6 +11,7 @@ import io.github.core607.poketto.content.RepositoryPaths;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -72,7 +73,7 @@ final class NativeMediaCommands {
         } else if (query.commit() != null) {
             var catalog = media.privateCatalog(principal, workspace, Optional.of(query.commit()));
             entries = catalog.index().files();
-            version = SessionWorker.hash(catalog.commit());
+            version = SandcrabProtocol.sha256(catalog.commit().getBytes(StandardCharsets.UTF_8));
             source = "repository";
         } else {
             Optional<byte[]> captured =
@@ -80,7 +81,7 @@ final class NativeMediaCommands {
             entries = captured.map(RepositoryMediaIndex::parse)
                     .orElseGet(RepositoryMediaIndex::empty)
                     .files();
-            version = SessionWorker.hash(captured.orElseGet(() -> new byte[0]));
+            version = SandcrabProtocol.sha256(captured.orElseGet(() -> new byte[0]));
             source = "worktree";
         }
         lease.authorize();

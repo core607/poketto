@@ -63,7 +63,7 @@ final class NativeRepositoryDisposal implements AutoCloseable {
             dispose(held, authorize);
             return new DiscardResult(request.id(), DiscardStatus.DISCARDED);
         } catch (RuntimeException failure) {
-            throw IsolatedRepositoryExecutor.admissionFailure(failure, null);
+            throw AccountCopyFailures.admission(failure, null);
         }
     }
 
