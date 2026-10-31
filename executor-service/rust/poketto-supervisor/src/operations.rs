@@ -157,7 +157,6 @@ pub fn open(
         state.sessions.insert(
             lease.into(),
             Session {
-                job: false,
                 identity,
                 deadline: payload["expiresAt"].as_u64().unwrap() as f64,
                 cancelled: cancelled.clone(),

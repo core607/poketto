@@ -1,11 +1,8 @@
 //! Installed CLI configuration, protected public key and application-owned socket access.
 use crate::{Repository, provision};
 use rustix::process::{Resource, getrlimit, setrlimit};
-use sandcrab_daemon::{
-    Service, Settings,
-    install::{execution_account, load_key, runtime_lock, unit_name as name},
-    server,
-};
+use sandcrab_core::install::{execution_account, runtime_lock, unit_name as name};
+use sandcrab_daemon::{Service, Settings, install::load_key, server};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use signal_hook::{
