@@ -101,10 +101,24 @@ def java_phase(probe, java, runtime, consumer, phase, extra=()):
 def run(args):
     runtime_hash = verify_runtime(args.runtime)
     probe = VolumeProbe(args.binary, args.tools, args.report)
-    probe.receipt.update(scope='Java public API, streamed synthetic Git bundle, durable volumes and restart; no product cutover or model calls',
+    original = probe.config.read_text()
+    profile_network = 'network = "none"\n'
+    assert original.count(profile_network) == 2 and 'host_calls' not in original
+    enabled = original.replace(profile_network, profile_network + 'host_calls = true\n')
+    assert enabled.count('[service]\n') == 1 and 'max_event_streams' not in enabled
+    enabled = enabled.replace('[service]\n', '[service]\nmax_event_streams = 1\n')
+    assert enabled.count('[profiles.') == 2
+    for name in ('python', 'other'):
+        header = '[profiles.' + name + ']\n'
+        assert enabled.count(header) == 1
+        profile = enabled.split(header, 1)[1].split('\n[', 1)[0]
+        assert profile.count('host_calls = true\n') == 1
+    probe.config.write_text(enabled)
+    probe.receipt.update(scope='Java public API, streamed synthetic Git bundle, snapshots, opaque host calls, SSE output, durable volumes and restart; no product cutover or model calls',
                          controllerSha256=sha256(Path(__file__)), runtimeManifestSha256=runtime_hash)
     try:
         probe.setup()
+        assert probe.info['limits']['maxEventStreams'] == 1
         runtime = probe.root / 'java-runtime'
         shutil.copytree(args.runtime, runtime)
         for path in [runtime, *runtime.rglob('*')]:
@@ -116,7 +130,7 @@ def run(args):
         probe.receipt['corpus'] = {'commit': commit, 'bundleSha256': sha256(bundle),
                                    'bundleBytes': bundle.stat().st_size, 'fileSha256': file_digest}
         prepared = java_phase(probe, args.java, runtime, consumer, 'prepare', (bundle, commit, file_digest))
-        assert len(prepared['checks']) == 2
+        assert len(prepared['checks']) == 4
         probe.receipt['prepare'] = prepared
         probe.save()
         before = probe.info['serverId']

@@ -4,6 +4,9 @@
 API, using a synthetic Git bundle larger than the client's in-memory request limit.
 Two Java processes, separated by a daemon restart, verify the Git baseline,
 unsaved files, exclusive attachment, independent reflink edits and record release.
+They also verify snapshot bytes and digests, binary host-call replies, and output
+SSE continuation. Host calls run with one event-observer slot, including a quiet
+pending request, so identity validation cannot consume a second slot.
 It does not exercise Poketto authorization or establish a product cutover.
 
 ```sh
@@ -23,5 +26,7 @@ image and 384 MiB slice; its Java processes have a 192 MiB cap inside that slice
 Use a new report path for each attempt. Success requires `result: PASS`, both Java
 phases and `cleanup: PASS`; a cleanup failure retains the fixture for inspection.
 
-The [native receipt](evidence/2026-10-31-sandcrab-java-volumes.json) records the
-six Java checks, fixture cleanup, source hashes and retained setup failure.
+The [native receipt](evidence/2026-10-31-sandcrab-java-events.json) records eight
+Java checks, fixture cleanup and source hashes. The earlier
+[volume receipt](evidence/2026-10-31-sandcrab-java-volumes.json) retains its six
+checks and setup failure.

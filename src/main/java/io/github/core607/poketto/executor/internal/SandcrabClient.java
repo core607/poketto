@@ -63,6 +63,19 @@ final class SandcrabClient {
         return request("GET", "/v1/info", null, SandcrabProtocol.Info.class, 200);
     }
 
+    SandcrabFiles.Content snapshot(SandcrabProtocol.Session session, String path, int maxBytes, Runnable authorize) {
+        return new SandcrabFiles(http).read(session, path, maxBytes, authorize);
+    }
+
+    SandcrabFiles.Snapshot snapshot(
+            SandcrabProtocol.Session session, SandcrabFiles.Plan plan, long maxBytes, Path target, Runnable authorize) {
+        return new SandcrabFiles(http).download(session, plan, maxBytes, target, authorize);
+    }
+
+    SandcrabEvents events() {
+        return new SandcrabEvents(http);
+    }
+
     /** Keep the creation plan before dispatch; a transport failure must not allocate another ID. */
     SandcrabVolume createVolume(SandcrabVolume.Plan plan) {
         SandcrabVolume volume = request("POST", "/v1/volumes", plan, SandcrabVolume.class, 200, 202);

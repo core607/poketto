@@ -1,5 +1,6 @@
 package io.github.core607.poketto.executor.internal;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -10,10 +11,13 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** Two ordinary Java processes use a synthetic Git bundle and retain unsaved files across daemon restart. */
 public final class SandcrabVolumeNativeProbe {
@@ -62,12 +66,124 @@ public final class SandcrabVolumeNativeProbe {
         require(
                 command(session, "sha256sum repository/payload.bin").startsWith(fileDigest + " "),
                 "Consumer initialized different repository bytes");
+        snapshots(session, state, fileDigest);
+        hostCall(session);
         close(session);
         SandcrabVolume retained = client.volume(volume);
         require(!retained.busy() && retained.attachedTo() == null, "Closed session retained its volume attachment");
         Files.write(state, SandcrabProtocol.write(new Saved(retained, info.serverId(), commit, fileDigest)));
         checks.add("java-streamed-git-bundle-initializes-durable-volume");
         checks.add("java-session-close-preserves-unsaved-work-and-releases-volume");
+    }
+
+    private void snapshots(SandcrabProtocol.Session session, Path state, String fileDigest) throws IOException {
+        var authorizations = new AtomicInteger();
+        SandcrabFiles.Content text =
+                client.snapshot(session, "repository/unsaved.txt", 128, authorizations::incrementAndGet);
+        byte[] expected = "unsaved-work".getBytes(StandardCharsets.UTF_8);
+        require(Arrays.equals(text.bytes(), expected), "Raw snapshot changed unsaved workspace bytes");
+        require(text.sha256().equals(SandcrabProtocol.sha256(expected)), "Raw snapshot returned another digest");
+        Path directory = Files.createTempDirectory(state.toAbsolutePath().getParent(), "snapshot-");
+        Path target = directory.resolve("payload.bin");
+        try {
+            SandcrabFiles.Snapshot snapshot = client.snapshot(
+                    session,
+                    new SandcrabFiles.Plan("repository/payload.bin", "raw", true),
+                    3L * 1024 * 1024,
+                    target,
+                    authorizations::incrementAndGet);
+            require(snapshot.bytes() == 2L * 1024 * 1024, "Staged snapshot changed the fixture payload length");
+            require(Files.size(target) == snapshot.bytes(), "Staged snapshot receipt differs from its bytes");
+            require(snapshot.sha256().equals(fileDigest), "Staged snapshot selected another repository payload");
+            require(
+                    SandcrabProtocol.sha256(Files.readAllBytes(target)).equals(fileDigest),
+                    "Staged snapshot bytes changed");
+            require(authorizations.get() > 2, "Snapshot transfer omitted repeated caller authorization");
+        } finally {
+            Files.deleteIfExists(target);
+            Files.delete(directory);
+        }
+        checks.add("java-native-snapshot-readback-verifies-raw-bytes-and-digest");
+    }
+
+    private void hostCall(SandcrabProtocol.Session session) {
+        require(info.profiles().get(session.profile()).hostCalls(), "Native fixture must enable opaque host calls");
+        byte[] request = new byte[65_536];
+        byte[] reply = new byte[1024];
+        for (int index = 0; index < request.length; index++) {
+            request[index] = (byte) index;
+        }
+        for (int index = 0; index < reply.length; index++) {
+            reply[index] = (byte) (255 - index);
+        }
+        var plan = new SandcrabProtocol.CommandPlan(
+                id(),
+                info.serverId(),
+                "python3 -c 'import sys; sys.stdout.buffer.write(bytes(range(256))*256)'"
+                        + " | sandcrab call - --timeout-ms 10000 2>host-call-correlation"
+                        + " && cat host-call-correlation >&2 && rm host-call-correlation && printf native-stderr >&2",
+                10_000,
+                4096);
+        client.command(session, plan);
+        var handled = new AtomicInteger();
+        var observed = new AtomicReference<SandcrabEvents.Call>();
+        // No output is emitted while this call is pending: an identity-only output observer would retain the sole slot.
+        SandcrabEventProtocol.Run result = client.events()
+                .observeCalls(plan.reference(), Duration.ofSeconds(20), call -> {
+                    require(handled.incrementAndGet() == 1, "One opaque request invoked its handler more than once");
+                    require(call.run().equals(plan.reference()), "Opaque request changed its command scope");
+                    require(Arrays.equals(call.bytes(), request), "Native host-call delivery changed opaque bytes");
+                    observed.set(call);
+                    return reply;
+                });
+        require(
+                result.terminal() && result.result().success(),
+                "Host-call stream did not confirm successful containment");
+        require(handled.get() == 1, "Native command did not deliver its opaque host call");
+        SandcrabEventProtocol.CallInventory inventory = client.events().inventory(plan.reference());
+        require(
+                inventory.closed() && inventory.calls().size() == 1,
+                "Native call inventory did not retain its terminal receipt");
+        require(
+                inventory.incarnation().equals(observed.get().cursor().incarnation()),
+                "Call inventory changed command incarnation");
+        require(
+                inventory.calls().getFirst().id().equals(observed.get().id()),
+                "Call inventory changed its reply handle");
+        require(
+                inventory.calls().getFirst().replySha256().equals(SandcrabProtocol.sha256(reply)),
+                "Call inventory changed reply bytes");
+        String stderr = "requestId=" + observed.get().requestId() + " runId=" + plan.id() + "\nnative-stderr";
+        observedOutput(plan.reference(), reply, stderr);
+        SandcrabProtocol.Run retained = client.get(plan.reference());
+        require(
+                retained.terminal() && retained.result().success(),
+                "Host-call result was not retained for reconciliation");
+        client.forget(retained);
+        checks.add("java-native-sse-host-call-reply-and-output-confirm-containment");
+    }
+
+    private void observedOutput(SandcrabProtocol.Reference run, byte[] expected, String expectedError) {
+        var stdout = new ByteArrayOutputStream();
+        var stderr = new ByteArrayOutputStream();
+        var cursor = new AtomicReference<SandcrabEventProtocol.OutputCursor>();
+        SandcrabEventProtocol.Run result = client.events().observe(run, null, Duration.ofSeconds(10), output -> {
+            (output.stream().equals("stdout") ? stdout : stderr).writeBytes(output.bytes());
+            cursor.set(output.cursor());
+        });
+        require(result.terminal() && result.result().success(), "Native output stream did not confirm containment");
+        require(Arrays.equals(stdout.toByteArray(), expected), "Native output SSE changed binary reply bytes");
+        require(
+                stderr.toString(StandardCharsets.UTF_8).equals(expectedError),
+                "Native output SSE mixed stdout and stderr");
+        require(cursor.get() != null, "Native output stream omitted its replay cursor");
+        SandcrabEventProtocol.Run resumed = client.events()
+                .observe(run, cursor.get(), Duration.ofSeconds(10), ignored -> {
+                    throw new IllegalStateException("Explicit native output continuation repeated delivered bytes");
+                });
+        require(
+                resumed.terminal() && resumed.result().success(),
+                "Native output continuation lost its retained result");
     }
 
     private void uploadBundle(SandcrabProtocol.Session session, Path bundle) throws IOException {

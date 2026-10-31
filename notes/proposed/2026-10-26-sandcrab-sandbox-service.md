@@ -6,7 +6,7 @@ Date: 2026-10-26
 
 Repository execution and games share Rust mechanisms ([in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md), [shared process runner](../implemented/2026-10-27-sandcrab-in-repository-split.md)). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases through TypeScript.
 
-The [retained-session service](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still requires Poketto identities, revisions and signed requests. [Native runs, sessions, volumes, files, command events and host calls](../../executor-service/rust/sandcrab/README.md) are independent; The supported SDK surface is documented by [OpenSandbox integration](../../executor-service/rust/sandcrab/opensandbox.md); remaining SDK integration and repository adoption stay in scope. Replicating repository operations would retain product coupling.
+The [retained-session service](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still requires Poketto identities, revisions and signed requests. [Native runs, sessions, volumes, files, command events and host calls](../../executor-service/rust/sandcrab/README.md) are independent. [OpenSandbox integration](../../executor-service/rust/sandcrab/opensandbox.md) documents the implemented SDK subset. Repository adoption remains in scope; replicating repository operations would retain product coupling.
 
 The service must fit the default two-core, 4 GB deployment target ([continuous delivery](../implemented/2026-09-03-continuous-delivery.md)) without requiring KVM or a container runtime. Other projects need a usable execution service without adopting Poketto's content model.
 
@@ -35,9 +35,9 @@ Atomic batches and frozen jobs need independent uses and failure contracts befor
 
 ### Compatibility
 
-An adapter targets OpenSandbox `release-1.1.0` [lifecycle](https://github.com/alibaba/OpenSandbox/blob/release-1.1.0/specs/sandbox-lifecycle.yml) and [execd](https://github.com/alibaba/OpenSandbox/blob/release-1.1.0/specs/execd-api.yaml): create, get, list, delete, renew, endpoint lookup, SSE commands, sessions, files and directories. Evidence pins the specification commit and Python/Kotlin SDK versions. Native clients need neither SDK. `image.uri` selects a profile; images, caller-selected UIDs and unsupported features are rejected. Extensions use a separate prefix; optional MCP defaults off.
+The adapter implements the OpenSandbox `release-1.1.0` [lifecycle](https://github.com/alibaba/OpenSandbox/blob/release-1.1.0/specs/sandbox-lifecycle.yml) and [execd](https://github.com/alibaba/OpenSandbox/blob/release-1.1.0/specs/execd-api.yaml) subset: create, get, list, delete, renew, endpoint lookup, SSE commands, sessions, files and directories. Evidence pins the specification commit and Python/Kotlin SDK versions. Native clients need neither SDK. `image.uri` selects a profile; images, caller-selected UIDs and unsupported features are rejected. Extensions use a separate prefix; optional MCP defaults off.
 
-Compatibility requires calls through both SDKs, not endpoint resemblance. Authentication adapters may support Ed25519 for deployments that need it; the existing signed Poketto envelope does not define the native API.
+Compatibility is checked through [both published SDKs](../../evals/sdk/README.md), not endpoint resemblance. Authentication adapters may support Ed25519 for deployments that need it; the existing signed Poketto envelope does not define the native API.
 
 ### Poketto as the first consumer
 
@@ -48,7 +48,7 @@ Poketto owns repositories, publication, writes and recovery. It may redesign cop
 0. Validation without production code, recorded below.
 1. In-repository split, shipped as the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md).
 2. Finite jobs, shipped as [shared process runner](../implemented/2026-10-27-sandcrab-in-repository-split.md).
-3. Public service and adoption. Runs, sessions, volumes, files, command SSE and host calls provide profiles, CLI, authenticated loopback TCP and OpenAPI; [Inspect](../../evals/README.md) evaluates independent API and programming tasks. Complete OpenSandbox. Games use the public API; adapt repository execution, remove its compiled extension and product fields, and retire the old protocol without shims. The operation map inventories migration, not mandatory public operations.
+3. Public service and adoption. Runs, sessions, volumes, files, command SSE and host calls provide profiles, CLI, authenticated loopback TCP and OpenAPI; [Inspect](../../evals/README.md) evaluates independent API and programming tasks. Games use the public API; adapt repository execution, remove its compiled extension and product fields, and retire the old protocol without shims. The operation map inventories migration, not mandatory public operations.
 4. Extraction. Move generic crates with history, publish checksums, threat model, examples and evals, then pin a release in Poketto. Phases 1 to 3 must ship before four consecutive weeks without cross-boundary changes. Record the last deployed change; another restarts the interval. The operator selects repository identity, visibility and initial release version before publication.
 
 ### Phase 0 findings
