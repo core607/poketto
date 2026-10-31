@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import io.github.core607.poketto.content.ContentExportException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -19,6 +20,31 @@ import org.junit.jupiter.api.condition.OS;
 
 @EnabledOnOs(OS.LINUX)
 class NativeExportCommandsTests extends NativeExportFixture {
+    @Test
+    void aCompletedPackageKeepsTheRemainingCommandTimeForTransfer() throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        when(lease.remaining()).thenAnswer(call -> {
+            long left = deadline - System.nanoTime();
+            if (left <= 0) {
+                throw new WorkerUnavailableException(new IllegalStateException("Fixture command expired"));
+            }
+            return Duration.ofNanos(left);
+        });
+        doAnswer(call -> {
+                    // Build finishes promptly. Transfer starts beyond its reserved build budget, but inside the command
+                    // budget.
+                    Thread.sleep(Duration.ofMillis(8250));
+                    assertThat(lease.remaining()).isGreaterThan(Duration.ZERO);
+                    return call.callRealMethod();
+                })
+                .when(packages)
+                .copyTo(any(), any(), any(), any(), any());
+        BridgeReplies.Reply reply = command(List.of("private/secret.md"), "slow-copy.zip", false);
+        assertThat(reply.ok()).isTrue();
+        assertThat(String.join("\n", zip("slow-copy.zip").values())).contains("current-secret-needle");
+        assertThat(fixture.retainedPackages()).isZero();
+    }
+
     @Test
     void actualZipUsesRemoteAuthorityAndTheOpaqueReplyContainsOnlyItsLocalReceipt() throws Exception {
         worktree.put("private/secret.md", "unsaved-local-only".getBytes(StandardCharsets.UTF_8));

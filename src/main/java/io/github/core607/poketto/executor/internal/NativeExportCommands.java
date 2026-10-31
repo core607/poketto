@@ -16,7 +16,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.JsonNode;
@@ -107,12 +107,18 @@ final class NativeExportCommands {
 
     private record Client(AccountCopyRecord.Owner owner, UUID copy, UUID lease, UUID command, UUID operation) {}
 
+    private enum BuildState {
+        BUILDING,
+        HANDED_OFF,
+        ABANDONED
+    }
+
     /** Only the export service runs in the background; it never touches the held journal or native files. */
     private final class Build implements AutoCloseable {
         private final AuthPrincipal principal;
         private final WorkspaceId workspace;
         private final String client;
-        private final AtomicBoolean abandoned = new AtomicBoolean();
+        private final AtomicReference<BuildState> state = new AtomicReference<>(BuildState.BUILDING);
         private final FutureTask<PortableContentExports.Export> result;
         private final Thread deadline;
 
@@ -132,7 +138,7 @@ final class NativeExportCommands {
                 } finally {
                     // A close that precedes reserve can be reset by the service. Late completion
                     // therefore repeats only cleanup, under a unique host-owned invocation scope.
-                    if (abandoned.get()) {
+                    if (state.get() == BuildState.ABANDONED) {
                         closeQuietly();
                     }
                 }
@@ -146,7 +152,12 @@ final class NativeExportCommands {
                 lease.authorize();
                 lease.remaining();
                 try {
-                    return result.get(25, TimeUnit.MILLISECONDS);
+                    PortableContentExports.Export receipt = result.get(25, TimeUnit.MILLISECONDS);
+                    if (!state.compareAndSet(BuildState.BUILDING, BuildState.HANDED_OFF)) {
+                        throw new ContentExportException(ContentExportException.Reason.UNAVAILABLE);
+                    }
+                    deadline.interrupt();
+                    return receipt;
                 } catch (TimeoutException pending) {
                     // Observe this same build while current command authority and time remain.
                 } catch (CancellationException cancelled) {
@@ -172,7 +183,9 @@ final class NativeExportCommands {
             } catch (InterruptedException stopped) {
                 return;
             }
-            abandoned.set(true);
+            if (!state.compareAndSet(BuildState.BUILDING, BuildState.ABANDONED)) {
+                return;
+            }
             result.cancel(true);
             closeQuietly();
         }
@@ -187,7 +200,7 @@ final class NativeExportCommands {
 
         @Override
         public void close() {
-            abandoned.set(true);
+            state.set(BuildState.ABANDONED);
             deadline.interrupt();
             result.cancel(true);
             packages.closeClient(principal, workspace, client);
