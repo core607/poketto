@@ -1,5 +1,6 @@
 package io.github.core607.poketto.executor.internal;
 
+import io.github.core607.poketto.assets.AssetStorageException;
 import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.content.ContentLimits;
@@ -18,10 +19,18 @@ import tools.jackson.databind.JsonNode;
 final class NativeRepositoryHost {
     private final SelectedFileSaves saves;
     private final SnapshotReader files;
+    private final NativeArtifactCommands artifacts;
+    private final NativeMediaCommands media;
 
-    NativeRepositoryHost(SelectedFileSaves saves, SnapshotReader files) {
+    NativeRepositoryHost(
+            SelectedFileSaves saves,
+            SnapshotReader files,
+            NativeArtifactCommands artifacts,
+            NativeMediaCommands media) {
         this.saves = saves;
         this.files = files;
+        this.artifacts = artifacts;
+        this.media = media;
     }
 
     byte[] reply(AuthPrincipal principal, AccountCommand held, NativeRepositoryLease lease, byte[] bytes) {
@@ -35,8 +44,18 @@ final class NativeRepositoryHost {
                 case "status" -> status(request, held);
                 case "save" -> save(principal, workspace, held, lease, state, request.arguments());
                 case "recover" -> recover(principal, workspace, state, request.arguments());
+                case "artifact_create", "artifact_remove" ->
+                    artifacts.command(held, lease, request.operation(), request.arguments());
+                case "media_list", "media_fetch", "media_import", "media_link" ->
+                    media.command(principal, held, lease, request.operation(), request.arguments());
                 default -> BridgeReplies.failed("OPERATION_UNAVAILABLE");
             };
+        } catch (NativeTransferStore.Capacity capacity) {
+            reply = BridgeReplies.failed(
+                    request.operation().startsWith("artifact_") ? "ARTIFACT_CAPACITY" : "MATERIALIZE_CAPACITY");
+        } catch (AssetStorageException unavailable) {
+            reply = BridgeReplies.failedBecause(
+                    "MEDIA_UNAVAILABLE", unavailable.reason().name());
         } catch (AuthException denied) {
             reply = BridgeReplies.failed("ACCESS_DENIED");
         } catch (IllegalArgumentException invalid) {
@@ -63,7 +82,9 @@ final class NativeRepositoryHost {
                 record.owner().fullRead() ? "full" : "public",
                 record.state().baseCommit(),
                 record.state().originalCommit(),
-                record.state().uncertain()));
+                record.state().uncertain(),
+                record.state().lastSave(),
+                record.state().lastImport()));
     }
 
     private BridgeReplies.Reply save(
@@ -143,7 +164,14 @@ final class NativeRepositoryHost {
         }
     }
 
-    record Status(String copyId, String scope, String baseCommit, String gitCommit, boolean writeOutcomeUnknown) {}
+    record Status(
+            String copyId,
+            String scope,
+            String baseCommit,
+            String gitCommit,
+            boolean writeOutcomeUnknown,
+            BridgeReplies.Recorded lastSave,
+            BridgeReplies.Recorded lastImport) {}
 
     @FunctionalInterface
     interface SnapshotReader {

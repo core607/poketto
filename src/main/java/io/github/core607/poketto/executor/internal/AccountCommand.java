@@ -231,6 +231,19 @@ final class AccountCommand implements AutoCloseable {
                 Math.max(current.expiresAt(), store.nextExpiry()));
     }
 
+    /** An authorized artifact read extends idle retention without acknowledging an interrupted command. */
+    void touch() {
+        requireLive();
+        var current = record();
+        write(
+                current.state(),
+                current.writer(),
+                current.phase(),
+                current.executionId(),
+                current.lastInterruptedCommand(),
+                Math.max(current.expiresAt(), store.nextExpiry()));
+    }
+
     CopyRetention view() {
         var current = record();
         return new CopyRetention(current.expiresAt(), resumed, current.lastInterruptedCommand());

@@ -14,8 +14,9 @@ final class NativeRepositoryLease {
     private final AccountCopyRecord.Writer writer;
     private final SandcrabProtocol.SessionPlan plan;
     private final Runnable authorize;
+    private final int outputLimit;
     private final List<SandcrabProtocol.Reference> commands = new ArrayList<>();
-    private SandcrabProtocol.Reference upload;
+    private final List<SandcrabProtocol.Reference> uploads = new ArrayList<>();
     private SandcrabProtocol.Session session;
     private volatile boolean opening;
     private volatile boolean submitted;
@@ -27,11 +28,13 @@ final class NativeRepositoryLease {
             AccountCopyRecord.NativeStorage storage,
             AccountCopyRecord.Writer writer,
             long ttlMillis,
+            int outputLimit,
             Runnable authorize) {
         this.client = client;
         this.storage = storage;
         this.writer = writer;
         this.authorize = authorize;
+        this.outputLimit = ProtocolValues.inRange(outputLimit, 1, 1_048_576, "repository output limit");
         plan = new SandcrabProtocol.SessionPlan(
                 writer.leaseId().toString(),
                 writer.workerBootId().toString(),
@@ -118,7 +121,7 @@ final class NativeRepositoryLease {
                 false,
                 true,
                 0600);
-        upload = transfer.reference();
+        uploads.add(transfer.reference());
         client.register(session, transfer);
         if (!client.send(transfer, source).succeeded()) {
             throw new WorkerUnavailableException();
@@ -141,8 +144,8 @@ final class NativeRepositoryLease {
 
     SandcrabProtocol.Run command(UUID id, String source, Duration timeout) {
         authorize();
-        var command =
-                new SandcrabProtocol.CommandPlan(id.toString(), plan.serverId(), source, timeout.toMillis(), 65536);
+        var command = new SandcrabProtocol.CommandPlan(
+                id.toString(), plan.serverId(), source, timeout.toMillis(), outputLimit);
         commands.add(command.reference());
         return client.command(session, command);
     }
@@ -186,7 +189,7 @@ final class NativeRepositoryLease {
             }
             client.forget(result);
         }
-        if (upload != null) {
+        for (SandcrabProtocol.Reference upload : uploads) {
             SandcrabProtocol.Upload result = client.upload(upload);
             if (!result.forgettable()) {
                 result = client.cancelUpload(upload);
@@ -196,6 +199,26 @@ final class NativeRepositoryLease {
         if (submitted) {
             client.forget(client.session(plan.reference()));
         }
+    }
+
+    SandcrabProtocol.Upload upload(String path, NativeTransferStore.File file) {
+        authorize();
+        var transfer = new SandcrabProtocol.UploadPlan(
+                UUID.randomUUID().toString(),
+                plan.serverId(),
+                plan.id(),
+                path,
+                "raw",
+                file.size(),
+                file.sha256(),
+                false,
+                true,
+                0600);
+        uploads.add(transfer.reference());
+        client.register(session, transfer);
+        SandcrabProtocol.Upload result = client.send(transfer, file.path());
+        authorize();
+        return result;
     }
 
     static void close(SandcrabClient client, SandcrabProtocol.Reference reference, Duration timeout) {

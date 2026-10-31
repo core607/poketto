@@ -176,6 +176,7 @@ final class NativeRepositoryWorkspace {
                         UUID.randomUUID(),
                         storage),
                 Math.min(120_000, info.profiles().get(profile).sessionTtlMillis()),
+                info.profiles().get(profile).outputLimitBytes(),
                 () -> {
                     if (cancellation.isCancelled()) {
                         throw new WorkerUnavailableException();

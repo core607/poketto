@@ -25,6 +25,7 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -61,11 +62,13 @@ class NativeRepositoryExecutorTests {
     private final Map<String, SandcrabProtocol.Upload> uploads = new HashMap<>();
     private final List<String> commands = new ArrayList<>();
     private final AtomicBoolean closeFails = new AtomicBoolean();
+    private String stdout = "output";
     private SocketAccountJournal journal;
     private AccountCopyRecord.Owner owner;
 
     @BeforeEach
     void configure() throws Exception {
+        root = root.toRealPath();
         journal = new SocketAccountJournal();
         owner = new AccountCopyRecord.Owner(account, workspace.value(), true);
         when(principal.kind()).thenReturn(AuthPrincipal.Kind.API_KEY);
@@ -163,7 +166,8 @@ class NativeRepositoryExecutorTests {
                     command.serverId(),
                     session.profile(),
                     "succeeded",
-                    new SandcrabProtocol.Result(0, "output", "", false, null),
+                    new SandcrabProtocol.Result(
+                            0, command.command().equals("printf user-command") ? stdout : "output", "", false, null),
                     session.id());
             runs.put(run.id(), run);
             return run;
@@ -200,13 +204,21 @@ class NativeRepositoryExecutorTests {
     }
 
     private NativeRepositoryExecutor executor(NativeRepositoryExecutor.CommandObserver observer) {
-        var host = new NativeRepositoryHost(saves, (lease, path, limit) -> new byte[0]);
+        var host = new NativeRepositoryHost(
+                saves,
+                (lease, path, limit) -> new byte[0],
+                mock(NativeArtifactCommands.class),
+                mock(NativeMediaCommands.class));
+        var artifacts = new NativeArtifacts(
+                new NativeTransferStore(root.resolve(UUID.randomUUID().toString()), 16L * 1024 * 1024, 64),
+                Clock.systemUTC());
         return new NativeRepositoryExecutor(
                 client,
                 auth,
                 journal.store(),
                 workspaces(),
                 host,
+                artifacts,
                 observer,
                 new ExecutionLimits(1, 1, Map.of(), Map.of()));
     }
@@ -470,6 +482,37 @@ class NativeRepositoryExecutorTests {
                     journal.record(owner).orElseThrow().writer();
             assertThat(SandcrabProtocol.read(SandcrabProtocol.write(nativeWriter), AccountCopyRecord.Writer.class))
                     .isEqualTo(nativeWriter);
+        }
+    }
+
+    @Test
+    void longOutputIsPagedThroughTheActualExecutorWithoutOpeningAnotherSandbox() {
+        stdout = "猫".repeat(9000);
+        try (var executor = executor((run, timeout, handler) -> {})) {
+            var result = execute(executor, "new");
+            String id = result.artifacts().get("stdout").artifactId();
+            var page = executor.readArtifact(principal, workspace, id, 0, 65536, cancellation)
+                    .orElseThrow();
+            assertThat(page.bytes()).isEqualTo(stdout.getBytes(StandardCharsets.UTF_8));
+            assertThat(result.stdout().getBytes(StandardCharsets.UTF_8)).hasSizeLessThanOrEqualTo(16384);
+            verify(client).open(any());
+        }
+    }
+
+    @Test
+    void readingAnEarlierArtifactDoesNotAcknowledgeAnInterruptedCommand() {
+        stdout = "x".repeat(20000);
+        try (var executor = executor((run, timeout, handler) -> {})) {
+            var result = execute(executor, "new");
+            String id = result.artifacts().get("stdout").artifactId();
+            UUID interrupted = UUID.randomUUID();
+            try (var held = new AccountCommand(journal.store(), owner, cancellation)) {
+                held.begin(interrupted);
+            }
+            assertThat(executor.readArtifact(principal, workspace, id, 0, 16, cancellation))
+                    .isPresent();
+            assertThat(journal.record(owner).orElseThrow().phase()).isEqualTo(AccountCopyRecord.Phase.RUNNING);
+            assertThat(journal.record(owner).orElseThrow().executionId()).isEqualTo(interrupted);
         }
     }
 }

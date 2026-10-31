@@ -32,6 +32,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
     private final AccountCopyStore accounts;
     private final NativeRepositoryWorkspace workspaces;
     private final NativeRepositoryHost host;
+    private final NativeArtifacts artifacts;
     private final CommandObserver observer;
     private final AccountOperations operations;
     private final Map<SiteGroup, Integer> quotas;
@@ -45,6 +46,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
             AccountCopyStore accounts,
             NativeRepositoryWorkspace workspaces,
             NativeRepositoryHost host,
+            NativeArtifacts artifacts,
             CommandObserver observer,
             ExecutionLimits limits) {
         this.client = client;
@@ -52,6 +54,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
         this.accounts = accounts;
         this.workspaces = workspaces;
         this.host = host;
+        this.artifacts = artifacts;
         this.observer = observer;
         operations = new AccountOperations(limits.accountOperations(), auth::siteGroup);
         quotas = limits.accountCopies();
@@ -176,6 +179,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
             NativeRepositoryLease lease = running.lease;
             lease.setup(NativeRepositoryCli.install());
             UUID execution = UUID.randomUUID();
+            running.execution = execution;
             held.begin(execution);
             running.attempted = true;
             SandcrabProtocol.Run submitted = lease.command(execution, command, timeout);
@@ -188,14 +192,17 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
             lease.authorize();
             lease.close();
             workspaces.authorize(principal, held.owner(), held.record());
+            NativeArtifacts.Output output = artifacts.output(
+                    held.record(), result.result(), () -> workspaces.authorize(principal, held.owner(), held.record()));
             held.complete(held.record().state());
-            ExecutionResult response = result(result, held);
+            ExecutionResult response = result(result, held, output);
             running.attempted = false;
             releaseReceipts(lease);
             workspaces.authorize(principal, held.owner(), held.record());
             return response;
         } catch (RuntimeException failure) {
             running.cancel();
+            removeFailedArtifacts(held, running, failure);
             if (running.attempted) {
                 throw new ExecutionUnconfirmedException(held.record().copyId().toString(), held.view(), true, failure);
             }
@@ -203,6 +210,17 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
         } finally {
             running.finished = true;
             release(running);
+        }
+    }
+
+    private void removeFailedArtifacts(AccountCommand held, Active running, RuntimeException failure) {
+        if (held.record() != null && running.execution != null) {
+            try {
+                artifacts.removeExecution(held.record().copyId(), running.execution);
+            } catch (WorkerUnavailableException cleanup) {
+                failure.addSuppressed(cleanup);
+                log.warn("Failed command artifacts remain charged pending cleanup", cleanup);
+            }
         }
     }
 
@@ -224,7 +242,8 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
         }
     }
 
-    private static ExecutionResult result(SandcrabProtocol.Run run, AccountCommand held) {
+    private static ExecutionResult result(
+            SandcrabProtocol.Run run, AccountCommand held, NativeArtifacts.Output output) {
         SandcrabProtocol.Result value = run.result();
         TerminationReason reason =
                 switch (run.state()) {
@@ -240,16 +259,16 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
                 held.record().copyId().toString(),
                 held.record().state().originalCommit(),
                 value.exitCode() == null ? -1 : value.exitCode(),
-                value.stdout() == null ? "" : value.stdout(),
-                value.stderr() == null ? "" : value.stderr(),
-                Boolean.TRUE.equals(value.truncated()),
-                Boolean.TRUE.equals(value.truncated()),
+                output.stdout(),
+                output.stderr(),
+                output.stdoutTruncated(),
+                output.stderrTruncated(),
                 reason == TerminationReason.TIMEOUT,
                 true,
                 false,
                 reason,
-                Map.of(),
-                Map.of(),
+                output.artifacts(),
+                output.errors(),
                 held.view());
     }
 
@@ -263,6 +282,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
 
     /** Retained admission is released only after a confirmed close or the daemon's changed epoch. */
     void reconcile() {
+        artifacts.collect();
         for (Active running : List.copyOf(active.values())) {
             if (!running.finished) {
                 continue;
@@ -298,6 +318,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
                 .filter(value -> event.accountIds().contains(value.owner.accountId())
                         || event.apiKeyIds().contains(value.principal.subjectId()))
                 .forEach(Active::cancel);
+        artifacts.removeAccounts(event.workspaceId(), event.accountIds());
     }
 
     @Override
@@ -330,6 +351,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
                 volume = client.volume(volume);
             }
             held.remove();
+            artifacts.removeCopy(record.copyId());
             client.forget(volume);
             return new DiscardResult(request.id(), DiscardStatus.DISCARDED);
         }
@@ -344,7 +366,29 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
             int limit,
             ExecutionCancellation cancellation) {
         owner(principal, workspace);
-        return Optional.empty();
+        Optional<AccountCopyRecord.Owner> artifactOwner = artifacts.owner(principal, workspace, artifactId);
+        if (artifactOwner.isEmpty()) {
+            return Optional.empty();
+        }
+        try (var held = new AccountCommand(accounts, artifactOwner.get(), cancellation)) {
+            if (held.record() == null || accounts.expired(held.record())) {
+                return Optional.empty();
+            }
+            held.requireLive();
+            Runnable authorize = () -> {
+                if (closed.get() || cancellation.isCancelled()) {
+                    throw new WorkerUnavailableException();
+                }
+                workspaces.authorize(principal, held.owner(), held.record());
+            };
+            authorize.run();
+            Optional<ArtifactChunk> found = artifacts.read(held.record(), artifactId, offset, limit, authorize);
+            if (found.isPresent()) {
+                held.touch();
+            }
+            authorize.run();
+            return found;
+        }
     }
 
     @Override
@@ -352,6 +396,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
         closed.set(true);
         active.values().forEach(Active::cancel);
         reconcile();
+        artifacts.close();
     }
 
     @FunctionalInterface
@@ -369,6 +414,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
         volatile boolean finished;
         volatile boolean epochChanged;
         volatile boolean cancelled;
+        volatile UUID execution;
 
         Active(AuthPrincipal principal, AccountCopyRecord.Owner owner, AccountOperations.Slot account) {
             this.principal = principal;
