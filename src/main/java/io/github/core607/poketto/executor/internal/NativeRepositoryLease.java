@@ -51,6 +51,52 @@ final class NativeRepositoryLease {
         return session;
     }
 
+    SandcrabProtocol.SessionPlan plan() {
+        return plan;
+    }
+
+    boolean mayHaveExecuted() {
+        return submitted;
+    }
+
+    /** Borrows only the runtime; this lease's authorization closure belongs to the current command. */
+    boolean resume(SandcrabProtocol.Session expected) {
+        authorize();
+        submitted = true;
+        if (!plan.reference().equals(expected.reference())) {
+            throw new WorkerUnavailableException();
+        }
+        try {
+            session = client.renew(expected, plan.ttlMillis());
+        } catch (SandcrabClient.Rejected refused) {
+            if (GameSandboxJob.missing(refused, "SESSION_NOT_FOUND")) {
+                return false;
+            }
+            if (refused.code().equals("SESSION_NOT_READY") && inspect().terminal()) {
+                return false;
+            }
+            throw refused;
+        }
+        authorize();
+        if (!session.state().equals("ready")) {
+            if (session.terminal()) {
+                return false;
+            }
+            throw new WorkerUnavailableException();
+        }
+        return true;
+    }
+
+    SandcrabProtocol.Session inspect() {
+        SandcrabProtocol.Session current = client.session(plan.reference());
+        if (!current.profile().equals(plan.profile())
+                || !plan.volumeId().equals(current.volumeId())
+                || current.parentSessionId() != null) {
+            throw new WorkerUnavailableException();
+        }
+        return current;
+    }
+
     void authorize() {
         if (stopped) {
             throw new WorkerUnavailableException();
@@ -147,14 +193,13 @@ final class NativeRepositoryLease {
         var command = new SandcrabProtocol.CommandPlan(
                 id.toString(), plan.serverId(), source, timeout.toMillis(), outputLimit);
         commands.add(command.reference());
-        return client.command(session, command);
-    }
-
-    void contain(RuntimeException failure) {
         try {
-            close();
-        } catch (RuntimeException uncontained) {
-            failure.addSuppressed(uncontained);
+            return client.command(session, command);
+        } catch (SandcrabClient.Rejected refused) {
+            if (!refused.code().equals("ID_CONFLICT")) {
+                commands.remove(command.reference());
+            }
+            throw refused;
         }
     }
 
@@ -178,8 +223,8 @@ final class NativeRepositoryLease {
     }
 
     /** Forgetting follows the durable account acknowledgement and confirmed containment. */
-    void releaseReceipts() {
-        if (!contained) {
+    void releaseReceipts(boolean retainSession) {
+        if (!retainSession && !contained) {
             throw new WorkerUnavailableException();
         }
         for (SandcrabProtocol.Reference command : commands) {
@@ -196,7 +241,7 @@ final class NativeRepositoryLease {
             }
             client.forget(result);
         }
-        if (submitted) {
+        if (submitted && !retainSession) {
             client.forget(client.session(plan.reference()));
         }
     }
@@ -243,6 +288,12 @@ final class NativeRepositoryLease {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new WorkerUnavailableException(interrupted);
+        }
+    }
+
+    static final class Ended extends IllegalStateException {
+        Ended() {
+            super("The retained native session ended before this command was submitted");
         }
     }
 }

@@ -135,6 +135,7 @@ record AccountCopyRecord(
      */
     enum Phase {
         INITIALIZING,
+        ATTACHING,
         READY,
         RUNNING,
         INTERRUPTED,

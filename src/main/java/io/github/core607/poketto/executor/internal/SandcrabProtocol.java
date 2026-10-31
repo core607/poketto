@@ -209,6 +209,12 @@ final class SandcrabProtocol {
         }
     }
 
+    record Renewal(long ttlMillis) {
+        Renewal {
+            ProtocolValues.inRange(ttlMillis, 100, 86_400_000, "session renewal lifetime");
+        }
+    }
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Session(
             String id,

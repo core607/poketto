@@ -168,7 +168,7 @@ final class NativeRepositoryHost {
             String copyId,
             String scope,
             String baseCommit,
-            String gitCommit,
+            String initialCommit,
             boolean writeOutcomeUnknown,
             BridgeReplies.Recorded lastSave,
             BridgeReplies.Recorded lastImport) {}

@@ -72,13 +72,15 @@ final class NativeRepositoryWorkspace {
     NativeRepositoryLease open(
             AuthPrincipal principal,
             AccountCommand held,
+            UUID copyId,
             Optional<String> requested,
             ExecutionCancellation cancellation,
+            SandcrabProtocol.Info info,
+            NativeRepositoryPool.Claim claim,
             Consumer<NativeRepositoryLease> admitted) {
         authorize(principal, held.owner(), held.record());
-        SandcrabProtocol.Info info = info();
         if (held.record() == null) {
-            return initialize(principal, held, requested, cancellation, info, admitted);
+            return initialize(principal, held, copyId, requested, cancellation, info, claim, admitted);
         }
         AccountCopyRecord retained = held.record();
         held.requireLive();
@@ -88,28 +90,36 @@ final class NativeRepositoryWorkspace {
         if (requested.isPresent() && !requested.get().equals(retained.state().baseCommit())) {
             throw new IllegalArgumentException("The requested commit differs from the acknowledged copy baseline");
         }
-        fence(retained, info);
         AccountCopyRecord.NativeStorage storage = retained.writer().storage();
-        storage.requireVolume(client.volume(storage.volumeId().toString()));
-        var lease = lease(principal, held, storage, info, cancellation);
-        admitted.accept(lease);
-        held.bind(lease.writer());
-        try {
-            lease.open();
-            lease.setup("cd /workspace/repository");
-            return lease;
-        } catch (RuntimeException failure) {
-            lease.contain(failure);
-            throw failure;
+        if (claim.fresh()) {
+            fence(retained, info);
+            storage.requireVolume(client.volume(storage.volumeId().toString()));
         }
+        var lease = lease(principal, held, storage, info, cancellation, claim);
+        admitted.accept(lease);
+        if (claim.fresh()) {
+            held.attach(lease.writer());
+        } else {
+            held.bind(lease.writer());
+        }
+        if (claim.fresh()) {
+            openRegistered(lease, held, claim);
+            lease.setup("cd /workspace/repository");
+            held.bind(lease.writer());
+        } else if (!lease.resume(claim.session())) {
+            throw new NativeRepositoryLease.Ended();
+        }
+        return lease;
     }
 
     private NativeRepositoryLease initialize(
             AuthPrincipal principal,
             AccountCommand held,
+            UUID copyId,
             Optional<String> requested,
             ExecutionCancellation cancellation,
             SandcrabProtocol.Info info,
+            NativeRepositoryPool.Claim claim,
             Consumer<NativeRepositoryLease> admitted) {
         var workspace = new WorkspaceId(held.owner().workspaceId());
         if (!held.owner().fullRead() && requested.isPresent()) {
@@ -120,9 +130,9 @@ final class NativeRepositoryWorkspace {
         RepositorySnapshotExports.Export export =
                 projection == null ? exports.create(principal, workspace, requested) : projection.export();
         try {
-            UUID copy = held.owner().newCopyId();
+            UUID copy = copyId;
             var storage = new AccountCopyRecord.NativeStorage(copy, profile, bytes, inodes);
-            var lease = lease(principal, held, storage, info, cancellation);
+            var lease = lease(principal, held, storage, info, cancellation, claim);
             admitted.accept(lease);
             held.initialize(
                     copy,
@@ -132,7 +142,7 @@ final class NativeRepositoryWorkspace {
                     sink -> saves.visitOriginal(
                             principal, workspace, export.commit(), accounts.traversalLimits(), sink),
                     AccountCopyRecord.Phase.INITIALIZING);
-            return initializeVolume(lease, held, principal, workspace, export);
+            return initializeVolume(lease, held, principal, workspace, export, claim);
         } finally {
             exports.release(export.exportId());
         }
@@ -143,21 +153,17 @@ final class NativeRepositoryWorkspace {
             AccountCommand held,
             AuthPrincipal principal,
             WorkspaceId workspace,
-            RepositorySnapshotExports.Export export) {
-        try {
-            lease.createVolume();
-            lease.open();
-            exports.withBundle(principal, workspace, export, path -> lease.uploadBundle(export, path));
-            lease.setup("git clone --quiet --no-checkout --no-hardlinks /workspace/seed.bundle /workspace/repository"
-                    + " && git -C /workspace/repository checkout --quiet --detach "
-                    + ProtocolValues.hex(export.commit(), 40, "export commit")
-                    + " && rm /workspace/seed.bundle && cd /workspace/repository");
-            held.bind(lease.writer());
-            return lease;
-        } catch (RuntimeException failure) {
-            lease.contain(failure);
-            throw failure;
-        }
+            RepositorySnapshotExports.Export export,
+            NativeRepositoryPool.Claim claim) {
+        lease.createVolume();
+        openRegistered(lease, held, claim);
+        exports.withBundle(principal, workspace, export, path -> lease.uploadBundle(export, path));
+        lease.setup("git clone --quiet --no-checkout --no-hardlinks /workspace/seed.bundle /workspace/repository"
+                + " && git -C /workspace/repository checkout --quiet --detach "
+                + ProtocolValues.hex(export.commit(), 40, "export commit")
+                + " && rm /workspace/seed.bundle && cd /workspace/repository");
+        held.bind(lease.writer());
+        return lease;
     }
 
     private NativeRepositoryLease lease(
@@ -165,19 +171,23 @@ final class NativeRepositoryWorkspace {
             AccountCommand held,
             AccountCopyRecord.NativeStorage storage,
             SandcrabProtocol.Info info,
-            ExecutionCancellation cancellation) {
-        return new NativeRepositoryLease(
-                client,
-                storage,
-                new AccountCopyRecord.Writer(
+            ExecutionCancellation cancellation,
+            NativeRepositoryPool.Claim claim) {
+        SandcrabProtocol.Profile settings = info.profiles().get(storage.profile());
+        if (settings == null || !settings.hostCalls()) {
+            throw new WorkerUnavailableException();
+        }
+        AccountCopyRecord.Writer writer = claim.fresh()
+                ? new AccountCopyRecord.Writer(
                         principal.subjectId(),
                         UUID.fromString(info.serverId()),
                         application,
                         UUID.randomUUID(),
-                        storage),
-                Math.min(120_000, info.profiles().get(profile).sessionTtlMillis()),
-                info.profiles().get(profile).outputLimitBytes(),
-                () -> {
+                        storage)
+                : claim.writer();
+        return new NativeRepositoryLease(
+                client, storage, writer, settings.sessionTtlMillis(), settings.outputLimitBytes(), () -> {
+                    claim.requireUsable();
                     if (cancellation.isCancelled()) {
                         throw new WorkerUnavailableException();
                     }
@@ -185,7 +195,22 @@ final class NativeRepositoryWorkspace {
                 });
     }
 
-    /** A changed daemon epoch establishes containment; a missing active record in the same epoch does not. */
+    private static void openRegistered(
+            NativeRepositoryLease lease, AccountCommand held, NativeRepositoryPool.Claim claim) {
+        claim.register(lease.plan(), held.record());
+        boolean ready = false;
+        try {
+            lease.open();
+            claim.ready(lease.session(), held.record());
+            ready = true;
+        } finally {
+            if (!ready) {
+                claim.openFailed(lease.mayHaveExecuted());
+            }
+        }
+    }
+
+    /** Missing sessions prove containment only after durable ready acknowledgement; unknown creates remain fenced. */
     void fence(AccountCopyRecord record, SandcrabProtocol.Info info) {
         if (!record.writer().workerBootId().toString().equals(info.serverId())) {
             return;
@@ -194,8 +219,13 @@ final class NativeRepositoryWorkspace {
         try {
             NativeRepositoryLease.close(client, reference, Duration.ofSeconds(15));
         } catch (SandcrabClient.Rejected missing) {
-            if (!GameSandboxJob.missing(missing, "SESSION_NOT_FOUND")
-                    || record.phase() != AccountCopyRecord.Phase.READY) {
+            boolean acknowledged = Set.of(
+                            AccountCopyRecord.Phase.READY,
+                            AccountCopyRecord.Phase.RUNNING,
+                            AccountCopyRecord.Phase.INTERRUPTED,
+                            AccountCopyRecord.Phase.DISCARDING)
+                    .contains(record.phase());
+            if (!GameSandboxJob.missing(missing, "SESSION_NOT_FOUND") || !acknowledged) {
                 throw missing;
             }
         }

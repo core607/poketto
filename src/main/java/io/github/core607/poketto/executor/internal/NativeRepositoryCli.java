@@ -6,7 +6,7 @@ final class NativeRepositoryCli {
             import argparse,json,subprocess,sys
             parser=argparse.ArgumentParser(prog='poketto')
             commands=parser.add_subparsers(dest='operation',required=True)
-            commands.add_parser('status')
+            commands.add_parser('status',help='Show local acknowledged state; does not fetch remote main or inspect Git HEAD')
             commands.add_parser('recover')
             save=commands.add_parser('save')
             save.add_argument('paths',nargs='*')

@@ -16,7 +16,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import org.slf4j.Logger;
@@ -33,12 +36,18 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
     private final NativeRepositoryWorkspace workspaces;
     private final NativeRepositoryHost host;
     private final NativeArtifacts artifacts;
+    private final NativeRepositoryPool pool;
+    private final NativeRepositoryDisposal disposal;
     private final CommandObserver observer;
     private final AccountOperations operations;
     private final Map<SiteGroup, Integer> quotas;
     private final Semaphore capacity;
     private final Map<UUID, Active> active = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform()
+            .daemon()
+            .name("poketto-native-repository-heartbeat")
+            .factory());
 
     NativeRepositoryExecutor(
             SandcrabClient client,
@@ -55,10 +64,17 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
         this.workspaces = workspaces;
         this.host = host;
         this.artifacts = artifacts;
+        pool = new NativeRepositoryPool(
+                client,
+                limits,
+                binding ->
+                        workspaces.authorize(binding.principal(), binding.key().owner(), binding.record()));
+        disposal = new NativeRepositoryDisposal(client, auth, accounts, pool, workspaces, artifacts::removeCopy);
         this.observer = observer;
         operations = new AccountOperations(limits.accountOperations(), auth::siteGroup);
         quotas = limits.accountCopies();
-        capacity = new Semaphore(Math.min(limits.maxSessions(), limits.maxOperations()));
+        capacity = new Semaphore(limits.maxOperations());
+        heartbeat.scheduleWithFixedDelay(this::maintainDue, 250, 250, TimeUnit.MILLISECONDS);
     }
 
     void checkWorker() {
@@ -110,6 +126,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
                     "Repository command timeout must be between one millisecond and 60 seconds");
         }
         commit.ifPresent(value -> ProtocolValues.hex(value, 40, "requested commit"));
+        ProtocolValues.withoutNul(source, "command source");
     }
 
     private AccountCommand command(
@@ -164,44 +181,17 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
             String command,
             Duration timeout,
             ExecutionCancellation cancellation) {
-        reconcile();
+        SandcrabProtocol.Info info = reconcile();
         AccountOperations.Slot account = acquire(principal);
         var running = new Active(principal, held.owner(), account);
         active.put(running.id, running);
-        try (var registration = cancellation.onCancel(running::cancel)) {
-            workspaces.open(principal, held, requested, cancellation, lease -> {
-                running.lease = lease;
-                if (closed.get() || running.cancelled) {
-                    running.cancel();
-                    throw new WorkerUnavailableException();
-                }
-            });
-            NativeRepositoryLease lease = running.lease;
-            lease.setup(NativeRepositoryCli.install());
-            UUID execution = UUID.randomUUID();
-            running.execution = execution;
-            held.begin(execution);
-            running.attempted = true;
-            SandcrabProtocol.Run submitted = lease.command(execution, command, timeout);
-            observer.observe(
-                    submitted.reference(), timeout.plusSeconds(5), bytes -> host.reply(principal, held, lease, bytes));
-            SandcrabProtocol.Run result = client.get(submitted.reference());
-            if (!result.terminal()) {
-                throw new WorkerUnavailableException();
-            }
-            lease.authorize();
-            lease.close();
-            workspaces.authorize(principal, held.owner(), held.record());
-            NativeArtifacts.Output output = artifacts.output(
-                    held.record(), result.result(), () -> workspaces.authorize(principal, held.owner(), held.record()));
-            held.complete(held.record().state());
-            ExecutionResult response = result(result, held, output);
-            running.attempted = false;
-            releaseReceipts(lease);
-            workspaces.authorize(principal, held.owner(), held.record());
-            return response;
+        try (var registration = cancellation.onCancel(running::cancel);
+                var claim = open(principal, held, requested, cancellation, running, info)) {
+            return run(principal, held, command, timeout, running, claim);
         } catch (RuntimeException failure) {
-            running.cancel();
+            if (!running.reusableRefusal) {
+                running.cancel();
+            }
             removeFailedArtifacts(held, running, failure);
             if (running.attempted) {
                 throw new ExecutionUnconfirmedException(held.record().copyId().toString(), held.view(), true, failure);
@@ -210,6 +200,123 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
         } finally {
             running.finished = true;
             release(running);
+        }
+    }
+
+    private NativeRepositoryPool.Claim open(
+            AuthPrincipal principal,
+            AccountCommand held,
+            Optional<String> requested,
+            ExecutionCancellation cancellation,
+            Active running,
+            SandcrabProtocol.Info admittedInfo) {
+        UUID copy =
+                held.record() == null ? held.owner().newCopyId() : held.record().copyId();
+        for (int attempt = 0; attempt < 2; attempt++) {
+            if (closed.get() || running.cancelled) {
+                throw new WorkerUnavailableException();
+            }
+            SandcrabProtocol.Info info = attempt == 0 ? admittedInfo : workspaces.info();
+            var claim = pool.claim(principal, held.owner(), copy, held.record(), info);
+            running.claim = claim;
+            try {
+                workspaces.open(principal, held, copy, requested, cancellation, info, claim, lease -> {
+                    running.lease = lease;
+                    if (closed.get() || running.cancelled) {
+                        running.cancel();
+                        throw new WorkerUnavailableException();
+                    }
+                });
+                if (claim.fresh()) {
+                    running.lease.setup(NativeRepositoryCli.install());
+                }
+                return claim;
+            } catch (NativeRepositoryLease.Ended ended) {
+                claim.invalidate();
+                if (attempt != 0) {
+                    throw ended;
+                }
+            } catch (RuntimeException failure) {
+                try {
+                    claim.close();
+                } catch (RuntimeException cleanup) {
+                    failure.addSuppressed(cleanup);
+                }
+                throw failure;
+            }
+        }
+        throw new WorkerUnavailableException();
+    }
+
+    private ExecutionResult run(
+            AuthPrincipal principal,
+            AccountCommand held,
+            String command,
+            Duration timeout,
+            Active running,
+            NativeRepositoryPool.Claim claim) {
+        NativeRepositoryLease lease = running.lease;
+        UUID execution = UUID.randomUUID();
+        running.execution = execution;
+        held.begin(execution);
+        running.attempted = true;
+        SandcrabProtocol.Run submitted = submit(lease, held, running, claim, execution, command, timeout);
+        observer.observe(
+                submitted.reference(), timeout.plusSeconds(5), bytes -> host.reply(principal, held, lease, bytes));
+        SandcrabProtocol.Run completed = client.get(submitted.reference());
+        if (!completed.terminal()) {
+            throw new WorkerUnavailableException();
+        }
+        running.operationComplete = true;
+        lease.authorize();
+        SandcrabProtocol.Session observed = lease.inspect();
+        boolean keep = observed.state().equals("ready")
+                && completed.result().code() == null
+                && (completed.state().equals("succeeded") || completed.state().equals("failed"));
+        if (!keep) {
+            lease.close();
+        }
+        workspaces.authorize(principal, held.owner(), held.record());
+        NativeArtifacts.Output output = artifacts.output(
+                held.record(), completed.result(), () -> workspaces.authorize(principal, held.owner(), held.record()));
+        held.complete(held.record().state());
+        releaseReceipts(lease, keep);
+        workspaces.authorize(principal, held.owner(), held.record());
+        if (keep) {
+            claim.retain(held.record(), observed);
+        }
+        running.attempted = false;
+        return result(completed, held, output, claim.fresh());
+    }
+
+    private SandcrabProtocol.Run submit(
+            NativeRepositoryLease lease,
+            AccountCommand held,
+            Active running,
+            NativeRepositoryPool.Claim claim,
+            UUID execution,
+            String command,
+            Duration timeout) {
+        try {
+            return lease.command(execution, command, timeout);
+        } catch (SandcrabClient.Rejected refused) {
+            if (refused.code().equals("ID_CONFLICT")) {
+                throw refused;
+            }
+            held.refused();
+            running.attempted = false;
+            running.operationComplete = true;
+            lease.authorize();
+            SandcrabProtocol.Session observed = lease.inspect();
+            if (observed.state().equals("ready")) {
+                releaseReceipts(lease, true);
+                claim.retain(held.record(), observed);
+                running.reusableRefusal = true;
+            }
+            ExecutionAdmissionException.Reason reason = refused.status() == 429
+                    ? ExecutionAdmissionException.Reason.CAPACITY
+                    : ExecutionAdmissionException.Reason.UNAVAILABLE;
+            throw new ExecutionAdmissionException(reason, true, refused);
         }
     }
 
@@ -243,7 +350,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
     }
 
     private static ExecutionResult result(
-            SandcrabProtocol.Run run, AccountCommand held, NativeArtifacts.Output output) {
+            SandcrabProtocol.Run run, AccountCommand held, NativeArtifacts.Output output, boolean fresh) {
         SandcrabProtocol.Result value = run.result();
         TerminationReason reason =
                 switch (run.state()) {
@@ -264,7 +371,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
                 output.stdoutTruncated(),
                 output.stderrTruncated(),
                 reason == TerminationReason.TIMEOUT,
-                true,
+                fresh,
                 false,
                 reason,
                 output.artifacts(),
@@ -272,38 +379,31 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
                 held.view());
     }
 
-    private static void releaseReceipts(NativeRepositoryLease lease) {
+    private static void releaseReceipts(NativeRepositoryLease lease, boolean retainSession) {
         try {
-            lease.releaseReceipts();
+            lease.releaseReceipts(retainSession);
         } catch (WorkerUnavailableException | SandcrabClient.Rejected failure) {
             log.warn("Contained native repository receipts remain for reconciliation", failure);
         }
     }
 
     /** Retained admission is released only after a confirmed close or the daemon's changed epoch. */
-    void reconcile() {
+    SandcrabProtocol.Info reconcile() {
         artifacts.collect();
+        SandcrabProtocol.Info info = workspaces.info();
+        pool.maintain(info);
         for (Active running : List.copyOf(active.values())) {
             if (!running.finished) {
                 continue;
             }
-            NativeRepositoryLease lease = running.lease;
-            if (lease != null
-                    && !lease.writer()
-                            .workerBootId()
-                            .toString()
-                            .equals(client.info().serverId())) {
-                running.epochChanged = true;
-            } else {
-                running.cancel();
-            }
             release(running);
         }
+        return info;
     }
 
     private void release(Active running) {
         if (running.finished
-                && (running.lease == null || running.lease.contained() || running.epochChanged)
+                && (running.operationComplete || running.claim == null || running.claim.contained())
                 && active.remove(running.id, running)) {
             running.account.close();
             capacity.release();
@@ -312,6 +412,7 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
 
     @EventListener
     void revoked(AuthRevocation event) {
+        pool.revoked(event);
         active.values().stream()
                 .filter(value ->
                         value.owner.workspaceId().equals(event.workspaceId().value()))
@@ -327,34 +428,12 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
             WorkspaceId workspace,
             DiscardRequest request,
             ExecutionCancellation cancellation) {
-        owner(principal, workspace);
-        var scope = new AccountCopyRecord.Owner(principal.accountId(), workspace.value(), true);
-        AccountCopyRecord.Owner owner = accounts.ownerFor(scope, request.id());
-        try (var held = new AccountCommand(accounts, owner, cancellation)) {
-            if (held.record() == null || !held.record().copyId().toString().equals(request.id())) {
-                return new DiscardResult(request.id(), DiscardStatus.ABSENT);
-            }
-            AccountCopyRecord record = held.record();
-            if (record.writer().storage() == null) {
-                throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, true);
-            }
-            workspaces.fence(record, workspaces.info());
-            auth.authorize(principal, workspace, Capability.EXECUTE_REPOSITORY);
-            SandcrabVolume volume =
-                    client.volume(record.writer().storage().volumeId().toString());
-            record.writer().storage().requireVolume(volume);
-            held.beginDiscard();
-            volume = client.deleteVolume(volume);
-            long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
-            while (!volume.state().equals("deleted")) {
-                NativeRepositoryLease.pause(deadline, () -> {});
-                volume = client.volume(volume);
-            }
-            held.remove();
-            artifacts.removeCopy(record.copyId());
-            client.forget(volume);
-            return new DiscardResult(request.id(), DiscardStatus.DISCARDED);
-        }
+        return disposal.discard(principal, workspace, request, cancellation);
+    }
+
+    int collectExpiredCopies() {
+        artifacts.collect();
+        return disposal.collectExpiredCopies();
     }
 
     @Override
@@ -394,9 +473,25 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
     @Override
     public void close() {
         closed.set(true);
+        disposal.close();
+        heartbeat.shutdownNow();
         active.values().forEach(Active::cancel);
-        reconcile();
-        artifacts.close();
+        try (artifacts) {
+            pool.close();
+            active.values().forEach(this::release);
+        }
+    }
+
+    private void maintainDue() {
+        try {
+            if (!closed.get() && pool.maintenanceDue()) {
+                pool.maintain(workspaces.info(), false);
+                active.values().forEach(this::release);
+            }
+        } catch (RuntimeException failure) {
+            pool.deferMaintenance();
+            log.warn("Native repository maintenance awaits confirmed authority or containment", failure);
+        }
     }
 
     @FunctionalInterface
@@ -410,9 +505,11 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
         final AccountCopyRecord.Owner owner;
         final AccountOperations.Slot account;
         volatile NativeRepositoryLease lease;
+        volatile NativeRepositoryPool.Claim claim;
         volatile boolean attempted;
         volatile boolean finished;
-        volatile boolean epochChanged;
+        volatile boolean operationComplete;
+        volatile boolean reusableRefusal;
         volatile boolean cancelled;
         volatile UUID execution;
 
@@ -424,9 +521,9 @@ final class NativeRepositoryExecutor implements RepositoryExecutor, AutoCloseabl
 
         void cancel() {
             cancelled = true;
-            if (lease != null) {
+            if (claim != null) {
                 try {
-                    lease.close();
+                    claim.invalidate();
                 } catch (WorkerUnavailableException | SandcrabClient.Rejected failure) {
                     log.warn("Native repository containment remains unconfirmed", failure);
                 }

@@ -146,6 +146,15 @@ final class AccountCommand implements AutoCloseable {
                 && record().copyId().equals(copy);
     }
 
+    /** A native reattachment records possible creation before POST; READY is a separate acknowledged checkpoint. */
+    void attach(AccountCopyRecord.Writer writer) {
+        requireLive();
+        var current = record();
+        resumed |= !current.writer().equals(writer);
+        UUID interrupted = current.executionId() == null ? current.lastInterruptedCommand() : current.executionId();
+        write(current.state(), writer, AccountCopyRecord.Phase.ATTACHING, null, interrupted, current.expiresAt());
+    }
+
     /** Called only after the previous lease is confirmed contained. */
     void bind(AccountCopyRecord.Writer writer) {
         requireLive();

@@ -197,6 +197,22 @@ final class SandcrabClient {
         return run;
     }
 
+    SandcrabProtocol.Session renew(SandcrabProtocol.Session expected, long ttlMillis) {
+        SandcrabProtocol.Session actual = request(
+                "POST",
+                sessionPath(expected.reference()) + "/renew",
+                new SandcrabProtocol.Renewal(ttlMillis),
+                SandcrabProtocol.Session.class,
+                200);
+        require(expected.reference().equals(actual.reference()), "Session renewal changed its identity or epoch");
+        require(
+                expected.profile().equals(actual.profile())
+                        && Objects.equals(expected.volumeId(), actual.volumeId())
+                        && Objects.equals(expected.parentSessionId(), actual.parentSessionId()),
+                "Session renewal changed its workspace scope");
+        return actual;
+    }
+
     /** Closing is asynchronous; stopping or closing does not establish containment. */
     SandcrabProtocol.Session close(SandcrabProtocol.Reference reference) {
         SandcrabProtocol.Session session = request(
