@@ -18,10 +18,13 @@ import io.github.core607.poketto.mcp.RepositoryExecutor;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
     @Test
@@ -201,6 +204,33 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
         }
         verify(client, never()).createVolume(any());
         verify(client, never()).open(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {15_000, 240_000})
+    void importsUseTheAdvertisedProfileLifetime(long lifetime) {
+        AccountCopyRecord before = legacyCopy();
+        var settings = new SandcrabProtocol.Profile(60_000, 65536, "none", lifetime, 8_388_608, true);
+        var info = new SandcrabProtocol.Info(1, epoch, client.info().capabilities(), Map.of("repository", settings));
+        var archive = new NativeRepositoryMigration.Archive(1024, "f".repeat(64));
+        var plan = NativeRepositoryMigration.plan(before, info, archive, archive, "repository", 8_388_608, 256);
+        assertThat(plan.work().session().ttlMillis()).isEqualTo(lifetime);
+        assertThat(plan.home().session().ttlMillis()).isEqualTo(lifetime);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"missing", "without-calls"})
+    void importsRefuseProfilesThatCannotRunRepositoryCommands(String profile) {
+        AccountCopyRecord before = legacyCopy();
+        var settings = new SandcrabProtocol.Profile(60_000, 65536, "none", 15_000, 8_388_608, false);
+        var info = new SandcrabProtocol.Info(1, epoch, client.info().capabilities(), Map.of("without-calls", settings));
+        var archive = new NativeRepositoryMigration.Archive(1024, "f".repeat(64));
+        assertThatThrownBy(
+                        () -> NativeRepositoryMigration.plan(before, info, archive, archive, profile, 8_388_608, 256))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(client, never()).createVolume(any());
+        verify(client, never()).open(any());
+        assertThat(journal.record(owner)).contains(before);
     }
 
     @Test

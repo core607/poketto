@@ -35,8 +35,15 @@ final class NativeRepositoryMigration {
             throw new IllegalArgumentException(
                     "Complete the retained move or synchronization before importing its copy");
         }
-        Part work = part(current, info, workArchive, profile, NativeRepositoryLayout.WORK);
-        Part home = part(current, info, homeArchive, profile, NativeRepositoryLayout.HOME);
+        SandcrabProtocol.Profile settings = info.profiles().get(profile);
+        if (settings == null) {
+            throw new IllegalArgumentException("Import requires an advertised native profile");
+        }
+        if (!settings.hostCalls()) {
+            throw new IllegalArgumentException("Import requires a native profile with host calls");
+        }
+        Part work = part(current, info, workArchive, profile, settings.sessionTtlMillis(), NativeRepositoryLayout.WORK);
+        Part home = part(current, info, homeArchive, profile, settings.sessionTtlMillis(), NativeRepositoryLayout.HOME);
         var storage = new AccountCopyRecord.NativeStorage(current.copyId(), profile, byteLimit, inodeLimit);
         var writer = new AccountCopyRecord.Writer(
                 current.writer().principalId(),
@@ -54,14 +61,19 @@ final class NativeRepositoryMigration {
     }
 
     private static Part part(
-            AccountCopyRecord current, SandcrabProtocol.Info info, Archive archive, String profile, String path) {
+            AccountCopyRecord current,
+            SandcrabProtocol.Info info,
+            Archive archive,
+            String profile,
+            long ttlMillis,
+            String path) {
         String session = UUID.randomUUID().toString();
         return new Part(
                 new SandcrabProtocol.SessionPlan(
                         session,
                         info.serverId(),
                         profile,
-                        120_000,
+                        ttlMillis,
                         current.copyId().toString()),
                 new SandcrabProtocol.UploadPlan(
                         UUID.randomUUID().toString(),
