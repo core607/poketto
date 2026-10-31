@@ -232,7 +232,7 @@ receipt = response.json()
 
 每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录，提供域名、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。随后用 `./deploy.sh --initialize-admin` 创建首个管理员。
 
-对于自管 Compose 配置的实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)更新应用与前端镜像及显式身份配置；启用执行功能时，验证独立安装的[原生服务](../deploy/README.md#native-service-dependency)。安装当前版本的受保护更新入口，并设置 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 可选 `pull`（主机使用部署任务的包读取令牌，从规范镜像仓库拉取两个摘要）或 `transfer`（通过 SSH 传输带校验和的归档，供访问不到镜像仓库的主机使用）。
+自管 Compose 的实例通过[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)更新应用与前端镜像及显式身份配置；启用执行功能时，验证独立安装的[原生服务](../deploy/README.md#native-service-dependency)。安装当前版本的受保护更新入口，并设置 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 可选 `pull`（主机使用部署任务的包读取令牌，从规范镜像仓库拉取两个摘要）或 `transfer`（通过 SSH 传输带校验和的归档，供访问不到镜像仓库的主机使用）。
 
 `transfer.sh --existing --set-stdin` 接受按行分隔的 `KEY=value`，仅限 `POKETTO_RESEND_API_KEY`、`POKETTO_EMAIL_FROM`、`POKETTO_EMAIL_DAILY_LIMIT`、`POKETTO_GOOGLE_CLIENT_ID`、`POKETTO_GOOGLE_CLIENT_SECRET`、`POKETTO_SUPPORT_EMAIL` 和 [GitHub App 配置指南](github-app.md)中的五项设置，只通过标准输入传给受保护更新器。值按字面传递，包括 `$` 和引号。权限为 0600 的 `.deployment/images.json` 覆盖文件保留未提供的设置，显式空值清除设置；手动运行 Compose 时，将该覆盖文件放在最后。手动部署使用主机上的身份配置。启用 CI 部署前，先将 Resend 密钥、Google 凭证和 GitHub App 设置配置为 GitHub secrets，将发件地址、每日限额和联系邮箱配置为 GitHub variables。此后两种布局的这些配置均以 GitHub 为准：未设置或已删除的配置会清除主机上的值，未设置每日限额时恢复为 100。Google 两个字段须一起清空。中断后使用相同镜像和配置重试。
 

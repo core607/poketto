@@ -601,7 +601,7 @@ later runs without options redeploy the recorded pins. Both application revision
 labels must match, and PostgreSQL and Caddy references must carry registry digests.
 Then create the first administrator with `./deploy.sh --initialize-admin`.
 
-For an operator-owned Compose installation,
+With operator-managed Compose,
 [existing-installation delivery](../notes/implemented/2026-09-08-existing-installation-delivery.md)
 updates app/frontend images and explicitly supplied identity settings. Execution-enabled deployments
 verify the independently installed [native service](../deploy/README.md#native-service-dependency).
