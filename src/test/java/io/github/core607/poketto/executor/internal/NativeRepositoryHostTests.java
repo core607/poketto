@@ -69,7 +69,8 @@ class NativeRepositoryHostTests {
                 files,
                 mock(NativeArtifactCommands.class),
                 mock(NativeMediaCommands.class),
-                mock(NativePlanCommands.class));
+                mock(NativePlanCommands.class),
+                mock(NativeExportCommands.class));
     }
 
     private JsonNode reply(NativeRepositoryHost host, String request) {

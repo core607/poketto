@@ -28,18 +28,21 @@ final class NativeRepositoryHost {
     private final NativeArtifactCommands artifacts;
     private final NativeMediaCommands media;
     private final NativePlanCommands plans;
+    private final NativeExportCommands exports;
 
     NativeRepositoryHost(
             SelectedFileSaves saves,
             SnapshotReader files,
             NativeArtifactCommands artifacts,
             NativeMediaCommands media,
-            NativePlanCommands plans) {
+            NativePlanCommands plans,
+            NativeExportCommands exports) {
         this.saves = saves;
         this.files = files;
         this.artifacts = artifacts;
         this.media = media;
         this.plans = plans;
+        this.exports = exports;
     }
 
     byte[] reply(AuthPrincipal principal, AccountCommand held, NativeRepositoryLease lease, byte[] bytes) {
@@ -69,6 +72,7 @@ final class NativeRepositoryHost {
                             request.arguments(),
                             () -> lease.outOfTime(Duration.ofSeconds(5)));
                 case "save" -> save(principal, workspace, held, lease, state, request.arguments());
+                case "export" -> exports.command(principal, held, lease, request.arguments());
                 case "recover" -> recover(principal, workspace, held, lease, state, request.arguments());
                 case "artifact_create", "artifact_remove" ->
                     artifacts.command(held, lease, request.operation(), request.arguments());
@@ -95,6 +99,10 @@ final class NativeRepositoryHost {
             reply = BridgeReplies.failed("REPOSITORY_UNAVAILABLE");
         }
         lease.authorize();
+        return encode(reply);
+    }
+
+    private static byte[] encode(BridgeReplies.Reply reply) {
         byte[] response = SandcrabProtocol.write(reply);
         if (response.length > SandcrabEventProtocol.CALL_BYTES) {
             throw new WorkerUnavailableException(

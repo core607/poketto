@@ -237,7 +237,8 @@ abstract class NativeRepositoryTestFixture {
                 (lease, path, limit) -> new byte[0],
                 mock(NativeArtifactCommands.class),
                 mock(NativeMediaCommands.class),
-                mock(NativePlanCommands.class));
+                mock(NativePlanCommands.class),
+                mock(NativeExportCommands.class));
     }
 
     RepositoryExecutor.ExecutionResult execute(NativeRepositoryExecutor executor, String copy) {

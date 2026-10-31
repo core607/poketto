@@ -100,6 +100,28 @@ class NativeRepositoryCliLinuxTests {
     }
 
     @Test
+    void portableExportsPreserveVisibleSelectionsOutputAndExplicitPublicScope() throws Exception {
+        Finished installed = installed(python("""
+                        import json,subprocess
+                        commands=[['poketto','export','private/汉=字.md','--output','results/kept file.zip'],
+                                  ['poketto','export','.','--output','public.zip','--public']]
+                        print(json.dumps([json.loads(subprocess.run(command,check=True,stdout=subprocess.PIPE).stdout)
+                                          for command in commands]))
+                        """), "echo");
+        assertThat(installed.exit()).as(installed.error()).isZero();
+        JsonNode replies = json.readTree(installed.output());
+        assertThat(replies.get(0).at("/result/operation").stringValue()).isEqualTo("export");
+        assertThat(replies.get(0).at("/result/arguments/paths/0").stringValue()).isEqualTo("private/汉=字.md");
+        assertThat(replies.get(0).at("/result/arguments/output").stringValue()).isEqualTo("results/kept file.zip");
+        assertThat(replies.get(0).at("/result/arguments/publicOnly").booleanValue())
+                .isFalse();
+        assertThat(replies.get(1).at("/result/arguments/paths/0").stringValue()).isEqualTo(".");
+        assertThat(replies.get(1).at("/result/arguments/publicOnly").booleanValue())
+                .isTrue();
+        assertThat(installed.requests()).hasSize(2);
+    }
+
+    @Test
     void explicitPreparationAcceptanceAndRecoveryCommandsKeepTheirSelections() throws Exception {
         String plan = UUID.randomUUID().toString();
         Finished installed = installed(python("""

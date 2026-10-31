@@ -413,13 +413,13 @@ Exhausted capacity returns 429; a missing, expired or foreign handle returns 404
 filesystem without POSIX permissions returns 503. See the
 [export decision](../notes/implemented/2026-09-10-portable-content-exports.md).
 
-In a CodeAct session, run `poketto export PATH... --output FILE [--public]`; `.`
-selects the visible workspace, and public-only sessions always export the public
-projection. The ZIP holds saved content, not local edits, and never overwrites a
-different existing file. Retrieve it with
-`poketto artifact create FILE --type application/zip` and `get_artifact` when it fits
-the artifact limits. `MATERIALIZE_CAPACITY` keeps the session and files: free local
-space, select fewer files, or use browser export.
+Run `poketto export PATH... --output FILE [--public]`; `.` selects the visible
+workspace. Public copies always export the current public projection. ZIPs contain
+saved content, exclude local edits and preserve different existing files. Command
+time and profile transfer limits bound exports. Use
+`poketto artifact create FILE --type application/zip` and `get_artifact` within
+artifact limits. `EXPORT_CAPACITY` / `MATERIALIZE_CAPACITY` preserve files: select
+fewer paths, free copy space or use browser export.
 
 ## MCP and isolated execution
 

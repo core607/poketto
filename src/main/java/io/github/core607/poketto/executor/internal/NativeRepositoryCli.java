@@ -16,6 +16,10 @@ final class NativeRepositoryCli {
             save=commands.add_parser('save')
             save.add_argument('paths',nargs='*')
             save.add_argument('--delete',action='append',default=[])
+            exported=commands.add_parser('export',help='Export saved content and required media as a portable ZIP; local edits are excluded')
+            exported.add_argument('paths',nargs='+')
+            exported.add_argument('--output',required=True)
+            exported.add_argument('--public',dest='public_only',action='store_true')
             sync=commands.add_parser('sync',help='Prepare candidates without replacing working files; edit, then accept explicit hashes')
             syncing=sync.add_subparsers(dest='sync_operation')
             syncing.add_parser('prepare')
@@ -83,6 +87,8 @@ final class NativeRepositoryCli {
                 if not args.paths and not args.delete:
                     parser.error('save requires selected files or explicit --delete paths')
                 arguments={'writes':args.paths,'deletes':args.delete}
+            elif operation=='export':
+                arguments={'paths':args.paths,'output':args.output,'publicOnly':args.public_only}
             elif operation in ('sync','move'):
                 action=args.sync_operation if operation=='sync' else args.move_operation
                 operation=operation+'_'+action

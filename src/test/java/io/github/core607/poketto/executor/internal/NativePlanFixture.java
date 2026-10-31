@@ -130,7 +130,12 @@ abstract class NativePlanFixture {
         storagePeers();
         commands = new NativePlanCommands(files, saves);
         host = new NativeRepositoryHost(
-                saves, files, mock(NativeArtifactCommands.class), mock(NativeMediaCommands.class), commands);
+                saves,
+                files,
+                mock(NativeArtifactCommands.class),
+                mock(NativeMediaCommands.class),
+                commands,
+                mock(NativeExportCommands.class));
     }
 
     private void storagePeers() throws Exception {

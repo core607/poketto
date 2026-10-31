@@ -160,7 +160,7 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 服务在 `<data-dir>/portable-exports/<workspace-id>` 暂存导出包。同时最多构建一个包、下载两个包（同一工作空间最多一个），每个包最多 512 MiB 原件、256 MiB 文本和 10,000 个条目。`poketto.exports` 下可配置 `max-zip-bytes`（800 MiB）、`max-retained-bytes`（2 GiB）、`max-workspace-bytes`（1600 MiB）、`max-packages`（8）、`lifetime-seconds`（600）与 `build-seconds`（120）。容量不足返回 429；缺失、过期或属于其他身份的句柄返回 404；不支持 POSIX 权限的文件系统返回 503。详见[导出决策](../notes/implemented/2026-09-10-portable-content-exports.md)。
 
-在 CodeAct 会话中使用 `poketto export PATH... --output FILE [--public]`；`.` 表示可见工作空间，仅公开读取的会话始终导出公开投影。ZIP 包含已保存的内容，不包含本地编辑，也不会覆盖已有的不同文件。结果符合 artifact 限额时，可执行 `poketto artifact create FILE --type application/zip`，再通过 `get_artifact` 取回。`MATERIALIZE_CAPACITY` 会保留会话和已有文件：清理本地空间、缩小选择范围，或改用浏览器导出。
+CodeAct 中运行 `poketto export PATH... --output FILE [--public]`；`.` 选择可见空间，公开副本仅导出当前投影。ZIP 使用已保存内容，排除本地编辑，保留不同的现有文件。命令时限与 profile 传输上限约束导出。符合制品限额时，用 `poketto artifact create FILE --type application/zip` 和 `get_artifact` 取回。`EXPORT_CAPACITY` / `MATERIALIZE_CAPACITY` 保留文件：缩小选择、释放空间或用浏览器导出。
 
 ## MCP 与隔离执行
 
