@@ -459,6 +459,12 @@ jobs:
             --binary "$PWD/build/executor-service/bin/sandcrab" --tools /var/lib/poketto-recovery/tools \
             --java /var/lib/poketto-recovery/jdk/bin/java --revision "$(git rev-parse HEAD)" \
             --evidence "$PWD/build/native-recovery/retained-process.json"
+      - name: Give the uploader ownership of the private fixture observations
+        if: always()
+        run: |
+          if [ -d build/native-recovery ]; then
+            sudo chown -R --no-dereference "$(id -u):$(id -g)" "$PWD/build/native-recovery"
+          fi
       - name: Upload recovery observations
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
