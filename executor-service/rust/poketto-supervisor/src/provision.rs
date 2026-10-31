@@ -5,13 +5,11 @@ use crate::{
 };
 use rustix::fs::{Gid, OFlags, chown, fchown};
 use sandcrab_core::{
+    install::unit_name as name,
     mailbox::Mailbox,
     unit::{Maintenance, stop_launch},
 };
-use sandcrab_daemon::{
-    install::unit_name as name,
-    runtime::{self, InitError, Runtime},
-};
+use sandcrab_daemon::runtime::{self, InitError, Runtime};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -164,7 +162,7 @@ impl Factory {
             config.disk_bytes,
             config.disk_inodes,
         )?;
-        let resource_pool = sandcrab_daemon::install::resource_pool(&config.resource_slice)?;
+        let resource_pool = sandcrab_core::install::resource_pool(&config.resource_slice)?;
         Ok(Self {
             config,
             pool,

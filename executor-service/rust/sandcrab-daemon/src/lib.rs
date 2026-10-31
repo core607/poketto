@@ -7,7 +7,6 @@
 mod admission;
 pub mod files;
 pub mod install;
-pub mod job;
 pub mod runtime;
 pub mod server;
 use sandcrab_core::{artifacts, mailbox, transfer, uuid};
@@ -87,8 +86,7 @@ const ENCODING: GeneralPurpose = GeneralPurpose::new(
 pub trait Extension: Send + Sync {
     /// Signed operations the extension accepts in addition to the daemon's own.
     fn operations(&self) -> &'static [&'static str];
-    /// The daemon's own signed operations this service accepts; a service of finite jobs
-    /// keeps only `REVOKE`.
+    /// The daemon's own signed operations this service accepts.
     fn lease_operations(&self) -> &'static [&'static str] {
         LEASE_OPERATIONS
     }
@@ -215,10 +213,8 @@ fn default_live_units() -> usize {
     224
 }
 /// One lease. `commit`, `git_commit` and `scope` are labels the extension sets; the daemon
-/// compares `commit` with each EXEC request and returns the labels unchanged. A finite job's
-/// lease (`job`) is closed and removed by the handler that runs it, never by cancellation.
+/// compares `commit` with each EXEC request and returns the labels unchanged.
 pub struct Session {
-    pub job: bool,
     pub identity: Vec<String>,
     pub deadline: f64,
     pub cancelled: Arc<AtomicBool>,
@@ -332,7 +328,6 @@ impl Service {
             state.sessions.insert(
                 lease.into(),
                 Session {
-                    job: false,
                     identity,
                     deadline: value["deadline"].as_f64().ok_or("deadline")?,
                     cancelled: Arc::new(AtomicBool::new(false)),
@@ -1048,10 +1043,7 @@ impl Service {
             let Some(session) = state.sessions.get(lease) else {
                 return;
             };
-            if !session.cancelled.load(Ordering::SeqCst)
-                || session.status == "CLOSED"
-                || session.job
-            {
+            if !session.cancelled.load(Ordering::SeqCst) || session.status == "CLOSED" {
                 return;
             }
             (session.bridge.clone(), session.runtime.clone())

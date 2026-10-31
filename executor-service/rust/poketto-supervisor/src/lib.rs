@@ -123,7 +123,7 @@ pub fn fixture_main() -> Result<(), Box<dyn std::error::Error>> {
     let root_lock = fixture
         .runtime_root
         .as_ref()
-        .map(|path| sandcrab_daemon::install::runtime_lock(path))
+        .map(|path| sandcrab_core::install::runtime_lock(path))
         .transpose()?;
     if let Some(config) = &backend
         && fixture.runtime_root.as_ref() != Some(&config.runtime_root)
