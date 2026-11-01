@@ -11,6 +11,10 @@ POOL_BYTES = 512 * 1024 * 1024
 COPY_BYTES = 64 * 1024 * 1024
 COPY_INODES = 8192
 TRANSFER_BYTES = 16 * 1024 * 1024
+# A media/artifact capture reserves its 128 MiB maximum before the exact size is
+# known. Allow that reservation alongside retained artifacts; native transfers
+# still enforce TRANSFER_BYTES and volumes retain their independent 64 MiB quota.
+APPLICATION_TRANSFER_BYTES = 256 * 1024 * 1024
 
 
 def run(arguments, **options):

@@ -16,7 +16,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from native_repository_fixture import (COPY_BYTES, COPY_INODES, POOL_BYTES, TRANSFER_BYTES,
+from native_repository_fixture import (APPLICATION_TRANSFER_BYTES, COPY_BYTES, COPY_INODES, POOL_BYTES,
                                        NativeRepositoryFixture, sha, stop_unit, verify_runtime)
 from native_app_fixture import OwnedApplication
 
@@ -125,7 +125,7 @@ def main():
             '--poketto.executor.copies.inodes=' + str(COPY_INODES),
             '--poketto.executor.profile=repository',
             '--poketto.executor.transfers.directory=' + str(disk_pool / 'transfers'),
-            '--poketto.executor.transfers.max-bytes=' + str(TRANSFER_BYTES),
+            '--poketto.executor.transfers.max-bytes=' + str(APPLICATION_TRANSFER_BYTES),
             '--poketto.executor.copies.original-bytes=67108864',
             '--poketto.executor.copies.original-expanded-bytes=268435456',
             '--poketto.executor.max-sessions=' + str(max(4, args.agents)),
