@@ -58,7 +58,8 @@ record StoredAccountCopy(
                         state.move(),
                         state.lastSave(),
                         state.lastImport(),
-                        state.sync()),
+                        state.sync(),
+                        state.nativePlan()),
                 record.publicExport(),
                 record.original());
     }
@@ -90,7 +91,8 @@ record StoredAccountCopy(
             RetainedSaveState.Move move,
             BridgeReplies.RestoredReceipt lastSave,
             BridgeReplies.RestoredReceipt lastImport,
-            PendingWorkspaceSync sync) {
+            PendingWorkspaceSync sync,
+            NativeRepositoryPlan nativePlan) {
         State {
             fileBaselines = ProtocolValues.hex(fileBaselines, 64, "file baseline digest");
         }
@@ -110,7 +112,8 @@ record StoredAccountCopy(
                     move,
                     lastSave,
                     lastImport,
-                    sync);
+                    sync,
+                    nativePlan);
         }
     }
 }

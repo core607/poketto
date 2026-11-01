@@ -160,7 +160,7 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 服务在 `<data-dir>/portable-exports/<workspace-id>` 暂存导出包。同时最多构建一个包、下载两个包（同一工作空间最多一个），每个包最多 512 MiB 原件、256 MiB 文本和 10,000 个条目。`poketto.exports` 下可配置 `max-zip-bytes`（800 MiB）、`max-retained-bytes`（2 GiB）、`max-workspace-bytes`（1600 MiB）、`max-packages`（8）、`lifetime-seconds`（600）与 `build-seconds`（120）。容量不足返回 429；缺失、过期或属于其他身份的句柄返回 404；不支持 POSIX 权限的文件系统返回 503。详见[导出决策](../notes/implemented/2026-09-10-portable-content-exports.md)。
 
-在 CodeAct 会话中使用 `poketto export PATH... --output FILE [--public]`；`.` 表示可见工作空间，仅公开读取的会话始终导出公开投影。ZIP 包含已保存的内容，不包含本地编辑，也不会覆盖已有的不同文件。结果符合 artifact 限额时，可执行 `poketto artifact create FILE --type application/zip`，再通过 `get_artifact` 取回。`MATERIALIZE_CAPACITY` 会保留会话和已有文件：清理本地空间、缩小选择范围，或改用浏览器导出。
+CodeAct 中运行 `poketto export PATH... --output FILE [--public]`；`.` 选择可见空间，公开副本仅导出当前投影。ZIP 使用已保存内容，排除本地编辑，保留不同的现有文件。命令时限与 profile 传输上限约束导出。符合制品限额时，用 `poketto artifact create FILE --type application/zip` 和 `get_artifact` 取回。`EXPORT_CAPACITY` / `MATERIALIZE_CAPACITY` 保留文件：缩小选择、释放空间或用浏览器导出。
 
 ## MCP 与隔离执行
 
@@ -174,35 +174,42 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 `repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证 root supervisor 和低权限执行账号。应用默认接纳四个会话、四条并发命令、最多 128 MiB bundle，不超过 worker 的限制；按站点分组的每账号命令上限见 [.env.example](../deploy/.env.example)。worker 缺失或隔离能力不受支持时，不会降级为普通子进程。
 
-请求体上限为 128 KiB（超出时在工具执行前返回 413），命令上限 16,384 字符，编码后的桥接帧上限 512 KiB。拒绝结果包含 `code` 和 `reason`。详见 [MCP 请求准入移除](../notes/implemented/2026-09-15-mcp-request-admission-removal.md)。
+请求体上限为 128 KiB（超出时在工具执行前返回 413），命令上限 16,384 字符，每条 opaque host call 的请求与回复各限 64 KiB。拒绝结果包含 `code` 和 `reason`。详见 [MCP 请求准入移除](../notes/implemented/2026-09-15-mcp-request-admission-removal.md)。
 
-`repo_exec` 必须携带 `expectedCopyId`：使用 `"new"` 打开账号的默认副本，仅在不存在时创建；后续调用传回成功或拒绝响应中的 `copyId`。默认副本正在运行命令或刚被使用过时，`"new"` 会在账号的副本配额内另开一份副本。重连自动接回副本，关闭连接会保留副本。每次成功操作把闲置期限延长为七天（`retention.expiresAt`）；到期或丢弃会删除本地工作。`SESSION_REPLACED` 和 `EXECUTION_REFUSED` 表示命令未执行；`EXECUTION_UNCONFIRMED` 表示命令可能已部分完成，包括远端写入：不要重复执行，先用只读命令、`retention.lastInterruptedCommand` 和 `poketto status` 检查同一副本，远端保存待确认时再使用 `poketto recover`。详见[副本身份契约](../executor-service/README.md#working-copy-identity)。
+`repo_exec` 必填 `expectedCopyId`。`"new"` 选取空闲且有效的默认副本；不存在、忙碌、刚使用过或公开投影过时时，在配额内另建。后续使用返回的 `copyId`（含拒绝响应）。重连或关闭连接均保留工作。成功使用延长七天闲置期限（`retention.expiresAt`）；过期或丢弃删除本地工作。`SESSION_REPLACED`/`EXECUTION_REFUSED` 表示本条命令未执行。`EXECUTION_UNCONFIRMED` 可能包含部分远端写入，禁止重放：用只读命令、`retention.lastInterruptedCommand` 和 `poketto status` 检查原副本，再用 `poketto recover` 核对不确定的保存。详见[副本身份契约](../executor-service/README.md#working-copy-identity)。
 
-同一运行租约中的命令共享工作目录、环境变量、shell 函数、别名、私有 `/tmp` 和后台进程。超时、输出超限、shell 退出、空闲清理或租约替换会清除这些运行状态，但保留副本文件和已完成的部分工作；下一条命令会报告 `freshSandbox: true`。空闲清理由 worker 的 `idleUnitSeconds` 决定（1 到 86400，示例配置为 1800）。后台进程随沙箱停止，命令结束后不能再执行 `poketto` 操作。
+同一租约内的命令共享工作目录、环境、函数、别名、私有 `/tmp` 和后台进程。超时、输出超限、shell 退出、空闲清理或租约替换会重置运行状态，保留副本文件及部分工作；下一条命令报告 `freshSandbox: true`。空闲期限取自 profile 的 session TTL，维护复查当前权限，包括空闲会话。后台进程保留至沙箱关闭，但命令结束后不能再调用 host 操作。脚本和子进程可调用 `PATH` 上的 `poketto`。
 
-完整读取的会话包含授权范围内的当前文件和 Git 历史。仅公开读取的会话获得当前公开投影，不含历史或私密元数据，返回 `PUBLIC_PROJECTION` 和合成提交 ID，且不能保存。发布内容变化后，没有本地修改的公开副本会在下一条命令前以同一 `copyId` 重建，该命令报告 `refreshed: true` 和新的提交；有本地修改（包括 `$HOME` 中或仓库旁的任何文件）的副本保持不变，请求以 `PUBLICATION_CHANGED` 拒绝，直到用 `repo_discard` 删除该副本。
+完整读取会话含授权文件和 Git 历史。公开副本仅含当前发布投影，无历史、私密元数据，返回合成的 `PUBLIC_PROJECTION` 提交，不能保存。发布变化返回 `PUBLICATION_CHANGED`，保留旧副本，不凭 Git 状态决定删除。`new` 可在配额内取得当前投影；旧副本占用配额直到丢弃或过期。快照撤回、过期或不可用会拒绝执行和制品、媒体读取，并收容相关空闲或忙碌沙箱。权限提升不扩大显式指定的公开副本。
 
-`poketto edit PATH --old TEXT --new TEXT` 替换已有本地文本文件中唯一、完全匹配的一段原文，原文不存在或匹配多处时拒绝。`poketto create PATH --text TEXT` 仅在路径不存在时新建文件。长文本可用 `create` 的 `--stdin` 或 `--text-file FILE`，以及 `edit` 的 `--old-file FILE`（代替 `--old`）和 `--new-stdin` 或 `--new-file FILE`（代替 `--new`）。输入为 UTF-8，保留末尾换行；输入文件路径按当前 shell 目录解析，目标路径仍相对于仓库根。这些选项不提高命令或桥接帧上限。两个命令写入前都会再次核对本地内容，普通 shell 写入没有这项检查；在 `poketto save` 之前都不改变远端。
+用普通 shell、Python 或编辑工具修改本地文件；`poketto save` 前不改变远端。例如，仅在文件不存在时创建，保留已有文件：
 
 ```sh
-poketto create private/article.md --stdin <<'MARKDOWN'
+(set -C; cat >private/article.md <<'MARKDOWN'
 # 文章
 
 引号、`$variables` 和反引号都会保留为普通 Markdown。
 MARKDOWN
+)
 ```
 
-`poketto save` 提交选定文件和明确删除，其他编辑留在本地，并逐项检查所选文件与远端的冲突。完整读取副本的保存或移动得到确认后，还会更新本地 Git HEAD；`repo_exec.commit` 与 `poketto status.gitCommit` 报告这个基线。状态显示 `localBaselinePending` 时，使用 `poketto recover`，不要重复保存。
+`poketto save` 逐项检查选定文件和明确删除与远端的冲突，再原子提交；其他编辑留在本地。文件分别在冻结时捕获，集合不是同时快照。保存推进主机逐文件基线，不重置文件或 Git HEAD。`repo_exec.commit`/`status.initialCommit` 标识初始检出，`status.baseCommit` 标识已确认基线。不确定的保存须先用 `poketto recover` 核对，再写入。
 
-完整读取副本的 `poketto status` 会把远端 main 与最近一次确认的基线比较：`remote.state` 为 `MATCHES_BASE`、`DIFFERS_FROM_BASE` 或 `UNAVAILABLE`。状态查询不修改文件。`poketto sync` 将整个工作空间与同一个远端版本合并，保留仅存在于本地的文件及冲突的二进制内容，重叠的文本修改写入 LOCAL/BASE/REMOTE 冲突标记；它不会保存远端。中断后，状态显示 `syncPending`；`poketto recover` 继续执行，`poketto recover --skip-local` 解除待处理状态，但不撤销已安装的文件。命令时间不足时，同步以 `SYNC_INCOMPLETE` 提前停止并保留进度；再次运行 `poketto sync`，或为 `repo_exec` 设置更大的 `timeoutSeconds`。详见[工作空间同步](../notes/implemented/2026-09-15-workspace-synchronization.md)。
+`poketto status` 读取本地确认状态；完整读取副本加 `--remote` 比较当前 main 与基线，返回 `MATCHES_BASE`、`DIFFERS_FROM_BASE` 或 `UNAVAILABLE`。它不检查 Git HEAD，也不改文件。预览给出回执字节数、摘要和 `omitted`；`poketto receipt save` 或 `poketto receipt import` 读取完整回执。
 
-`poketto move SOURCE DESTINATION` 移动已保存的文件、目录和索引媒体，并在同一次远端提交中修复 Markdown 引用；选定文件有未保存修改或目标已占用时拒绝。随后本地安装待完成时，先使用 `poketto recover`，再继续保存、移动或同步。本地修改导致无法安装时，`poketto recover --skip-local` 确认远端移动且不改动本地文件；保存相关路径前先运行 `poketto sync`。
+`poketto sync` 或 `sync prepare` 固定一个远端版本，保留原件和合并候选，不改工作文件或远端 Git。重复 prepare 继续同一计划；`poketto plan show ID` 分页列出受影响路径和摘要。用普通编辑工具解决 LOCAL/BASE/REMOTE 冲突，再执行 `poketto sync accept ID --expect PATH=SHA256 [--absent PATH]`，核对选定字节或缺失状态，仅推进对应远端基线。部分确认跨重启保留，全部确认后推进主机基线；远端未变路径无需捕获或确认。
+
+`poketto plan file ID PATH --version original --output NEW_PATH` 取回原件，`--version candidate` 取候选；已有不同内容不会被覆盖。`poketto plan release ID` 显式删除应用保留的计划备份，保留工作文件、已确认基线和本地暂存文件。保存或准备新计划前须先 release；否则计划和原件保留至副本丢弃或过期。容量不足仍保留已确认的准备进度。
+
+`poketto move prepare SOURCE DESTINATION` 准备候选及修复链接，不改本地或远端；文件未保存、映射变化或目标占用则拒绝。应用候选后，用 `poketto move accept ID --expect PATH=SHA256 [--absent PATH]` 核对。
+
+最后一次确认以当前权限/CAS 提交保存的计划。`localVerified`/`verifiedPaths` 表示各路径在各自确认时已核对，后续编辑仍未保存；`remoteCommitted` 另报。结果未知或基线未完成时，用 `poketto move recover ID` 或 `poketto recover` 恢复原尝试，再 release；恢复不安装文件。[移动详情](../executor-service/README.md)说明索引保留与限制。
 
 `repo_discard` 传入准确的 `expectedCopyId`，删除副本及其未保存的工作。此操作要求执行权限和副本归属；忙碌副本会被拒绝。`DISCARDED` 或 `ABSENT` 确认副本已不存在，随后可用 `new` 创建新副本。未确认的丢弃只能用同一 ID 重试。丢弃不会撤销远端提交。
 
-`poketto media import` 存储不可变原件并更新本地媒体索引；将索引与引用它的文本一起保存，引用才会持久化。`poketto media link PATH --asset ID --revision REV` 接入已上传的原件。`poketto media fetch` 和 `poketto media list` 读取本地索引，完整读取会话也可用 `--commit` 指定历史提交；公开会话只能看到已批准的媒体。`media list` 使用返回的 `nextOffset` 和 `indexVersion` 翻页，期间保持 `--prefix` 与 `--commit` 不变。原件读取繁忙时，历史列表可能返回 `MEDIA_UNAVAILABLE`。命令见 `poketto --help`，限制与冲突处理见 [worker 参考文档](../executor-service/README.md)。
+`poketto media import` 存不可变原件，`media link PATH --asset ID --revision REV` 引用已有原件；两者保留本地索引，返回 `indexEntry` 与 `indexUpdated: false`。将条目合入 `.poketto/assets.json` 的 `files`，随引用文本保存。fetch 只安装缺失文件或接受相同字节，不同则保留原文件并返回 `LOCAL_FILE_EXISTS`。fetch/list 读取本地索引，完整读取可用 `--commit` 查历史，公开会话仅见批准媒体。list 按 `nextOffset`、`indexVersion` 翻页，保持 `--prefix`、`--commit`；原件读取忙碌时，历史列表可能返回 `MEDIA_UNAVAILABLE`。语法见 `poketto --help`，限制和冲突见 [worker 参考](../executor-service/README.md)。
 
-`poketto artifact create FILE --type MIME` 保留不可变的临时结果，同一账号、同一空间和读取范围内的任何 MCP 请求都可通过 `get_artifact` 读取，以位图或文本、二进制分页返回；长命令输出也会附带制品句柄。句柄在五分钟后或租约关闭时失效，例如该账号以另一凭证接管副本时。详见[返回制品](../executor-service/README.md#returned-artifacts)。
+`poketto artifact create FILE --type MIME` 保留不可变结果，长输出也返回制品句柄。`get_artifact` 向同账号、空间和范围内的当前有效凭证返回图片或文本、二进制分页，每页复查发布状态。句柄五分钟后、副本丢弃或过期、应用关闭时失效；仅替换租约会保留它。详见[返回制品](../executor-service/README.md#returned-artifacts)。
 
 `put_asset` 导入图片并返回 `assetId`、`revision`、`reference`、`mediaType` 和 `size`；用 `poketto media link` 接入后，保存文章和 `.poketto/assets.json`。仅上传不会保存或发布。每次调用携带 `operationKey`（相同重试沿用），并提供一种来源：
 
@@ -225,7 +232,7 @@ receipt = response.json()
 
 每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录，提供域名、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。随后用 `./deploy.sh --initialize-admin` 创建首个管理员。
 
-对于自行维护 Compose 配置的实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)更新应用与前端镜像、显式身份配置，并在启用执行功能时更新匹配的 [worker 源码](../executor-service/README.md#automatic-source-updates)。安装当前版本的受保护更新入口，并设置 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 可选 `pull`（主机使用部署任务的包读取令牌，从规范镜像仓库拉取两个摘要）或 `transfer`（通过 SSH 传输带校验和的归档，供访问不到镜像仓库的主机使用）。
+自管 Compose 的实例通过[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)更新应用与前端镜像及显式身份配置；启用执行功能时，验证独立安装的[原生服务](../deploy/README.md#native-service-dependency)。安装当前版本的受保护更新入口，并设置 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 可选 `pull`（主机使用部署任务的包读取令牌，从规范镜像仓库拉取两个摘要）或 `transfer`（通过 SSH 传输带校验和的归档，供访问不到镜像仓库的主机使用）。
 
 `transfer.sh --existing --set-stdin` 接受按行分隔的 `KEY=value`，仅限 `POKETTO_RESEND_API_KEY`、`POKETTO_EMAIL_FROM`、`POKETTO_EMAIL_DAILY_LIMIT`、`POKETTO_GOOGLE_CLIENT_ID`、`POKETTO_GOOGLE_CLIENT_SECRET`、`POKETTO_SUPPORT_EMAIL` 和 [GitHub App 配置指南](github-app.md)中的五项设置，只通过标准输入传给受保护更新器。值按字面传递，包括 `$` 和引号。权限为 0600 的 `.deployment/images.json` 覆盖文件保留未提供的设置，显式空值清除设置；手动运行 Compose 时，将该覆盖文件放在最后。手动部署使用主机上的身份配置。启用 CI 部署前，先将 Resend 密钥、Google 凭证和 GitHub App 设置配置为 GitHub secrets，将发件地址、每日限额和联系邮箱配置为 GitHub variables。此后两种布局的这些配置均以 GitHub 为准：未设置或已删除的配置会清除主机上的值，未设置每日限额时恢复为 100。Google 两个字段须一起清空。中断后使用相同镜像和配置重试。
 

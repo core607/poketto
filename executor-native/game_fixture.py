@@ -35,6 +35,7 @@ class GameFixture:
         assert self.user != repository_user and self.pool.name != repository_slice
         self.assets = root / 'game-assets'
         self.assets.mkdir(mode=0o755)
+        self.assets.chmod(0o755)
         shutil.copy2(source / 'sandcrab', root / 'sandcrab')
         (root / 'sandcrab').chmod(0o755)
         for name in ('game-example.mjs',):
@@ -126,6 +127,16 @@ host_calls = false
             time.sleep(.05)
         raise AssertionError('Game account still owns descendants')
 
+    def stop_worker(self):
+        # --collect may remove a killed transient unit before stop reaches it.
+        # A missing unit is containment evidence only with a reachable manager.
+        subprocess.run(['systemctl', 'stop', self.supervisor], capture_output=True, timeout=25)
+        state = subprocess.run(['systemctl', 'show', self.supervisor, '-p', 'LoadState', '-p', 'ActiveState'],
+                               capture_output=True, text=True, timeout=10)
+        fields = dict(line.split('=', 1) for line in state.stdout.splitlines() if '=' in line)
+        assert fields.get('LoadState') in ('loaded', 'not-found'), 'Game unit state was not observed'
+        assert fields.get('ActiveState') in ('inactive', 'failed'), 'Game unit survived stop'
+
     def control(self, operation):
         if operation == 'game-await-running':
             uid = str(pwd.getpwnam(self.user).pw_uid)
@@ -137,7 +148,7 @@ host_calls = false
             raise AssertionError('The actual game process was not observed')
         if operation == 'game-restart-worker':
             run(['systemctl', 'kill', '--kill-who=main', '--signal=KILL', self.supervisor])
-            run(['systemctl', 'stop', self.supervisor])
+            self.stop_worker()
             self.no_processes()
             subprocess.run(['systemctl', 'reset-failed', self.supervisor], capture_output=True, timeout=10)
             self.start_worker()
@@ -152,7 +163,7 @@ host_calls = false
         self.listener.shutdown()
         self.listener.server_close()
         try:
-            subprocess.run(['systemctl', 'stop', self.supervisor], capture_output=True, timeout=25)
+            self.stop_worker()
             subprocess.run(['systemctl', 'reset-failed', self.supervisor], capture_output=True, timeout=10)
             if self.created_user:
                 self.no_processes()

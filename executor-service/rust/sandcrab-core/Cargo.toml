@@ -11,5 +11,3 @@ base64.workspace = true
 rustix = { workspace = true, features = ["time"] }
 serde_json = { workspace = true, features = ["raw_value"] }
 serde = { version = "1", features = ["derive"] }
-sha2 = "0.10"
-unicode-normalization = "=0.1.25"

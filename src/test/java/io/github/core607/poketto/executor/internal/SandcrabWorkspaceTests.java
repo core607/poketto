@@ -32,6 +32,33 @@ class SandcrabWorkspaceTests {
                 FILE, EPOCH, ROOT, "input.bin", "raw", data.length, SandcrabProtocol.sha256(data), false, true, 0640);
     }
 
+    @Test
+    void renewalUsesTheExistingSessionAndKeepsItsEpochAndWorkspaceScope() throws Exception {
+        try (var peer = new SandboxPeer(channel -> {
+            SandboxPeer.Request request = SandboxPeer.request(channel);
+            assertThat(request.head()).startsWith("POST /v1/sessions/" + ROOT + "/renew HTTP/1.1");
+            assertThat(SandcrabProtocol.read(request.body(), SandcrabProtocol.Renewal.class)
+                            .ttlMillis())
+                    .isEqualTo(90_000);
+            SandboxPeer.reply(channel, 200, session("ready"));
+        })) {
+            var client = new SandcrabClient(peer.client(channel -> {}));
+            assertThat(client.renew(ready(), 90_000)).isEqualTo(ready());
+            assertThat(peer.requests()).isEqualTo(1);
+        }
+        for (String reply :
+                List.of(session("ready").replace(EPOCH, OTHER), session("ready").replace("python", "other"))) {
+            try (var peer = new SandboxPeer(channel -> {
+                SandboxPeer.request(channel);
+                SandboxPeer.reply(channel, 200, reply);
+            })) {
+                var client = new SandcrabClient(peer.client(channel -> {}));
+                assertThatThrownBy(() -> client.renew(ready(), 90_000)).isInstanceOf(WorkerUnavailableException.class);
+                assertThat(peer.requests()).isEqualTo(1);
+            }
+        }
+    }
+
     private static String upload(SandcrabProtocol.UploadPlan plan, String state, String publication) {
         return """
                 {"id":"%s","serverId":"%s","sessionId":"%s","profile":"python","volumeId":null,

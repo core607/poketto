@@ -23,11 +23,6 @@ def main():
         inbox = root / 'inbox'
         inbox.mkdir(mode=0o700)
         os.chown(inbox, 65534, 65534)
-        key = root / 'private.pem'
-        subprocess.run(['openssl', 'genpkey', '-algorithm', 'ed25519', '-out', str(key)],
-                       check=True, capture_output=True, timeout=10)
-        os.chmod(key, 0o600)
-        os.chown(key, 65534, 65534)
         observation = inbox / 'observation.json'
         fake = subprocess.Popen(['/usr/local/bin/python3', '-I', '/probe/rejected_peer.py',
                                  str(inbox / 'peer.sock'), str(observation)],
@@ -40,15 +35,10 @@ def main():
         (inbox / 'peer.sock').rename(socket)
         os.chown(socket, 0, 65534)
         os.chmod(socket, 0o660)
-        config = root / 'java.json'
-        config.write_text(json.dumps({'fakeSocket': str(socket), 'fakeObservation': str(observation),
-                                     'privateKey': str(key), 'bundle': str(root / 'unused.bundle'),
-                                     'commit': 'a' * 40}))
-        agent, = list((runtime / 'jars').glob('byte-buddy-agent-*.jar'))
         completed = subprocess.run(['java', '-Xmx128m', '-XX:MaxMetaspaceSize=160m',
-                                    '-javaagent:' + str(agent), '-cp', '/runtime/classes:/runtime/jars/*',
-                                    'io.github.core607.poketto.executor.internal.ExecutorNativeProbe',
-                                    str(config), 'peer-only'], user=65534, group=65534, extra_groups=[],
+                                    '-cp', '/runtime/classes:/runtime/jars/*',
+                                    'io.github.core607.poketto.executor.internal.NativePeerProbe',
+                                    str(socket)], user=65534, group=65534, extra_groups=[],
                                    timeout=25, text=True, capture_output=True)
         print(completed.stdout, end='', flush=True)
         print(completed.stderr, end='', flush=True)

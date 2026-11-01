@@ -56,7 +56,7 @@ class RetainedSaveStateTests {
     void roundTripPreservesMovePayloadAndConfirmedRemoteOutcomeWithoutAliasing() {
         var state = stateWithIndependentBaselines();
         byte[] payload = {0, -1, 42, 10};
-        state.move = new SessionMoves.Pending(
+        state.move = new PendingAccountMove(
                 new RepositoryMoveRequest(ADVANCED, "from.md", "to.md"), payload, Set.of("from.md", "to.md"));
         state.move.attempt = new RepositoryWriteAttempt(CANDIDATE, new byte[] {4, 5, 6});
         state.move.result = new RepositoryPatchResult(CANDIDATE, true, false, Map.of("from.md", Optional.empty()));
@@ -242,6 +242,7 @@ class RetainedSaveStateTests {
                         null,
                         receipt,
                         receipt,
+                        null,
                         null))
                 .isInstanceOf(IllegalArgumentException.class);
         var oversized = JSON.createObjectNode().put("message", "x".repeat(65536));
@@ -275,6 +276,7 @@ class RetainedSaveStateTests {
                         null,
                         receipt,
                         receipt,
+                        null,
                         null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("tracked path commit");

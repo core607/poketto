@@ -892,8 +892,9 @@ pub fn launch(path: &Path) -> io::Result<()> {
         (
             "PATH".into(),
             format!(
-                "{}{}:/usr/bin:/bin",
+                "{}{}:{}/extracted/usr/bin:/usr/bin:/bin",
                 if record.host_calls { "/sandcrab:" } else { "" },
+                record.tools.display(),
                 record.tools.display()
             ),
         ),

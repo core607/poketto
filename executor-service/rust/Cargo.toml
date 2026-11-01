@@ -1,13 +1,7 @@
 [workspace]
 members = [
-    "poketto-cli",
-    "poketto-launch",
-    "poketto-shell",
-    "poketto-syncfs",
-    "poketto-supervisor",
     "sandcrab",
     "sandcrab-core",
-    "sandcrab-daemon",
     "sandcrab-launch",
     "sandcrab-shell",
 ]

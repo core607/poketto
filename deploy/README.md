@@ -1,86 +1,81 @@
 # Existing-installation deployment
 
 Set `POKETTO_DEPLOY_LAYOUT=existing` to update an operator-owned Compose project.
-`transfer.sh --existing` invokes the installed protected updater; it never
-replaces that executable. The deployment account needs Docker access and
-noninteractive sudo for `/usr/local/sbin/poketto-update-existing`.
+`transfer.sh --existing` invokes the installed protected updater; it never replaces
+that executable. The deployment account needs Docker access and noninteractive
+sudo for `/usr/local/sbin/poketto-update-existing`.
 
-Every installation, including one with execution disabled, must install
-[update-existing.py](update-existing.py) as `/usr/local/sbin/poketto-update-existing`
-and [worker_release.py](worker_release.py) beside it. Both files must be root-owned
-and unwritable by other accounts.
+Install [update-existing.py](update-existing.py) at that path and
+[native_service.py](native_service.py) beside it, including when execution is
+disabled. Both files and their ancestors must be root-owned and protected from
+other accounts. Keep the deployment root and `deployment.json` protected too.
+[existing.example.json](existing.example.json) defines the project, ordered
+relative Compose files and loopback health checks.
 
-Keep the deployment root and its `deployment.json` root-owned and unwritable by
-other users. Use [existing.example.json](existing.example.json) for the project,
-ordered relative Compose files and loopback HTTP health checks. The worker
-extension below is required when `POKETTO_EXECUTOR_ENABLED=true`.
+The updater accepts `--root`, two loaded image references and their full
+`--app-revision`. Both images must carry that revision label. `--check` validates
+the candidate without replacing services. Canonical registry pulls and checksummed
+SSH archives use the same entrance. Credentials are used only for pulling images;
+[usage](../docs/usage.md#deployment) owns identity settings and CI configuration.
 
-The updater accepts `--root`, `--app-image`, `--frontend-image`, and the full
-`--app-revision`. Both loaded images must carry that revision label. `--check`
-validates the candidate without replacing services. Image delivery uses the
-canonical registry (`POKETTO_DEPLOY_MODE=pull`) or checksummed SSH archives
-(`transfer`). Registry credentials are used only for pulling images and removed
-afterwards. [Usage](../docs/usage.md#deployment) owns supported identity settings
-and CI configuration.
+Original Compose files stay in place. Manual Compose commands must include
+`.deployment/images.json` last. The installation lock serializes updates with
+offline copy maintenance. There is no automatic application rollback across
+unknown persistent-format changes.
 
-Original Compose files stay in place. Manual Compose commands must include the
-protected `.deployment/images.json` overlay last. An interrupted update remains
-pending: retry the same images, revision and configuration. A different target
-requires inspection of protected state and running services. There is no automatic
-application rollback across unknown persistent-format changes.
+## Native service dependency
 
-## Worker source updates
+Sandcrab is installed and upgraded independently. Application images contain no
+host sandbox programs, and the updater never installs, starts, stops or rolls
+back the native service. Provision its tools, resource slice, volumes and
+host-call-enabled repository profile using the [native installation contract](../executor-service/rust/sandcrab/README.md#installation).
 
-Existing-layout deployments update the configured worker from `/opt/poketto-worker`
-in the selected application image. In the protected
-`deployment.json`, add an `executor` object like this, using the installed paths:
+When execution is enabled, `deployment.json` requires an `executor` object:
 
 ```json
 {
-  "sourceDirectory": "/opt/poketto-executor",
-  "configFile": "/etc/poketto-executor/config.json",
-  "service": "poketto-executor.service",
+  "binary": "/opt/sandcrab/bin/sandcrab",
+  "binarySha256": "<installed binary SHA-256>",
+  "configFile": "/etc/sandcrab/repository.toml",
+  "configSha256": "<installed configuration SHA-256>",
+  "poolChecker": "/opt/sandcrab/resource_pool.py",
+  "poolCheckerSha256": "<installed checker SHA-256>",
+  "service": "sandcrab-repository.service",
+  "socket": "/run/sandcrab-repository/control.sock",
   "healthUrl": "http://127.0.0.1:8080/actuator/health/executor",
-  "probeTokenFile": "/etc/poketto-executor/deployment-token",
+  "probeTokenFile": "/etc/sandcrab/deployment-token",
   "probeCopyId": "00000000-0000-4000-8000-000000000001"
 }
 ```
 
-The service must invoke `sourceDirectory/poketto-supervisor --config configFile`;
-`ExecStopPost` uses the same command with `--cleanup` appended.
-The supervisor runs the `poketto-launch` of its own generation; the configuration names no launcher.
-Provision the native service before enabling automatic updates. Adopting it from a
-Python service is a separate operator action: preserve the old unit, runtime and
-protected configuration for recovery, install the native bundle and matching unit,
-then verify startup and execution. The updater rejects the Python service contract;
-it never rewrites a unit or private configuration. Install the matching protected
-updater before changing the bundle's file set. Missing executor configuration blocks
-an execution-enabled deployment.
+Replace the digest placeholders and copy ID. Paths are canonical, without
+symlinks. Configuration and token files have one link and owner-only permissions.
+The service runs `binary serve --config configFile`. Verification checks pinned
+files, the actual root MainPID and executable bytes, the socket peer's PID and
+the resource pool. The app's declared bind, actual mounted socket and peer must
+identify that same service. A config digest identifies the installed file, not every byte
+an existing process loaded. Live API health and consumer checks remain separate.
 
-Replace the example copy ID with an existing copy reserved for deployment checks.
-Store its workspace API key in the root-owned `probeTokenFile` with mode 0600;
-it needs repository execution and read access to that copy's scope. After protocol
-health passes, the updater calls `/mcp` on the same loopback port and runs only
-`poketto --help` plus a fixed confirmation marker. It neither creates nor discards
-copies. Failed execution leaves deployment pending. Tokens never enter images,
-CI settings, arguments or output; reconfigure the probe when its key or copy is retired.
+The probe uses an existing copy reserved for deployment checks. Its root-owned
+API-key file grants execution and read access to that scope. After health passes,
+the updater calls the same loopback application's `/mcp`, running `poketto --help`
+and a fixed marker. It creates or discards no copies. Keep this token out of
+images, arguments, CI settings and output; replace the probe when its key or copy
+is retired.
 
-The updater verifies the bundle, stages complete generations in
-`sourceDirectory/releases/`, and converts the runtime source files to links
-through `releases/current`. It stops the service before atomically switching
-generations and starting it. Private configuration, keys, tools, quotas and copy
-storage are untouched. The supervisor and `poketto-launch` share a generation; sandbox programs live in its protected
-`bin/` directory; the updater verifies their checksums,
-x64 ELF format and executable permissions. Unchanged runtime files keep the running
-worker. `--check` validates and stages files without changing the selector or restarting services.
+## Interrupted delivery and adoption
 
-A failed start restores the previous generation; a failed application update or
-health check remains pending. Retry the same images and configuration to finish
-an interrupted deployment. Prior source generations are retained; recovery across
-application or persistent-format changes requires operator inspection. Readiness
-and `/actuator/health/executor` check the application's live worker handshake,
-without creating copies or running user commands. They are `DOWN` on an unavailable
-or incompatible worker; disabled execution is `UP`. See
-[coordinated delivery](../notes/implemented/2026-10-19-coordinated-worker-delivery.md)
-for the delivery boundary.
+Schema 2 records a `sandcrab-native-v1` dependency separately from application
+images. Failure remains pending. Retry requires the same images, rendered
+configuration and dependency pins. A daemon restart with unchanged pins is
+rechecked against its current process; no old execution receipt is reused.
+An incorrect retry preserves the original pending candidate, overlay and state.
+Health and the dedicated-copy command must pass before state becomes healthy.
 
+Legacy pending state requires the original updater or explicit operator recovery
+before changing backends or copy formats. It is never converted automatically.
+For healthy legacy state, `--adopt-native-dependency` explicitly adopts schema 2,
+preserves the exact original bytes in a checksummed private archive and retains
+image history. `--check` writes no adoption archive. This flag does not migrate
+copies or authorize a runtime-configuration change. The [delivery decision](../notes/implemented/2026-10-31-independent-sandbox-deployment.md)
+owns these boundaries.

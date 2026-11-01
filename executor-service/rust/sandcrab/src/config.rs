@@ -293,7 +293,7 @@ impl Config {
         if service.opensandbox && self.tcp.is_none() {
             return Err(invalid("OpenSandbox requires authenticated loopback TCP"));
         }
-        if !(1..=64).contains(&service.max_sandboxes)
+        if !(1..=256).contains(&service.max_sandboxes)
             || !(service.max_sandboxes..=1024).contains(&service.max_records)
             || !(65536..=64 * 1024 * 1024).contains(&service.max_output_bytes)
             || self.profiles.is_empty()
@@ -302,7 +302,7 @@ impl Config {
             || !(1..=16).contains(&service.max_file_transfers)
         {
             return Err(invalid(
-                "Use 1..64 max_sandboxes, max_sandboxes..1024 max_records and 1..32 profiles",
+                "Use 1..256 max_sandboxes, max_sandboxes..1024 max_records and 1..32 profiles",
             ));
         }
         if let Some(storage) = &self.storage
@@ -390,6 +390,20 @@ mod tests {
         let config = Config::parse(EXAMPLE).unwrap();
         assert!(config.profiles.contains_key("python"));
         assert_eq!(config.profiles["python"].network, "none");
+    }
+    #[test]
+    fn larger_operator_capacity_still_requires_a_bounded_matching_registry() {
+        let mut config = Config::parse(EXAMPLE).unwrap();
+        config.service.max_records = 1024;
+        for capacity in [65, 224, 256] {
+            config.service.max_sandboxes = capacity;
+            config.validate().unwrap();
+        }
+        config.service.max_sandboxes = 257;
+        assert!(config.validate().is_err());
+        config.service.max_sandboxes = 224;
+        config.service.max_records = 223;
+        assert!(config.validate().is_err());
     }
     #[test]
     fn requested_resources_preserve_operator_mounts_identity_and_hard_caps() {

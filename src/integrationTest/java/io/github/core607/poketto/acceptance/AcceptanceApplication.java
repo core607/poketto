@@ -27,16 +27,18 @@ public final class AcceptanceApplication {
         if (!root.isAbsolute()) {
             throw new IllegalArgumentException("acceptance root must be absolute");
         }
-        Files.createDirectories(root);
-        try (var existing = Files.list(root)) {
-            if (existing.findAny().isPresent()) {
-                throw new IllegalArgumentException("acceptance root must be empty");
-            }
+        String retainedIdentity = System.getenv("POKETTO_ACCEPTANCE_RETAINED_IDENTITY");
+        boolean multiple = Boolean.parseBoolean(System.getenv("POKETTO_ACCEPTANCE_MULTIPLE_WORKSPACES"));
+        if (retainedIdentity != null && multiple) {
+            throw new IllegalArgumentException("Retained process acceptance requires one synthetic workspace");
         }
+        boolean reopened = AcceptanceRestartState.reopen(root, retainedIdentity);
         String password = required("POKETTO_ACCEPTANCE_PASSWORD");
 
         Path remote = root.resolve("remote.git");
-        seed(remote, root.resolve("seed"));
+        if (!reopened) {
+            seed(remote, root.resolve("seed"));
+        }
         SpringApplication app = new SpringApplication(
                 PokettoApplication.class,
                 AcceptanceRepositories.class,
@@ -59,8 +61,8 @@ public final class AcceptanceApplication {
                 false));
         var context = app.run(args);
         var auth = context.getBean(AuthService.class);
-        var owner = auth.initializeOwner("owner", password);
-        if (Boolean.parseBoolean(System.getenv("POKETTO_ACCEPTANCE_MULTIPLE_WORKSPACES"))) {
+        var owner = reopened ? null : auth.initializeOwner("owner", password);
+        if (multiple) {
             Path secondRemote = root.resolve("second.git");
             seed(secondRemote, root.resolve("second-seed"));
             WorkspaceId second = WorkspaceId.random();
@@ -70,6 +72,7 @@ public final class AcceptanceApplication {
                 auth.establishWorkspaceOwner(owner, second);
             });
         }
+        AcceptanceRestartState.ready(root, retainedIdentity, reopened);
         System.out.println("Synthetic acceptance services are ready; production repositories are not used.");
     }
 

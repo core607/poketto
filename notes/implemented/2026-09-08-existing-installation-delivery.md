@@ -4,9 +4,9 @@ Date: 2026-09-08
 
 [Consumer identity](2026-09-20-consumer-identity-and-site-policy.md) extends the
 image-only boundary with explicit, allowlisted identity settings.
-[Coordinated worker delivery](2026-10-19-coordinated-worker-delivery.md) extends it
-with matching worker sources when execution is enabled. Other operator settings
-retain this record's boundary.
+[Independent sandbox deployment](2026-10-31-independent-sandbox-deployment.md) adds
+verification of the installed native dependency when execution is enabled. Other
+operator settings retain this record's boundary.
 
 ## Problem and decision
 

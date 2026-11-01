@@ -19,7 +19,8 @@ def slice_name(value):
 
 def properties(unit):
     result = subprocess.run(
-        ['systemctl', 'show', unit, '--no-pager', '--property=ActiveState,Slice,ControlGroup,MainPID,User'],
+        ['systemctl', 'show', unit, '--no-pager',
+         '--property=ActiveState,Slice,ControlGroup,MainPID,User,OOMScoreAdjust,OOMPolicy'],
         capture_output=True, text=True, timeout=5)
     if result.returncode or len(result.stdout) > 8192:
         raise PoolUnavailable('Cannot inspect the installed resource pool')
@@ -86,9 +87,13 @@ def check_service(unit):
     service = properties(unit)
     if service.get('ActiveState') != 'active' or service.get('User') != 'root':
         raise PoolUnavailable('The installed root executor service must be active')
+    if service.get('OOMScoreAdjust') != '-900' or service.get('OOMPolicy') != 'stop':
+        raise PoolUnavailable('Supervision requires OOMScoreAdjust=-900 and OOMPolicy=stop')
     pid = service.get('MainPID', '')
     if not pid.isdigit() or int(pid) <= 0 or (Path('/proc') / pid).stat().st_uid != 0:
         raise PoolUnavailable('The executor main process must belong to root')
+    if (Path('/proc') / pid / 'oom_score_adj').read_text().strip() != '-900':
+        raise PoolUnavailable('The supervisor main process lost its OOM protection')
     current = process_group(pid)
     if current != group_path(service.get('ControlGroup')):
         raise PoolUnavailable('The executor process does not match its service cgroup')

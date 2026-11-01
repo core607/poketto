@@ -1,10 +1,9 @@
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from resource_pool import PoolUnavailable, ResourcePool, check_service, limits, slice_name
-import worker
 
 
 class ResourcePoolTests(unittest.TestCase):
@@ -72,9 +71,11 @@ class ResourcePoolTests(unittest.TestCase):
     @patch('resource_pool.process_group')
     @patch('resource_pool.properties')
     @patch('resource_pool.Path.stat')
-    def test_deploy_checks_actual_root_main_process_and_service_membership(self, stat, properties, process, pool):
+    @patch('resource_pool.Path.read_text', return_value='-900')
+    def test_deploy_checks_actual_root_main_process_and_service_membership(self, score, stat, properties, process, pool):
         stat.return_value.st_uid = 0
         properties.return_value = {'ActiveState': 'active', 'User': 'root', 'MainPID': '42',
+                                   'OOMScoreAdjust': '-900', 'OOMPolicy': 'stop',
                                    'Slice': 'poketto-executor.slice',
                                    'ControlGroup': '/poketto.slice/poketto-executor.slice/worker.service'}
         process.return_value = properties.return_value['ControlGroup']
@@ -91,47 +92,6 @@ class ResourcePoolTests(unittest.TestCase):
         stat.return_value.st_uid = 1000
         with self.assertRaises(PoolUnavailable):
             check_service('worker.service')
-
-    @patch('worker.ResourcePool', side_effect=PoolUnavailable('missing'))
-    @patch('worker.SystemdBackend')
-    @patch('worker.load_config', return_value={})
-    @patch('worker.os.geteuid', return_value=0)
-    def test_cleanup_and_startup_cleanup_precede_pool_validation(self, uid, config, backend, pool):
-        order = []
-        backend.side_effect = lambda _: order.append('backend cleanup') or Mock()
-        pool.side_effect = lambda _: order.append('pool') or (_ for _ in ()).throw(PoolUnavailable('missing'))
-        with patch('sys.argv', ['worker', '--config', 'fixture', '--cleanup']):
-            worker.main()
-        self.assertEqual(['backend cleanup'], order)
-        with patch('worker.DiskSystemdBackend', side_effect=backend.side_effect), \
-                patch('sys.argv', ['worker', '--config', 'fixture']), self.assertRaises(PoolUnavailable):
-            worker.main()
-        self.assertEqual(['backend cleanup', 'backend cleanup', 'pool'], order)
-
-    def test_failed_pool_rejects_before_mount_or_execution_records(self):
-        backend = worker.DiskSystemdBackend.__new__(worker.DiskSystemdBackend)
-        backend.pool = Mock()
-        backend.pool.verify.side_effect = PoolUnavailable('unlimited')
-        # No root, records or session paths exist: admission must reject before touching them.
-        with self.assertRaises(PoolUnavailable):
-            backend.open(None, {})
-        with self.assertRaises(PoolUnavailable):
-            backend.run(None, {}, 100)
-
-    def test_disk_cleanup_does_not_require_the_copy_mount(self):
-        config = {'copyRoot': '/missing', 'poolBytes': 1024, 'diskBytes': 512, 'diskInodes': 8}
-        order = []
-        with patch('worker.load_config', return_value=config), patch('worker.os.geteuid', return_value=0), \
-                patch.object(worker.SystemdBackend, '__init__', side_effect=lambda _: order.append('cleanup')), \
-                patch('worker.DiskPool', side_effect=ValueError('missing mount')) as disk:
-            with patch('sys.argv', ['worker', '--config', 'fixture', '--cleanup']):
-                worker.main()
-            disk.assert_not_called()
-            self.assertEqual(['cleanup'], order)
-            with patch('sys.argv', ['worker', '--config', 'fixture']), self.assertRaisesRegex(ValueError, 'missing mount'):
-                worker.main()
-            self.assertEqual(['cleanup', 'cleanup'], order)
-
 
 if __name__ == '__main__':
     unittest.main()

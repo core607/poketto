@@ -1,6 +1,6 @@
 # Example alert rules. Prometheus evaluates them and lists firing ones on its Alerts page; no
 # notification channel is configured. Add an Alertmanager to deliver them. PostgresIntegrationIT and,
-# for the executor, WorkerSocketTests check every application metric named here against the
+# for the executor, NativeRepositoryMetricsTests check every application metric named here against the
 # application's real output, so a renamed metric fails a test instead of silently never firing.
 groups:
   - name: poketto-application

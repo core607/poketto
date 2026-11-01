@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update application images and their configured host worker in an existing installation."""
+"""Update application images while verifying independently installed native dependencies."""
 
 import argparse
 import fcntl
@@ -10,10 +10,12 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import urllib.parse
 import urllib.request
 
-from worker_release import DeploymentError, NoRedirects, WorkerRelease, validate_config as validate_worker_config
+from native_service import (DeploymentError, NoRedirects, NativeService, bounded_file, parse_deployment_state, protected,
+                            validate_config as validate_native_config)
 
 
 APPLICATION_SETTINGS = frozenset((
@@ -101,6 +103,48 @@ def declared_environment(rendered, service):
             for key, value in rendered["services"][service].get("environment", {}).items()}
 
 
+def socket_mount(path, mounts, actual):
+    matches = []
+    for mount in mounts:
+        if not isinstance(mount, dict):
+            raise DeploymentError("native socket requires normalized Compose mount records")
+        target = mount.get("Destination" if actual else "target")
+        if not isinstance(target, str) or not target.startswith("/") or str(Path(target)) != target:
+            raise DeploymentError("native socket mount targets must be normalized absolute paths")
+        if path.is_relative_to(Path(target)):
+            matches.append(mount)
+    if len(matches) != 1:
+        raise DeploymentError("native socket requires exactly one unshadowed runtime bind mount")
+    mount = matches[0]
+    target = Path(mount["Destination" if actual else "target"])
+    if mount.get("Type" if actual else "type") != "bind" or path == target or target == Path("/"):
+        raise DeploymentError("native socket requires a parent-directory bind mount")
+    read_only = mount.get("RW") is False if actual else mount.get("read_only") is True
+    if not read_only:
+        raise DeploymentError("native runtime directory must be mounted read-only")
+    source = mount.get("Source" if actual else "source")
+    if not isinstance(source, str) or not source.startswith("/"):
+        raise DeploymentError("native runtime bind requires an absolute host source")
+    host = Path(source) / path.relative_to(target)
+    if host.resolve() != host:
+        raise DeploymentError("native socket host binding must be canonical")
+    return str(host)
+
+
+def require_native_binding(config, rendered, container):
+    name = declared_environment(rendered, "app").get("POKETTO_EXECUTOR_SOCKET")
+    if not name or not name.startswith("/") or str(Path(name)) != name or ".." in Path(name).parts:
+        raise DeploymentError("native execution requires its normalized container socket path")
+    path = Path(name)
+    environment = dict(value.split("=", 1) for value in container["Config"].get("Env", []))
+    if environment.get("POKETTO_EXECUTOR_SOCKET") != name:
+        raise DeploymentError("running application socket differs from the declared native entrance")
+    declared = socket_mount(path, rendered["services"]["app"].get("volumes", []), False)
+    actual = socket_mount(path, container.get("Mounts", []), True)
+    if declared != actual or actual != config["socket"]:
+        raise DeploymentError("application socket binding differs from the pinned native service socket")
+
+
 def run(*args):
     result = subprocess.run(args, capture_output=True, text=True, timeout=240)
     if result.returncode:
@@ -154,6 +198,7 @@ class Installation:
         self.command = command
         self.state_dir = root / ".deployment"
         self.state_dir.mkdir(mode=0o700, exist_ok=True)
+        protected(self.state_dir, directory=True)
         self.overlay = self.state_dir / "images.json"
         self.state_file = self.state_dir / "state.json"
 
@@ -209,8 +254,11 @@ class Installation:
         if digest(json.loads(self.compose("config", "--format", "json"))) != state["configuration"]:
             raise DeploymentError("installation configuration changed during deployment")
         checks = list(self.config.get("healthChecks", []))
-        if state.get("worker"):
-            WorkerRelease(self.config["executor"], self.state_dir, self.command).verify(state["worker"])
+        if state.get("nativeDependency"):
+            native = NativeService(self.config["executor"], self.command)
+            native.verify(state["nativeDependency"])
+            environment = dict(value.split("=", 1) for value in current["app"]["Config"].get("Env", []))
+            native.verify_consumer(current["app"]["State"].get("Pid"), environment.get("POKETTO_EXECUTOR_SOCKET"))
             checks.append({"url": self.config["executor"]["healthUrl"], "status": "UP"})
         for index, check in enumerate(checks, 1):
             try:
@@ -225,8 +273,8 @@ class Installation:
                             raise DeploymentError("health check " + str(index) + " did not confirm readiness")
             except (OSError, ValueError) as error:
                 raise DeploymentError("health check " + str(index) + " is unavailable") from error
-        if state.get("worker"):
-            WorkerRelease(self.config["executor"], self.state_dir, self.command).probe()
+        if state.get("nativeDependency"):
+            NativeService(self.config["executor"], self.command).probe()
 
     # None means Docker confirmed the image is absent; any other failure propagates, so an unanswered
     # lookup never shrinks the retained set.
@@ -311,20 +359,57 @@ class Installation:
             raise DeploymentError(str(len(unreadable)) + " candidate image(s) could not be inspected and stay known")
         return retired
 
-    def update(self, revision, app_image, frontend_image, check_only=False, settings=None):
+    def previous_state(self, adopt_native):
+        if not self.state_file.exists():
+            return None, None
+        with self.state_file.open("rb") as stream:
+            raw = stream.read(16 * 1024 * 1024 + 1)
+        state = parse_deployment_state(raw)
+        if state.get("schemaVersion") == 2:
+            return state, None
+        if state["status"] != "healthy":
+            raise DeploymentError("legacy pending deployment requires its original updater or explicit operator recovery")
+        if not adopt_native:
+            raise DeploymentError("legacy healthy deployment requires explicit --adopt-native-dependency")
+        return state, raw
+
+    def preserve_adopted_state(self, raw):
+        checksum = hashlib.sha256(raw).hexdigest()
+        archive = self.state_dir / ("state-before-native-" + checksum + ".json")
+        try:
+            with archive.open("xb") as stream:
+                os.chmod(archive, 0o600)
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except FileExistsError:
+            if bounded_file(archive, 16 * 1024 * 1024, private=True) != raw:
+                raise DeploymentError("existing adoption evidence differs from the original deployment state") from None
+        directory = os.open(self.state_dir, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        return checksum
+
+    def update(self, revision, app_image, frontend_image, check_only=False, settings=None, adopt_native=False):
         settings = settings or {}
         if not settings.keys() <= APPLICATION_SETTINGS:
             raise DeploymentError("only application settings can be changed")
+        state, adopted = self.previous_state(adopt_native)
+        with tempfile.TemporaryDirectory(prefix="candidate-", dir=self.state_dir) as temporary:
+            return self.update_candidate(revision, app_image, frontend_image, check_only, settings,
+                                         state, adopted, Path(temporary) / "candidate.json")
+
+    def update_candidate(self, revision, app_image, frontend_image, check_only, settings, state, adopted, candidate):
         image_refs = {"app": app_image, "frontend": frontend_image}
         image_ids = {name: self.image(reference, revision) for name, reference in image_refs.items()}
         containers = self.containers()
         before = json.loads(self.compose("config", "--format", "json"))
-        state = json.loads(self.state_file.read_text()) if self.state_file.exists() else None
         # A pending update may have persisted its overlay before replacing the old container.
         # Reconciliation below requires the original candidate and verifies its saved contracts.
         if not state or state["status"] != "pending":
             self.check_declared_environment(before, containers)
-        candidate = self.state_dir / "candidate.json"
         overrides = {name: {"image": ref} for name, ref in image_refs.items()}
         changes = {name: {key: value for key, value in settings.items()
                           if (name == "frontend") == (key == "POKETTO_SUPPORT_EMAIL")} for name in image_refs}
@@ -356,23 +441,21 @@ class Installation:
                 comparable["services"][name].pop("environment", None)
         if comparable != before:
             raise DeploymentError("candidate changes more than selected images and application settings")
-        worker = None
-        worker_plan = None
+        native = None
+        dependency = None
         if actual_environment.get("POKETTO_EXECUTOR_ENABLED", "false").lower() == "true":
             if not self.config.get("executor"):
-                raise DeploymentError("execution is enabled; configure the host worker updater before deploying")
-            worker = WorkerRelease(self.config["executor"], self.state_dir, self.command)
-            worker_plan = worker.prepare(image_ids["app"], revision)
+                raise DeploymentError("execution is enabled; configure the pinned native service before deploying")
+            require_native_binding(self.config["executor"], rendered, containers["app"])
+            native = NativeService(self.config["executor"], self.command)
+            dependency = native.inspect()
         # Every image this installation deployed stays on record until it is retired or gone.
         known = set(state.get("knownImages", [])) | set(state.get("imageIds", {}).values()) if state else set()
         if state and state["status"] == "pending":
             if state["revision"] != revision or state["imageIds"] != image_ids or state["configuration"] != digest(rendered):
                 raise DeploymentError("an unfinished deployment requires reconciliation with the same images and configuration")
-            pending_worker = state.get("worker")
-            if bool(worker_plan) != bool(pending_worker) or worker_plan and any(
-                    worker_plan[key] != pending_worker[key] for key in ("release", "configuration", "installation")):
-                raise DeploymentError("an unfinished deployment requires the same worker release and configuration")
-            worker_plan = pending_worker
+            if dependency != state.get("nativeDependency"):
+                raise DeploymentError("an unfinished deployment requires the same pinned native dependency")
         else:
             # Redeploying the images that are already running, whatever reference delivers them, keeps
             # the previous version's images: they are the local recovery path and must stay retained.
@@ -389,32 +472,38 @@ class Installation:
                 expected_environment = dict(value.split("=", 1) for value in contracts[name]["environment"])
                 expected_environment.update(changes[name])
                 contracts[name]["environment"] = sorted(key + "=" + value for key, value in expected_environment.items())
+            adopted_hash = hashlib.sha256(adopted).hexdigest() if adopted is not None else (state or {}).get("adoptedStateSha256")
             state = {
-                "status": "pending", "revision": revision, "images": image_refs, "imageIds": image_ids,
+                "schemaVersion": 2, "status": "pending", "revision": revision, "images": image_refs, "imageIds": image_ids,
                 "configuration": digest(rendered),
                 "previousImages": previous,
                 "runtimeContracts": {name: digest(contract) for name, contract in contracts.items()},
                 "otherContainers": {name: value["Id"] for name, value in containers.items() if name not in image_refs},
                 "removing": removing,
-                "worker": worker_plan,
+                "nativeDependency": dependency,
+                "adoptedStateSha256": adopted_hash,
             }
         state["knownImages"] = sorted(known | set(image_ids.values()))
         if check_only:
             candidate.unlink()
             return {"status": "validated", "revision": revision}
+        if adopted is not None:
+            self.preserve_adopted_state(adopted)
+        durable_candidate = self.state_dir / "candidate.json"
+        write_json(durable_candidate, json.loads(candidate.read_text()))
         write_json(self.state_file, state)
-        if worker:
-            worker.install(worker_plan)
+        if native:
+            native.verify(dependency)
         write_json(self.overlay, json.loads(candidate.read_text()))
-        candidate.unlink()
+        durable_candidate.unlink()
         self.compose("up", "--detach", "--no-deps", "--no-build", "--pull", "never", "--wait",
                      "--wait-timeout", str(self.config.get("healthTimeoutSeconds", 180)), "app", "frontend")
         self.verify(state)
         state["status"] = "healthy"
         write_json(self.state_file, state)
         result = {"status": "healthy", "revision": revision, "imageIds": image_ids}
-        if worker_plan:
-            result["workerRelease"] = worker_plan["release"]
+        if dependency:
+            result["nativeBinarySha256"] = dependency["binarySha256"]
         state.update(retiredImages=[], retirementError=None)
         try:
             retired = self.retire_images(state, rendered)
@@ -471,7 +560,7 @@ def load_config(root):
         except ValueError as error:
             raise DeploymentError("health check port must be between 1 and 65535") from error
     if "executor" in config:
-        validate_worker_config(config["executor"])
+        validate_native_config(config["executor"])
     return config
 
 
@@ -483,6 +572,8 @@ def main():
     parser.add_argument("--app-revision", required=True)
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--set-stdin", action="store_true")
+    parser.add_argument("--adopt-native-dependency", action="store_true",
+                        help="Explicitly preserve and replace a healthy legacy deployment state; never converts pending state")
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise DeploymentError("the existing-installation updater requires its configured privileged entrance")
@@ -499,7 +590,8 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
             raise DeploymentError("another deployment holds the installation lock") from error
-        print(json.dumps(installation.update(args.app_revision, args.app_image, args.frontend_image, args.check, settings)))
+        print(json.dumps(installation.update(args.app_revision, args.app_image, args.frontend_image,
+                                           args.check, settings, args.adopt_native_dependency)))
 
 
 if __name__ == "__main__":

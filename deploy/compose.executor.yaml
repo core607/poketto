@@ -1,12 +1,16 @@
-# Applied only after deploy.sh verifies the independently installed host executor prerequisites.
+# Applied only after deploy.sh verifies the independently installed native service prerequisites.
 services:
   app:
     environment:
       POKETTO_EXECUTOR_ENABLED: "true"
-      POKETTO_EXECUTOR_SOCKET: /run/poketto-executor/control.sock
-      POKETTO_EXECUTOR_SIGNING_KEY: /run/poketto-secrets/executor-private.pem
+      POKETTO_EXECUTOR_SOCKET: /run/sandcrab-repository/control.sock
+      POKETTO_EXECUTOR_PROFILE: "${POKETTO_EXECUTOR_PROFILE:-repository}"
       POKETTO_EXECUTOR_STAGING_DIRECTORY: /var/lib/poketto-executor-exports
       POKETTO_EXECUTOR_COPIES_METADATA_ROOT: /var/lib/poketto-executor-metadata
+      POKETTO_EXECUTOR_COPIES_BYTES: "${POKETTO_EXECUTOR_COPIES_BYTES:?native volume byte bound is required}"
+      POKETTO_EXECUTOR_COPIES_INODES: "${POKETTO_EXECUTOR_COPIES_INODES:?native volume inode bound is required}"
+      POKETTO_EXECUTOR_TRANSFERS_DIRECTORY: /var/lib/poketto-executor-transfers
+      POKETTO_EXECUTOR_TRANSFERS_MAX_BYTES: "${POKETTO_EXECUTOR_TRANSFERS_MAX_BYTES:-1073741824}"
       POKETTO_EXECUTOR_MAX_SESSIONS: "${POKETTO_EXECUTOR_MAX_SESSIONS:-4}"
       POKETTO_EXECUTOR_MAX_OPERATIONS: "${POKETTO_EXECUTOR_MAX_OPERATIONS:-4}"
       POKETTO_EXECUTOR_ACCOUNT_OPERATIONS_VIEWER: "${POKETTO_EXECUTOR_ACCOUNT_OPERATIONS_VIEWER:-1}"
@@ -15,15 +19,13 @@ services:
       POKETTO_EXECUTOR_ACCOUNT_COPIES_VIEWER: "${POKETTO_EXECUTOR_ACCOUNT_COPIES_VIEWER:-2}"
       POKETTO_EXECUTOR_ACCOUNT_COPIES_COMMUNITY: "${POKETTO_EXECUTOR_ACCOUNT_COPIES_COMMUNITY:-4}"
       POKETTO_EXECUTOR_ACCOUNT_COPIES_CREATOR: "${POKETTO_EXECUTOR_ACCOUNT_COPIES_CREATOR:-16}"
-      POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS: "${POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS:-60}"
-      POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS: "${POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS:-15}"
       POKETTO_EXECUTOR_MAX_BUNDLE_BYTES: "${POKETTO_EXECUTOR_MAX_BUNDLE_BYTES:-134217728}"
       POKETTO_EXECUTOR_EXPORT_TIMEOUT_SECONDS: "${POKETTO_EXECUTOR_EXPORT_TIMEOUT_SECONDS:-30}"
     volumes:
       # Mount the parent, so worker restarts can replace the socket inode.
       - type: bind
         source: "${POKETTO_EXECUTOR_RUNTIME_DIR_HOST:?executor runtime directory is required}"
-        target: /run/poketto-executor
+        target: /run/sandcrab-repository
         read_only: true
         bind:
           create_host_path: false
@@ -38,8 +40,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: "${POKETTO_EXECUTOR_SIGNING_KEY_HOST:?executor signing key is required}"
-        target: /run/poketto-secrets/executor-private.pem
-        read_only: true
+        source: "${POKETTO_EXECUTOR_TRANSFERS_DIR_HOST:?executor transfer directory is required}"
+        target: /var/lib/poketto-executor-transfers
         bind:
           create_host_path: false

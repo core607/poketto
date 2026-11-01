@@ -1,13 +1,22 @@
 //! Path checks for root-owned state that other accounts must not replace.
-use rustix::fs::OFlags;
+use rustix::fs::{Mode, OFlags, openat};
 use std::{
-    fs::{self, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::{self, Read},
     os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Component, Path},
 };
 fn invalid() -> io::Error {
     io::Error::other("Protected path unavailable")
+}
+/// Open a directory relative to `parent` without following its final symlink.
+pub fn directory(parent: &File, name: &str) -> io::Result<File> {
+    Ok(File::from(openat(
+        parent,
+        name,
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )?))
 }
 /// An absolute path of plain components drawn from a conservative character set.
 pub fn normal(path: &Path) -> bool {

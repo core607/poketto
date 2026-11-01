@@ -465,46 +465,57 @@ class ExistingDeploymentTests(unittest.TestCase):
     def enable_executor(self):
         self.docker.configuration["services"]["app"]["environment"]["POKETTO_EXECUTOR_ENABLED"] = "true"
         self.docker.running["app"]["Config"]["Env"].append("POKETTO_EXECUTOR_ENABLED=true")
-        self.config["executor"] = {"healthUrl": "http://127.0.0.1:8080/actuator/health/executor"}
+        socket = "/run/native-runtime/control.sock"
+        runtime = str(self.root / "runtime")
+        self.docker.configuration["services"]["app"]["environment"]["POKETTO_EXECUTOR_SOCKET"] = socket
+        self.docker.running["app"]["Config"]["Env"].append("POKETTO_EXECUTOR_SOCKET=" + socket)
+        self.docker.running["app"]["State"]["Pid"] = 123
+        self.docker.running["app"]["Mounts"].append(
+            {"Type": "bind", "Source": runtime, "Destination": "/run/native-runtime", "RW": False})
+        self.docker.configuration["services"]["app"]["volumes"] = [
+            {"type": "bind", "source": runtime, "target": "/run/native-runtime", "read_only": True}]
+        self.config["executor"] = {"healthUrl": "http://127.0.0.1:8080/actuator/health/executor",
+                                   "socket": runtime + "/control.sock"}
 
-    def worker_plan(self):
-        return {"release": "1" * 64, "previousRelease": "2" * 64,
-                "configuration": "3" * 64, "installation": "4" * 64}
+    def native_plan(self):
+        return {"kind": "sandcrab-native-v1", "binarySha256": "1" * 64,
+                "installedConfigSha256": "3" * 64, "installation": "4" * 64}
 
     def test_enabled_executor_requires_a_deployment_configuration(self):
         self.enable_executor()
         del self.config["executor"]
-        with self.assertRaisesRegex(updater.DeploymentError, "configure the host worker"):
+        with self.assertRaisesRegex(updater.DeploymentError, "configure the pinned native service"):
             self.installation.update(REVISION, "new-app", "new-frontend")
         self.assertEqual(self.docker.running["app"]["Id"], "app-original")
         self.assertFalse(self.installation.state_file.exists())
 
-    def test_worker_failure_leaves_pending_state_without_replacing_the_application(self):
+    def test_native_dependency_change_leaves_pending_state_without_replacing_the_application(self):
         self.enable_executor()
-        with patch.object(updater, "WorkerRelease") as worker_type:
-            worker = worker_type.return_value
-            worker.prepare.return_value = self.worker_plan()
-            worker.install.side_effect = updater.DeploymentError("worker startup failed")
-            with self.assertRaisesRegex(updater.DeploymentError, "worker startup"):
+        with patch.object(updater, "NativeService") as native_type:
+            native = native_type.return_value
+            native.inspect.return_value = self.native_plan()
+            native.verify.side_effect = updater.DeploymentError("native checksum changed")
+            with self.assertRaisesRegex(updater.DeploymentError, "native checksum"):
                 self.installation.update(REVISION, "new-app", "new-frontend")
             self.assertEqual(self.docker.running["app"]["Id"], "app-original")
             self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
-            worker.prepare.return_value = {**self.worker_plan(), "release": "5" * 64}
-            with self.assertRaisesRegex(updater.DeploymentError, "same worker release"):
+            native.inspect.return_value = {**self.native_plan(), "binarySha256": "5" * 64}
+            with self.assertRaisesRegex(updater.DeploymentError, "same pinned native dependency"):
                 self.installation.update(REVISION, "new-app", "new-frontend")
-            self.assertEqual(worker.install.call_count, 1)
+            self.assertEqual(native.verify.call_count, 1)
+            self.assertTrue({call[0] for call in native.method_calls} <= {"inspect", "verify"})
 
-    def test_worker_preflight_never_installs_sources_or_restarts_services(self):
+    def test_native_preflight_never_installs_sources_or_restarts_services(self):
         self.enable_executor()
-        with patch.object(updater, "WorkerRelease") as worker_type:
-            worker = worker_type.return_value
-            worker.prepare.return_value = self.worker_plan()
+        with patch.object(updater, "NativeService") as native_type:
+            native = native_type.return_value
+            native.inspect.return_value = self.native_plan()
             self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend", True)["status"], "validated")
-            worker.install.assert_not_called()
+            self.assertEqual([call[0] for call in native.method_calls], ["inspect"])
             self.assertEqual(self.docker.running["app"]["Id"], "app-original")
             self.assertFalse(self.installation.state_file.exists())
 
-    def test_worker_protocol_health_gates_success_and_retry_retains_the_original_recovery_release(self):
+    def test_native_health_and_copy_probe_gate_success_while_same_pins_allow_retry(self):
         self.enable_executor()
         response = MagicMock()
         response.__enter__.return_value = response
@@ -512,23 +523,128 @@ class ExistingDeploymentTests(unittest.TestCase):
         response.read.return_value = b'{"status":"DOWN"}'
         opener = MagicMock()
         opener.open.return_value = response
-        with patch.object(updater, "WorkerRelease") as worker_type, \
+        with patch.object(updater, "NativeService") as native_type, \
                 patch.object(updater.urllib.request, "build_opener", return_value=opener):
-            worker = worker_type.return_value
-            worker.prepare.return_value = self.worker_plan()
-            worker.install.side_effect = lambda plan: self.assertEqual(self.docker.running["app"]["Id"], "app-original")
+            native = native_type.return_value
+            native.inspect.return_value = self.native_plan()
             with self.assertRaisesRegex(updater.DeploymentError, "did not confirm readiness"):
                 self.installation.update(REVISION, "new-app", "new-frontend")
             self.assertEqual(self.docker.running["app"]["Id"], "app-updated")
             self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
             opener.open.assert_called_with(self.config["executor"]["healthUrl"], timeout=15)
-            worker.install.side_effect = None
-            worker.prepare.return_value = {**self.worker_plan(), "previousRelease": "1" * 64}
             response.read.return_value = b'{"status":"UP"}'
             result = self.installation.update(REVISION, "new-app", "new-frontend")
             self.assertEqual(result["status"], "healthy")
-            self.assertEqual(result["workerRelease"], "1" * 64)
-            worker.install.assert_called_with(self.worker_plan())
+            self.assertEqual(result["nativeBinarySha256"], "1" * 64)
+            native.verify.assert_called_with(self.native_plan())
+            native.probe.assert_called_once()
+            self.assertTrue({call[0] for call in native.method_calls} <= {"inspect", "verify", "verify_consumer", "probe"})
+
+    def test_socket_mapping_to_another_healthy_service_is_refused_before_pending_state(self):
+        self.enable_executor()
+        alternate = str(self.root / "other-service")
+        self.docker.running["app"]["Mounts"][-1]["Source"] = alternate
+        self.docker.configuration["services"]["app"]["volumes"][0]["source"] = alternate
+        with patch.object(updater, "NativeService") as native:
+            with self.assertRaisesRegex(updater.DeploymentError, "socket binding differs"):
+                self.installation.update(REVISION, "new-app", "new-frontend")
+            native.assert_not_called()
+        self.assertFalse(self.installation.state_file.exists())
+        self.assertFalse(self.installation.overlay.exists())
+        self.assertFalse((self.installation.state_dir / "candidate.json").exists())
+        self.assertFalse(any("up" in call for call in self.docker.calls))
+
+    def test_shadowed_or_non_bind_socket_mounts_are_not_accepted(self):
+        self.enable_executor()
+        original = copy.deepcopy(self.docker.running["app"]["Mounts"])
+        for mount in ({"Type": "tmpfs", "Destination": "/run", "RW": False},
+                      {"Type": "bind", "Source": "/unrelated", "Destination": "/run/native-runtime", "RW": False}):
+            self.docker.running["app"]["Mounts"] = original + [mount]
+            with self.assertRaisesRegex(updater.DeploymentError, "unshadowed"):
+                self.installation.update(REVISION, "new-app", "new-frontend")
+        self.docker.running["app"]["Mounts"] = copy.deepcopy(original)
+        self.docker.running["app"]["Mounts"][-1]["Type"] = "volume"
+        with self.assertRaisesRegex(updater.DeploymentError, "parent-directory bind"):
+            self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertFalse(self.installation.state_file.exists())
+
+    def test_wrong_pending_retry_preserves_every_original_recovery_file(self):
+        self.enable_executor()
+        with patch.object(updater, "NativeService") as native_type:
+            native = native_type.return_value
+            native.inspect.return_value = self.native_plan()
+            native.verify.side_effect = updater.DeploymentError("native dependency changed")
+            with self.assertRaises(updater.DeploymentError):
+                self.installation.update(REVISION, "new-app", "new-frontend")
+            candidate = self.installation.state_dir / "candidate.json"
+            state = self.installation.state_file.read_bytes()
+            original = candidate.read_bytes()
+            for image, settings in (("other-app", None), ("new-app", {"POKETTO_SUPPORT_EMAIL": "different@example.test"})):
+                with self.assertRaisesRegex(updater.DeploymentError, "same images and configuration"):
+                    self.installation.update(REVISION, image, "new-frontend", settings=settings)
+                self.assertEqual(self.installation.state_file.read_bytes(), state)
+                self.assertEqual(candidate.read_bytes(), original)
+                self.assertFalse(self.installation.overlay.exists())
+                self.assertFalse(list(self.installation.state_dir.glob("candidate-*")))
+            self.assertEqual(self.docker.running["app"]["Id"], "app-original")
+
+    def test_existing_unprotected_state_directory_is_rejected(self):
+        self.installation.state_dir.chmod(0o777)
+        with self.assertRaisesRegex(updater.DeploymentError, "protected from other users"):
+            updater.Installation(self.root, self.config, self.docker)
+
+    def legacy_state(self, status="healthy"):
+        self.installation.update(REVISION, "new-app", "new-frontend")
+        state = json.loads(self.installation.state_file.read_text())
+        state.pop("schemaVersion")
+        state.pop("nativeDependency")
+        state["worker"] = {"release": "a" * 64, "previousRelease": "b" * 64}
+        state["status"] = status
+        raw = json.dumps(state, indent=2).encode() + b"\n"
+        self.installation.state_file.write_bytes(raw)
+        self.docker.calls.clear()
+        return raw
+
+    def test_legacy_pending_state_is_untouched_even_with_an_adoption_request(self):
+        original = self.legacy_state("pending")
+        overlay = self.installation.overlay.read_bytes()
+        for adoption in (False, True):
+            with self.assertRaisesRegex(updater.DeploymentError, "legacy pending"):
+                self.installation.update(REVISION, "new-app", "new-frontend", adopt_native=adoption)
+            self.assertEqual(self.installation.state_file.read_bytes(), original)
+            self.assertEqual(self.installation.overlay.read_bytes(), overlay)
+            self.assertEqual(self.docker.calls, [])
+        self.assertFalse(list(self.installation.state_dir.glob("state-before-native-*.json")))
+
+    def test_legacy_healthy_state_requires_explicit_adoption_and_retains_exact_evidence_and_images(self):
+        original = self.legacy_state()
+        with self.assertRaisesRegex(updater.DeploymentError, "explicit --adopt-native-dependency"):
+            self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(self.docker.calls, [])
+        result = self.installation.update(REVISION, "new-app", "new-frontend", True, adopt_native=True)
+        self.assertEqual(result["status"], "validated")
+        self.assertEqual(self.installation.state_file.read_bytes(), original)
+        self.assertFalse(list(self.installation.state_dir.glob("state-before-native-*.json")))
+        self.installation.update(REVISION, "new-app", "new-frontend", adopt_native=True)
+        archives = list(self.installation.state_dir.glob("state-before-native-*.json"))
+        self.assertEqual(len(archives), 1)
+        self.assertEqual(archives[0].read_bytes(), original)
+        current = json.loads(self.installation.state_file.read_text())
+        self.assertEqual(current["schemaVersion"], 2)
+        self.assertNotIn("worker", current)
+        self.assertEqual(current["previousImages"], json.loads(original)["previousImages"])
+        self.assertEqual(current["knownImages"], json.loads(original)["knownImages"])
+
+    def test_mixed_or_unknown_state_schema_is_never_adopted(self):
+        original = self.legacy_state()
+        for version in (2, 3):
+            state = {**json.loads(original), "schemaVersion": version}
+            raw = json.dumps(state).encode()
+            self.installation.state_file.write_bytes(raw)
+            with self.assertRaisesRegex(updater.DeploymentError, "unsupported or mixed"):
+                self.installation.update(REVISION, "new-app", "new-frontend", adopt_native=True)
+            self.assertEqual(self.installation.state_file.read_bytes(), raw)
+            self.assertEqual(self.docker.calls, [])
 
     def test_failed_update_keeps_pending_state_and_same_target_can_be_reconciled(self):
         self.docker.fail_up = True

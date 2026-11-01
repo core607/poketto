@@ -38,6 +38,21 @@ that unit's MainPID, verifies the pool and tools, takes the runtime lock and cle
 up previous runs. `sandcrab check --config FILE` checks protected configuration,
 accounts and tools; it does not prove the runtime slice or sandbox works.
 
+Set `OOMScoreAdjust=-900`, `OOMPolicy=stop` and `KillMode=control-group` on the
+supervisor. Its directly spawned relays inherit the score; independent sandbox,
+file and volume units do not. Keep parent and supervisor `memory.oom.group=0`.
+These settings preserve victim selection and stop supervision after a member OOM;
+they do not grant memory-limit immunity. Abrupt loss stops dependent units;
+startup confirms their containment and recovers old mounts before serving a new epoch.
+
+For deployment checks, install the read-only [resource-pool checker](../../resource_pool.py)
+at `/opt/sandcrab/resource_pool.py`, owned by root beneath protected directories.
+`python3 /opt/sandcrab/resource_pool.py --service sandcrab-example.service` verifies
+the running root process, its actual cgroup membership and finite pool limits.
+It also requires the supervisor OOM score and stop policy.
+It needs no private service configuration and starts no sandbox. Application
+health and consumer acceptance remain separate checks.
+
 Each run executes as the profile's account in a fresh bounded tmpfs at
 `/workspace`, with a private `/tmp`, isolated network and PID namespaces and
 seccomp. It shares the host kernel; this is not a microVM boundary. Workspace bytes
@@ -153,7 +168,7 @@ and truncation, or a failure code. Output bounds apply to combined raw stdout an
 stderr; invalid UTF-8 becomes replacement characters. Runs continue after HTTP
 disconnect and remain bounded by their timeout. Cancellation does not undo work.
 
-`max_sandboxes` bounds live runs and workspace-owning sessions together; child
+`max_sandboxes` accepts 1 to 256 and bounds live runs and workspace-owning sessions together; child
 shells share their parent's reservation. It replaces `max_runs` in
 native TOML configurations. `RUN_CAPACITY` or `SESSION_CAPACITY` refuses before execution. `RESULT_CAPACITY` means retained records
 or output reservations must be forgotten. Session records and command results share
@@ -289,7 +304,9 @@ that the command never ran.
 Enable the optional `[storage]` section in the example configuration. Provision a
 dedicated XFS mount at `storage.root/data` with reflinks, enforced project quotas
 (`prjquota` or `pquota`), `nosuid` and `nodev`. Its filesystem size must not exceed
-`pool_bytes`. Install `xfsprogs` under `/usr/sbin`. The root and its ancestors must
+`pool_bytes`. Subdirectory bind mounts are rejected: project quota IDs belong to
+the whole filesystem, which must not have another quota allocator. Install
+`xfsprogs` under `/usr/sbin`. The root and its ancestors must
 be root-owned, non-writable by other accounts and searchable by execution accounts.
 The daemon creates private control metadata at `root/state` on a different filesystem.
 It never formats a disk, remounts a filesystem or adopts a nonempty unowned store.
@@ -447,5 +464,16 @@ ordinary caller/guest CLI use, isolation, bounded admission and failure recovery
 request refusal before admission, and the ordinary run/session CLI options.
 `contexts_probe.py` uses those arguments to verify independent shell state,
 shared budgets, parent expiry and child containment faults; CI retains its receipt.
+`oom_probe.py` uses those arguments on an explicitly selected disposable Linux
+host with `xfsprogs` and kernel-journal access. It owns a 384 MiB, zero-swap,
+50% CPU slice and a 512 MiB XFS image. Each parent, daemon and service-member
+fault runs once, including a `continue` policy negative control. The daemon case
+retains at most 64 outputs of 768 KiB; it does not use oversized HTTP bodies.
+The report requires exact memcg/victim evidence, rejects host-wide OOM, checks
+two durable volumes after recovery and records cleanup separately. A signal or
+guest OOM is insufficient. Run the controller outside its pressure slice with a
+separate bounded operator budget. Classification unit tests do not establish
+native OOM acceptance; preserve the existing OOM CI gate until this fixture has
+passed with the selected binary and service policy.
 Independent agent tasks and their budgeted runner live in the
 [Inspect suite](../../../evals/README.md).

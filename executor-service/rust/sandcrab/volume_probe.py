@@ -43,6 +43,7 @@ max_records = 12
     def setup(self):
         call('mkfs.xfs', '-f', '-m', 'reflink=1', str(self.image))
         call('mount', '-o', 'loop,prjquota,nosuid,nodev', str(self.image), str(self.data))
+        self.mount_contract_tests()
         sentinel = self.data / 'unowned'
         sentinel.write_text('preserve preexisting data')
         try:
@@ -71,6 +72,36 @@ max_records = 12
         self.done('volume-bootstrap-refuses-preexisting-data')
         assert self.info['capabilities'] == ['runs', 'sessions', 'files', 'events', 'calls', 'volumes']
         assert self.info['storage']['maxVolumeBytes'] == 8388608
+
+    def mount_contract_tests(self):
+        valid = call(str(self.binary), 'check', '--config', str(self.config))
+        assert json.loads(valid.stdout) == {'configurationValid': True}
+        source = self.data / 'shared'
+        source.mkdir(mode=0o755)
+        source.chmod(0o755)
+        alternate = self.root / 'shared-storage'
+        alternate.mkdir(mode=0o755)
+        alternate.chmod(0o755)
+        target = alternate / 'data'
+        target.mkdir(mode=0o755)
+        target.chmod(0o755)
+        config = self.root / 'shared-storage.toml'
+        config.write_text(self.config.read_text().replace(json.dumps(str(self.storage)), json.dumps(str(alternate))))
+        config.chmod(0o600)
+        call('mount', '--bind', str(source), str(target))
+        try:
+            # A subdirectory bind has an exact mount target and the same XFS options,
+            # but shares quota IDs with directories outside the proposed store.
+            mount = json.loads(call('findmnt', '-J', '-T', str(target), '-o', 'TARGET,FSTYPE,FSROOT').stdout)['filesystems'][0]
+            assert mount == {'target': str(target), 'fstype': 'xfs', 'fsroot': '/shared'}
+            assert target.stat().st_dev == self.data.stat().st_dev
+            refused = call(str(self.binary), 'check', '--config', str(config), check=False)
+            assert refused.returncode != 0 and 'dedicated whole XFS filesystem' in refused.stderr, refused
+            assert list(source.iterdir()) == [] and not (alternate / 'state').exists()
+        finally:
+            call('umount', str(target))
+        source.rmdir()
+        self.done('volume-storage-refuses-a-shared-filesystem-subdirectory')
 
     def volume(self, **options):
         request = {'id': str(uuid.uuid4()), 'serverId': self.info['serverId'], 'profile': 'python', **options}

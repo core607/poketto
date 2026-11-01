@@ -22,15 +22,24 @@ import time
 import urllib.error
 import urllib.request
 
+
+def bounded_output(command, maximum):
+    return f"load_output=$({command}) && printf '%s' \"$load_output\" | head -c {maximum}"
+
+
 READS = {
     'true': 'true',
     'list': 'ls public | head -20',
     'read': 'f=AGENTS.md; test -f $f || f=$(git ls-files | head -1); head -c 2000 "$f"',
     'python': "python3 -c 'print(sum(range(1000)))'",
     'git': 'git log -1 --format=%H',
-    'status': 'poketto status | head -c 300',
+    'status': bounded_output('poketto status --remote', 300),
 }
 WEIGHTS = {'true': 10, 'list': 25, 'read': 25, 'python': 15, 'git': 15, 'status': 10}
+
+
+def workload():
+    return {'version': 2, 'reads': dict(READS), 'weights': dict(WEIGHTS), 'agentSeed': 'agent-number'}
 
 
 class Endpoint:
@@ -111,7 +120,7 @@ class Run:
                 operation = 'save'
                 path = f'private/.loadtest/agent-{number}.md'
                 command = (f"mkdir -p private/.loadtest && printf 'load %s\\n' \"$(date +%s%N)\" > {path} "
-                           f"&& poketto save {path} | head -c 200")
+                           f"&& {bounded_output('poketto save ' + path, 200)}")
             else:
                 operation = rng.choices(list(WEIGHTS), weights=list(WEIGHTS.values()))[0]
                 command = READS[operation]
@@ -135,7 +144,8 @@ class Run:
         for number, copy in sorted(self.copies.items()):
             path = f'private/.loadtest/agent-{number}.md'
             outcome, _ = self.endpoint.repo_exec(
-                copy, f'test -e {path} && rm {path} && poketto save --delete {path} | head -c 120 || true')
+                copy, f'if test -e {path}; then rm {path} && '
+                      f'{bounded_output("poketto save --delete " + path, 120)}; fi')
             removed += outcome == 'OK'
         return removed
 
@@ -176,7 +186,8 @@ def overall(samples, seconds):
 def summarize(run):
     summary = {'agents': run.args.agents, 'seconds': run.args.seconds, 'think': run.args.think,
                'warmup': run.args.warmup, 'calls': len(run.samples), 'copies': len(set(run.copies.values())),
-               'operations': {}}
+               'workload': workload(), 'saves': run.args.saves, 'ramp': run.args.ramp,
+               'timeout': run.args.timeout, 'operations': {}}
     for operation in sorted({sample[2] for sample in run.samples}):
         latencies = [sample[4] for sample in run.samples if sample[2] == operation]
         outcomes = {}

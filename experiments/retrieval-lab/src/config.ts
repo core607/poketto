@@ -56,12 +56,11 @@ export function config() {
     deepseekUrl: process.env.DEEPSEEK_BASE_URL ?? "https://api.deepseek.com",
     siliconKey: process.env.SILICONFLOW_API_KEY,
     deepseekKey: process.env.DEEPSEEK_API_KEY,
-    workerSocket:
+    workerSocket: resolve(
       process.env.LAB_WORKER_SOCKET ??
-      "/run/retrieval-lab-executor/control.sock",
-    signingKey: process.env.LAB_SIGNING_KEY ?? "/etc/retrieval-lab/private.pem",
-    exportRoot:
-      process.env.LAB_EXPORT_ROOT ?? "/var/lib/retrieval-lab/pool/exports",
+        "/run/retrieval-lab-sandcrab/control.sock",
+    ),
+    workerProfile: process.env.LAB_WORKER_PROFILE ?? "corpus",
     prices: {
       deepseekInput: number("LAB_DEEPSEEK_INPUT_USD_PER_M"),
       deepseekOutput: number("LAB_DEEPSEEK_OUTPUT_USD_PER_M"),

@@ -68,7 +68,7 @@ pub(crate) fn directory(path: &Path) -> io::Result<File> {
     )?))
 }
 fn child_dir(parent: &File, name: &str) -> io::Result<File> {
-    sandcrab_core::transfer::dir(parent, name)
+    sandcrab_core::fs::directory(parent, name)
 }
 pub(crate) fn parent(root: &File, path: &str, create: bool) -> io::Result<(File, String)> {
     if !valid_path(path, false) {

@@ -180,6 +180,15 @@ def compare(baseline, agents, summary):
             for key in ('okRate', 'p95', 'callsPerSecond')}
 
 
+def read_baseline(path, settings):
+    if path is None:
+        return {}
+    baseline = json.loads(path.read_text(encoding='utf-8'))
+    if baseline.get('workload') != load.workload() or baseline.get('settings') != settings:
+        raise SystemExit('baseline workload or sampling settings differ; record a matching baseline')
+    return baseline
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--endpoint', required=True)
@@ -207,21 +216,23 @@ def main():
     parser.add_argument('--keep-copies', action='store_true', help='leave the copies the agents used')
     parser.add_argument('--force', action='store_true', help='run although the preflight failed')
     args = parser.parse_args()
+    settings = {'seconds': args.seconds, 'warmup': args.warmup, 'think': list(args.think),
+                'thinkDistribution': 'uniform', 'warmUpRun': [args.warm_up_agents, args.warm_up_seconds],
+                'timeout': args.timeout}
+    baseline = read_baseline(args.baseline, settings)
     token = Path(args.token_file).read_text(encoding='utf-8').strip()
     if not token:
         raise SystemExit('the token file is empty')
     endpoint = load.connect(args.endpoint, token, args.timeout)
     receipt = {'kind': 'agent-load-suite', 'label': args.label, 'sourceCommit': args.source_commit,
                'started': rfc3339(time.time()),
-               'settings': {'seconds': args.seconds, 'warmup': args.warmup, 'think': args.think,
-                            'thinkDistribution': 'uniform', 'warmUpRun': [args.warm_up_agents, args.warm_up_seconds]},
+               'workload': load.workload(), 'settings': settings,
                'preflight': preflight(args, endpoint), 'stages': []}
     copies = {}
     if args.warm_up_seconds:
         run, summary = load.execute(stage_args(args, args.warm_up_agents, args.warm_up_seconds, 0), endpoint)
         copies.update({('warm', key): value for key, value in run.copies.items()})
         print(f"warm-up: {summary['all']['calls']} calls, okRate {summary['all']['okRate']}", flush=True)
-    baseline = json.loads(args.baseline.read_text(encoding='utf-8')) if args.baseline else {}
     for index, agents in enumerate(int(value) for value in args.stages.split(',')):
         if index or args.warm_up_seconds:
             wait_idle(args, f'stage {agents}')
@@ -255,7 +266,8 @@ def main():
     args.evidence.parent.mkdir(parents=True, exist_ok=True)
     args.evidence.write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
     if args.write_baseline:
-        args.write_baseline.write_text(json.dumps({'label': args.label, 'recorded': receipt['finished'], 'stages': {
+        args.write_baseline.write_text(json.dumps({'label': args.label, 'recorded': receipt['finished'],
+            'workload': receipt['workload'], 'settings': settings, 'stages': {
             str(stage['agents']): {key: stage['afterWarmup'][key] for key in ('okRate', 'p95', 'callsPerSecond')}
             for stage in receipt['stages']}}, indent=2) + '\n', encoding='utf-8')
     print(f"result: {receipt['result']}", flush=True)

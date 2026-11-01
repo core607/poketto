@@ -9,19 +9,19 @@ import org.springframework.stereotype.Component;
 // Health groups and contributors share a namespace; the public group is executor.
 @Component("executorProtocolHealthIndicator")
 final class ExecutorHealthIndicator implements HealthIndicator {
-    private final Optional<IsolatedRepositoryExecutor> executor;
+    private final Optional<NativeRepositoryExecutor> executor;
 
-    ExecutorHealthIndicator(Optional<IsolatedRepositoryExecutor> executor) {
+    ExecutorHealthIndicator(Optional<NativeRepositoryExecutor> executor) {
         this.executor = executor;
     }
 
     @Override
     public Health health() {
         try {
-            executor.ifPresent(IsolatedRepositoryExecutor::checkWorker);
+            executor.ifPresent(NativeRepositoryExecutor::checkWorker);
             return Health.up().build();
-        } catch (WorkerUnavailableException unavailable) {
-            // WorkerClient logs the rejection; the health response never includes host paths or frames.
+        } catch (WorkerUnavailableException | SandcrabClient.Rejected unavailable) {
+            // The health response never includes the endpoint, host paths or native error payload.
             return Health.down().build();
         }
     }

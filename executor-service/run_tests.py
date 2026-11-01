@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
-"""Required Linux protocol tests with an isolated, pinned Python environment and JUnit report."""
+"""Required Linux shell, resource-pool and OOM checks with a JUnit report."""
 import argparse
-import hashlib
-import importlib.metadata
-import os
 from pathlib import Path
-import subprocess
 import sys
 import time
 import unittest
-import venv
 import xml.etree.ElementTree as ET
 
 
@@ -56,20 +51,7 @@ class ReportResult(unittest.TextTestResult):
             self.record(subtest, 'failure', self._exc_info_to_string(err, test))
 
 
-def requirements(source):
-    pins = {}
-    for line in (source / 'requirements.txt').read_text().splitlines():
-        if not line or line.startswith('#'):
-            continue
-        package, version = line.split('==')
-        pins[package] = version
-    return pins
-
-
 def run_suite(source, report):
-    for package, version in requirements(source).items():
-        if importlib.metadata.version(package) != version:
-            raise RuntimeError('Required executor dependency version does not match its pin: ' + package)
     sys.path.insert(0, str(source))
     suite = unittest.defaultTestLoader.discover(str(source), pattern='test_*.py')
     runner = unittest.TextTestRunner(verbosity=2, resultclass=ReportResult)
@@ -91,33 +73,13 @@ def run_suite(source, report):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--environment', type=Path)
     parser.add_argument('--report', required=True, type=Path)
-    parser.add_argument('--suite', action='store_true')
     args = parser.parse_args()
     if not sys.platform.startswith('linux'):
         raise SystemExit('executorServiceTests requires Linux; Windows must use the required Docker gate')
     source = Path(__file__).resolve().parent
     report = args.report.resolve()
-    if args.suite:
-        raise SystemExit(run_suite(source, report))
-    if args.environment is None:
-        parser.error('--environment is required when preparing dependencies')
-    environment = args.environment.resolve()
-    python = environment / 'bin/python'
-    marker = environment / '.executor-requirements.sha256'
-    identity = hashlib.sha256((source / 'requirements.txt').read_bytes() + sys.version.encode()).hexdigest()
-    if not python.exists():
-        venv.EnvBuilder(with_pip=True).create(environment)
-    if not marker.exists() or marker.read_text() != identity:
-        subprocess.run([str(python), '-I', '-m', 'pip', '--isolated', '--require-virtualenv',
-            '--disable-pip-version-check', 'install', '--no-deps', '--only-binary=:all:',
-            '--index-url', 'https://pypi.org/simple', '--timeout', '30', '--retries', '2',
-            '-r', str(source / 'requirements.txt')], check=True, timeout=180)
-        marker.write_text(identity)
-    result = subprocess.run([str(python), '-I', str(source / 'run_tests.py'), '--suite', '--report', str(report)],
-                            timeout=180, env={**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'})
-    raise SystemExit(result.returncode)
+    raise SystemExit(run_suite(source, report))
 
 
 if __name__ == '__main__':

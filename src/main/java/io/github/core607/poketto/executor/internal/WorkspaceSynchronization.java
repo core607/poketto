@@ -80,7 +80,7 @@ final class WorkspaceSynchronization {
         return BridgeReplies.workspaceSyncResult(pending, false);
     }
 
-    private static List<String> ordered(WorkspaceSyncInputs inputs) {
+    static List<String> ordered(WorkspaceSyncInputs inputs) {
         var paths = new ArrayList<>(inputs.paths());
         paths.sort(Comparator.<String>comparingInt(path -> leaf(inputs.remote().get(path)) ? 1 : 0)
                 .thenComparingInt(path -> (leaf(inputs.remote().get(path)) ? 1 : -1) * path.split("/").length)
@@ -88,14 +88,33 @@ final class WorkspaceSynchronization {
         return List.copyOf(paths);
     }
 
-    private static boolean leaf(RepositoryFile file) {
+    static boolean leaf(RepositoryFile file) {
         return file != null
                 && !file.expectedAbsence()
                 && !diagnostic(file, "NOT_REGULAR_FILE")
                 && !diagnostic(file, "MANAGED_MEDIA");
     }
 
-    private PendingWorkspaceSync.File plan(
+    /** Unchanged authoritative bytes need no local capture or new per-file baseline. */
+    boolean requiresReconciliation(
+            AuthPrincipal actor,
+            WorkspaceId workspace,
+            SelectedFileSaves.State state,
+            WorkspaceSyncInputs inputs,
+            String path) {
+        RepositoryFile base = inputs.baseline().getOrDefault(path, absent(workspace, state.baseline(path), path));
+        RepositoryFile remote = inputs.remote().getOrDefault(path, absent(workspace, inputs.remoteCommit(), path));
+        return !base.equals(remote) && !unchanged(blob(actor, workspace, base), blob(actor, workspace, remote));
+    }
+
+    private static boolean unchanged(RepositorySyncEntry before, RepositorySyncEntry after) {
+        return before.kind() != RepositorySyncEntry.Kind.UNSUPPORTED
+                && after.kind() != RepositorySyncEntry.Kind.UNSUPPORTED
+                && ((before.kind() != RepositorySyncEntry.Kind.FILE && after.kind() != RepositorySyncEntry.Kind.FILE)
+                        || Objects.equals(before.sha256(), after.sha256()));
+    }
+
+    PendingWorkspaceSync.File plan(
             AuthPrincipal actor,
             WorkspaceId workspace,
             SelectedFileSaves.State state,
@@ -114,10 +133,7 @@ final class WorkspaceSynchronization {
                 || after.kind() == RepositorySyncEntry.Kind.UNSUPPORTED) {
             return unchanged(path, baseline, true);
         }
-        if (before.kind() != RepositorySyncEntry.Kind.FILE && after.kind() != RepositorySyncEntry.Kind.FILE) {
-            return unchanged(path, baseline, false);
-        }
-        if (Objects.equals(before.sha256(), after.sha256())) {
+        if (unchanged(before, after)) {
             return unchanged(path, baseline, false);
         }
         Local local = files.read(path);
@@ -170,7 +186,7 @@ final class WorkspaceSynchronization {
         if (file.source().isPresent()) {
             byte[] bytes = file.source().orElseThrow().getBytes(StandardCharsets.UTF_8);
             return new RepositorySyncEntry(
-                    commit, file.path(), RepositorySyncEntry.Kind.FILE, bytes.length, SessionWorker.hash(bytes));
+                    commit, file.path(), RepositorySyncEntry.Kind.FILE, bytes.length, SandcrabProtocol.sha256(bytes));
         }
         return saves.repository().inspectBlob(actor, workspace, commit, file.path());
     }

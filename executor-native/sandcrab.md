@@ -8,6 +8,8 @@ They also verify snapshot bytes and digests, binary host-call replies, and outpu
 SSE continuation. Host calls run with one event-observer slot, including a quiet
 pending request, so identity validation cannot consume a second slot.
 It does not exercise Poketto authorization or establish a product cutover.
+The separate [process durability fixture](durability.md) exercises the native
+application runtime at durable journal and remote-write checkpoints.
 
 ```sh
 ./gradlew stageExecutorNativeTest buildExecutorRust
@@ -66,3 +68,78 @@ consumer acceptance.
 The [recovery receipt](evidence/2026-10-31-sandcrab-java-recovery.json) records five
 Java checks, four daemon recoveries and cleanup. It retains the earlier failed
 attempt whose controller parsed diagnostic output as JSON.
+
+## Offline repository import
+
+`sandcrab_migration_probe.py` runs the production migration controller and
+`SourceGuard` against a disposable legacy installation. Its repository, writer,
+Docker app and deployment state are synthetic; systemd containment, Docker state,
+mount checks, kernel locks, XFS journals, app-UID helper and native API are real.
+This exercises the offline import boundary, not production data migration.
+
+```sh
+sudo python3 executor-native/sandcrab_migration_probe.py \
+  --runtime build/executor-native/runtime \
+  --binary build/executor-service/bin/sandcrab \
+  --tools /prepared/tools --java /prepared/jdk/bin/java \
+  --strace /usr/bin/strace --revision "$(git rev-parse HEAD)" \
+  --container-image sha256:PREPARED_IMAGE_ID \
+  --report /tmp/sandcrab-migration.json
+```
+
+Stage with `./gradlew stageExecutorNativeTest buildExecutorRust` and keep the
+repository layout. Supply an
+already-present pinned Docker image containing `/bin/sleep`; the fixture never
+pulls images. It needs two 512 MiB XFS loop files, the native 384 MiB slice, a
+512 MiB operator cap, a 32 MiB legacy slice and a 32 MiB container. Each operator
+attempt has a 180-second runtime limit; work and cleanup have separate 900- and
+180-second deadlines. Select a host with room for these limits and retained logs.
+
+The fixture first requires live writers, source mounts and held locks to refuse
+admission. Preparation must observe the real info endpoint without native mutation
+or journal changes. Import must publish both roots without guest commands, preserve
+file bytes, modes and links, and change only the journal writer and revision.
+Syscall evidence must include the expected native requests; missing or unparseable
+observations fail. Source archives, journal snapshots and every attempt's logs are
+retained outside the disposable root. Success requires all checks and
+`cleanup: PASS`; failed cleanup retains the root. Use a new report path for every
+run. `python3 executor-native/test_migration_probe_evidence.py` runs offline
+observation tests without starting a host fixture.
+
+## Independent game and repository acceptance
+
+`native_game_java_probe.py` runs `GameNativeProbe` through a separate Java entrance
+with the current native repository owner. Its synthetic account and Git authority
+do not establish HTTP login or PostgreSQL authorization. Both services use the
+public API; no signed executor participates.
+
+```sh
+./gradlew stageExecutorNativeTest buildExecutorRust
+sudo python3 executor-native/native_game_java_probe.py \
+  --runtime build/executor-native/runtime \
+  --binary build/executor-service/bin/sandcrab \
+  --tools /prepared/tools --java /prepared/jdk/bin/java \
+  --report /tmp/native-game-java.json
+```
+
+The root controller owns temporary application/repository/game accounts, two
+512 MiB XFS images, and separate repository/game slices capped at 512/384 MiB.
+Its address space is capped at 256 MiB; both native daemons have 128 MiB caps.
+The Java unit has 384 MiB, 64 tasks, 50% CPU and a 240-second deadline. Game and
+repository profiles retain their fixture limits. Cleanup verifies processes and
+mounts before deleting accounts or files; failures retain the restricted fixture.
+
+Seven game checks cover complete saves, host/network/Unix-socket denial, resource
+limits, descendants, orphan recovery, revocation, restart and independent
+admission. An eighth checks a native repository copy, its unsaved file, repeated
+reads and volume disposal. The controller must observe both live processes under
+different owned UIDs and cgroups during contention. Recorded timings describe
+this fixture, not performance equivalence.
+
+Require Java exit zero, all eight structured results, the overlap observation,
+volume removal and `cleanup.result: PASS`. Standard output is diagnostic only;
+each attempt needs a new report path. On Linux, `python3 -m unittest discover -s
+executor-native -p test_native_game_java_probe.py` checks controller identities
+and evidence handling without launching services. Local tests and compilation
+do not replace host acceptance; the retained signed game entrance remains until
+the independent host run passes.

@@ -144,6 +144,7 @@ export class Engine {
       "engine.js",
       "models.js",
       "worker.js",
+      "sandcrab.js",
       "data.js",
       "config.js",
     ])
@@ -156,6 +157,7 @@ export class Engine {
         .update(JSON.stringify([config.deepseekUrl, config.siliconUrl]))
         .digest("hex"),
       ...experiment,
+      sandboxProfile: config.workerProfile,
       corpusSha256: audit.databaseSha256,
       corpusCommit: this.manifest.commit,
       dataset: audit.pins,
@@ -714,7 +716,7 @@ export class Engine {
             if (
               typeof args.command !== "string" ||
               !args.command ||
-              Buffer.byteLength(args.command) > 65536 ||
+              Buffer.byteLength(args.command) > 16384 ||
               args.command.includes("\0")
             )
               throw new Error("Invalid shell command");
