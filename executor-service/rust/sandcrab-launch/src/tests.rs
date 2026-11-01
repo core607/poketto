@@ -62,12 +62,12 @@ fn policy() -> Value {
     json!({"network":{"allowedDomains":[],"deniedDomains":[],"allowAllUnixSockets":false},
         "filesystem":{"denyRead":["/","/sys"],
             "allowRead":["/usr","/bin","/lib","/lib64","/dev","/proc","/etc/ld.so.cache",
-                "/opt/poketto/tools","/run/poketto/sessions/x/bootstrap","/opt/poketto/bin",
-                "/run/poketto/sessions/x/bridge/lock","/run/poketto/sessions/x/bridge/state",
-                "/run/poketto/sessions/x/bridge/responses"],
+                "/opt/consumer/tools","/run/consumer/sessions/x/bootstrap","/opt/consumer/bin",
+                "/run/consumer/sessions/x/bridge/lock","/run/consumer/sessions/x/bridge/state",
+                "/run/consumer/sessions/x/bridge/responses"],
             "denyWrite":[],
-            "allowWrite":["/run/poketto/sessions/x/work","/run/poketto/sessions/x/home",
-                "/run/poketto/sessions/x/bridge/requests","/tmp"]},
+            "allowWrite":["/run/consumer/sessions/x/work","/run/consumer/sessions/x/home",
+                "/run/consumer/sessions/x/bridge/requests","/tmp"]},
         "enableWeakerNestedSandbox":false})
 }
 fn command() -> Vec<String> {
@@ -237,26 +237,6 @@ fn tool_and_ancestor_ownership_cannot_be_bypassed_by_links_or_modes() {
             "Sandbox tool paths must be absolute"
         );
     }
-}
-
-#[test]
-fn the_program_directory_holds_exactly_the_trusted_programs() {
-    let root = Root::new();
-    let programs = ["poketto", "poketto-shell"];
-    for name in programs {
-        root.file(&format!("bin/{name}"), b"#!/bin/sh\n", 0o755);
-    }
-    let directory = root.0.join("bin");
-    verify_programs(&directory, &programs).unwrap();
-    assert!(verify_programs(&directory, &["poketto"]).is_err());
-    let link = root.0.join("linked-bin");
-    symlink(&directory, &link).unwrap();
-    assert!(verify_programs(&link, &programs).is_err());
-    root.file("bin/extra", b"#!/bin/sh\n", 0o755);
-    assert!(verify_programs(&directory, &programs).is_err());
-    fs::remove_file(directory.join("extra")).unwrap();
-    fs::set_permissions(directory.join("poketto"), fs::Permissions::from_mode(0o777)).unwrap();
-    assert!(verify_programs(&directory, &programs).is_err());
 }
 
 #[test]

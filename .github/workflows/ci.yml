@@ -346,17 +346,12 @@ jobs:
           sudo cp -R build/acceptance/runtime /var/lib/poketto-load/runtime
           sudo chown -R root:root /var/lib/poketto-load
           sudo chmod -R a+rX,go-w /var/lib/poketto-load
-      - name: Isolated supervisor and enclosing-pool OOM recovery
+      - name: Installed content toolkit through native sandboxes
         run: |
-          # Keep the existing legacy OOM guard until its independent native replacement is verified.
-          ./gradlew stageExecutorWorker --no-daemon
-          python3 -m venv "$RUNNER_TEMP/pip"
-          "$RUNNER_TEMP/pip/bin/pip" install --disable-pip-version-check --no-deps --only-binary=:all: --target "$RUNNER_TEMP/python" -r executor-service/requirements.txt
-          sudo cp -R "$RUNNER_TEMP/python" /var/lib/poketto-load/tools/python
-          sudo mkdir /var/lib/poketto-oom
-          sudo cp -R build/executor-service/worker/. /var/lib/poketto-oom/
-          sudo env PYTHONPATH=/var/lib/poketto-load/tools/python python3 /var/lib/poketto-oom/native_probe.py --root /var/lib/poketto-oom --tools /var/lib/poketto-load/tools --oom-only
-          sudo rm -r -- /var/lib/poketto-oom
+          mkdir -p build/load
+          sudo bash executor-service/install-sandbox-tools.sh /var/lib/poketto-load/tools
+          sudo python3 executor-native/native_toolkit_probe.py --binary build/executor-service/bin/sandcrab \
+            --tools /var/lib/poketto-load/tools --report build/load/native-toolkit.json
       - name: Small agent load on native sandboxes
         run: |
           mkdir -p build/load

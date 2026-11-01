@@ -40,22 +40,22 @@ build without the production peer guard must fail with nonzero request bytes; re
 before delivery. The fixture changes only container-local UIDs, paths and processes and opens no network
 listener.
 
+## Native toolkit
+
+[native_toolkit_probe.py](native_toolkit_probe.py) executes [sandbox_toolkit.py](sandbox_toolkit.py)
+through the public native API after the [content tools](../executor-service/install-sandbox-tools.sh)
+are installed. Run as root with `--binary`, `--tools` and a new `--report` path. The disposable
+384 MiB slice contains the supervisor and a 192 MiB, thirty-second command with 8 MiB temporary
+storage. Assertions cover image/font/WebP, HTML/XML, DOCX, XLSX, PDF copy/render, ZIP, awk and Git.
+Require `result: PASS` and `cleanup: PASS`. The `load` CI lane runs this entrance before HTTP load;
+it establishes tool behavior in the native boundary, not production capacity.
+
 ## Launcher comparison
 
-[sandbox_probe.py](sandbox_probe.py) and [sandbox_snapshot.py](sandbox_snapshot.py) compare the
-current launcher with a supplied reference on one prepared x64 host, without application copies.
-Run as root with `--worker-source`, `--tools` and `--output`. An SRT comparison
-also takes `--reference-launcher` and its Python `--reference-driver`.
-Each path runs three serial fresh shells at 50% CPU and 192 MiB. The probe verifies live mounts,
-permissions, environment differences, seccomp, visible processes and tool tampering, records cgroup
-CPU/memory/tasks, and requires each direct/reference median resource ratio to be at most one third.
-Add `--toolkit` and [sandbox_toolkit.py](sandbox_toolkit.py) to verify installed image, PDF, Office,
-archive and Git operations. Require exit zero and `cleanup: PASS`; these figures do not establish HTTP capacity.
-
-`--reference-worker-source` takes a previous complete staged tree. With a Python
-driver, add `--idle-seconds 60`; the idle CPU ratio must be at most one tenth. With
-`launcher.py` and the native driver, only the launchers differ and snapshots must match.
-Either way startup, memory and task ratios are reported without the SRT threshold.
+The dated [launcher comparison](evidence/2026-10-27-sandcrab-launcher-comparison.json) and other
+historical receipts retain their original binaries, limits and conclusions. Their retired signed
+launcher is not built by the current tree. Use the public native probes for current containment;
+a new performance comparison must fix its workload, bounds and repetition rules before collection.
 
 ## Evidence
 

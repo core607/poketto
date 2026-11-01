@@ -11,12 +11,12 @@ import time
 import unittest
 import uuid
 
-from testdata.shell_loop_reference import MAX_RETAINED_STREAMS
+MAX_RETAINED_STREAMS = 128
 
 
 class ShellLoopTests(unittest.TestCase):
-    program = ('bin/poketto-shell',)
-    execution_variable = 'POKETTO_EXECUTION_ID'
+    program = ('bin/sandcrab', '__shell')
+    execution_variable = 'SANDBOX_EXECUTION_ID'
 
     def setUp(self):
         self.root = tempfile.TemporaryDirectory()
@@ -162,11 +162,6 @@ class ShellLoopTests(unittest.TestCase):
         self.assertNotEqual(0, self.process.wait(timeout=3))
         self.assertIn(b'Invalid command identity', self.process.stderr.read())
         self.assertFalse((Path(self.root.name) / 'must-not-exist').exists())
-
-
-class NativeShellLoopTests(ShellLoopTests):
-    program = ('bin/sandcrab', '__shell')
-    execution_variable = 'SANDBOX_EXECUTION_ID'
 
 
 if __name__ == '__main__':

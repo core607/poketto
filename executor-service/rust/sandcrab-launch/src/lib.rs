@@ -78,26 +78,6 @@ pub fn trusted_executable(path: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-/// The directory bound into sandboxes contains exactly `programs`, each trusted.
-pub fn verify_programs(directory: &Path, programs: &[&str]) -> Result<(), Error> {
-    let names = fs::read_dir(directory)?
-        .map(|entry| entry.map(|e| e.file_name()))
-        .collect::<io::Result<HashSet<_>>>()?;
-    let expected = programs
-        .iter()
-        .map(|name| name.into())
-        .collect::<HashSet<_>>();
-    if fs::symlink_metadata(directory)?.file_type().is_symlink() || names != expected {
-        return Err(refuse(
-            "Sandbox program directory must contain only the expected executables",
-        ));
-    }
-    for name in programs {
-        trusted_executable(&directory.join(name))?;
-    }
-    Ok(())
-}
-
 /// Verify bubblewrap and the pinned seccomp helper below `tools`; used at supervisor
 /// startup and again before each launch.
 pub fn verify_tools(tools: &Path) -> Result<(PathBuf, PathBuf), Error> {

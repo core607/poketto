@@ -25,7 +25,7 @@ fn directory(root: &File, path: &str) -> io::Result<File> {
     let mut dir = root.try_clone()?;
     if path != "." {
         for name in path.split('/') {
-            dir = sandcrab_core::transfer::dir(&dir, name)?;
+            dir = sandcrab_core::fs::directory(&dir, name)?;
         }
     }
     Ok(dir)
@@ -178,7 +178,7 @@ fn make_directory(
         return Ok(());
     }
     for name in path.split('/') {
-        let child = match sandcrab_core::transfer::dir(&dir, name) {
+        let child = match sandcrab_core::fs::directory(&dir, name) {
             Ok(child) => child,
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 if !apply {
@@ -186,7 +186,7 @@ fn make_directory(
                 }
                 *attempted = true;
                 mkdirat(&dir, name, Mode::from_raw_mode(0o700))?;
-                let child = sandcrab_core::transfer::dir(&dir, name)?;
+                let child = sandcrab_core::fs::directory(&dir, name)?;
                 fchown(
                     &child,
                     Some(Uid::from_raw(job.uid)),
@@ -248,13 +248,13 @@ fn tree_check(dir: &File, count: &mut usize, depth: usize) -> io::Result<()> {
         }
         let metadata = statat(dir, &name, AtFlags::SYMLINK_NOFOLLOW)?;
         if FileType::from_raw_mode(metadata.st_mode) == FileType::Directory {
-            tree_check(&sandcrab_core::transfer::dir(dir, &name)?, count, depth + 1)?;
+            tree_check(&sandcrab_core::fs::directory(dir, &name)?, count, depth + 1)?;
         }
     }
     Ok(())
 }
 fn remove_tree(parent: &File, name: &str) -> io::Result<()> {
-    let dir = sandcrab_core::transfer::dir(parent, name)?;
+    let dir = sandcrab_core::fs::directory(parent, name)?;
     for child in names(&dir)? {
         let metadata = statat(&dir, &child, AtFlags::SYMLINK_NOFOLLOW)?;
         if FileType::from_raw_mode(metadata.st_mode) == FileType::Directory {
