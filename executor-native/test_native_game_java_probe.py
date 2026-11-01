@@ -1,7 +1,9 @@
 """Offline identity and evidence checks; these tests never create services or claim containment."""
 import json
+import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -10,7 +12,7 @@ import unittest
 from unittest.mock import patch
 import uuid
 
-from native_game_java_probe import CHECKS, acknowledge, check_java_and_bound_controller, overlap, read_result, request
+from native_game_java_probe import CHECKS, GameFixture, acknowledge, check_java_and_bound_controller, overlap, read_result, request
 
 
 class NativeGameControllerTests(unittest.TestCase):
@@ -26,6 +28,24 @@ class NativeGameControllerTests(unittest.TestCase):
             {'test': name, 'result': 'PASS'} for name in CHECKS]},
             'repository': {'test': 'native-repository-copy-and-discard-through-public-service',
                            'result': 'PASS', 'copyId': str(uuid.uuid4()), 'commit': 'a' * 40, 'reads': 3}}
+
+    def test_game_assets_remain_readable_to_the_app_under_a_private_controller_umask(self):
+        source = self.root / 'source'
+        source.mkdir()
+        (source / 'sandcrab').write_bytes(b'fixture binary, never executed')
+        (source / 'game-example.mjs').write_text('export default {};')
+        app = SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid())
+        previous = os.umask(0o077)
+        try:
+            fixture = GameFixture(self.root, source, self.root / 'tools', app, 'repository', 'repository.slice')
+        finally:
+            os.umask(previous)
+        self.addCleanup(fixture.listener.server_close)
+        self.addCleanup(fixture.listener.shutdown)
+        self.assertEqual(stat.S_IMODE(fixture.assets.stat().st_mode), 0o755)
+        asset = fixture.assets / 'game-example.mjs'
+        self.assertEqual(stat.S_IMODE(asset.stat().st_mode), 0o644)
+        self.assertEqual(asset.read_text(), 'export default {};')
 
     def test_java_version_runs_before_the_controller_address_space_limit(self):
         order = []

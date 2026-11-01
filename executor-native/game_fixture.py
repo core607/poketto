@@ -35,6 +35,7 @@ class GameFixture:
         assert self.user != repository_user and self.pool.name != repository_slice
         self.assets = root / 'game-assets'
         self.assets.mkdir(mode=0o755)
+        self.assets.chmod(0o755)
         shutil.copy2(source / 'sandcrab', root / 'sandcrab')
         (root / 'sandcrab').chmod(0o755)
         for name in ('game-example.mjs',):
