@@ -91,6 +91,31 @@ start and finish timestamps are wall time.
 Daemon RSS and hierarchical memory/CPU counters are observations of this fixture.
 `file` already includes `shmem`; do not add them as disjoint memory categories.
 Sandbox CPU is pool CPU minus daemon CPU; system-manager CPU outside the slice is
-reported separately. Polling can miss brief executing states. Binary/dependency
-footprint, idle 1/10/50 and finite-run costs, fresh-distribution readiness, and the
-cold-start/page-cache breakdown remain separate W0 requirements.
+reported separately. Polling can miss brief executing states. Fresh-distribution
+readiness and the cold-start/page-cache breakdown remain separate W0 requirements.
+
+## Fixed costs
+
+[footprint.py](footprint.py) accepts the same binary, tools, budget and report
+arguments. It measures daemon idle RSS, then 1, 10 and 50 idle bash sessions and
+finite `/bin/sleep` runs. `--smoke` checks only one of each. The workflow runs its
+smoke entry on pull requests and all counts during canonical measurement.
+
+Each cohort has five one-second samples after two seconds of settling. A finite
+run holds for 30 seconds; the whole cohort must become live within 15 seconds and
+remain alive during sampling. Refusal, OOM, a lost cohort or unconfirmed cleanup
+fails the measurement. Minimal bash/sleep workload memory is included. These are
+observed fixed costs of those workloads, not an estimate of an absent process.
+
+Per-item deltas compare cohort medians with an empty baseline. Idle-session counts
+grow within one daemon, with its initial idle samples as the baseline. Each finite
+cohort gets its own baseline after the previous cohort is cleaned. Raw counters,
+negative cache-release deltas and both shared-memory fields remain in the receipt.
+No global page-cache reset is performed. The volume capability is enabled but
+these cohorts contain no volume data.
+
+The binary record checks ELF interpreter and dynamic-library entries as well as
+bytes and SHA-256. The dependency inventory counts distinct executable surfaces
+used by core execution, sessions and optional durable volumes, separately from
+installation tools and workload programs. It is not a distribution package count
+or the transitive shared-library closure; the receipt names that boundary.

@@ -38,7 +38,8 @@ def other_loads():
             arguments = (process / 'cmdline').read_bytes().split(b'\0')[:3]
         except OSError:
             continue
-        if any(argument.endswith((b'/sandcrab-density/density.py', b'/agent-load.py', b'/load-suite.py'))
+        if any(argument.endswith((b'/sandcrab-density/density.py', b'/sandcrab-density/footprint.py',
+                                  b'/agent-load.py', b'/load-suite.py'))
                for argument in arguments):
             count += 1
     return count
