@@ -10,6 +10,8 @@ driver. Component tests do not establish sandbox capacity.
 [protocol.json](protocol.json) fixes the measurement parameters before native runs.
 Memory budgets use decimal GB; receipts must include the effective page-rounded
 kernel byte limits. A stage passes only when every repetition meets the thresholds.
+The fixture allows 512 live sandboxes so every requested stage through 400 can
+reach admission; this configuration limit is not a measured capacity.
 The first failed repetition ends the search for that budget; retain it and identify
 unattempted stages. If all scheduled stages pass, capacity is a lower bound.
 
@@ -75,8 +77,9 @@ on separate hosts after smoke. Its binary build uses a separate runner.
 The JSON receipt includes source and binary identities, effective resource limits,
 all stage attempts, kernel counters, refusal codes and cleanup results. The sibling
 `.attempts.jsonl` records a command's identity before submission, including setup
-commands and attempts interrupted before an outcome. Receipts are checkpointed
-during setup and sampling. Unknown outcomes retain their identity for reconciliation;
+commands, kernel samples and attempts interrupted before an outcome. Full receipts
+are checkpointed during setup and between stages; the timed loop appends compact
+ledger events without rewriting or fsyncing the whole receipt. Unknown outcomes retain their identity for reconciliation;
 there is no command replay. API cleanup checks resource inventories; host cleanup
 stops only fixture units and verifies empty cgroups and unmounted fixture paths.
 Unconfirmed cleanup fails and preserves resources for inspection.
@@ -93,6 +96,12 @@ Daemon RSS and hierarchical memory/CPU counters are observations of this fixture
 Sandbox CPU is pool CPU minus daemon CPU; system-manager CPU outside the slice is
 reported separately. Polling can miss brief executing states. Fresh-distribution
 readiness and the cold-start timeline remain separate W0 requirements.
+
+The [native density smoke receipt](../../executor-native/evidence/2026-11-02-sandcrab-density-smoke.json)
+records one two-agent run on Ubuntu 24.04 with its source/binary hashes and verified
+cleanup. It checks the measurement entry path, not the canonical capacity or
+fresh-install readiness targets. The full attempt ledger is retained in the
+[workflow artifact](https://github.com/core607/poketto/actions/runs/41352546796).
 
 ## Fixed costs
 
@@ -119,6 +128,10 @@ bytes and SHA-256. The dependency inventory counts distinct executable surfaces
 used by core execution, sessions and optional durable volumes, separately from
 installation tools and workload programs. It is not a distribution package count
 or the transitive shared-library closure; the receipt names that boundary.
+
+The [native footprint smoke receipt](../../executor-native/evidence/2026-11-02-sandcrab-footprint-smoke.json)
+covers one idle session and one finite run with verified API and host cleanup.
+It does not establish the 10/50-session fixed costs or any capacity limit.
 
 ## Page-cache comparison
 
