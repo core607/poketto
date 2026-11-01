@@ -5,8 +5,8 @@ Date: 2026-11-02
 ## Problem
 
 The [native service](../../executor-service/rust/sandcrab/README.md) has an independent
-API, but installation requires manually prepared tools, accounts, systemd units,
-profiles and XFS storage. [Tool preparation](../../executor-service/prepare-tools.sh)
+API, but installation requires manually prepared tools, accounts, systemd units
+and profiles; durable volumes require XFS. [Tool preparation](../../executor-service/prepare-tools.sh)
 installs Node.js and npm to obtain the pinned SRT seccomp helper. Each sandbox
 starts through [systemd-run](../../executor-service/rust/sandcrab-core/src/unit.rs).
 Independent API tests do not establish first-use cost or capacity on a small host.
@@ -76,7 +76,7 @@ is a recorded baseline limitation, not an invented passing measurement.
 Write a JSON receipt for every run under `executor-native/evidence/`, retaining
 failures and cleanup outcomes. Production-host runs use low traffic and the existing
 [load-suite preflight](../../acceptance/load-suite.py), with ownership-aware cleanup
-and its resource guards. No private configuration, credentials or content enters
+and bounded resource use. No private configuration, credentials or content enters
 public fixtures or receipts.
 
 ### L: lightweight and ready to use
