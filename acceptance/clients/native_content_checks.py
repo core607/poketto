@@ -153,27 +153,29 @@ def execute(client, copy, command, owned):
 
 def artifact_bytes(client, metadata):
     """Bound every page and verify identity and digest before using returned resource bytes."""
-    assert 0 < metadata['size'] <= 2 * 1024 * 1024 and not metadata['truncated']
+    # CLI ArtifactMetadata uses bytes; get_artifact's page uses size.
+    size = metadata['bytes']
+    assert 0 < size <= 2 * 1024 * 1024 and not metadata['truncated']
     received = bytearray()
-    while len(received) < metadata['size']:
-        limit = min(65536, max(4, metadata['size'] - len(received)))
+    while len(received) < size:
+        limit = min(65536, max(4, size - len(received)))
         result = client.rpc('tools/call', {'name': 'get_artifact', 'arguments': {
             'artifactId': metadata['artifactId'], 'offset': len(received), 'limit': limit, 'format': 'bytes'}})
         assert not result.get('isError'), 'Artifact delivery failed'
         content = result['content']
         page = json.loads(next(item['text'] for item in content if item['type'] == 'text'))
-        for key in ('artifactId', 'size', 'sha256', 'mediaType', 'name', 'truncated'):
+        for key in ('artifactId', 'sha256', 'mediaType', 'name', 'truncated'):
             assert page[key] == metadata[key], 'Artifact identity changed: ' + key
-        assert page['offset'] == len(received)
+        assert page['size'] == size and page['offset'] == len(received)
         resources = [item['resource'] for item in content if item['type'] == 'resource']
         assert len(resources) == 1
         resource = resources[0]
         assert resource['uri'] == 'poketto-artifact:///' + metadata['artifactId'] + '?offset=' + str(len(received))
         assert resource['mimeType'] == 'application/octet-stream'
         part = base64.b64decode(resource['blob'], validate=True)
-        assert 0 < len(part) <= min(limit, metadata['size'] - len(received))
+        assert 0 < len(part) <= min(limit, size - len(received))
         received.extend(part)
-        assert page['nextOffset'] == (None if len(received) == metadata['size'] else len(received))
+        assert page['nextOffset'] == (None if len(received) == size else len(received))
     assert hashlib.sha256(received).hexdigest() == metadata['sha256'], 'Artifact digest mismatch'
     return bytes(received)
 

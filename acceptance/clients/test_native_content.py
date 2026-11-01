@@ -16,7 +16,7 @@ class Pages:
     def __init__(self, content, change=lambda page: None):
         self.content, self.change, self.offsets = content, change, []
         self.metadata = {'artifactId': '00000000-0000-0000-0000-000000000001', 'name': 'proof.bin',
-                         'size': len(content), 'sha256': hashlib.sha256(content).hexdigest(),
+                         'bytes': len(content), 'sha256': hashlib.sha256(content).hexdigest(),
                          'mediaType': 'application/octet-stream', 'truncated': False}
 
     def rpc(self, method, request):
@@ -27,6 +27,7 @@ class Pages:
         self.offsets.append(offset)
         part = self.content[offset:offset + limit]
         page = dict(self.metadata, offset=offset, nextOffset=(offset + len(part) if offset + len(part) < len(self.content) else None))
+        page['size'] = page.pop('bytes')
         self.change(page)
         return {'content': [{'type': 'text', 'text': json.dumps(page)}, {'type': 'resource', 'resource': {
             'uri': 'poketto-artifact:///' + self.metadata['artifactId'] + '?offset=' + str(offset),
@@ -62,7 +63,7 @@ class ContentEvidenceTests(unittest.TestCase):
                     artifact_bytes(pages, pages.metadata)
 
     def test_artifact_size_and_truncation_are_rejected_before_network_access(self):
-        for patch in [{'size': 0}, {'size': 2 * 1024 * 1024 + 1}, {'truncated': True}]:
+        for patch in [{'bytes': 0}, {'bytes': 2 * 1024 * 1024 + 1}, {'truncated': True}]:
             pages = Pages(b'proof')
             metadata = copy.copy(pages.metadata)
             metadata.update(patch)
