@@ -1,0 +1,129 @@
+{
+  "schema": 1,
+  "kind": "sandcrab-cold-start-smoke",
+  "started": "2026-11-01T22:55:22.703534+00:00",
+  "sourceCommit": "fc1d5a72b2c10078908a8fe89da0a941c4bd7289",
+  "sourceDirty": false,
+  "sourceSha256": {
+    "page_cache.py": "db994b64f42bf6dad5d1724b1badc722440e1c6d96a4bf2a10f5f1422704c9e8",
+    "test_footprint.py": "dd7aaa0832130306f266c021da30926685543e4de6a290deb0ad99748ce47134",
+    "test_cold_start.py": "083f4f125489a8e37b6f39902c5b2356587c0634a067954f50e22571274bd6e3",
+    "test_scoring.py": "68da8da44c9cd9576aa28c4b00fa0373009b4cc112951a8669c5248f1df6b1ad",
+    "metrics.py": "83004cf4be8e9d2de84f9f0e231a88ee86fb612ba6fe19a5cd0d968dc0d422b8",
+    "workload.py": "b7e315cdbfe4b222e41c3025e3e1c700cbb599689e505991f52a0cc0f4f1ccef",
+    "footprint.py": "39816997dd4438d2c771be50d62f218d56b7ef07a5bef912c072b022855bffee",
+    "test_engine.py": "05633ed8e050237695e1939589dab845b414d41b27974619fdd01af88e2d5b7d",
+    "protocol.py": "640bd23e0e6c2aba551ec1414f1f2c4fd7db782d9df491c49815fe27baf2b787",
+    "test_density.py": "6ea72a3003daf5b9883f4f15e087a7d8a04ff0ec75d5f66c04589b53c8d2f9f9",
+    "engine.py": "644572b2426058524fb006534b7a67359277ef9078df6aa14a234561516f5c5b",
+    "host.py": "8bff7b5f2964ce2184368676e7324fee64678b808d74313a3ba2c3a64f90852c",
+    "test_page_cache.py": "4bb1fcfa4e43e73e052ba3c9a8db1933cf6d0c6cd2134c8370043d8202423b8a",
+    "cold_start.py": "c634af50a641aefff491bb07f45c153f00188c60082d9670a05907317acd01c5",
+    "test_workload.py": "af0c58334562aa987b3442e92524eec3f3d8a5e3b43c9b60da524c510953e1ec",
+    "test_client.py": "20a12380b397e60b1c62a5111e9e4bfd560df40527d091bcef636013548cef59",
+    "scoring.py": "48b5f42df8a9e3eec81a5fb50d381effc699935037c40e6dca6922a59a8f9cfb",
+    "density.py": "ee4e9f7dec53e7010a993efa531c7d4e4ca6c78dbf168032de8eaf529376a8e7",
+    "client.py": "4564eecf46d694377a9446812b1f61e2f92836cf881b684ae3f5aa5fc6ef92d5"
+  },
+  "scope": "Traced persistent-session startup, diagnostic timing with observer overhead. Use density coldStartNs for untraced latency distributions. No model or private content.",
+  "parameters": {
+    "trials": 3
+  },
+  "measurementStatus": "ERROR",
+  "apiCleanup": {
+    "result": "PASS",
+    "failures": []
+  },
+  "hostCleanup": "PASS",
+  "modelTokens": 0,
+  "containsProductionContent": false,
+  "fixture": {
+    "scope": "Independent native benchmark fixture; no application, model or private content",
+    "binarySha256": "db8b81132e7a3cc71c43c6c39e02e77f1cc013e66aa5bacc79804113fc48f791",
+    "probeSha256": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
+    "checks": [],
+    "cleanup": "PASS",
+    "preflight": {
+      "memory": {
+        "MemTotal": 16760344576,
+        "MemAvailable": 15760527360
+      },
+      "freeDiskBytes": 91328000000,
+      "otherLoadControllers": 0,
+      "logicalCpuCount": 4,
+      "controllerCpuAffinityCount": 4
+    },
+    "requestedMemoryBytes": 1073741824,
+    "configuredSandboxCeiling": 512,
+    "storagePoolBytes": 536870912,
+    "configSha256": "415f4e8810684bc581a1e2ffe6cb2d5beb242a210fa3df697275c6431ad75d07",
+    "kernel": "7.0.0-1017-azure",
+    "operatingSystem": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+    "fixtureSourceSha256": "8bff7b5f2964ce2184368676e7324fee64678b808d74313a3ba2c3a64f90852c",
+    "effectiveLimits": {
+      "memory.max": 1073741824,
+      "memory.swap.max": 0,
+      "pids.max": 8192,
+      "cpu.max": [
+        200000,
+        100000
+      ]
+    },
+    "resourceAncestors": [
+      {
+        "group": "sandcrab.slice/sandcrab-probe.slice/sandcrab-probe-3112b62be0.slice",
+        "limits": {
+          "memory.max": "1073741824",
+          "cpu.max": "200000 100000",
+          "pids.max": "8192"
+        }
+      },
+      {
+        "group": "sandcrab.slice/sandcrab-probe.slice",
+        "limits": {
+          "memory.max": "max",
+          "cpu.max": "max 100000",
+          "pids.max": "max"
+        }
+      },
+      {
+        "group": "sandcrab.slice",
+        "limits": {
+          "memory.max": "max",
+          "cpu.max": "max 100000",
+          "pids.max": "max",
+          "cpuset.cpus.effective": "0-3"
+        }
+      },
+      {
+        "group": ".",
+        "limits": {
+          "cpuset.cpus.effective": "0-3"
+        }
+      }
+    ],
+    "binaryBytes": 4125600
+  },
+  "trials": [],
+  "tracer": {
+    "status": "FAIL",
+    "processExitCode": 1,
+    "forcedKill": false,
+    "errors": [],
+    "diagnostic": "stdin:1:1-1: ERROR: Invalid condition in if(): pointer\nstdin:1:1-1: ERROR: Invalid condition in if(): pointer\n",
+    "clock": "CLOCK_BOOTTIME",
+    "version": "bpftrace v0.20.2",
+    "resourceLimits": {
+      "memoryBytes": 536870912,
+      "swapBytes": 0,
+      "tasks": 128,
+      "cpuQuotaPercent": 100,
+      "runtimeSeconds": 120,
+      "insideMeasuredSlice": true
+    },
+    "sourceSha256": "4cc81e8a06c18d0817279ee2f80ecc71ce4e8b6e8127c4034e2bf50ea4755e93",
+    "events": []
+  },
+  "errorType": "RuntimeError",
+  "finished": "2026-11-01T22:55:26.672559+00:00"
+}

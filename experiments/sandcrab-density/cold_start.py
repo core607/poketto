@@ -20,68 +20,67 @@ from host import Fixture
 from metrics import Metrics
 
 
-def program(name, daemon_group):
-    if not re.fullmatch(r'sandcrab-probe-[a-f0-9]{10}', name) or daemon_group <= 0:
+def program(name, daemon_group, pool_group):
+    if not re.fullmatch(r'sandcrab-probe-[a-f0-9]{10}', name) or min(daemon_group, pool_group) <= 0:
         raise ValueError('Invalid trace namespace')
-    # Store only the argument discriminator. Printing two 128-byte strings makes
-    # bpftrace 0.20 exceed the kernel's BPF stack bound in the exec probe.
+    # Parent cgroup IDs avoid path truncation and work in a cgroup namespace.
+    # Exec identity comes from the kernel; no process argv pointers are read.
     return f'''
 BEGIN {{ printf("READY\\t%llu\\n", nsecs); }}
-tracepoint:cgroup:cgroup_mkdir /strcontains(str(args->path), "{name}")/ {{
- @owned[args->id] = 1;
- printf("%llu\\tgroup\\t%llu\\t%s\\n", nsecs, args->id, str(args->path));
-}}
-tracepoint:syscalls:sys_enter_execve /cgroup == {daemon_group} || @owned[cgroup]/ {{
- $argv = uptr(args->argv);
- $argument_pointer = uptr($argv[1]);
- @argument_kind[tid] = 0;
- if ($argument_pointer) {{
-  $argument = str($argument_pointer);
-  @argument_kind[tid] = $argument == "--version" ? 1 : ($argument == "--new-session" ? 2 : 0);
- }}
-}}
-tracepoint:syscalls:sys_enter_execveat /cgroup == {daemon_group} || @owned[cgroup]/ {{
- $argv = uptr(args->argv);
- $argument_pointer = uptr($argv[1]);
- @argument_kind[tid] = 0;
- if ($argument_pointer) {{
-  $argument = str($argument_pointer);
-  @argument_kind[tid] = $argument == "--version" ? 1 : ($argument == "--new-session" ? 2 : 0);
+rawtracepoint:cgroup_mkdir {{
+ $group = (struct cgroup *)arg0;
+ $parent = $group->self.parent;
+ if ((uint64)$parent != 0) {{
+  $parent_id = $parent->cgroup->kn->id;
+  if ($parent_id == {pool_group} || @owned[$parent_id]) {{
+   $id = $group->kn->id;
+   @owned[$id] = 1;
+   printf("%llu\\tgroup\\t%llu\\n", nsecs, $id);
+  }}
  }}
 }}
 tracepoint:sched:sched_process_exec /cgroup == {daemon_group} || @owned[cgroup]/ {{
- printf("%llu\\texec\\t%u\\t%llu\\t%s\\t%u\\n", nsecs, pid, cgroup, str(args->filename), @argument_kind[tid]);
- delete(@argument_kind[tid]);
+ printf("%llu\\texec\\t%u\\t%llu\\t%s\\n", nsecs, pid, cgroup, str(args->filename));
 }}
-tracepoint:sched:sched_process_exit /cgroup == {daemon_group} || @owned[cgroup]/ {{ delete(@argument_kind[tid]); }}
-END {{ clear(@owned); clear(@argument_kind); }}
+tracepoint:sched:sched_process_exit /pid == tid && (cgroup == {daemon_group} || @owned[cgroup])/ {{
+ printf("%llu\\texit\\t%u\\t%llu\\n", nsecs, pid, cgroup);
+}}
+END {{ clear(@owned); }}
 '''
 
 
 def parse_event(line):
     values = line.rstrip('\n').split('\t')
-    if len(values) == 4 and values[1] == 'group':
-        return {'bootNs': int(values[0]), 'event': 'cgroup-created', 'cgroupId': int(values[2]), 'path': values[3]}
-    if len(values) == 6 and values[1] == 'exec':
+    if len(values) == 3 and values[1] == 'group':
+        return {'bootNs': int(values[0]), 'event': 'cgroup-created', 'cgroupId': int(values[2])}
+    if len(values) == 5 and values[1] == 'exec' and values[4]:
         return {'bootNs': int(values[0]), 'event': 'exec', 'pid': int(values[2]),
-                'cgroupId': int(values[3]), 'filename': values[4], 'argumentKind': int(values[5])}
+                'cgroupId': int(values[3]), 'filename': values[4]}
+    if len(values) == 4 and values[1] == 'exit':
+        return {'bootNs': int(values[0]), 'event': 'exit', 'pid': int(values[2]), 'cgroupId': int(values[3])}
     raise ValueError('Unrecognized trace event')
 
 
-def timeline(events, started, ready, session_group):
+def timeline(events, started, ready, session_group, launcher):
     observed = sorted((event for event in events if started <= event['bootNs'] <= ready), key=lambda event: event['bootNs'])
     points = {'apiSubmit': 0, 'apiReadyObserved': ready - started}
+    launchers = set()
     for event in observed:
         label = None
         if event['event'] == 'cgroup-created' and event['cgroupId'] == session_group:
             label = 'sessionSliceCreated'
         elif event['event'] == 'exec':
+            identity = (event['pid'], event['cgroupId'])
+            if event['filename'] == launcher:
+                launchers.add(identity)
             name = Path(event['filename']).name
             label = {'busctl': 'dbusClientExec', 'systemd-run': 'systemdRunExec', 'bash': 'bashExec'}.get(name)
-            if name == 'bwrap' and event['argumentKind'] == 2:
+            # sandcrab_launch::exec replaces the launcher process with bwrap;
+            # its version check is a separate child, never that same identity.
+            if name == 'bwrap' and identity in launchers:
                 label = 'bwrapSandboxExec'
-            elif name == 'bwrap' and event['argumentKind'] == 1:
-                label = 'bwrapVersionCheckExec'
+        elif event['event'] == 'exit':
+            launchers.discard((event['pid'], event['cgroupId']))
         if label and label not in points:
             points[label] = event['bootNs'] - started
     required = {'sessionSliceCreated', 'dbusClientExec', 'systemdRunExec', 'bwrapSandboxExec', 'bashExec'}
@@ -101,6 +100,7 @@ class Trace:
         self.unit = fixture.name + 'trace.service'
 
     async def consume(self, stream, stderr=False):
+        line = ''
         try:
             while raw := await stream.readline():
                 self.bytes += len(raw)
@@ -115,7 +115,7 @@ class Trace:
                 elif line.strip():
                     self.events.append(parse_event(line))
         except Exception as error:
-            self.errors.append(type(error).__name__)
+            self.errors.append({'type': type(error).__name__, 'detail': str(error), 'line': line[:1024]})
             self.ready.set()
         finally:
             if not stderr:
@@ -128,7 +128,8 @@ class Trace:
         if kernel < (5, 7):
             raise RuntimeError('The trace clock requires Linux 5.7+ CLOCK_BOOTTIME')
         self.version = subprocess.check_output(['bpftrace', '--version'], text=True, timeout=10).strip()
-        source = program(self.fixture.name, self.fixture.daemon_group.stat().st_ino)
+        source = program(self.fixture.name, self.fixture.daemon_group.stat().st_ino,
+                         self.fixture.pool_group.stat().st_ino)
         self.source_sha256 = hashlib.sha256(source.encode()).hexdigest()
         before = time.clock_gettime_ns(time.CLOCK_BOOTTIME)
         self.process = await asyncio.create_subprocess_exec(
@@ -137,7 +138,7 @@ class Trace:
             '-p', 'TasksMax=128', '-p', 'CPUQuota=100%', '-p', 'RuntimeMaxSec=120',
             '-p', 'TimeoutStopSec=5', '-p', 'KillMode=control-group',
             '-p', 'BindsTo=' + self.fixture.unit, '-p', 'After=' + self.fixture.unit,
-            '/usr/bin/env', 'BPFTRACE_MAX_STRLEN=128', 'bpftrace', '-kk', '-q', '-B', 'line', '-e', source,
+            '/usr/bin/env', 'BPFTRACE_MAX_STRLEN=128', 'bpftrace', '-q', '-B', 'line', '-e', source,
             start_new_session=True,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         self.readers = [asyncio.create_task(self.consume(self.process.stdout)),
@@ -201,7 +202,8 @@ async def measure(fixture, receipt, report, trials):
                 receipt['measurementStatus'] = 'ERROR'
             save(report, receipt)
     for item in receipt['trials']:
-        item['timeline'] = timeline(receipt['tracer']['events'], item['submitBootNs'], item['readyBootNs'], item['sessionCgroupId'])
+        item['timeline'] = timeline(receipt['tracer']['events'], item['submitBootNs'], item['readyBootNs'],
+                                    item['sessionCgroupId'], str(fixture.binary))
         item['status'] = item['timeline']['status']
     if receipt['tracer']['status'] != 'PASS' or any(item['status'] != 'COMPLETE' for item in receipt['trials']):
         receipt['measurementStatus'] = 'ERROR'
