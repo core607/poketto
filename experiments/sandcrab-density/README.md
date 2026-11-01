@@ -94,3 +94,9 @@ Sandbox CPU is pool CPU minus daemon CPU; system-manager CPU outside the slice i
 reported separately. Polling can miss brief executing states. Binary/dependency
 footprint, idle 1/10/50 and finite-run costs, fresh-distribution readiness, and the
 cold-start/page-cache breakdown remain separate W0 requirements.
+
+The [native smoke receipt](../../executor-native/evidence/2026-11-02-sandcrab-density-smoke.json)
+records one two-agent run on Ubuntu 24.04 with its source/binary hashes and verified
+cleanup. It checks the measurement entry path, not the canonical capacity or
+fresh-install readiness targets. The full attempt ledger is retained in the
+[workflow artifact](https://github.com/core607/poketto/actions/runs/41352546796).
