@@ -52,6 +52,11 @@ def http(path, method, route, data=None):
 
 
 class Probe:
+    SUPERVISOR_MEMORY = '128M'
+    SUPERVISOR_TASKS = 128
+    POOL_MEMORY = '384M'
+    POOL_TASKS = 256
+
     def __init__(self, binary, tools, report):
         global CLIENT
         client = pwd.getpwnam('daemon')
@@ -106,7 +111,7 @@ network = "none"
 
     def start(self):
         call('systemd-run', '--quiet', '--collect', '--unit', self.unit, '--slice', self.slice,
-             '-p', 'MemoryMax=128M', '-p', 'MemorySwapMax=0', '-p', 'TasksMax=128',
+             '-p', 'MemoryMax=' + self.SUPERVISOR_MEMORY, '-p', 'MemorySwapMax=0', '-p', 'TasksMax=' + str(self.SUPERVISOR_TASKS),
              '-p', 'Environment=PATH=' + getattr(self, 'launch_path', '/usr/bin:/bin'),
              '-p', 'KillMode=control-group', str(self.binary), 'serve', '--config', str(self.config))
         self.wait_ready()
@@ -128,7 +133,7 @@ network = "none"
 
     def setup(self):
         self.slice_file.write_text('[Unit]\nDescription=Disposable Sandcrab acceptance\n[Slice]\n'
-                                   'MemoryMax=384M\nMemorySwapMax=0\nTasksMax=256\nCPUQuota=50%\n')
+                                   f'MemoryMax={self.POOL_MEMORY}\nMemorySwapMax=0\nTasksMax={self.POOL_TASKS}\nCPUQuota=50%\n')
         call('systemctl', 'daemon-reload')
         call('systemctl', 'start', self.slice)
         self.start()
