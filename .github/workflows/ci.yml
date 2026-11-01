@@ -451,7 +451,7 @@ jobs:
         if: matrix.scenario == 'migration'
         run: |
           sudo systemd-run --wait --pipe --unit="sandcrab-migration-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
-            -p MemoryMax=128M -p MemorySwapMax=0 -p TasksMax=64 -p CPUQuota=50% \
+            -p MemoryMax=256M -p MemorySwapMax=0 -p TasksMax=64 -p CPUQuota=50% \
             -p RuntimeMaxSec=1140 -p TimeoutStopSec=180 -p KillMode=control-group -p UMask=0077 \
             /usr/bin/python3 "$PWD/executor-native/sandcrab_migration_probe.py" \
             --runtime /var/lib/poketto-recovery/journal-runtime \
