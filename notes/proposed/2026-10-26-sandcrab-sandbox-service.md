@@ -1,6 +1,7 @@
 # Sandcrab Sandbox Service
 
 Date: 2026-10-26
+Partially superseded by: [Lightweight, ready-to-use Sandcrab](2026-11-02-sandcrab-lightweight-service.md) for runtime requirements, API selection, measurement and extraction order.
 
 ## Problem
 
@@ -16,7 +17,7 @@ The service must fit the default two-core, 4 GB deployment target ([continuous d
 
 **Sandcrab defines its public contract; Poketto adapts.** Independent consumers and extensibility govern the interface, not preservation of Poketto's operations, journals or copy behavior. Every primitive needs a use outside Poketto.
 
-Sandcrab is an Apache-2.0 Rust daemon and CLI in one static x64 Linux binary, using cgroup v2, systemd and [direct sandbox launch](../implemented/2026-10-18-direct-sandbox-launch.md). Its same-kernel boundary targets trusted or semi-trusted code and is weaker than a microVM.
+Sandcrab is an Apache-2.0 Rust daemon and CLI in one static x64 Linux binary. Its current implementation uses cgroup v2, systemd and [direct sandbox launch](../implemented/2026-10-18-direct-sandbox-launch.md); the [lightweight proposal](2026-11-02-sandcrab-lightweight-service.md#l-lightweight-and-ready-to-use) owns replacement runtime requirements. Its same-kernel boundary targets trusted or semi-trusted code and is weaker than a microVM.
 
 Integration requires neither Rust nor product identifiers. Native HTTP, CLI and OpenAPI share lifecycle, errors and ownership. Unix sockets authenticate peer UIDs; loopback TCP uses tokens. Operator-owned TOML profiles set mounts, limits, accounts, tools and network policy, initially "none". Callers select allowed profiles, never host paths, UIDs or weaker isolation. Labels grant no authority.
 
@@ -24,14 +25,14 @@ Integration requires neither Rust nor product identifiers. Native HTTP, CLI and 
 
 - `run`: one command in a fresh sandbox, destroyed afterwards.
 - Sessions: own a workspace and an aggregate process budget, with open, execute, renew and close. Named shell contexts retain independent state and share that workspace; closing a context preserves the files.
-- Volumes: quota-bounded directories, empty or populated from ordinary file archives, which can be cloned by reflink and exclusively attached to sessions. Git bundle interpretation belongs to a consumer's initialization job.
+- Volumes: directories, empty or populated from ordinary file archives, exclusively attached to sessions. L3 of the lightweight proposal owns optional quotas and reflink/copy behavior. Git bundle interpretation belongs to a consumer's initialization job.
 - Files: uploads and downloads as raw or tar streams.
 - Host calls: a program inside the sandbox sends an opaque request that the daemon relays to the caller and answers with the caller's reply; the daemon interprets neither.
-- Freeze: a flag on a file or capture request. The daemon freezes the unit for that request only, so a caller that fails mid-operation cannot leave a session frozen.
+- Public API selection, templates and retention follow L6/L7 of the lightweight proposal. A freeze flag, checksummed manifest or staged upload lifecycle is not retained solely to preserve Poketto operations.
 
-Captures already stream archives ([wire reference](../../executor-service/README.md#wire-version-1)); incoming moves and materialization remain chunked. Public file transfers stream bounded bodies, staging uploads before briefly freezing to validate and install. Commands and host calls use SSE over reusable connections. Cancellation, expiry and shutdown retain admission until containment. Errors distinguish refusal from uncertain execution, with explicit recovery behavior.
+Current captures stream archives ([wire reference](../../executor-service/README.md#wire-version-1)); incoming moves and materialization remain chunked. Current public transfers stage bounded uploads before briefly freezing to validate and install; L6 decides which of those mechanisms remain public. Commands and host calls use SSE over reusable connections. Cancellation, expiry and shutdown retain admission until containment. Errors distinguish refusal from uncertain execution, with explicit recovery behavior.
 
-Atomic batches and frozen jobs need independent uses and failure contracts before implementation; consumer orchestration may replace old operations. Durable operation IDs bind plan digests across reconnects and restarts, separately from transport IDs. Git transactions and reconciliation stay outside Sandcrab.
+Atomic batches and frozen jobs need independent uses and failure contracts before implementation; consumer orchestration may replace old operations. Consumer-side durable operation IDs bind plan digests across reconnects and restarts, separately from transport IDs; they do not require matching daemon operations. Git transactions and reconciliation stay outside Sandcrab.
 
 ### Compatibility
 
@@ -48,8 +49,8 @@ Poketto owns repositories, publication, writes and recovery. It may redesign cop
 0. Validation without production code, recorded below.
 1. In-repository split, shipped as the [in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md).
 2. Finite jobs, shipped as [shared process runner](../implemented/2026-10-27-sandcrab-in-repository-split.md).
-3. Public service and adoption. Runs, sessions, volumes, files, command SSE and host calls provide profiles, CLI, authenticated loopback TCP and OpenAPI; [Inspect](../../evals/README.md) evaluates independent API and programming tasks. Games use the public API; adapt repository execution, remove its compiled extension and product fields, and retire the old protocol without shims. The operation map inventories migration, not mandatory public operations.
-4. Extraction. Move generic crates with history, publish checksums, threat model, examples and evals, then pin a release in Poketto. Phases 1 to 3 must ship before four consecutive weeks without cross-boundary changes. Record the last deployed change; another restarts the interval. The operator selects repository identity, visibility and initial release version before publication.
+3. Public service and independently scheduled adoption. [Inspect](../../evals/README.md) evaluates independent API and programming tasks. Games use the public API; repository adaptation, removal of its compiled extension/product fields and retirement without shims follow L6/L7 and workstream C of the lightweight proposal. The operation map inventories migration, not mandatory public operations.
+4. Extraction follows [readiness criteria X](2026-11-02-sandcrab-lightweight-service.md#x-extraction-by-readiness), with no waiting interval or Poketto cutover prerequisite. Preserve history, publish checksums, threat model, examples and evals, then pin the release in Poketto. The owner selects repository identity, visibility and first version before publication.
 
 ### Phase 0 findings
 
@@ -57,9 +58,9 @@ Recorded on 2026-10-27 against OpenSandbox `main` and the tags `release-1.1.0` a
 
 **SDK reachability.** Kotlin constructs `protocol://endpoint` and forwards endpoint headers, allowing path-routed execd and token authentication. Its OkHttp integration exposes a connection pool, not Unix transport. Python accepts an httpx transport. Neither observation proves SDK conformance.
 
-**Operation map.** Original-protocol migration inventory:
+**Operation map.** Historical candidates for translating the original protocol, not required daemon features; L6/L7 own the public target:
 
-| Extension | Replaces |
+| Migration candidate | Replaces |
 |---|---|
 | Volumes and consumer initialization: create, clone, exclusive attach, delete, quota | OPEN, ATTACH, DISCARD |
 | Frozen snapshot: listed files with sizes and SHA-256, streamed as tar | the five CAPTURE operations, ARTIFACT_CREATE |
@@ -67,7 +68,7 @@ Recorded on 2026-10-27 against OpenSandbox `main` and the tags `release-1.1.0` a
 | Frozen job: a run under another profile on the session's volume while the session is frozen | BASELINE |
 | Host calls | BRIDGE_POLL, BRIDGE_COMPLETE |
 
-Consumers retain downloaded artifacts. Migration decides which transaction and recovery guarantees belong to generic primitives or Poketto.
+Consumers retain downloaded artifacts. General uses determine whether a candidate belongs in Sandcrab; otherwise Poketto owns its transaction and recovery behavior.
 
 **Specification changes.** The compared tags changed command/session error fields and sandbox lifecycle/network options. Versioned conformance must detect these differences; unsupported lifecycle and network options remain rejected.
 
@@ -75,14 +76,15 @@ Consumers retain downloaded artifacts. Migration decides which transaction and r
 
 ## Acceptance criteria
 
-- Phase 3:
+- Independent service evidence, alongside the lightweight proposal's measurable acceptance criteria:
   - A fresh installation runs documented CLI and HTTP examples without Poketto configuration, identifiers, Git content or a compiled extension. A batch code runner and a build/test agent exercise the same public service as Poketto.
   - Contract, lifecycle, failure-injection and native isolation tests verify the public entry paths and cleanup. A sandbox failure never falls back to an unrestricted subprocess. Protocol fixtures alone do not prove containment.
   - [Inspect](https://inspect.aisi.org.uk/) runs agent evals through the [shared entrance](2026-10-28-agent-evaluation-entrance.md), with an independent Sandcrab suite using native interfaces. Use fixed clients/models, repeated natural-language tasks and independent output/file/state grading. Cover execution, sessions, files, cancellation and recovery. Record configuration, code/corpus revisions, failures, calls, latency, usage and known/unknown costs, retaining all attempts. Separate scripted and model-directed results. Estimate and bound paid batches; publish no private content or credentials.
-  - The native adapter probe, the toolkit acceptance, the game supervisor's tests and the `load` lane pass.
+- Poketto adoption acceptance, independently scheduled after L6/L7 and not an extraction gate:
+  - The native adapter probe, toolkit acceptance, game supervisor tests and `load` lane pass.
   - A 50-agent round on one host with unchanged bounds, before and after, reports goodput, p95 latency, refusals and CPU split by application container, supervisor and sandbox units, and none gets worse.
   - Fix warm-up, repetition and comparison rules before collecting the load comparison; retain every round and both client and server timings. Do not replace a failed metric with another or rerun selectively for a passing sample.
-- Phase 4 publishes the OpenAPI document, threat model, exact SDK conformance runs and generic-consumer eval results. Poketto runs against the checksummed release and passes its adoption checks.
+- Extraction publishes OpenAPI, the threat model, exact SDK conformance runs and generic-consumer eval results under X. Poketto then runs against the checksummed release and passes its adoption checks.
 
 ## Alternatives
 
