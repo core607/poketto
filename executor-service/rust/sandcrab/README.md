@@ -304,7 +304,9 @@ that the command never ran.
 Enable the optional `[storage]` section in the example configuration. Provision a
 dedicated XFS mount at `storage.root/data` with reflinks, enforced project quotas
 (`prjquota` or `pquota`), `nosuid` and `nodev`. Its filesystem size must not exceed
-`pool_bytes`. Install `xfsprogs` under `/usr/sbin`. The root and its ancestors must
+`pool_bytes`. Subdirectory bind mounts are rejected: project quota IDs belong to
+the whole filesystem, which must not have another quota allocator. Install
+`xfsprogs` under `/usr/sbin`. The root and its ancestors must
 be root-owned, non-writable by other accounts and searchable by execution accounts.
 The daemon creates private control metadata at `root/state` on a different filesystem.
 It never formats a disk, remounts a filesystem or adopts a nonempty unowned store.

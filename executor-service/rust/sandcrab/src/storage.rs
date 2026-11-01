@@ -185,7 +185,7 @@ pub fn verify_pool(config: &Storage) -> io::Result<()> {
         "-T".into(),
         data.to_string_lossy().into(),
         "-o".into(),
-        "TARGET,FSTYPE,OPTIONS".into(),
+        "TARGET,FSTYPE,OPTIONS,FSROOT".into(),
     ])?;
     let value =
         sandcrab_core::parse(&output.stdout).map_err(|_| invalid("Invalid mount description"))?;
@@ -197,13 +197,14 @@ pub fn verify_pool(config: &Storage) -> io::Result<()> {
         .collect::<Vec<_>>();
     if mount["target"] != data.to_string_lossy().as_ref()
         || mount["fstype"] != "xfs"
+        || mount["fsroot"] != "/"
         || !(options.contains(&"prjquota") || options.contains(&"pquota"))
         || options.contains(&"pqnoenforce")
         || !options.contains(&"nosuid")
         || !options.contains(&"nodev")
     {
         return Err(invalid(
-            "storage.root/data needs a dedicated XFS mount with enforced project quotas, nosuid and nodev",
+            "storage.root/data needs a dedicated whole XFS filesystem with enforced project quotas, nosuid and nodev",
         ));
     }
     let stat = rustix::fs::statvfs(&data)?;
