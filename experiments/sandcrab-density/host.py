@@ -129,7 +129,8 @@ transfer_bytes = 67108864
 network = "none"
 ''')
         self.receipt.update(scope='Independent native benchmark fixture; no application, model or private content',
-                            preflight={'memory': memory, 'freeDiskBytes': free, 'otherLoadControllers': 0},
+                            preflight={'memory': memory, 'freeDiskBytes': free, 'otherLoadControllers': 0,
+                                       'logicalCpuCount': os.cpu_count(), 'controllerCpuAffinityCount': len(os.sched_getaffinity(0))},
                             requestedMemoryBytes=self.budget, configuredSandboxCeiling=64,
                             storagePoolBytes=self.pool_bytes,
                             configSha256=hashlib.sha256(self.config.read_bytes()).hexdigest(),
@@ -158,6 +159,20 @@ network = "none"
         if quota != 2 * period:
             raise RuntimeError('The enclosing slice must have exactly two CPUs of quota')
         self.receipt['effectiveLimits'] = {**actual, 'cpu.max': [quota, period]}
+        ancestors = []
+        for current in (self.pool_group, *self.pool_group.parents):
+            if not current.is_relative_to('/sys/fs/cgroup'):
+                break
+            limits = {name: (current / name).read_text().strip() for name in
+                      ('memory.max', 'cpu.max', 'pids.max', 'cpuset.cpus.effective') if (current / name).is_file()}
+            ancestors.append({'group': str(current.relative_to('/sys/fs/cgroup')), 'limits': limits})
+            memory = limits.get('memory.max', 'max')
+            if memory != 'max' and int(memory) < actual['memory.max']:
+                raise RuntimeError('An ancestor supplies less memory than the experiment budget')
+            cpu = limits.get('cpu.max', 'max 100000').split()
+            if cpu[0] != 'max' and int(cpu[0]) < 2 * int(cpu[1]):
+                raise RuntimeError('An ancestor supplies less than two CPUs of quota')
+        self.receipt['resourceAncestors'] = ancestors
         self.start()
         self.daemon_group = group(self.unit)
         if not self.daemon_group.is_relative_to(self.pool_group):
