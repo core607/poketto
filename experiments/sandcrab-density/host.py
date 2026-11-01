@@ -160,6 +160,7 @@ network = "none"
             raise RuntimeError('The enclosing slice must have exactly two CPUs of quota')
         self.receipt['effectiveLimits'] = {**actual, 'cpu.max': [quota, period]}
         ancestors = []
+        self.receipt['resourceAncestors'] = ancestors
         for current in (self.pool_group, *self.pool_group.parents):
             if not current.is_relative_to('/sys/fs/cgroup'):
                 break
@@ -172,7 +173,6 @@ network = "none"
             cpu = limits.get('cpu.max', 'max 100000').split()
             if cpu[0] != 'max' and int(cpu[0]) < 2 * int(cpu[1]):
                 raise RuntimeError('An ancestor supplies less than two CPUs of quota')
-        self.receipt['resourceAncestors'] = ancestors
         self.start()
         self.daemon_group = group(self.unit)
         if not self.daemon_group.is_relative_to(self.pool_group):
