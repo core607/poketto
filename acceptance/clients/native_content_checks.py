@@ -117,7 +117,8 @@ exported = cli('export', 'native-contract', '--output', 'native-public.zip')['re
 assert exported['scope'] == 'public'
 archive = cli('artifact', 'create', 'native-public.zip', '--type', 'application/zip')['artifact']
 image = cli('artifact', 'create', 'native-public-image.png', '--type', 'image/png')['artifact']
-print(json.dumps({'archive': archive, 'export': exported, 'image': image}))
+print(json.dumps({'archive': archive, 'export': exported, 'image': image,
+                  'projectionCommit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()}))
 '''
 
 RESTORE = r'''
@@ -241,8 +242,8 @@ def verify(browser, settings, native, checks):
             'forbidden': [PRIVATE_MARKER, AUTHOR_MARKER, LOCAL_MARKER, 'PRIVATE_ACCEPTANCE_SENTINEL',
                           'EXCLUDED_ACCEPTANCE_SENTINEL', 'PRIVATE_AUTHOR_ACCEPTANCE_SENTINEL']}), owned)
         public = public_result['copyId']
-        assert public_result['commit'] == 'PUBLIC_PROJECTION'
         public_receipt = json.loads(public_result['stdout'])
+        assert public_result['commit'] == public_receipt['projectionCommit'] != receipt['commit']
         public_zip = artifact_bytes(reader, public_receipt['archive'])
         assert len(public_zip) == public_receipt['export']['bytes']
         assert hashlib.sha256(public_zip).hexdigest() == public_receipt['export']['sha256']
@@ -253,21 +254,26 @@ def verify(browser, settings, native, checks):
         images = [item for item in image['content'] if item['type'] == 'image']
         assert len(images) == 1 and images[0]['mimeType'] == 'image/png'
         assert base64.b64decode(images[0]['data'], validate=True) == png()
-        enlarged = execute(writer, public, 'test ! -d private && test ! -d public && poketto status', owned)
-        assert enlarged['commit'] == 'PUBLIC_PROJECTION' and json.loads(enlarged['stdout'])['result']['scope'] == 'public'
+        enlarged = execute(writer, public, 'test ! -d private && test ! -d public && poketto status --remote', owned)
+        status = json.loads(enlarged['stdout'])['result']
+        assert enlarged['commit'] == public_result['commit'] and status['scope'] == 'public'
+        assert status['remote']['state'] == 'PUBLIC_PROJECTION'
         checks.append('native-public-copy-has-parentless-sanitized-history-approved-media-and-portable-export')
         execute(writer, full, 'rm public/native-contract.md && poketto save --delete public/native-contract.md', owned)
         browser.api('GET', '/api/public/document?route=/native-contract', expected=404)
         refused = reader.call('repo_exec', {'expectedCopyId': public, 'command': 'printf forbidden'}, error=True)
-        assert refused['code'] == 'PUBLICATION_CHANGED'
+        assert refused['code'] == 'EXECUTION_REFUSED' and refused['reason'] == 'PUBLICATION_CHANGED'
+        assert refused['executed'] is False and refused['copyId'] == public
         assert native(settings, 'volume', 'get', public)['state'] == 'ready'
         unavailable = reader.call('get_artifact', {'artifactId': public_receipt['archive']['artifactId']}, error=True)
         assert unavailable['code'] == 'UNAVAILABLE'
         current = execute(reader, 'new', script(r'''
 assert not Path('native-contract').exists() and not Path('private').exists()
 assert not any(path.endswith('-native-proof.png') for path in json.loads(Path('.poketto/assets.json').read_text())['files'])
+print(json.dumps({'projectionCommit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()}))
 ''', {}), owned)
-        assert current['copyId'] != public and current['commit'] == 'PUBLIC_PROJECTION'
+        assert current['copyId'] != public
+        assert current['commit'] == json.loads(current['stdout'])['projectionCommit'] != public_result['commit']
         assert native(settings, 'volume', 'get', public)['state'] == 'ready'
         checks.append('native-publication-withdrawal-refuses-old-copy-and-artifact-without-deleting-work')
         execute(writer, full, script(RESTORE, {'indexWasPresent': receipt['indexWasPresent']}), owned)
