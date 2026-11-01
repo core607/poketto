@@ -137,7 +137,7 @@ class Recipe:
         self.claimed_root = True
         self.command('refresh package indexes', ['apt-get', 'update'])
         self.command('install preparation and Python workload dependencies',
-                     ['apt-get', 'install', '--yes', '--no-install-recommends', 'curl', 'ca-certificates', 'xz-utils', 'python3'])
+                     ['apt-get', 'install', '--yes', '--no-install-recommends', 'curl', 'ca-certificates', 'xz-utils', 'python3', 'procps'])
         self.command('install candidate executable', ['install', '-m', '755', self.binary, self.root / 'sandcrab'])
         self.command('prepare pinned sandbox toolchain',
                      ['bash', self.source / 'executor-service/prepare-tools.sh', self.root / 'tools'])
@@ -220,7 +220,11 @@ class Recipe:
             else:
                 self.observe('userdel', self.user)
         if self.previous_policy is not None:
-            self.observe('sysctl', '-w', 'kernel.apparmor_restrict_unprivileged_userns=' + self.previous_policy)
+            policy = Path('/proc/sys/kernel/apparmor_restrict_unprivileged_userns')
+            if policy.read_text().strip() != self.previous_policy:
+                self.observe('sysctl', '-w', 'kernel.apparmor_restrict_unprivileged_userns=' + self.previous_policy)
+            if policy.read_text().strip() != self.previous_policy:
+                raise RuntimeError('Readiness host policy was not restored')
             self.receipt['hostPolicyRestored'] = True
         if self.root.exists():
             if self.root.parent != Path('/var/lib') or not re.fullmatch(r'sandcrab-ready-[a-f0-9]{10}', self.root.name) or self.root.is_symlink():
