@@ -105,7 +105,7 @@ def invoke(probe, args, phase, execute=False, reason=None, locked=False):
             assert re.search(r'(?:flock|fcntl)\(.*= -1 (?:EAGAIN|EACCES)', trace.read_text()), \
                 'The expected real kernel lock refusal was not observed'
         assert not observed, 'A refused source reached the native service'
-        assert legacy.journal('read') == legacy.before
+        # Another JVM may own the journal lock; verify its durable bytes without competing for that lock.
         assert legacy.metadata_snapshot() == legacy.metadata_files
     else:
         assert code == 0 and result['status'] == ('published' if execute else 'prepared')
@@ -160,6 +160,8 @@ def migration(probe, args):
     finally:
         blocker.stdin.close()
         assert blocker.wait(timeout=15) == 0
+    assert legacy.journal('read') == legacy.before
+    assert legacy.metadata_snapshot() == legacy.metadata_files
     probe.done('real-app-uid-journal-lock-refuses-concurrent-publisher')
 
     trace = invoke(probe, args, 'execute', execute=True)
