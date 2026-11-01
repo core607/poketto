@@ -56,9 +56,13 @@ def preserved(before, after, interrupted):
 
 def native(settings, domain, operation=None, identifier=None):
     command = ['runuser', '-u', settings['appUser'], '--', settings['nativeBinary'], domain]
-    command += [value for value in (operation, identifier) if value is not None]
+    if operation is not None:
+        command.append(operation)
     command += ['--socket', settings['nativeSocket']]
-    result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=20)
+    if identifier is not None:
+        command.append(identifier)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, 'Native CLI observation failed: ' + result.stderr[:4096]
     assert len(result.stdout) <= 1024 * 1024
     return json.loads(result.stdout)
 
