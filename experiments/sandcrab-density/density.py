@@ -72,7 +72,9 @@ async def stage(engine, metrics, base, agents, repetition, settings, files, publ
                 sample = metrics.sample(sum(state == 'running' for state in engine.executing.values()))
                 sample['sinceStartNs'] = sample.pop('monotonicNs') - started
                 result['samples'].append(sample)
-                publish(None)
+                # The incremental ledger retains observations without serializing
+                # and fsyncing every previous attempt inside the measured loop.
+                engine.emit('kernel-sample', {'agents': agents, 'repetition': repetition, **sample})
                 if sample['hostAvailableBytes'] < 256 * 1024**2:
                     raise RuntimeError('Host memory reserve fell below its guard')
                 if sample['oomKills'] > before['oomKills']:

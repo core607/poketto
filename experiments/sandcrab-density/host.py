@@ -98,7 +98,7 @@ client_gid = 0
 resource_slice = "{self.slice}"
 supervisor_unit = "{self.unit}"
 unit_prefix = "{self.name}-"
-max_sandboxes = 64
+max_sandboxes = 512
 max_records = 1024
 max_output_bytes = 16777216
 max_connections = 256
@@ -129,7 +129,7 @@ network = "none"
 ''')
         self.receipt.update(scope='Independent native benchmark fixture; no application, model or private content',
                             preflight={'memory': memory, 'freeDiskBytes': free, 'otherLoadControllers': 0},
-                            requestedMemoryBytes=self.budget, configuredSandboxCeiling=64,
+                            requestedMemoryBytes=self.budget, configuredSandboxCeiling=512,
                             storagePoolBytes=self.pool_bytes,
                             configSha256=hashlib.sha256(self.config.read_bytes()).hexdigest(),
                             kernel=os.uname().release,
