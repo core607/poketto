@@ -9,7 +9,7 @@ import sys
 from types import SimpleNamespace
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import uuid
 
 from native_game_java_probe import CHECKS, GameFixture, acknowledge, check_java_and_bound_controller, overlap, read_result, request
@@ -59,6 +59,37 @@ class NativeGameControllerTests(unittest.TestCase):
                 patch('native_game_java_probe.resource.setrlimit', side_effect=lambda *args: order.append('limit')):
             check_java_and_bound_controller(Path('/fixture/java'))
         self.assertEqual(order, ['java', 'limit'])
+
+    def test_collected_game_unit_is_distinguished_from_a_live_unit_or_unavailable_manager(self):
+        fixture = object.__new__(GameFixture)
+        fixture.supervisor = 'fixture-game.service'
+        for state, accepted in [('LoadState=not-found\nActiveState=inactive\n', True),
+                                 ('LoadState=loaded\nActiveState=inactive\n', True),
+                                 ('LoadState=loaded\nActiveState=active\n', False), ('', False)]:
+            with self.subTest(state=state), patch('game_fixture.subprocess.run', side_effect=[
+                    SimpleNamespace(returncode=5), SimpleNamespace(stdout=state)]):
+                if accepted:
+                    fixture.stop_worker()
+                else:
+                    with self.assertRaises(AssertionError):
+                        fixture.stop_worker()
+
+    def test_restart_requires_confirmed_unit_stop_and_descendant_containment_before_replacement(self):
+        fixture = object.__new__(GameFixture)
+        fixture.supervisor = 'fixture-game.service'
+        order = []
+        fixture.stop_worker = Mock(side_effect=lambda: order.append('stopped'))
+        fixture.no_processes = Mock(side_effect=lambda: order.append('contained'))
+        fixture.start_worker = Mock(side_effect=lambda: order.append('started'))
+        with patch('game_fixture.run', side_effect=lambda args: order.append('killed')), \
+                patch('game_fixture.subprocess.run'):
+            fixture.control('game-restart-worker')
+            self.assertEqual(order, ['killed', 'stopped', 'contained', 'started'])
+            fixture.start_worker.reset_mock()
+            fixture.stop_worker.side_effect = AssertionError('manager unavailable')
+            with self.assertRaisesRegex(AssertionError, 'manager unavailable'):
+                fixture.control('game-restart-worker')
+            fixture.start_worker.assert_not_called()
 
     def test_actual_java26_child_starts_before_its_python_parent_is_bounded(self):
         java = shutil.which('java')
