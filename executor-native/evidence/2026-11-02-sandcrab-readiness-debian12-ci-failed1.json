@@ -1,0 +1,224 @@
+{
+  "schema": 1,
+  "kind": "sandcrab-container-readiness-baseline",
+  "started": "2026-11-01T23:31:47.166143+00:00",
+  "sourceCommit": "657a2e4cfe8a7c85fe7432cc64db20bb075fc8d1",
+  "sourceDirty": false,
+  "binarySha256": "db8b81132e7a3cc71c43c6c39e02e77f1cc013e66aa5bacc79804113fc48f791",
+  "image": "sandcrab-readiness:fixture",
+  "imageId": "sha256:db2e6d81ba50df19028ba6a8316a69e523a390ecd97c1a7c4f6403c52b22adc6",
+  "scope": "Fresh distribution userland in a privileged disposable systemd container. The host kernel is shared; this is not a separate distribution-kernel or production-container test. Image build, controller bootstrap and source compilation are outside the installation clock. Acquisition copies a source archive and prebuilt candidate; no published release download is claimed.",
+  "limits": {
+    "memoryBytes": 2147483648,
+    "swapBytes": 0,
+    "cpus": 2,
+    "pids": 2048,
+    "privateCgroupNamespace": true,
+    "hostCgroupBindMount": false
+  },
+  "measurementStatus": "ERROR",
+  "containerCleanup": "PASS",
+  "modelTokens": 0,
+  "containsProductionContent": false,
+  "recipeExitCode": 1,
+  "recipeStdout": "",
+  "recipeStderr": "Traceback (most recent call last):\n  File \"/root/readiness.py\", line 256, in main\n    recipe.install()\n  File \"/root/readiness.py\", line 162, in install\n    self.command('allow capability-bearing user namespaces on this disposable host',\n  File \"/root/readiness.py\", line 97, in command\n    raise RuntimeError('Operator command failed: ' + label)\nRuntimeError: Operator command failed: allow capability-bearing user namespaces on this disposable host\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/root/readiness.py\", line 273, in <module>\n    main()\n  File \"/root/readiness.py\", line 263, in main\n    recipe.cleanup()\n  File \"/root/readiness.py\", line 222, in cleanup\n    self.observe('sysctl', '-w', 'kernel.apparmor_restrict_unprivileged_userns=' + self.previous_policy)\n  File \"/root/readiness.py\", line 77, in observe\n    return subprocess.run(arguments, check=check, capture_output=True, text=True, timeout=30)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.11/subprocess.py\", line 548, in run\n    with Popen(*popenargs, **kwargs) as process:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.11/subprocess.py\", line 1024, in __init__\n    self._execute_child(args, executable, preexec_fn, close_fds,\n  File \"/usr/lib/python3.11/subprocess.py\", line 1901, in _execute_child\n    raise child_exception_type(errno_num, err_msg, err_filename)\nFileNotFoundError: [Errno 2] No such file or directory: 'sysctl'\n",
+  "errorType": "RuntimeError",
+  "error": "The manual recipe failed; retain its receipt",
+  "recipe": {
+    "schema": 1,
+    "kind": "sandcrab-manual-readiness-baseline",
+    "sourceRevision": "657a2e4cfe8a7c85fe7432cc64db20bb075fc8d1",
+    "started": "2026-11-01T23:31:48.506102+00:00",
+    "scope": "Automated replay of the current README manual operator steps, using a prebuilt candidate. Human editing time and source compilation are excluded; this is a lower bound, not turnkey readiness. Operator commands have temporary resource limits; their wrapper overhead is included.",
+    "acquisition": {
+      "source": "repository checkout plus candidate binary",
+      "operatorCommands": 2
+    },
+    "acquisitionClockIncluded": true,
+    "initialEnvironment": {
+      "osRelease": "PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"12\"\nVERSION=\"12 (bookworm)\"\nVERSION_CODENAME=bookworm\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"\n",
+      "kernel": "7.0.0-1017-azure",
+      "logicalCpuCount": 4,
+      "controllerPythonPreinstalled": true,
+      "rootCgroupLimits": {
+        "memory.max": "2147483648",
+        "memory.swap.max": "0",
+        "pids.max": "2048",
+        "cpu.max": "200000 100000"
+      },
+      "programs": {
+        "curl": false,
+        "python3": true,
+        "node": false,
+        "npm": false,
+        "bwrap": false,
+        "git": false
+      }
+    },
+    "inputSha256": {
+      "binary": "db8b81132e7a3cc71c43c6c39e02e77f1cc013e66aa5bacc79804113fc48f791",
+      "readme": "b08d8e293a4c0c2d79c15f3ea54cce6851179e1e841b753c13a5f1c19c2675b9",
+      "recipe": "c32a8a670503b2e56ccf9094a6130c924da5664eb1aff8114bbab5199a2a0d88"
+    },
+    "steps": [
+      {
+        "kind": "command",
+        "label": "create protected installation directory",
+        "argv": [
+          "mkdir",
+          "-m",
+          "755",
+          "/var/lib/sandcrab-ready-acf0cc22f9"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "",
+        "stderrTail": "",
+        "elapsedNs": 18736971
+      },
+      {
+        "kind": "command",
+        "label": "refresh package indexes",
+        "argv": [
+          "apt-get",
+          "update"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]\nGet:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]\nGet:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]\nGet:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6924 B]\nGet:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [360 kB]\nFetched 9398 kB in 1s (9497 kB/s)\nReading package lists...\n",
+        "stderrTail": "",
+        "elapsedNs": 1495005733
+      },
+      {
+        "kind": "command",
+        "label": "install preparation and Python workload dependencies",
+        "argv": [
+          "apt-get",
+          "install",
+          "--yes",
+          "--no-install-recommends",
+          "curl",
+          "ca-certificates",
+          "xz-utils",
+          "python3"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "Reading package lists...\nBuilding dependency tree...\nReading state information...\npython3 is already the newest version (3.11.2-1+b1).\nThe following additional packages will be installed:\n  libbrotli1 libcurl4 libldap-2.5-0 libnghttp2-14 libpsl5 librtmp1 libsasl2-2\n  libsasl2-modules-db libssh2-1 openssl\nRecommended packages:\n  libldap-common publicsuffix libsasl2-modules\nThe following NEW packages will be installed:\n  ca-certificates curl libbrotli1 libcurl4 libldap-2.5-0 libnghttp2-14 libpsl5\n  librtmp1 libsasl2-2 libsasl2-modules-db libssh2-1 openssl xz-utils\n0 upgraded, 13 newly installed, 0 to remove and 1 not upgraded.\nNeed to get 3688 kB of archives.\nAfter this operation, 7837 kB of additional disk space will be used.\nGet:1 http://deb.debian.org/debian-security bookworm-security/main amd64 openssl amd64 3.0.22-1~deb12u2 [1442 kB]\nGet:2 http://deb.debian.org/debian-security bookworm-security/main amd64 ca-certificates all 20250419~deb12u2 [161 kB]\nGet:3 http://deb.debian.org/debian-security bookworm-security/main amd64 xz-utils amd64 5.4.1-1+deb12u2 [471 kB]\nGet:4 http://deb.debian.org/debian-security bookworm-security/main amd64 libbrotli1 amd64 1.0.9-2+deb12u1 [275 kB]\nGet:5 http://deb.debian.org/debian-security bookworm-security/main amd64 libsasl2-modules-db amd64 2.1.28+dfsg-10+deb12u1 [20.5 kB]\nGet:6 http://deb.debian.org/debian-security bookworm-security/main amd64 libsasl2-2 amd64 2.1.28+dfsg-10+deb12u1 [59.9 kB]\nGet:7 http://deb.debian.org/debian bookworm/main amd64 libldap-2.5-0 amd64 2.5.13+dfsg-5 [183 kB]\nGet:8 http://deb.debian.org/debian bookworm/main amd64 libnghttp2-14 amd64 1.52.0-1+deb12u3 [72.4 kB]\nGet:9 http://deb.debian.org/debian bookworm/main amd64 libpsl5 amd64 0.21.2-1 [58.7 kB]\nGet:10 http://deb.debian.org/debian bookworm/main amd64 librtmp1 amd64 2.4+20151223.gitfa8646d.1-2+b2 [60.8 kB]\nGet:11 http://deb.debian.org/debian-security bookworm-security/main amd64 libssh2-1 amd64 1.10.0-3+deb12u1 [176 kB]\nGet:12 http://deb.debian.org/debian bookworm/main amd64 libcurl4 amd64 7.88.1-10+deb12u15 [392 kB]\nGet:13 http://deb.debian.org/debian bookworm/main amd64 curl amd64 7.88.1-10+deb12u15 [316 kB]\nFetched 3688 kB in 0s (85.2 MB/s)\nSelecting previously unselected package openssl.\n(Reading database ... \n(Reading database ... 5%\n(Reading database ... 10%\n(Reading database ... 15%\n(Reading database ... 20%\n(Reading database ... 25%\n(Reading database ... 30%\n(Reading database ... 35%\n(Reading database ... 40%\n(Reading database ... 45%\n(Reading database ... 50%\n(Reading database ... 55%\n(Reading database ... 60%\n(Reading database ... 65%\n(Reading database ... 70%\n(Reading database ... 75%\n(Reading database ... 80%\n(Reading database ... 85%\n(Reading database ... 90%\n(Reading database ... 95%\n(Reading database ... 100%\n(Reading database ... 7968 files and directories currently installed.)\nPreparing to unpack .../00-openssl_3.0.22-1~deb12u2_amd64.deb ...\nUnpacking openssl (3.0.22-1~deb12u2) ...\nSelecting previously unselected package ca-certificates.\nPreparing to unpack .../01-ca-certificates_20250419~deb12u2_all.deb ...\nUnpacking ca-certificates (20250419~deb12u2) ...\nSelecting previously unselected package xz-utils.\nPreparing to unpack .../02-xz-utils_5.4.1-1+deb12u2_amd64.deb ...\nUnpacking xz-utils (5.4.1-1+deb12u2) ...\nSelecting previously unselected package libbrotli1:amd64.\nPreparing to unpack .../03-libbrotli1_1.0.9-2+deb12u1_amd64.deb ...\nUnpacking libbrotli1:amd64 (1.0.9-2+deb12u1) ...\nSelecting previously unselected package libsasl2-modules-db:amd64.\nPreparing to unpack .../04-libsasl2-modules-db_2.1.28+dfsg-10+deb12u1_amd64.deb ...\nUnpacking libsasl2-modules-db:amd64 (2.1.28+dfsg-10+deb12u1) ...\nSelecting previously unselected package libsasl2-2:amd64.\nPreparing to unpack .../05-libsasl2-2_2.1.28+dfsg-10+deb12u1_amd64.deb ...\nUnpacking libsasl2-2:amd64 (2.1.28+dfsg-10+deb12u1) ...\nSelecting previously unselected package libldap-2.5-0:amd64.\nPreparing to unpack .../06-libldap-2.5-0_2.5.13+dfsg-5_amd64.deb ...\nUnpacking libldap-2.5-0:amd64 (2.5.13+dfsg-5) ...\nSelecting previously unselected package libnghttp2-14:amd64.\nPreparing to unpack .../07-libnghttp2-14_1.52.0-1+deb12u3_amd64.deb ...\nUnpacking libnghttp2-14:amd64 (1.52.0-1+deb12u3) ...\nSelecting previously unselected package libpsl5:amd64.\nPreparing to unpack .../08-libpsl5_0.21.2-1_amd64.deb ...\nUnpacking libpsl5:amd64 (0.21.2-1) ...\nSelecting previously unselected package librtmp1:amd64.\nPreparing to unpack .../09-librtmp1_2.4+20151223.gitfa8646d.1-2+b2_amd64.deb ...\nUnpacking librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...\nSelecting previously unselected package libssh2-1:amd64.\nPreparing to unpack .../10-libssh2-1_1.10.0-3+deb12u1_amd64.deb ...\nUnpacking libssh2-1:amd64 (1.10.0-3+deb12u1) ...\nSelecting previously unselected package libcurl4:amd64.\nPreparing to unpack .../11-libcurl4_7.88.1-10+deb12u15_amd64.deb ...\nUnpacking libcurl4:amd64 (7.88.1-10+deb12u15) ...\nSelecting previously unselected package curl.\nPreparing to unpack .../12-curl_7.88.1-10+deb12u15_amd64.deb ...\nUnpacking curl (7.88.1-10+deb12u15) ...\nSetting up libpsl5:amd64 (0.21.2-1) ...\nSetting up libbrotli1:amd64 (1.0.9-2+deb12u1) ...\nSetting up libnghttp2-14:amd64 (1.52.0-1+deb12u3) ...\nSetting up libsasl2-modules-db:amd64 (2.1.28+dfsg-10+deb12u1) ...\nSetting up librtmp1:amd64 (2.4+20151223.gitfa8646d.1-2+b2) ...\nSetting up xz-utils (5.4.1-1+deb12u2) ...\nupdate-alternatives: using /usr/bin/xz to provide /usr/bin/lzma (lzma) in auto mode\nSetting up libsasl2-2:amd64 (2.1.28+dfsg-10+deb12u1) ...\nSetting up libssh2-1:amd64 (1.10.0-3+deb12u1) ...\nSetting up openssl (3.0.22-1~deb12u2) ...\nSetting up libldap-2.5-0:amd64 (2.5.13+dfsg-5) ...\nSetting up ca-certificates (20250419~deb12u2) ...\nUpdating certificates in /etc/ssl/certs...\n148 added, 0 removed; done.\nSetting up libcurl4:amd64 (7.88.1-10+deb12u15) ...\nSetting up curl (7.88.1-10+deb12u15) ...\nProcessing triggers for libc-bin (2.36-9+deb12u14) ...\nProcessing triggers for ca-certificates (20250419~deb12u2) ...\nUpdating certificates in /etc/ssl/certs...\n0 added, 0 removed; done.\nRunning hooks in /etc/ca-certificates/update.d...\ndone.\n",
+        "stderrTail": "debconf: delaying package configuration, since apt-utils is not installed\n",
+        "elapsedNs": 3417094986
+      },
+      {
+        "kind": "command",
+        "label": "install candidate executable",
+        "argv": [
+          "install",
+          "-m",
+          "755",
+          "/root/sandcrab",
+          "/var/lib/sandcrab-ready-acf0cc22f9/sandcrab"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "",
+        "stderrTail": "",
+        "elapsedNs": 44923707
+      },
+      {
+        "kind": "command",
+        "label": "prepare pinned sandbox toolchain",
+        "argv": [
+          "bash",
+          "/source/executor-service/prepare-tools.sh",
+          "/var/lib/sandcrab-ready-acf0cc22f9/tools"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "\nadded 5 packages in 1s\nGet:1 http://deb.debian.org/debian bookworm/main amd64 bubblewrap amd64 0.8.0-2+deb12u1 [47.3 kB]\nGet:2 http://deb.debian.org/debian bookworm/main amd64 debianutils amd64 5.7-0.5~deb12u1 [103 kB]\nGet:3 http://deb.debian.org/debian bookworm/main amd64 ripgrep amd64 13.0.0-4+b2 [1253 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 socat amd64 1.7.4.4-2 [375 kB]\nFetched 1778 kB in 0s (55.5 MB/s)\nPrepared the SRT toolchain in /var/lib/sandcrab-ready-acf0cc22f9/tools.\n",
+        "stderrTail": "npm notice\nnpm notice New major version of npm available! 10.9.4 -> 12.2.1\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1\nnpm notice To update run: npm install -g npm@12.2.1\nnpm notice\n\nWARNING: apt does not have a stable CLI interface. Use with caution in scripts.\n\nW: Download is performed unsandboxed as root as file '/var/lib/sandcrab-ready-acf0cc22f9/tools/bubblewrap_0.8.0-2+deb12u1_amd64.deb' couldn't be accessed by user '_apt'. - pkgAcquire::Run (13: Permission denied)\n",
+        "elapsedNs": 5630361494
+      },
+      {
+        "kind": "command",
+        "label": "create separate execution account",
+        "argv": [
+          "useradd",
+          "--system",
+          "--no-create-home",
+          "--shell",
+          "/usr/sbin/nologin",
+          "scrab-acf0cc22f9"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "",
+        "stderrTail": "",
+        "elapsedNs": 65319093
+      },
+      {
+        "kind": "manual-configuration",
+        "path": "/var/lib/sandcrab-ready-acf0cc22f9/config.toml",
+        "fields": [
+          "runtime_root",
+          "socket",
+          "client_uid",
+          "client_gid",
+          "resource_slice",
+          "supervisor_unit",
+          "unit_prefix",
+          "exec_user",
+          "tools"
+        ],
+        "status": "PASS",
+        "sha256": "e0da50e7c8e4607f9a83bfb84c398391fa562e268c2c59c1f38b595e65db629a",
+        "elapsedNs": 633059
+      },
+      {
+        "kind": "manual-configuration",
+        "path": "/run/systemd/system/sandcrab-ready-acf0cc22f9.slice",
+        "fields": [
+          "MemoryMax",
+          "MemorySwapMax",
+          "TasksMax",
+          "CPUQuota"
+        ],
+        "status": "PASS",
+        "sha256": "9d5ec8a65ad341e5174d7d5c406f944fc48aac9dd7098b8124d44c32087d53c4",
+        "elapsedNs": 47159
+      },
+      {
+        "kind": "command",
+        "label": "allow capability-bearing user namespaces on this disposable host",
+        "argv": [
+          "sysctl",
+          "-w",
+          "kernel.apparmor_restrict_unprivileged_userns=0"
+        ],
+        "status": "FAIL",
+        "exitCode": 127,
+        "stdoutTail": "",
+        "stderrTail": "/usr/bin/env: \u2018sysctl\u2019: No such file or directory\n",
+        "errorType": "RuntimeError",
+        "elapsedNs": 34396085
+      }
+    ],
+    "measurementStatus": "ERROR",
+    "cleanup": "UNCONFIRMED",
+    "modelTokens": 0,
+    "containsProductionContent": false,
+    "manualHostPolicyEdits": 1,
+    "errorType": "RuntimeError",
+    "error": "Operator command failed: allow capability-bearing user namespaces on this disposable host",
+    "readiness": {
+      "firstSandboxedCommand": "NOT_RUN",
+      "operatorCommands": 9,
+      "manualConfigurationEdits": 3,
+      "automatedWallNs": 11059923884,
+      "humanEditingTimeIncluded": false,
+      "targetPass": false
+    },
+    "finished": "2026-11-01T23:31:59.573720+00:00"
+  },
+  "finished": "2026-11-01T23:32:00.828464+00:00"
+}
