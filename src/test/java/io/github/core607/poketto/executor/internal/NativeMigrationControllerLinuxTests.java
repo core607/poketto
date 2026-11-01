@@ -45,6 +45,6 @@ class NativeMigrationControllerLinuxTests {
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         assertThat(complete).as(output).isTrue();
         assertThat(process.exitValue()).as(output).isZero();
-        assertThat(output).contains("Ran 9 tests");
+        assertThat(output).contains("Ran 10 tests");
     }
 }

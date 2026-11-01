@@ -216,6 +216,13 @@ def helper(operation, request, guard, source, deployment, operation_lock, execut
             diagnostic.close()
 
 
+def create_operation(operation, app_gid):
+    operation.mkdir(mode=0o700)
+    os.chown(operation, -1, app_gid)
+    # A private controller umask must not remove the helper group's traversal permission.
+    operation.chmod(0o710)
+
+
 def run(request_path, operation, execute):
     if os.geteuid() != 0:
         raise Deferred('PRIVILEGED_CONTROLLER_REQUIRED')
@@ -230,8 +237,7 @@ def run(request_path, operation, execute):
         if execute:
             raise Deferred('PREPARATION_REQUIRED')
         protected(operation.parent, directory=True)
-        operation.mkdir(mode=0o710)
-        os.chown(operation, 0, request['appGid'])
+        create_operation(operation, request['appGid'])
     protected(operation, directory=True)
     installation = canonical(request['installationRoot'])
     protected(installation / '.deployment', directory=True)

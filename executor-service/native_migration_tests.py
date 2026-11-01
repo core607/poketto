@@ -5,6 +5,7 @@ import json
 import hashlib
 from pathlib import Path
 import select
+import stat
 import subprocess
 import sys
 import tarfile
@@ -95,6 +96,23 @@ class FilesystemTests(unittest.TestCase):
                 controller.stage_archives(operation, self.staging, guard, {}, True)
             self.assertEqual(files.file_digest(self.staging / 'work.tar'), original)
             self.assertEqual((source / 'work' / 'repository' / 'unsaved').read_text(), 'new edits after prepare')
+
+    def test_operation_remains_searchable_to_the_helper_under_private_umasks(self):
+        for mask in (0o077, 0o027, 0o002):
+            operation = self.root / ('operation-' + str(mask))
+            previous = os.umask(mask)
+            try:
+                controller.create_operation(operation, os.getgid())
+            finally:
+                os.umask(previous)
+            info = operation.stat()
+            self.assertEqual(stat.S_IMODE(info.st_mode), 0o710)
+            self.assertEqual((info.st_uid, info.st_gid), (os.getuid(), os.getgid()))
+            marker = operation / 'private-record'
+            marker.write_text('retain existing operation')
+            with self.assertRaises(FileExistsError):
+                controller.create_operation(operation, os.getgid())
+            self.assertEqual(marker.read_text(), 'retain existing operation')
 
     def test_inactive_unit_with_populated_descendants_is_not_containment(self):
         group = self.root / 'legacy.service'
