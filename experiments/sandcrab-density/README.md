@@ -166,11 +166,12 @@ It does not replace the full-corpus comparison.
 
 [cold_start.py](cold_start.py) uses the same arguments and additionally requires
 bpftrace and its cgroup/syscall/exec tracepoints on an isolated Linux 5.7+ host.
-It observes one new persistent session in smoke and three in canonical mode.
+It observes three new persistent sessions; smoke uses the smaller fixture budget.
 Only the fixture's daemon cgroup and newly created fixture cgroups emit events.
 The trace records D-Bus client exec, session-slice creation, systemd-run exec,
 the sandbox bwrap exec and bash exec. It distinguishes bwrap's version check from
-the actual sandbox launch. Missing required events fail the measurement.
+the actual sandbox launch. Argument pointers are read from user address space;
+probe-read errors and missing required events fail the measurement.
 
 The observer runs temporarily in a bounded service inside the fixture slice, with
 its own memory, CPU, task and lifetime limits. Receipt timelines use CLOCK_BOOTTIME

@@ -23,6 +23,9 @@ class ColdStartTests(unittest.TestCase):
         incomplete = timeline(events[:-1], 100, 150, 23)
         self.assertEqual(incomplete['status'], 'INCOMPLETE')
         self.assertEqual(incomplete['missing'], ['bashExec'])
+        unavailable_arguments = [{**event, 'argumentKind': 0} if event['event'] == 'exec' else event
+                                 for event in events]
+        self.assertIn('bwrapSandboxExec', timeline(unavailable_arguments, 100, 150, 23)['missing'])
 
     def test_unowned_namespace_and_ambiguous_event_are_rejected(self):
         with self.assertRaises(ValueError):

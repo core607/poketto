@@ -32,12 +32,22 @@ tracepoint:cgroup:cgroup_mkdir /strcontains(str(args->path), "{name}")/ {{
  printf("%llu\\tgroup\\t%llu\\t%s\\n", nsecs, args->id, str(args->path));
 }}
 tracepoint:syscalls:sys_enter_execve /cgroup == {daemon_group} || @owned[cgroup]/ {{
- $argument = str(args->argv[1]);
- @argument_kind[tid] = $argument == "--version" ? 1 : ($argument == "--new-session" ? 2 : 0);
+ $argv = uptr(args->argv);
+ $argument_pointer = uptr($argv[1]);
+ @argument_kind[tid] = 0;
+ if ($argument_pointer) {{
+  $argument = str($argument_pointer);
+  @argument_kind[tid] = $argument == "--version" ? 1 : ($argument == "--new-session" ? 2 : 0);
+ }}
 }}
 tracepoint:syscalls:sys_enter_execveat /cgroup == {daemon_group} || @owned[cgroup]/ {{
- $argument = str(args->argv[1]);
- @argument_kind[tid] = $argument == "--version" ? 1 : ($argument == "--new-session" ? 2 : 0);
+ $argv = uptr(args->argv);
+ $argument_pointer = uptr($argv[1]);
+ @argument_kind[tid] = 0;
+ if ($argument_pointer) {{
+  $argument = str($argument_pointer);
+  @argument_kind[tid] = $argument == "--version" ? 1 : ($argument == "--new-session" ? 2 : 0);
+ }}
 }}
 tracepoint:sched:sched_process_exec /cgroup == {daemon_group} || @owned[cgroup]/ {{
  printf("%llu\\texec\\t%u\\t%llu\\t%s\\t%u\\n", nsecs, pid, cgroup, str(args->filename), @argument_kind[tid]);
@@ -127,7 +137,7 @@ class Trace:
             '-p', 'TasksMax=128', '-p', 'CPUQuota=100%', '-p', 'RuntimeMaxSec=120',
             '-p', 'TimeoutStopSec=5', '-p', 'KillMode=control-group',
             '-p', 'BindsTo=' + self.fixture.unit, '-p', 'After=' + self.fixture.unit,
-            '/usr/bin/env', 'BPFTRACE_MAX_STRLEN=128', 'bpftrace', '-q', '-B', 'line', '-e', source,
+            '/usr/bin/env', 'BPFTRACE_MAX_STRLEN=128', 'bpftrace', '-kk', '-q', '-B', 'line', '-e', source,
             start_new_session=True,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         self.readers = [asyncio.create_task(self.consume(self.process.stdout)),
@@ -154,7 +164,8 @@ class Trace:
                 await asyncio.wait_for(self.process.wait(), 5)
         await asyncio.gather(*self.readers)
         diagnostic = ''.join(self.diagnostics)
-        valid = self.process.returncode == 0 and not forced and not self.errors and not re.search(r'lost\s+\d+\s+events', diagnostic, re.I)
+        valid = (self.process.returncode == 0 and not forced and not self.errors
+                 and not re.search(r'lost\s+\d+\s+events|failed to probe_read', diagnostic, re.I))
         return {'status': 'PASS' if valid else 'FAIL', 'processExitCode': self.process.returncode,
                 'forcedKill': forced, 'errors': self.errors, 'diagnostic': diagnostic,
                 'clock': 'CLOCK_BOOTTIME', 'version': getattr(self, 'version', None),
@@ -220,7 +231,7 @@ def main():
                                 for path in Path(__file__).parent.glob('*.py')},
                'scope': 'Traced persistent-session startup, diagnostic timing with observer overhead. '
                         'Use density coldStartNs for untraced latency distributions. No model or private content.',
-               'parameters': {'trials': 1 if args.smoke else 3},
+               'parameters': {'trials': 3},
                'measurementStatus': 'STARTING', 'apiCleanup': 'NOT_RUN', 'hostCleanup': 'NOT_RUN',
                'modelTokens': 0, 'containsProductionContent': False}
     with report.open('x') as output:
