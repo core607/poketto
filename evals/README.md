@@ -14,6 +14,7 @@ disposable native service and runs Inspect as an ordinary client. No production
 endpoint, product account, model key or model API is used. The root controller
 owns only its fixture's units, slice and temporary directory; cleanup verifies
 containment before deleting them.
+Its manual `corpus_acceptance` option instead runs the [complete retrieval corpus](../experiments/retrieval-lab/README.md#verification) against an independent native service, without model calls.
 Native HTTP framing, authenticated loopback TCP, connection reuse, live command events and resume, opaque host calls, caller-lowered resource caps, session lifecycle, file transfers, volume durability and quotas, startup cancellation, cleanup-failure and CLI recovery probes must pass before Inspect runs. The file, volume and TCP probes and the programming fixture each own a separate 512 MiB XFS image. These deterministic probes do not measure model usability.
 
 Scripted runs also require the [published Python and Kotlin SDK consumers](sdk/README.md)

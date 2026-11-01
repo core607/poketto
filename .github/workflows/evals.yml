@@ -2,6 +2,11 @@ name: Evaluation preflight
 
 on:
   workflow_dispatch:
+    inputs:
+      corpus_acceptance:
+        description: Run complete-corpus native acceptance without model calls
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       evidence_mode:
@@ -32,7 +37,7 @@ permissions:
 jobs:
   sandcrab:
     # Paid work is manual, on trusted main, once per explicitly started workflow run.
-    if: inputs.evidence_mode != 'model' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.run_attempt == 1)
+    if: inputs.corpus_acceptance != true && (inputs.evidence_mode != 'model' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.run_attempt == 1))
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.evidence_mode == 'model' && 40 || 20 }}
     steps:
@@ -128,5 +133,75 @@ jobs:
         with:
           name: sandcrab-evals-${{ github.run_id }}-${{ github.run_attempt }}
           path: /var/lib/sandcrab-evals/results/
+          if-no-files-found: warn
+          retention-days: 14
+
+  corpus:
+    if: inputs.corpus_acceptance == true && github.event_name == 'workflow_dispatch' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "26"
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.19.0"
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12.14"
+      - name: Build the independent consumer and native binary
+        run: |
+          npm install --global npm@12.0.2
+          npm --prefix experiments/retrieval-lab ci --ignore-scripts --no-audit --no-fund
+          npm --prefix experiments/retrieval-lab run build
+          python -m pip install -r experiments/retrieval-lab/python/requirements.txt
+          python -m unittest discover -s experiments/retrieval-lab/python -p 'test_*.py' -v
+          ./gradlew buildExecutorRust --no-daemon
+      - name: Prepare and audit the complete public corpus
+        run: |
+          mkdir -p build/native-corpus
+          python experiments/retrieval-lab/python/prepare.py fetch --data build/native-corpus/data
+          python experiments/retrieval-lab/python/prepare.py audit --data build/native-corpus/data
+          python experiments/retrieval-lab/python/prepare.py organize --data build/native-corpus/data
+      - name: Prepare the isolated native corpus host
+        run: |
+          command -v mkfs.xfs || { sudo apt-get update && sudo apt-get install --yes --no-install-recommends xfsprogs; }
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo install -d -m 755 /var/lib/sandcrab-corpus
+          sudo bash executor-service/prepare-tools.sh /var/lib/sandcrab-corpus/tools
+      - name: Exercise the full corpus through the independent native consumer
+        run: |
+          sudo systemd-run --wait --pipe --unit="sandcrab-corpus-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -p MemoryMax=512M -p MemorySwapMax=0 -p TasksMax=128 -p CPUQuota=100% \
+            -p RuntimeMaxSec=1140 -p TimeoutStopSec=180 -p KillMode=control-group -p UMask=0077 \
+            /usr/bin/python3 "$PWD/experiments/retrieval-lab/python/native_fixture.py" \
+            --binary "$PWD/build/executor-service/bin/sandcrab" --tools /var/lib/sandcrab-corpus/tools \
+            --node "$(command -v node)" --data "$PWD/build/native-corpus/data" \
+            --revision "$(git rev-parse HEAD)" --report "$PWD/build/native-corpus/native.json"
+      - name: Retain corpus controller termination evidence
+        if: always()
+        run: |
+          mkdir -p build/native-corpus
+          unit="sandcrab-corpus-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          sudo systemctl show "$unit" -p LoadState -p ActiveState -p Result \
+            -p ExecMainCode -p ExecMainStatus -p MemoryPeak > build/native-corpus/controller.state
+          sudo journalctl --unit "$unit" --no-pager --lines 100 --output short-precise \
+            > build/native-corpus/controller.journal
+          sudo chown -R --no-dereference "$(id -u):$(id -g)" "$PWD/build/native-corpus"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: native-corpus-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/native-corpus/native.*
+            build/native-corpus/native-native-acceptance.db*
+            build/native-corpus/controller.*
+            build/native-corpus/data/audit.json
+            build/native-corpus/data/downloads.json
+            build/native-corpus/data/corpus-manifest.json
           if-no-files-found: warn
           retention-days: 14

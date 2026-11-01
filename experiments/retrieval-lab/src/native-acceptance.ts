@@ -21,6 +21,8 @@ const hostSentinel = join(
 );
 await writeFile(hostSentinel, randomBytes(32), { flag: "wx", mode: 0o600 });
 const hostPaths = [hostSentinel, join(settings.data, "corpus-manifest.json")];
+if (process.env.LAB_ACCEPTANCE_HOST_SENTINEL)
+  hostPaths.push(process.env.LAB_ACCEPTANCE_HOST_SENTINEL);
 try {
   const session = await worker.open(AbortSignal.timeout(180_000));
   try {
@@ -33,7 +35,7 @@ try {
     assert.deepEqual(counts.queries, []);
     assert.ok(counts.navigation > 32);
     const boundary = await session.execute(
-      `python -c ${q(`import pathlib,socket; blocked=[]\nfor p in ${JSON.stringify(hostPaths)}:\n try: pathlib.Path(p).read_bytes()\n except (PermissionError,FileNotFoundError): blocked.append(p)\nassert len(blocked)==2\ns=socket.socket();s.settimeout(2)\ntry: s.connect(('1.1.1.1',443));raise AssertionError('network available')\nexcept OSError: print('HOST_AND_NETWORK_DENIED')`)}`,
+      `python -c ${q(`import pathlib,socket; blocked=[]\nfor p in ${JSON.stringify(hostPaths)}:\n try: pathlib.Path(p).read_bytes()\n except (PermissionError,FileNotFoundError): blocked.append(p)\nassert len(blocked)==${hostPaths.length}\ns=socket.socket();s.settimeout(2)\ntry: s.connect(('1.1.1.1',443));raise AssertionError('network available')\nexcept OSError: print('HOST_AND_NETWORK_DENIED')`)}`,
     );
     assert.equal(boundary.exitCode, 0);
     assert.match(boundary.stdout, /HOST_AND_NETWORK_DENIED/);
