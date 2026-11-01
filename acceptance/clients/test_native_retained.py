@@ -1,5 +1,6 @@
 """Offline control and observation boundaries; no systemd/native/consumer host is started."""
 import copy
+import ast
 from contextlib import nullcontext
 import hashlib
 import json
@@ -17,6 +18,7 @@ from unittest.mock import patch
 
 from native_app_fixture import OwnedApplication, kill_exact, publish, read_private
 from native_retained_evidence import frame, preserved
+from native_retained_checks import interrupted_command
 
 
 class AppControlTests(unittest.TestCase):
@@ -115,6 +117,19 @@ class AppControlTests(unittest.TestCase):
 
 
 class JournalEvidenceTests(unittest.TestCase):
+    def test_both_embedded_python_programs_compile_before_the_process_loss_barrier(self):
+        command = interrupted_command('synthetic-descendant-marker')
+        source = command.split("python3 - <<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
+        compile(source, '<retained-process-guest>', 'exec')
+        tree = ast.parse(source)
+        child = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == 'code' for target in node.targets))
+        compile(ast.literal_eval(child), '<retained-process-descendant>', 'exec')
+        launch = next(node.value for node in tree.body if isinstance(node, ast.Expr)
+                      and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Attribute)
+                      and node.value.func.attr == 'Popen')
+        self.assertEqual(ast.literal_eval(launch.args[0].elts[3]), 'synthetic-descendant-marker')
+
     def test_actual_record_framing_rejects_truncation_changed_checksum_and_extra_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'record'

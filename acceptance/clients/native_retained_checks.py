@@ -73,6 +73,22 @@ def pending(client, copy, command, evidence):
     return thread, outcome
 
 
+def interrupted_command(marker):
+    return r"""set -eu
+printf once >> private/attempt-count
+printf 'acknowledged inside unknown command' > private/retained-inside.md
+poketto save private/retained-inside.md > /tmp/inside-save
+python3 - <<'PY'
+import pathlib, subprocess, sys, time
+code = "import pathlib,time; p=pathlib.Path('/workspace/work/repository/private/descendant-pulse');\nwhile True:\n p.write_text(str(time.monotonic_ns())); time.sleep(.1)"
+subprocess.Popen([sys.executable, '-c', code, MARKER], start_new_session=True,
+                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+time.sleep(300)
+PY
+touch private/command-finished
+""".replace('MARKER', repr(marker))
+
+
 def verify(settings, evidence, receipt):
     root = Path(settings['root'])
     browser = Browser(settings['endpoint'], settings['password'])
@@ -115,20 +131,7 @@ poketto save private/retained-saved.md
     receipt['checks'].append('real-app-sigkill-reopen-preserves-copy-unsaved-work-home-index-and-acknowledged-baselines')
 
     marker = 'retained-descendant-' + uuid.uuid4().hex
-    command = """set -eu
-printf once >> private/attempt-count
-printf 'acknowledged inside unknown command' > private/retained-inside.md
-poketto save private/retained-inside.md > /tmp/inside-save
-python3 - <<'PY'
-import pathlib, subprocess, sys, time
-code = "import pathlib,time; p=pathlib.Path('/workspace/work/repository/private/descendant-pulse');\nwhile True:\n p.write_text(str(time.monotonic_ns())); time.sleep(.1)"
-subprocess.Popen([sys.executable, '-c', code, MARKER], start_new_session=True,
-                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-time.sleep(300)
-PY
-touch private/command-finished
-""".replace('MARKER', repr(marker))
-    thread, outcome = pending(right, copy, command, evidence)
+    thread, outcome = pending(right, copy, interrupted_command(marker), evidence)
     deadline = time.monotonic() + 30
     while True:
         assert thread.is_alive(), 'Interrupted command completed before the app-loss barrier'
