@@ -2,8 +2,8 @@
 
 The [lightweight-service proposal](../../notes/proposed/2026-11-02-sandcrab-lightweight-service.md)
 owns the footprint, readiness, density and breakdown requirements. This directory
-contains the seeded workload, stage scorer and native HTTP client used to construct
-the independent benchmark. Component tests do not establish sandbox capacity.
+contains the seeded workload, scorer, native HTTP client and isolated density
+driver. Component tests do not establish sandbox capacity.
 
 ## Workload and scoring
 
@@ -44,6 +44,53 @@ python3 -m unittest discover -s experiments/sandcrab-density -p 'test_*.py' -v
 ```
 
 Linux runs the real command mix and Unix-peer/transport checks. On Windows those
-checks skip; a Windows pass is not Linux evidence. Native fixture execution,
-host-resource collection, readiness runs and the cold-start/page-cache breakdown
-must be verified before publishing a complete W0 result.
+checks skip; a Windows pass is not Linux evidence.
+
+## Native measurement
+
+Use an isolated root-capable systemd host with cgroup v2, XFS utilities, Git,
+Python 3.10+, bash, ripgrep and the [prepared toolchain](../../executor-service/prepare-tools.sh).
+Build the binary with `./gradlew buildExecutorRust`. The driver refuses competing
+load controllers or native fixtures, insufficient free disk, and insufficient
+host memory outside its bounded slice. It creates a disposable XFS image and uses
+the public API to create the corpus, clone volumes and run commands. It never
+adopts existing storage. Keep the repository layout for the shared native cleanup.
+
+```sh
+sudo python3 experiments/sandcrab-density/density.py --smoke \
+  --binary build/executor-service/bin/sandcrab --tools /prepared/tools \
+  --report /operator/evidence/smoke-unique.json
+sudo python3 experiments/sandcrab-density/density.py --budget 5 \
+  --binary build/executor-service/bin/sandcrab --tools /prepared/tools \
+  --report /operator/evidence/density-5gb-unique.json
+```
+
+Smoke uses two agents and a small corpus to check the actual entry path and cleanup;
+it is not a capacity measurement. Run all protocol budgets for W0 and final
+comparisons. Each budget needs a new receipt path. The
+[measurement workflow](../../.github/workflows/sandcrab-density.yml) runs smoke on
+relevant pull requests; manual dispatch with `canonical=true` runs all three budgets
+on separate hosts after smoke. Its binary build uses a separate runner.
+
+The JSON receipt includes source and binary identities, effective resource limits,
+all stage attempts, kernel counters, refusal codes and cleanup results. The sibling
+`.attempts.jsonl` records a command's identity before submission, including setup
+commands and attempts interrupted before an outcome. Receipts are checkpointed
+during setup and sampling. Unknown outcomes retain their identity for reconciliation;
+there is no command replay. API cleanup checks resource inventories; host cleanup
+stops only fixture units and verifies empty cgroups and unmounted fixture paths.
+Unconfirmed cleanup fails and preserves resources for inspection.
+
+`measurementStatus=COMPLETED` means the capacity search completed, including its
+first failed stage. Read each stage's score; process exit zero does not mean every
+stage passed. Missing observations, invalid setup and unconfirmed cleanup produce
+`ERROR`. Smoke fails its process if its stage fails. Keep failed receipts and the
+adjacent diagnostic files. Collected timestamps are monotonic; only the receipt's
+start and finish timestamps are wall time.
+
+Daemon RSS and hierarchical memory/CPU counters are observations of this fixture.
+`file` already includes `shmem`; do not add them as disjoint memory categories.
+Sandbox CPU is pool CPU minus daemon CPU; system-manager CPU outside the slice is
+reported separately. Polling can miss brief executing states. Binary/dependency
+footprint, idle 1/10/50 and finite-run costs, fresh-distribution readiness, and the
+cold-start/page-cache breakdown remain separate W0 requirements.
