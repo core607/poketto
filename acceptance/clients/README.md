@@ -87,12 +87,12 @@ project quotas. Sandcrab's control metadata stays outside the volume data
 filesystem. Repository copies have 64 MiB and 8,192-inode limits, and the profile
 permits opaque host calls while keeping the guest network disabled.
 
-`native-smoke.py --fixture FIXTURE_ROOT --evidence NEW_FILE` exercises real login,
-issued grants and independent MCP transports. It correlates the returned
-copy with the native volume API, verifies shared unsaved bytes, revoked-key
-denial, selected save/delete with authoritative HTTP readback, and idempotent
-disposal. Require its `result: PASS` and controller `cleanup: PASS`. The historical
-receipts above retain their own backend and scenario scope; these basic checks do
+`native-smoke.py --fixture FIXTURE_ROOT --evidence NEW_FILE` uses real authentication
+and independent MCP transports to check account-copy sharing, native volume
+identity, revocation, selected persistence and disposal. Its [content checks](native_content_checks.py)
+verify media, immutable artifacts, saved-content exports and public isolation,
+including withdrawal without deleting work. Require `result: PASS` and controller
+`cleanup: PASS`. Historical receipts retain their recorded scope; these checks do
 not establish complete CLI, browser, model-client or production acceptance.
 
 Use the isolated [acceptance stack](../README.md) first. Create a workspace API key through administration with `READ_PRIVATE`, `WRITE_PRIVATE`, and explicitly selected `EXECUTE_REPOSITORY`. Keep the key and endpoint in process-local `POKETTO_MCP_TOKEN` and `POKETTO_MCP_URL`. Do not commit real endpoints, tokens, or client transcripts containing private content.

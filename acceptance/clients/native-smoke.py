@@ -9,6 +9,7 @@ import subprocess
 import uuid
 
 from mcp_http import Browser, Mcp
+from native_content_checks import verify as verify_content
 
 
 def native(settings, domain, operation, *arguments):
@@ -73,6 +74,7 @@ def verify(settings, checks):
         assert left.call('repo_discard', {'expectedCopyId': copy})['status'] == 'ABSENT'
         assert copy not in {volume['id'] for volume in native(settings, 'volume', 'list')['volumes']}
         checks.append('selected-delete-and-idempotent-discard-release-the-native-volume')
+        verify_content(browser, settings, native, checks)
     finally:
         for key in issued:
             browser.api('DELETE', browser.admin + '/keys/' + key['id'], expected=204)
