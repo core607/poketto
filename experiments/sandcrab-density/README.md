@@ -95,7 +95,7 @@ Daemon RSS and hierarchical memory/CPU counters are observations of this fixture
 `file` already includes `shmem`; do not add them as disjoint memory categories.
 Sandbox CPU is pool CPU minus daemon CPU; system-manager CPU outside the slice is
 reported separately. Polling can miss brief executing states. Fresh-distribution
-readiness and the cold-start timeline remain separate W0 requirements.
+readiness remains a separate W0 requirement.
 
 The [native density smoke receipt](../../executor-native/evidence/2026-11-02-sandcrab-density-smoke.json)
 records one two-agent run on Ubuntu 24.04 with its source/binary hashes and verified
@@ -157,3 +157,25 @@ and tool caches are not reset. The controller inspects only its disposable volum
 paths according to the current storage layout. These observations are not an API
 for accessing another daemon's content. Smoke uses 400 documents with all ten readers;
 the canonical comparison uses the full corpus.
+
+The [native page-cache smoke receipt](../../executor-native/evidence/2026-11-02-sandcrab-page-cache-smoke.json)
+records that small comparison, including cold-state proof and verified cleanup.
+It does not replace the full-corpus comparison.
+
+## Startup timeline
+
+[cold_start.py](cold_start.py) uses the same arguments and additionally requires
+bpftrace and its cgroup/syscall/exec tracepoints on an isolated Linux 5.7+ host.
+It observes one new persistent session in smoke and three in canonical mode.
+Only the fixture's daemon cgroup and newly created fixture cgroups emit events.
+The trace records D-Bus client exec, session-slice creation, systemd-run exec,
+the sandbox bwrap exec and bash exec. It distinguishes bwrap's version check from
+the actual sandbox launch. Missing required events fail the measurement.
+
+The observer runs temporarily in a bounded service inside the fixture slice, with
+its own memory, CPU, task and lifetime limits. Receipt timelines use CLOCK_BOOTTIME
+and include tracing overhead; use the density driver's untraced `coldStartNs` for
+latency comparisons. The trace clock handshake, event ordering, source hash,
+observer diagnostics and cleanup are retained. bpftrace is a measurement tool,
+not a Sandcrab runtime dependency. Fresh-install readiness is not established by
+preparing this instrumented host.

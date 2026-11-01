@@ -39,7 +39,8 @@ def other_loads():
         except OSError:
             continue
         if any(argument.endswith((b'/sandcrab-density/density.py', b'/sandcrab-density/footprint.py',
-                                  b'/sandcrab-density/page_cache.py', b'/agent-load.py', b'/load-suite.py'))
+                                  b'/sandcrab-density/page_cache.py', b'/sandcrab-density/cold_start.py',
+                                  b'/agent-load.py', b'/load-suite.py'))
                for argument in arguments):
             count += 1
     return count

@@ -1,0 +1,559 @@
+{
+  "schema": 1,
+  "kind": "sandcrab-cache-smoke",
+  "started": "2026-11-01T22:09:03.569034+00:00",
+  "sourceCommit": "e1fe43cfef834a4ed0e4d84117326ed6fe4f082b",
+  "sourceDirty": false,
+  "sourceSha256": {
+    "page_cache.py": "db994b64f42bf6dad5d1724b1badc722440e1c6d96a4bf2a10f5f1422704c9e8",
+    "test_footprint.py": "dd7aaa0832130306f266c021da30926685543e4de6a290deb0ad99748ce47134",
+    "test_scoring.py": "68da8da44c9cd9576aa28c4b00fa0373009b4cc112951a8669c5248f1df6b1ad",
+    "metrics.py": "83004cf4be8e9d2de84f9f0e231a88ee86fb612ba6fe19a5cd0d968dc0d422b8",
+    "workload.py": "b7e315cdbfe4b222e41c3025e3e1c700cbb599689e505991f52a0cc0f4f1ccef",
+    "footprint.py": "39816997dd4438d2c771be50d62f218d56b7ef07a5bef912c072b022855bffee",
+    "test_engine.py": "05633ed8e050237695e1939589dab845b414d41b27974619fdd01af88e2d5b7d",
+    "protocol.py": "640bd23e0e6c2aba551ec1414f1f2c4fd7db782d9df491c49815fe27baf2b787",
+    "test_density.py": "6ea72a3003daf5b9883f4f15e087a7d8a04ff0ec75d5f66c04589b53c8d2f9f9",
+    "engine.py": "644572b2426058524fb006534b7a67359277ef9078df6aa14a234561516f5c5b",
+    "host.py": "2795d33f7c2e5eb2608708b639f5982b5aff18ea22dea3649a2e7266bd281225",
+    "test_page_cache.py": "4bb1fcfa4e43e73e052ba3c9a8db1933cf6d0c6cd2134c8370043d8202423b8a",
+    "test_workload.py": "af0c58334562aa987b3442e92524eec3f3d8a5e3b43c9b60da524c510953e1ec",
+    "test_client.py": "20a12380b397e60b1c62a5111e9e4bfd560df40527d091bcef636013548cef59",
+    "scoring.py": "48b5f42df8a9e3eec81a5fb50d381effc699935037c40e6dca6922a59a8f9cfb",
+    "density.py": "ee4e9f7dec53e7010a993efa531c7d4e4ca6c78dbf168032de8eaf529376a8e7",
+    "client.py": "4564eecf46d694377a9446812b1f61e2f92836cf881b684ae3f5aa5fc6ef92d5"
+  },
+  "parameters": {
+    "seed": 20261102,
+    "files": 400,
+    "readers": 10,
+    "cachePolicy": "fsync + per-file POSIX_FADV_DONTNEED, verified with root mincore"
+  },
+  "scope": "Synthetic fixture only. Page residency and hierarchical file-cache deltas; not a template API, cold-start latency or density measurement.",
+  "measurementStatus": "COMPLETED",
+  "apiCleanup": {
+    "result": "PASS",
+    "failures": []
+  },
+  "hostCleanup": "PASS",
+  "modelTokens": 0,
+  "containsProductionContent": false,
+  "fixture": {
+    "scope": "Independent native benchmark fixture; no application, model or private content",
+    "binarySha256": "db8b81132e7a3cc71c43c6c39e02e77f1cc013e66aa5bacc79804113fc48f791",
+    "probeSha256": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
+    "checks": [],
+    "cleanup": "PASS",
+    "preflight": {
+      "memory": {
+        "MemTotal": 16760344576,
+        "MemAvailable": 15769264128
+      },
+      "freeDiskBytes": 91328393216,
+      "otherLoadControllers": 0,
+      "logicalCpuCount": 4,
+      "controllerCpuAffinityCount": 4
+    },
+    "requestedMemoryBytes": 1073741824,
+    "configuredSandboxCeiling": 512,
+    "storagePoolBytes": 536870912,
+    "configSha256": "8bdf68b134e4c8567ab3eda713cedf5a3ff92bb4a100e56972de2488ad8b3cbf",
+    "kernel": "7.0.0-1017-azure",
+    "operatingSystem": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+    "fixtureSourceSha256": "2795d33f7c2e5eb2608708b639f5982b5aff18ea22dea3649a2e7266bd281225",
+    "effectiveLimits": {
+      "memory.max": 1073741824,
+      "memory.swap.max": 0,
+      "pids.max": 8192,
+      "cpu.max": [
+        200000,
+        100000
+      ]
+    },
+    "resourceAncestors": [
+      {
+        "group": "sandcrab.slice/sandcrab-probe.slice/sandcrab-probe-dc79c263ed.slice",
+        "limits": {
+          "memory.max": "1073741824",
+          "cpu.max": "200000 100000",
+          "pids.max": "8192"
+        }
+      },
+      {
+        "group": "sandcrab.slice/sandcrab-probe.slice",
+        "limits": {
+          "memory.max": "max",
+          "cpu.max": "max 100000",
+          "pids.max": "max"
+        }
+      },
+      {
+        "group": "sandcrab.slice",
+        "limits": {
+          "memory.max": "max",
+          "cpu.max": "max 100000",
+          "pids.max": "max",
+          "cpuset.cpus.effective": "0-3"
+        }
+      },
+      {
+        "group": ".",
+        "limits": {
+          "cpuset.cpus.effective": "0-3"
+        }
+      }
+    ],
+    "binaryBytes": 4125600
+  },
+  "cases": [
+    {
+      "name": "reflink",
+      "readers": 10,
+      "status": "COMPLETED",
+      "coldResidency": {
+        "files": 4000,
+        "payloadBytes": 4174900,
+        "pages": 4000,
+        "residentPages": 0,
+        "pageBytes": 4096,
+        "residentBytes": 0,
+        "distinctInodes": 4000
+      },
+      "beforeRead": {
+        "monotonicNs": 123102294196,
+        "memoryCurrentBytes": 39419904,
+        "memoryStat": {
+          "anon": 18300928,
+          "file": 2121728,
+          "shmem": 0,
+          "kernel": 17481728
+        },
+        "cpuUsec": {
+          "pool": 2144762,
+          "daemon": 1154275,
+          "sandboxes": 990487
+        },
+        "oomKills": 0,
+        "pidsCurrent": 81,
+        "daemonRssBytes": 3522560,
+        "liveKernelSandboxes": 10,
+        "liveKernelSessions": 10,
+        "liveKernelFiniteRuns": 0,
+        "executingObserved": 0,
+        "systemManagerCpuSecondsOutsideSlice": 4.67,
+        "hostAvailableBytes": 15732260864
+      },
+      "commands": [
+        {
+          "id": "0cea3369-5bc2-4a83-a9a5-49674ea824fc",
+          "session": "56379786-cd45-40a6-b21d-8e7f6b93a284",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 123102692679,
+          "outcome": "OK",
+          "elapsedNs": 478803151,
+          "startedAbsoluteNs": 123102744766,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "a437375b-d035-440e-b39f-d6a57fdb7ae4",
+          "session": "242da8cb-a1e0-4965-97f5-1e452054e8a1",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 123102911056,
+          "outcome": "OK",
+          "elapsedNs": 477852514,
+          "startedAbsoluteNs": 123102927537,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "c6b86c44-3891-42a4-bd60-2e5e57ba5475",
+          "session": "d206f3cd-405d-41fc-8ddd-7e6db79150d0",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 123102998710,
+          "outcome": "OK",
+          "elapsedNs": 488266902,
+          "startedAbsoluteNs": 123103045136,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "2be13eb8-0109-49b7-a13f-0f54983ef9cf",
+          "session": "48f665db-2108-43b8-a9d1-626c044600f2",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 123103122961,
+          "outcome": "OK",
+          "elapsedNs": 488229392,
+          "startedAbsoluteNs": 123103155221,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "bdc21025-dce2-41fe-b80b-5257a32d4593",
+          "session": "61bf17e3-9a8d-4608-bdb1-da905933eaf4",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 123103226033,
+          "outcome": "OK",
+          "elapsedNs": 467045739,
+          "startedAbsoluteNs": 123103237996,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "206f6832-c453-4e22-9f6e-92a33456d22b",
+          "session": "581dcf7e-09a6-4ba1-a7c4-4a0239f0c4bd",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 123103300222,
+          "outcome": "OK",
+          "elapsedNs": 477144495,
+          "startedAbsoluteNs": 123103311342,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "483c53b4-3d35-4bdf-b735-ccba5983c361",
+          "session": "7966597b-bb81-4bc5-b2cb-d19248fd4974",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 123103369591,
+          "outcome": "OK",
+          "elapsedNs": 466587796,
+          "startedAbsoluteNs": 123103380571,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "963eb8fd-4710-47c4-91f6-9cfe639df949",
+          "session": "6ef414d9-9442-4b2e-ac25-1ffdad336ab4",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 123103438660,
+          "outcome": "OK",
+          "elapsedNs": 381207935,
+          "startedAbsoluteNs": 123103450001,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "538def1d-b4b0-4212-96f4-d0b64dfad53f",
+          "session": "4295d676-4b8e-4bf0-872f-0468a6a8e5f7",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 123103507488,
+          "outcome": "OK",
+          "elapsedNs": 455386141,
+          "startedAbsoluteNs": 123103517917,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "c51305af-adfc-4155-8ce7-a547ca050309",
+          "session": "2c8078ae-aa29-46c8-a274-cf544b319e6f",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 123103588549,
+          "outcome": "OK",
+          "elapsedNs": 487496637,
+          "startedAbsoluteNs": 123103607083,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        }
+      ],
+      "afterRead": {
+        "monotonicNs": 123602652031,
+        "memoryCurrentBytes": 57507840,
+        "memoryStat": {
+          "anon": 18571264,
+          "file": 18505728,
+          "shmem": 0,
+          "kernel": 17530880
+        },
+        "cpuUsec": {
+          "pool": 3189197,
+          "daemon": 1209837,
+          "sandboxes": 1979360
+        },
+        "oomKills": 0,
+        "pidsCurrent": 81,
+        "daemonRssBytes": 3543040,
+        "liveKernelSandboxes": 10,
+        "liveKernelSessions": 10,
+        "liveKernelFiniteRuns": 0,
+        "executingObserved": 0,
+        "systemManagerCpuSecondsOutsideSlice": 4.67,
+        "hostAvailableBytes": 15692197888
+      },
+      "warmResidency": {
+        "files": 4000,
+        "payloadBytes": 4174900,
+        "pages": 4000,
+        "residentPages": 4000,
+        "pageBytes": 4096,
+        "residentBytes": 16384000,
+        "distinctInodes": 4000
+      },
+      "fileCacheDeltaBytes": 16384000,
+      "oomKills": 0,
+      "apiCleanup": {
+        "result": "PASS",
+        "failures": []
+      }
+    },
+    {
+      "name": "shared-read-only",
+      "readers": 10,
+      "status": "COMPLETED",
+      "readOnlyMountVerified": true,
+      "coldResidency": {
+        "files": 400,
+        "payloadBytes": 417490,
+        "pages": 400,
+        "residentPages": 0,
+        "pageBytes": 4096,
+        "residentBytes": 0,
+        "distinctInodes": 400
+      },
+      "beforeRead": {
+        "monotonicNs": 128403101651,
+        "memoryCurrentBytes": 39059456,
+        "memoryStat": {
+          "anon": 18300928,
+          "file": 2039808,
+          "shmem": 0,
+          "kernel": 16572416
+        },
+        "cpuUsec": {
+          "pool": 3919243,
+          "daemon": 1710405,
+          "sandboxes": 2208838
+        },
+        "oomKills": 0,
+        "pidsCurrent": 81,
+        "daemonRssBytes": 3522560,
+        "liveKernelSandboxes": 10,
+        "liveKernelSessions": 10,
+        "liveKernelFiniteRuns": 0,
+        "executingObserved": 0,
+        "systemManagerCpuSecondsOutsideSlice": 5.01,
+        "hostAvailableBytes": 15731937280
+      },
+      "commands": [
+        {
+          "id": "dfb3ce7b-f03f-4624-833b-e29dd25e0333",
+          "session": "9769964d-bc1a-465d-a907-eb82e50592f4",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 128403471661,
+          "outcome": "OK",
+          "elapsedNs": 482016420,
+          "startedAbsoluteNs": 128403522606,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "a905718c-abee-42bb-9b35-51d5a5f00d47",
+          "session": "b4ecf1af-6090-4106-8b3d-4ca7fd4da67a",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 128403657387,
+          "outcome": "OK",
+          "elapsedNs": 471055877,
+          "startedAbsoluteNs": 128403672545,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "7f2bb9d3-a3d2-468a-8878-06c012f899a2",
+          "session": "f6b2a585-687b-4ef0-a82d-8373ff40dc0b",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 128403743688,
+          "outcome": "OK",
+          "elapsedNs": 449986799,
+          "startedAbsoluteNs": 128403756171,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "2e2c6ee6-18fb-4403-b8cc-912eee64ad4c",
+          "session": "f3794ff5-44b1-4167-8178-016163ae6151",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 128403819088,
+          "outcome": "OK",
+          "elapsedNs": 471414344,
+          "startedAbsoluteNs": 128403831111,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "3dda99ab-b223-4941-a0c5-53242d237695",
+          "session": "474e7ff5-bd4a-482e-86e5-ad3010f23767",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 128403892425,
+          "outcome": "OK",
+          "elapsedNs": 449195685,
+          "startedAbsoluteNs": 128403903936,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "24df8041-d4de-4cfc-9faa-86e14d9a4755",
+          "session": "245e6e5a-fe1e-45b3-b952-95d950d4c8bc",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 128403962295,
+          "outcome": "OK",
+          "elapsedNs": 449476718,
+          "startedAbsoluteNs": 128403973566,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "b11f346d-de72-49b7-9da8-b8facfe588d8",
+          "session": "c9d42fd0-e1f4-4f97-a956-3e5c956ad2da",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 128404057232,
+          "outcome": "OK",
+          "elapsedNs": 451206541,
+          "startedAbsoluteNs": 128404073603,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "7126f954-b3be-4af3-a970-7eb55357ea33",
+          "session": "27503ed2-c526-42fd-8dbc-727b98fc27b8",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 128404136440,
+          "outcome": "OK",
+          "elapsedNs": 438502928,
+          "startedAbsoluteNs": 128404148212,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "57f7c05a-5f7b-4bda-9992-5a20f2afe489",
+          "session": "545ab1d4-dd48-4546-bca7-0df5928e4a66",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 128404205959,
+          "outcome": "OK",
+          "elapsedNs": 450009811,
+          "startedAbsoluteNs": 128404217421,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        },
+        {
+          "id": "76fa3420-b48c-4a86-84d3-82695a89c116",
+          "session": "f89fc727-7438-44e6-93d4-3b96a291a5c0",
+          "kind": "cache-read",
+          "createdAbsoluteNs": 128404274357,
+          "outcome": "OK",
+          "elapsedNs": 461212418,
+          "startedAbsoluteNs": 128404285027,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "{\"files\": 400, \"bytes\": 417490, \"sha256\": \"c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54\"}\n",
+          "stderr": ""
+        }
+      ],
+      "afterRead": {
+        "monotonicNs": 128896796655,
+        "memoryCurrentBytes": 41791488,
+        "memoryStat": {
+          "anon": 18624512,
+          "file": 3678208,
+          "shmem": 0,
+          "kernel": 16613376
+        },
+        "cpuUsec": {
+          "pool": 4933560,
+          "daemon": 1759384,
+          "sandboxes": 3174176
+        },
+        "oomKills": 0,
+        "pidsCurrent": 81,
+        "daemonRssBytes": 3563520,
+        "liveKernelSandboxes": 10,
+        "liveKernelSessions": 10,
+        "liveKernelFiniteRuns": 0,
+        "executingObserved": 0,
+        "systemManagerCpuSecondsOutsideSlice": 5.01,
+        "hostAvailableBytes": 15714975744
+      },
+      "warmResidency": {
+        "files": 400,
+        "payloadBytes": 417490,
+        "pages": 400,
+        "residentPages": 400,
+        "pageBytes": 4096,
+        "residentBytes": 1638400,
+        "distinctInodes": 400
+      },
+      "fileCacheDeltaBytes": 1638400,
+      "oomKills": 0,
+      "apiCleanup": {
+        "result": "PASS",
+        "failures": []
+      }
+    }
+  ],
+  "corpus": {
+    "schema": 1,
+    "seed": 20261102,
+    "markdownFiles": 400,
+    "gitFiles": 32,
+    "generatedPayloadBytes": 418856,
+    "corpusSha256": "c4bc60180e85917d384d01b1949eec57a42ade5a04798ef4f0bc102e6c5ebb54",
+    "gitCommit": "31407fb59e94816076d0914c7f7a7149cc4be6ed"
+  },
+  "finished": "2026-11-01T22:09:23.657196+00:00"
+}
