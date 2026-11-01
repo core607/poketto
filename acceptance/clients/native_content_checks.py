@@ -11,10 +11,11 @@ import zlib
 
 from mcp_http import Mcp
 
-PUBLIC_MARKER = 'NATIVE_SAVED_PUBLIC_CONTENT'
-PRIVATE_MARKER = 'NATIVE_SAVED_PRIVATE_CONTENT'
-LOCAL_MARKER = 'NATIVE_UNSAVED_CONTENT'
-AUTHOR_MARKER = 'NATIVE_PRIVATE_AUTHOR'
+# Public Markdown is rendered, so content markers must survive escaping.
+PUBLIC_MARKER = 'NativeSavedPublicContent'
+PRIVATE_MARKER = 'NativeSavedPrivateContent'
+LOCAL_MARKER = 'NativeUnsavedContent'
+AUTHOR_MARKER = 'NativePrivateAuthor'
 PUBLIC_NOTE = ('---\ntitle: Native content proof\nauthor: ' + AUTHOR_MARKER
                + '\n---\n\n# Native content proof\n\n' + PUBLIC_MARKER + '\n\n![proof](native-proof.png)\n')
 PRIVATE_NOTE = '# Private content proof\n\n' + PRIVATE_MARKER + '\n'
@@ -101,6 +102,7 @@ assert not Path('private').exists() and not Path('public').exists()
 history = subprocess.check_output(['git', 'cat-file', '--batch-all-objects', '--batch'])
 for forbidden in data['forbidden']:
     assert forbidden.encode() not in history
+    assert forbidden.replace('_', r'\_').encode() not in history
 assert data['marker'] in Path('native-contract/index.md').read_text()
 catalog = json.loads(Path('.poketto/assets.json').read_text())
 assert data['privateAsset'] not in json.dumps(catalog)
