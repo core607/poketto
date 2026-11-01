@@ -46,6 +46,7 @@ class LegacyFixture:
         self.container_attempted = False
 
     def setup(self):
+        print('migration fixture: preparing legacy filesystem', flush=True)
         self.pool.mkdir(mode=0o755)
         self.pool.chmod(0o755)
         image = self.root / 'legacy.xfs'
@@ -57,13 +58,17 @@ class LegacyFixture:
         self.metadata.mkdir(mode=0o700)
         self.metadata.chmod(0o700)
         os.chown(self.metadata, self.app.pw_uid, self.app.pw_gid)
+        print('migration fixture: copying verified Java runtime', flush=True)
         shutil.copytree(self.args.runtime, self.java_runtime)
         for path in [self.java_runtime, *self.java_runtime.rglob('*')]:
             path.chmod(0o755 if path.is_dir() else 0o644)
+        print('migration fixture: creating synthetic repository', flush=True)
         self.original_commit, self.base_commit = self.seed_git()
+        print('migration fixture: creating application journal', flush=True)
         self.before = self.journal('create', commits=(self.original_commit, self.base_commit))
         self.metadata_files = self.metadata_snapshot()
         self.prepare_host_records()
+        print('migration fixture: starting synthetic writers', flush=True)
         self.start_sources()
 
     def seed_git(self):

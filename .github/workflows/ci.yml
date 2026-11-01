@@ -450,7 +450,7 @@ jobs:
       - name: Import retained data through the real offline controller
         if: matrix.scenario == 'migration'
         run: |
-          sudo systemd-run --quiet --wait --pipe --collect --unit="sandcrab-migration-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+          sudo systemd-run --wait --pipe --unit="sandcrab-migration-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             -p MemoryMax=128M -p MemorySwapMax=0 -p TasksMax=64 -p CPUQuota=50% \
             -p RuntimeMaxSec=1140 -p TimeoutStopSec=180 -p KillMode=control-group -p UMask=0077 \
             /usr/bin/python3 "$PWD/executor-native/sandcrab_migration_probe.py" \
@@ -458,6 +458,16 @@ jobs:
             --binary "$PWD/build/executor-service/bin/sandcrab" --tools /var/lib/poketto-recovery/tools \
             --java /var/lib/poketto-recovery/jdk/bin/java --strace /usr/bin/strace --revision "$(git rev-parse HEAD)" \
             --container-image "$MIGRATION_FIXTURE_IMAGE" --report "$PWD/build/native-recovery/migration.json"
+      - name: Retain migration controller termination evidence
+        if: always() && matrix.scenario == 'migration'
+        run: |
+          mkdir -p build/native-recovery
+          unit="sandcrab-migration-controller-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          sudo systemctl show "$unit" -p LoadState -p ActiveState -p Result \
+            -p ExecMainCode -p ExecMainStatus -p MemoryPeak -p ControlGroup \
+            > build/native-recovery/migration-controller.state
+          sudo journalctl --unit "$unit" --no-pager --lines 100 --output short-precise \
+            > build/native-recovery/migration-controller.journal
       - name: Recover the real HTTP consumer after owned application loss
         if: matrix.scenario == 'retained-process'
         run: |
