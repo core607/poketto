@@ -1,6 +1,7 @@
 # Seed Copies
 
 Date: 2026-10-18
+Partially superseded by: [Native repository consumer](2026-11-01-native-repository-consumer.md).
 
 ## Problem
 
@@ -8,11 +9,11 @@ A new full-read [account copy](2026-09-14-account-working-copies.md) exports the
 
 ## Decision
 
-The worker keeps seeds, pristine reflinked trees of initialized copies, under `copyRoot/seeds/<workspace>/<scope>/<commit>`.
+The retained signed worker keeps seeds, pristine reflinked trees of initialized copies, under `copyRoot/seeds/<workspace>/<scope>/<commit>`. Native repository initialization imports ordinary bundles through the public volume and file APIs, as the successor decision records.
 
 - **Capture.** A copy initialized from an export is captured once its initializing unit has stopped with an empty control group, before any command runs. The seed holds the bundle and the cloned repository, never identity records, locks or runtime directories. An existing seed is kept. A failed capture only costs a later open its seed.
 - **Isolation.** Seeds are mode 0700, owned by the supervisor, and never mounted into a lease. `cp -a --reflink=auto` shares extents on the XFS pool, so a write in a copy allocates its own blocks. Each copy's project quota still counts its full size.
-- **Use.** For a full-read copy, the application resolves the commit an export would carry and journals the copy as before. It then sends a seeded `OPEN` that names no export. Without a seed at exactly that commit, the worker refuses with `SEED_ABSENT` before any lease or copy exists, and the application exports that commit and opens as before. Seeds serve every account of the workspace, because a full-read export at one commit is the same for any account allowed to read it. Public copies still export: their projection is built per request.
+- **Use.** For a full-read copy, the legacy client resolves the commit an export would carry and journals the copy as before. It then sends a seeded `OPEN` that names no export. Without a seed at exactly that commit, the worker refuses with `SEED_ABSENT` before any lease or copy exists, and the application exports that commit and opens as before. Seeds serve every account of the workspace, because a full-read export at one commit is the same for any account allowed to read it. Public copies still export: their projection is built per request.
 - **Retention.** The worker keeps the two newest seeds per workspace and scope. An open refreshes a seed's time, and a seed used in the last ten minutes is never pruned. A seed found while an open is validated therefore remains for the copy that uses it. Interrupted captures are removed at startup.
 
 ## Alternatives
@@ -26,4 +27,4 @@ The first copy at each commit still pays the full cost and creates the seed for 
 
 ## Verification
 
-`test_seeds.py` pins seed contents, independence from copies, keeping an existing seed, pruning and staging cleanup. `test_worker.py` pins validation of a seeded open and its refusal before any session exists. `WorkerSocketTests.aSeedAtTheResolvedCommitOpensANewCopyWithoutAnExport` pins that no export is made when a seed answers, and that the resolved commit is exported when none does.
+`test_seeds.py` pins seed contents, independence from copies, keeping an existing seed, pruning and staging cleanup. `test_worker.py` pins validation of a seeded open and its refusal before any session exists. `NativeRepositoryExecutorTests` pins the separate native bundle initialization and reuse of an existing volume; it does not establish use of these legacy seeds.

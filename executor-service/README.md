@@ -138,7 +138,7 @@ All other requests are `POST /v1/requests` with the body `{"payload":"BASE64URL_
 | `leaseId` | Application-generated opaque UUID |
 | `data` | Operation-specific object |
 
-The worker rejects `data` with a missing or extra field; [java-frames.json](java-frames.json), written by `WorkerFrameContractTests`, holds one exact sample per operation.
+The worker rejects `data` with a missing or extra field; [java-frames.json](java-frames.json) retains one exact sample per operation from the retired Java client.
 
 | Operation | Behavior |
 |---|---|

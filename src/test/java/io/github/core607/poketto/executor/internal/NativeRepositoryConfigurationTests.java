@@ -36,8 +36,6 @@ class NativeRepositoryConfigurationTests {
             try (var context = context(true)) {
                 assertThat(context.getBeansOfType(RepositoryExecutor.class)).hasSize(1);
                 assertThat(context.getBean(RepositoryExecutor.class)).isInstanceOf(NativeRepositoryExecutor.class);
-                assertThat(context.getBeansOfType(IsolatedRepositoryExecutor.class))
-                        .isEmpty();
                 assertThat(context.getBean(AccountCopyMaintenance.class)).isNotNull();
                 context.getBean("executorMetrics", MeterBinder.class).bindTo(meters);
                 assertThat(meters.get("poketto.executor.sessions.active")

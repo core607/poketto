@@ -1,6 +1,7 @@
 # Concurrent Agent Copies
 
 Date: 2026-10-18
+Partially superseded by: [Native repository consumer](2026-11-01-native-repository-consumer.md).
 
 ## Problem
 
@@ -12,7 +13,7 @@ Date: 2026-10-18
 
 - A fork's owner carries its copy ID, so its journal address, lease key, worker identity and portable-export client all differ from the default copy's and from every other fork's. The default copy keeps its original journal address.
 - A named `expectedCopyId` resolves to the default copy of a readable scope, or to the fork with that ID, and waits for its own journal as before. Disposal and artifact reads find forks the same way, and the expiry collector handles them like any copy.
-- The site group bounds the copies an account holds in a workspace (`poketto.executor.account-copies.*`: 2, 4 and 16 for viewers, community members and creators). Administrators are bounded only by the copy store's site-wide limit. At its bound, `new` waits for the default copy.
+- The site group bounds the copies an account holds in a workspace (`poketto.executor.account-copies.*`: 2, 4 and 16 for viewers, community members and creators). Administrators are bounded only by the copy store's site-wide limit. At its bound, `new` refuses with `CAPACITY` when no unclaimed copy is available; it does not redirect into a claimed copy.
 - The result names the fork's `copyId`. An agent that keeps the ID its results return keeps its own files and shell state. One that sends `new` again within a claim lands in another copy, without its edits.
 
 ## Alternatives
@@ -24,9 +25,9 @@ Date: 2026-10-18
 ## Consequences
 
 - Agents of one account that work at the same time get a copy each, whether they start together or one at a time. A copy is shared again only after two minutes without a command, so an agent that pauses longer may find another agent in it.
-- Leases and command units now scale with active agents rather than with accounts, so the site-wide session bound and the worker's `maxLiveUnits` decide how many run at once.
+- Leases and command units now scale with active agents rather than with accounts, so the application admission limits and native profile and service limits decide how many run at once.
 - Saves from different copies meet at the remote branch, where per-file baselines and the exact-commit push decide conflicts, as they already did for browser and other client writes.
 
 ## Verification
 
-`WorkerSocketTests.overlappingInitialCallsOpenSeparateCopiesUntilTheAccountsCopyQuota` pins that a busy default copy makes `new` fork and that a fork is addressable by its ID, and that the account's quota makes `new` wait instead. `anotherAgentGetsItsOwnCopyWhileTheDefaultCopyIsClaimed` and `anUnclaimedForkIsReusedBeforeAnotherIsOpened` pin the claim and the reuse of forks outside it.
+`NativeRepositoryCopyClaimsTests` pins overlapping calls, exact fork continuation, quota refusal, recent claims, rechecking an owner after stale inventory, and reuse of an unclaimed fork while the default is busy. `NativeRepositoryPublicTests` separately keeps stale public copies charged to the same account quota.

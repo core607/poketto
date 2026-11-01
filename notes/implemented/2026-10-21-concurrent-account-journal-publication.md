@@ -46,6 +46,6 @@ quotas, expiry and disposal remain owned by
 [account working copies](2026-09-14-account-working-copies.md).
 
 `AccountJournalConcurrencyProbe`, `AccountCopyStoreNativeProbe`,
-`AccountFileBaselinesTests` and every `RetainedProcessNativeProbe` crash case pin
-concurrency, ownership, durability and recovery. Protected HTTP/MCP comparisons
+`AccountFileBaselinesTests`, `NativeDurabilityProcessProbe` and `NativeMoveRecoveryTests`
+pin concurrency, ownership, durability and recovery. Protected HTTP/MCP comparisons
 retain the same resource bounds; aborted ramps do not establish steady capacity.

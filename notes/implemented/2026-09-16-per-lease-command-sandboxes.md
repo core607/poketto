@@ -1,6 +1,7 @@
 # Per-Lease Command Sandboxes
 
 Date: 2026-09-16
+Partially superseded by: [Native repository consumer](2026-11-01-native-repository-consumer.md).
 Status: Implemented
 
 ## Problem
@@ -19,7 +20,9 @@ The measurement identified about half a second of avoidable setup per command. T
 
 ## Decision
 
-One systemd command unit per lease. The application keeps one lease per account copy, renews it while the worker is reachable, and reuses it across commands and transports. Capacity refusal closes it unless the worker confirms startup admission restored READY; another client fencing the copy, cancellation, revocation, worker restart and shutdown still close it ([SessionLifecycle](../../src/main/java/io/github/core607/poketto/executor/internal/SessionLifecycle.java)).
+The signed protocol and tuning details below describe the retained legacy service. The native consumer follows the successor decision; state continuity and whole-control-group containment remain the shared requirements.
+
+One systemd command unit per lease. The legacy client keeps one lease per account copy, renews it while the worker is reachable, and reuses it across commands and transports. Capacity refusal closes it unless the worker confirms startup admission restored READY; another client fencing the copy, cancellation, revocation, worker restart and shutdown still close it.
 
 - The unit starts with the lease's first command and retains the isolation properties: the resource slice, `User`, `MemoryMax`, `TasksMax`, `CPUQuota`, `NoNewPrivileges`, the private `/tmp`, the read-only tool binds and `BindsTo=` the supervisor unit. `RuntimeMaxSec` no longer applies; the supervisor owns the unit's lifetime.
 - Inside the sandbox, the launcher runs one persistent shell loop instead of `bash -c COMMAND`. The supervisor delivers each command through the unit's private stdin channel alongside the existing sandbox-to-host bridge FIFO; the loop evaluates it in the shell's own process, so `cd`, `export`, functions and aliases persist, and reports the exit status. The fixed [Rust driver](../../executor-service/rust/sandcrab-shell/src/lib.rs) waits on pipes and the shell's pidfd; [command_channel.py](../../executor-service/command_channel.py) bounds its supervisor-side transport. Standard output and error are captured per command with the existing 4 MiB combined limit, 16 KiB previews and artifact handles.
@@ -48,6 +51,6 @@ One systemd command unit per lease. The application keeps one lease per account 
 
 ## Verification
 
-`WorkerSocketTests`, `WorkerAnswerTests`, the worker's `test_shell_loop.py`, `test_command_channel.py` and `test_worker_startup.py`, and the [native adapter probe](../../executor-native/README.md) pin state continuity, resets, startup admission, `freshSandbox`, idle cleanup and containment. The direct-launch decision owns current idle/startup measurements; these fixture figures exclude HTTP and client latency.
+The retained worker's `test_shell_loop.py`, `test_command_channel.py` and `test_worker_startup.py` pin its legacy transport and shell behavior. `NativeRepositoryPoolTests`, `NativeRepositoryLifecycleTests` and [native consumer acceptance](../../executor-native/sandcrab.md) cover the native lifecycle and containment. The direct-launch decision owns current idle/startup measurements; these fixture figures exclude HTTP and client latency.
 
 Related: [account working copies](../implemented/2026-09-14-account-working-copies.md) own copy retention, including that a timeout keeps the copy; the [local execution supervisor](../implemented/2026-09-05-local-execution-supervisor.md) keeps the privileged boundary this note builds on.

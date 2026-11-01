@@ -1,16 +1,13 @@
-"""Replays the application's own request bodies through the Rust supervisor.
+"""Replays recorded signed-protocol request bodies through the legacy Rust supervisor.
 
-`java-frames.json` is written by the Java `WorkerFrameContractTests` from the records that build
-every outgoing request. Validating those exact bytes against the supervisor fixture keeps the two
-sides honest: a field renamed, added or dropped on the Java side fails against the real dispatch
-rather than against a second copy of the same assumption.
+`java-frames.json` records the retired Java client's envelopes. The fixture checks those bytes
+against real supervisor dispatch; native HTTP conformance belongs to the native service tests.
 
 The positive case asserts only that a request is not rejected as `INVALID_REQUEST`, because most
 operations then fail for an unrelated reason: the fixture serves one lease with a running execution
 and a live mailbox but no sandbox or copy, so a mismatched execution or an absent volume is the
-expected next outcome. The negative cases carry the real weight. Adding a key proves the
-application does not send a subset of what the supervisor accepts, and removing one proves it does
-not send a superset.
+expected next outcome. Negative cases require the supervisor to reject extra or missing keys in
+each recorded operation.
 """
 
 import base64

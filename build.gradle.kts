@@ -357,8 +357,6 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
-    // Lets WorkerFrameContractTests rewrite its worker-frame fixture on request.
-    System.getProperty("poketto.frames.update")?.let { systemProperty("poketto.frames.update", it) }
     testLogging {
         exceptionFormat = TestExceptionFormat.FULL
         events("failed", "skipped")

@@ -1,6 +1,7 @@
 # Local Execution Supervisor
 
 Date: 2026-09-05
+Partially superseded by: [Native repository consumer](2026-11-01-native-repository-consumer.md).
 Implemented: 2026-09-15
 
 ## Problem
@@ -11,6 +12,8 @@ A sandbox feasibility probe alone cannot establish production lease, revocation
 or restart guarantees.
 
 ## Decision
+
+The signed transport and Java integration below describe the retained legacy service. The successor decision owns the native application path; the privileged boundary and isolation rationale remain shared.
 
 The [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md) owns the tool
 catalog, [account working copies](2026-09-14-account-working-copies.md) own disk
@@ -201,9 +204,9 @@ properties. Resource examples require real corpus sizing before production.
 
 The Gradle `executorServiceTests` task runs the worker's tests, with real Ed25519
 signatures, on Linux with zero skipped or aborted tests; Windows uses a pinned
-Linux container. `WorkerSocketTests`, `WorkerAnswerTests` and
-`WorkerFrameContractTests` pin the Java adapter, and `McpProtocolIntegrationIT` the
-HTTP MCP entrance. These gates do not rerun the privileged sandbox probes. The
+Linux container. `test_java_frames.py` retains the signed request fixtures;
+`NativeRepositoryExecutorTests` and the [native probes](../../executor-native/sandcrab.md)
+cover the current Java consumer, and `McpProtocolIntegrationIT` the HTTP MCP entrance. These gates do not rerun the privileged sandbox probes. The
 privileged runs are recorded in the [native evidence](../../executor-service/evidence.jsonl),
 the [combined Java/worker evidence](../../executor-native/evidence/2026-09-05-combined.json),
 the [real-corpus worker sample](../../acceptance/evidence/2026-09-15-real-corpus-worker-timing.json)
