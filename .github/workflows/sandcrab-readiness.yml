@@ -75,3 +75,36 @@ jobs:
           path: executor-native/evidence/readiness-*.json
           if-no-files-found: warn
           retention-days: 30
+
+  native:
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - name: Start the acquisition clock
+        id: acquisition
+        run: python3 -c 'import time; print("started=" + str(time.monotonic_ns()))' >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: readiness-binary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/executor-service/bin
+      - name: Measure the manual recipe on a fresh native runner
+        env:
+          ACQUISITION_STARTED: ${{ steps.acquisition.outputs.started }}
+        run: |
+          sudo env SANDCRAB_READINESS_DISPOSABLE=1 python3 experiments/sandcrab-density/readiness.py \
+            --source . --binary build/executor-service/bin/sandcrab --revision "$(git rev-parse HEAD)" \
+            --acquisition-started-ns "$ACQUISITION_STARTED" \
+            --report "$RUNNER_TEMP/readiness-native.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: readiness-native-${{ matrix.runner }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/readiness-native.json
+          if-no-files-found: warn
+          retention-days: 30

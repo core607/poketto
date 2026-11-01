@@ -13,20 +13,25 @@ the individual arguments, outcomes and durations, binary/recipe/README hashes,
 distribution, kernel and initial tools. A failed first command retains the attempted
 steps and elapsed time. A successful measurement can still fail the readiness target.
 
-The timer covers acquisition of a source archive and prebuilt candidate through the
-first sandboxed command. The container runner uses local copies; published-release
-downloads are not available in this baseline. Human editing time, source compilation,
+The timer covers acquisition of source and a prebuilt candidate through the first
+sandboxed command. Native jobs start it before checkout and artifact download;
+the container runner uses local copies. Published-release downloads are not
+available in this baseline. Human editing time, source compilation,
 measurement-controller bootstrap and distribution image preparation are excluded.
 Reported time is therefore a lower bound, not an end-to-end installation promise.
 
 ## Fresh distribution replay
 
 The [readiness workflow](../../.github/workflows/sandcrab-readiness.yml) owns the
-pinned Ubuntu 22.04, Ubuntu 24.04 and Debian 12 images. Its
+pinned Ubuntu 22.04, Ubuntu 24.04 and Debian 12 images and also runs directly on
+fresh GitHub-hosted Ubuntu 22.04 and 24.04 machines. The native jobs retain each
+runner's initial tool inventory, kernel and any required AppArmor policy edit;
+they do not treat the runner image as a minimal distribution. The container
 [Dockerfile](Dockerfile.readiness) adds only systemd, D-Bus and controller Python.
-Each measurement starts a new container without Sandcrab, its toolchain or prior
-package indexes. Containers share the host kernel; distribution-specific kernels
-and an unprivileged production container configuration are outside this baseline.
+Each container measurement starts without Sandcrab, its toolchain or prior
+package indexes. Containers share the host kernel, so they supplement the native
+kernel checks. An unprivileged production container configuration is outside this
+baseline.
 
 Build a fixture image using one of the workflow's pinned `BASE_IMAGE` values, then:
 

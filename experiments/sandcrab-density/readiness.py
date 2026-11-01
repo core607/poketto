@@ -61,7 +61,8 @@ class Recipe:
             'acquisitionClockIncluded': args.acquisition_started_ns is not None,
             'initialEnvironment': {'osRelease': Path('/etc/os-release').read_text(), 'kernel': os.uname().release,
                                    'logicalCpuCount': os.cpu_count(), 'controllerPythonPreinstalled': True,
-                                   'rootCgroupLimits': {name: (Path('/sys/fs/cgroup') / name).read_text().strip()
+                                   'rootCgroupLimits': {name: ((Path('/sys/fs/cgroup') / name).read_text().strip()
+                                                               if (Path('/sys/fs/cgroup') / name).is_file() else None)
                                                        for name in ('memory.max', 'memory.swap.max', 'pids.max', 'cpu.max')},
                                    'programs': {name: shutil.which(name) is not None for name in
                                                 ('curl', 'python3', 'node', 'npm', 'bwrap', 'git')}},
