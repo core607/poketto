@@ -23,6 +23,8 @@ from metrics import Metrics
 def program(name, daemon_group):
     if not re.fullmatch(r'sandcrab-probe-[a-f0-9]{10}', name) or daemon_group <= 0:
         raise ValueError('Invalid trace namespace')
+    # Store only the argument discriminator. Printing two 128-byte strings makes
+    # bpftrace 0.20 exceed the kernel's BPF stack bound in the exec probe.
     return f'''
 BEGIN {{ printf("READY\\t%llu\\n", nsecs); }}
 tracepoint:cgroup:cgroup_mkdir /strcontains(str(args->path), "{name}")/ {{
@@ -30,17 +32,19 @@ tracepoint:cgroup:cgroup_mkdir /strcontains(str(args->path), "{name}")/ {{
  printf("%llu\\tgroup\\t%llu\\t%s\\n", nsecs, args->id, str(args->path));
 }}
 tracepoint:syscalls:sys_enter_execve /cgroup == {daemon_group} || @owned[cgroup]/ {{
- @first[tid] = str(args->argv[1]);
+ $argument = str(args->argv[1]);
+ @argument_kind[tid] = $argument == "--version" ? 1 : ($argument == "--new-session" ? 2 : 0);
 }}
 tracepoint:syscalls:sys_enter_execveat /cgroup == {daemon_group} || @owned[cgroup]/ {{
- @first[tid] = str(args->argv[1]);
+ $argument = str(args->argv[1]);
+ @argument_kind[tid] = $argument == "--version" ? 1 : ($argument == "--new-session" ? 2 : 0);
 }}
 tracepoint:sched:sched_process_exec /cgroup == {daemon_group} || @owned[cgroup]/ {{
- printf("%llu\\texec\\t%u\\t%llu\\t%s\\t%s\\n", nsecs, pid, cgroup, str(args->filename), @first[tid]);
- delete(@first[tid]);
+ printf("%llu\\texec\\t%u\\t%llu\\t%s\\t%u\\n", nsecs, pid, cgroup, str(args->filename), @argument_kind[tid]);
+ delete(@argument_kind[tid]);
 }}
-tracepoint:sched:sched_process_exit /cgroup == {daemon_group} || @owned[cgroup]/ {{ delete(@first[tid]); }}
-END {{ clear(@owned); clear(@first); }}
+tracepoint:sched:sched_process_exit /cgroup == {daemon_group} || @owned[cgroup]/ {{ delete(@argument_kind[tid]); }}
+END {{ clear(@owned); clear(@argument_kind); }}
 '''
 
 
@@ -50,7 +54,7 @@ def parse_event(line):
         return {'bootNs': int(values[0]), 'event': 'cgroup-created', 'cgroupId': int(values[2]), 'path': values[3]}
     if len(values) == 6 and values[1] == 'exec':
         return {'bootNs': int(values[0]), 'event': 'exec', 'pid': int(values[2]),
-                'cgroupId': int(values[3]), 'filename': values[4], 'firstArgument': values[5]}
+                'cgroupId': int(values[3]), 'filename': values[4], 'argumentKind': int(values[5])}
     raise ValueError('Unrecognized trace event')
 
 
@@ -64,9 +68,9 @@ def timeline(events, started, ready, session_group):
         elif event['event'] == 'exec':
             name = Path(event['filename']).name
             label = {'busctl': 'dbusClientExec', 'systemd-run': 'systemdRunExec', 'bash': 'bashExec'}.get(name)
-            if name == 'bwrap' and event['firstArgument'] == '--new-session':
+            if name == 'bwrap' and event['argumentKind'] == 2:
                 label = 'bwrapSandboxExec'
-            elif name == 'bwrap' and event['firstArgument'] == '--version':
+            elif name == 'bwrap' and event['argumentKind'] == 1:
                 label = 'bwrapVersionCheckExec'
         if label and label not in points:
             points[label] = event['bootNs'] - started
