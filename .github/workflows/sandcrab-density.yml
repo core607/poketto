@@ -94,6 +94,19 @@ jobs:
           sudo python3 experiments/sandcrab-density/footprint.py --budget "$MEMORY_GB" \
             --binary build/executor-service/bin/sandcrab --tools /var/lib/sandcrab-density/tools \
             --report /var/lib/sandcrab-density/results/footprint.json
+      - name: Check the page-cache comparison entry path
+        run: |
+          sudo python3 experiments/sandcrab-density/page_cache.py --smoke \
+            --binary build/executor-service/bin/sandcrab --tools /var/lib/sandcrab-density/tools \
+            --report /var/lib/sandcrab-density/results/cache-smoke.json
+      - name: Compare ten reflink copies with a shared read-only tree
+        if: inputs.canonical
+        env:
+          MEMORY_GB: ${{ matrix.budget }}
+        run: |
+          sudo python3 experiments/sandcrab-density/page_cache.py --budget "$MEMORY_GB" \
+            --binary build/executor-service/bin/sandcrab --tools /var/lib/sandcrab-density/tools \
+            --report /var/lib/sandcrab-density/results/cache.json
       - name: Expose receipts to the collector
         if: always()
         run: |

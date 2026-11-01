@@ -92,7 +92,7 @@ Daemon RSS and hierarchical memory/CPU counters are observations of this fixture
 `file` already includes `shmem`; do not add them as disjoint memory categories.
 Sandbox CPU is pool CPU minus daemon CPU; system-manager CPU outside the slice is
 reported separately. Polling can miss brief executing states. Fresh-distribution
-readiness and the cold-start/page-cache breakdown remain separate W0 requirements.
+readiness and the cold-start timeline remain separate W0 requirements.
 
 ## Fixed costs
 
@@ -119,3 +119,28 @@ bytes and SHA-256. The dependency inventory counts distinct executable surfaces
 used by core execution, sessions and optional durable volumes, separately from
 installation tools and workload programs. It is not a distribution package count
 or the transitive shared-library closure; the receipt names that boundary.
+
+## Page-cache comparison
+
+[page_cache.py](page_cache.py) uses the same command arguments to compare ten
+sessions over distinct reflink volumes with ten sessions reading one shared tree.
+The corpus and Git commit must match. Public API commands read and checksum every
+Markdown file; the shared tree is mounted through the profile's read-only paths,
+with that mount property checked inside the sandbox. This measures the existing
+read-mount mechanism, not a template API.
+
+The controller flushes and advises eviction only for the synthetic document files,
+then uses root `mincore` observations to require a cold dataset before each case.
+It never drops global caches. Root observation avoids the restricted residency
+view a different unprivileged file owner can receive. Distinct device/inode pairs
+establish that the reflink case does not silently read the same tree ten times.
+Receipts retain cold/warm resident page counts, hierarchical `memory.stat` before
+and after reads, checksums, OOM counters and cleanup outcomes. No cache saving is
+assumed in advance, and an unavailable cold-state observation fails the run.
+
+The shared fixture tree is created before daemon startup; its data pages must be
+evicted before sandbox readers fault them into the measured slice. Inode metadata
+and tool caches are not reset. The controller inspects only its disposable volume
+paths according to the current storage layout. These observations are not an API
+for accessing another daemon's content. Smoke uses 400 documents with all ten readers;
+the canonical comparison uses the full corpus.

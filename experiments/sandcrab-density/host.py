@@ -39,7 +39,7 @@ def other_loads():
         except OSError:
             continue
         if any(argument.endswith((b'/sandcrab-density/density.py', b'/sandcrab-density/footprint.py',
-                                  b'/agent-load.py', b'/load-suite.py'))
+                                  b'/sandcrab-density/page_cache.py', b'/agent-load.py', b'/load-suite.py'))
                for argument in arguments):
             count += 1
     return count
@@ -116,7 +116,7 @@ max_records = 1024
 [profiles.python]
 exec_user = "nobody"
 tools = {json.dumps(str(tools))}
-read_only = ["/usr", "/bin", "/lib", "/lib64", "/etc/ld.so.cache"]
+read_only = {json.dumps(['/usr', '/bin', '/lib', '/lib64', '/etc/ld.so.cache', *getattr(self, 'extra_reads', [])])}
 memory_bytes = 268435456
 temporary_bytes = 16777216
 temporary_inodes = 4096
