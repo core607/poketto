@@ -204,6 +204,16 @@ def verify_archive(content, public):
         assert AUTHOR_MARKER.encode() not in joined
 
 
+def publication_refusal(result, copy):
+    assert result.get('isError') is True
+    content = result['content']
+    assert len(content) == 1 and content[0]['type'] == 'text', 'Publication refusal returned resource content'
+    body = json.loads(content[0]['text'])
+    assert body['code'] == 'EXECUTION_REFUSED' and body['reason'] == 'PUBLICATION_CHANGED', (
+        body.get('code'), body.get('reason'))
+    assert body['executed'] is False and body['copyId'] == copy
+
+
 def verify(browser, settings, native, checks):
     before = {item['id'] for item in native(settings, 'volume', 'list')['volumes']}
     keys, owned = [], []
@@ -263,12 +273,13 @@ def verify(browser, settings, native, checks):
         checks.append('native-public-copy-has-parentless-sanitized-history-approved-media-and-portable-export')
         execute(writer, full, 'rm public/native-contract.md && poketto save --delete public/native-contract.md', owned)
         browser.api('GET', '/api/public/document?route=/native-contract', expected=404)
-        refused = reader.call('repo_exec', {'expectedCopyId': public, 'command': 'printf forbidden'}, error=True)
-        assert refused['code'] == 'EXECUTION_REFUSED' and refused['reason'] == 'PUBLICATION_CHANGED'
-        assert refused['executed'] is False and refused['copyId'] == public
+        refused = reader.rpc('tools/call', {'name': 'repo_exec', 'arguments': {
+            'expectedCopyId': public, 'command': 'printf forbidden'}})
+        publication_refusal(refused, public)
         assert native(settings, 'volume', 'get', public)['state'] == 'ready'
-        unavailable = reader.call('get_artifact', {'artifactId': public_receipt['archive']['artifactId']}, error=True)
-        assert unavailable['code'] == 'UNAVAILABLE'
+        unavailable = reader.rpc('tools/call', {'name': 'get_artifact', 'arguments': {
+            'artifactId': public_receipt['archive']['artifactId']}})
+        publication_refusal(unavailable, public)
         current = execute(reader, 'new', script(r'''
 assert not Path('native-contract').exists() and not Path('private').exists()
 assert not any(path.endswith('-native-proof.png') for path in json.loads(Path('.poketto/assets.json').read_text())['files'])

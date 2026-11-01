@@ -9,7 +9,7 @@ import zipfile
 
 from native_content_checks import (ARTIFACT_BYTES, AUTHOR_MARKER, GUEST, LOCAL_MARKER, PREPARE,
                                    PRIVATE_MARKER, PUBLIC, PUBLIC_MARKER, RESTORE, artifact_bytes,
-                                   png, script, verify_archive)
+                                   png, publication_refusal, script, verify_archive)
 
 
 class Pages:
@@ -90,6 +90,23 @@ class ContentEvidenceTests(unittest.TestCase):
             self.assertLessEqual(len(command), 16384)
         with self.assertRaisesRegex(AssertionError, 'command bound'):
             script('pass', {'oversized': 'x' * 16384})
+
+    def test_publication_refusal_rejects_unrelated_errors_and_any_attached_resource(self):
+        body = {'code': 'EXECUTION_REFUSED', 'reason': 'PUBLICATION_CHANGED', 'executed': False, 'copyId': 'copy'}
+        def response(value):
+            return {'isError': True, 'content': [{'type': 'text', 'text': json.dumps(value)}]}
+        publication_refusal(response(body), 'copy')
+        for key, value in [('code', 'UNAVAILABLE'), ('reason', 'CAPACITY'), ('executed', True), ('copyId', 'other')]:
+            with self.subTest(field=key), self.assertRaises(AssertionError):
+                publication_refusal(response({**body, key: value}), 'copy')
+        leaked = response(body)
+        leaked['content'].append({'type': 'resource', 'resource': {'blob': 'cHJpdmF0ZQ=='}})
+        with self.assertRaisesRegex(AssertionError, 'resource content'):
+            publication_refusal(leaked, 'copy')
+        success = response(body)
+        success['isError'] = False
+        with self.assertRaises(AssertionError):
+            publication_refusal(success, 'copy')
 
 
 if __name__ == '__main__':
