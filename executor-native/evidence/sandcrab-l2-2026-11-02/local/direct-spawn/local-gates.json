@@ -1,0 +1,36 @@
+{
+  "scope": "Local Gradle gates; logs retained by the operator",
+  "baseCommit": "56396428c70746c3efed91dedca14fbd7fa9be04",
+  "sourceDirty": true,
+  "binarySha256": "00937f1c7939c097ecfeb5363512c2d36bacce8d1784233454f78088526ce265",
+  "attempts": [
+    {
+      "attempt": "core1",
+      "status": "FAIL",
+      "detail": "Incorrect rustix module import; compiler E0432.",
+      "logBytes": 9929,
+      "logSha256": "13fca49fdd7b483dc328b255dd0e007c80ae59bacb8c70dfb02e48b46f113149"
+    },
+    {
+      "attempt": "core2",
+      "status": "FAIL",
+      "detail": "Clippy rejected a redundant File conversion.",
+      "logBytes": 16365,
+      "logSha256": "80ed87c1055e6089045b355d546448107c2a391f060d8a028c3bbf539d89dff8"
+    },
+    {
+      "attempt": "core3",
+      "status": "PASS",
+      "detail": "Formatting, both Clippy configurations, locked tests and static build.",
+      "logBytes": 37095,
+      "logSha256": "5a69223230e7dda3b16679f5d8ad8bd94c67ccdf95ac2bb2b7ac2047b766897c"
+    },
+    {
+      "attempt": "consumer1",
+      "status": "PASS",
+      "detail": "Application image identity, 176 executor tests and Java/worker/game staging.",
+      "logBytes": 64773,
+      "logSha256": "ccdb3c015babcfb7112b8bf7ea1e15cd94a537c1eefc5ea9b19ceb8007c590a7"
+    }
+  ]
+}

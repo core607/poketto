@@ -6,7 +6,7 @@ use std::{
     collections::BTreeSet,
     fs::{self, File},
     io::{self, Read, Write},
-    os::fd::OwnedFd,
+    os::fd::{AsFd, BorrowedFd, OwnedFd},
     path::{Path, PathBuf},
     sync::Arc,
     thread,
@@ -129,6 +129,20 @@ impl Cgroup {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Lend the verified kernel directory to an atomic clone-time placement.
+    pub fn as_fd(&self) -> BorrowedFd<'_> {
+        self.directory.as_fd()
+    }
+
+    pub fn require_current_process(&self) -> io::Result<()> {
+        let pid = std::process::id().to_string();
+        if self.read("cgroup.procs")?.lines().any(|line| line == pid) {
+            Ok(())
+        } else {
+            Err(invalid("Launcher was not created in its configured cgroup"))
+        }
     }
 
     /// Stop only at the cgroup filesystem boundary. Permission or observation

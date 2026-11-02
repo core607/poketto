@@ -34,8 +34,15 @@ rawtracepoint:cgroup_mkdir {{
   if ($parent_id == {workloads_group} || @owned[$parent_id]) {{
    $id = $group->kn->id;
    @owned[$id] = 1;
-   printf("%llu\\tgroup\\t%llu\\n", nsecs, $id);
+   printf("%llu\\tgroup\\t%llu\\t%llu\\n", nsecs, $id, $parent_id);
   }}
+ }}
+}}
+rawtracepoint:sched_process_fork {{
+ $child = (struct task_struct *)arg1;
+ $id = $child->cgroups->dfl_cgrp->kn->id;
+ if ($child->pid == $child->tgid && @owned[$id]) {{
+  printf("%llu\\tbirth\\t%u\\t%llu\\n", nsecs, $child->tgid, $id);
  }}
 }}
 tracepoint:cgroup:cgroup_attach_task /@owned[args->dst_id]/ {{
@@ -78,8 +85,9 @@ tracepoint:sched:sched_process_exit /@tracking[pid]/ {{
 
 def parse_event(line):
     values = line.rstrip('\n').split('\t')
-    if len(values) == 3 and values[1] == 'group':
-        return {'bootNs': int(values[0]), 'event': 'cgroup-created', 'cgroupId': int(values[2])}
+    if len(values) == 4 and values[1] == 'group':
+        return {'bootNs': int(values[0]), 'event': 'cgroup-created', 'cgroupId': int(values[2]),
+                'parentCgroupId': int(values[3])}
     if len(values) == 5 and values[1] == 'exec' and values[4]:
         return {'bootNs': int(values[0]), 'event': 'exec', 'pid': int(values[2]),
                 'cgroupId': int(values[3]), 'filename': values[4]}
@@ -87,6 +95,8 @@ def parse_event(line):
         return {'bootNs': int(values[0]), 'event': 'exit', 'pid': int(values[2]), 'cgroupId': int(values[3])}
     if len(values) == 4 and values[1] == 'attach':
         return {'bootNs': int(values[0]), 'event': 'cgroup-placement', 'pid': int(values[2]), 'cgroupId': int(values[3])}
+    if len(values) == 4 and values[1] == 'birth':
+        return {'bootNs': int(values[0]), 'event': 'process-birth', 'pid': int(values[2]), 'cgroupId': int(values[3])}
     if len(values) == 6 and values[1] == 'syscall':
         return {'bootNs': int(values[0]), 'event': 'syscall', 'pid': int(values[2]),
                 'number': int(values[3]), 'durationNs': int(values[4]), 'result': int(values[5])}
@@ -96,20 +106,36 @@ def parse_event(line):
 def timeline(events, started, ready, session_group, launcher):
     observed = sorted((event for event in events if started <= event['bootNs'] <= ready), key=lambda event: event['bootNs'])
     points = {'apiSubmit': 0, 'apiReadyObserved': ready - started}
-    launchers = {}
+    launchers, candidates, births = {}, {}, {}
+    owned = {session_group}
+    placement = None
     for event in observed:
         label = None
-        if event['event'] == 'cgroup-created' and event['cgroupId'] == session_group:
-            label = 'sessionCgroupCreated'
-        elif event['event'] == 'cgroup-placement' and event['pid'] in launchers:
+        if event['event'] == 'cgroup-created':
+            if event['parentCgroupId'] in owned:
+                owned.add(event['cgroupId'])
+            if event['cgroupId'] == session_group:
+                label = 'sessionCgroupCreated'
+        elif event['event'] == 'process-birth':
+            births[event['pid']] = event
+        elif event['event'] == 'cgroup-placement' and event['pid'] in candidates and event['cgroupId'] in owned:
             launchers[event['pid']] = event['cgroupId']
-            label = 'launcherPlaced'
+            points.setdefault('trustedLauncherExec', candidates[event['pid']]['bootNs'] - started)
+            if 'launcherPlaced' not in points:
+                placement = 'cgroup-attach-task'
+                label = 'launcherPlaced'
         elif event['event'] == 'exec':
             if event['filename'] == launcher:
-                launchers[event['pid']] = event['cgroupId']
-                label = 'trustedLauncherExec'
+                candidates[event['pid']] = event
+                birth = births.get(event['pid'])
+                if event['cgroupId'] in owned and birth is not None and birth['cgroupId'] == event['cgroupId']:
+                    launchers[event['pid']] = event['cgroupId']
+                    label = 'trustedLauncherExec'
+                    if 'launcherPlaced' not in points:
+                        points['launcherPlaced'] = birth['bootNs'] - started
+                        placement = 'sched-process-fork-child-cgroup'
             name = Path(event['filename']).name
-            if name == 'bash':
+            if name == 'bash' and event['cgroupId'] in owned:
                 label = 'bashExec'
             # sandcrab_launch::exec replaces the launcher process with bwrap;
             # its version check is a separate child, never that same identity.
@@ -117,12 +143,14 @@ def timeline(events, started, ready, session_group, launcher):
                 label = 'bwrapSandboxExec'
         elif event['event'] == 'exit':
             launchers.pop(event['pid'], None)
+            candidates.pop(event['pid'], None)
+            births.pop(event['pid'], None)
         if label and label not in points:
             points[label] = event['bootNs'] - started
     required = {'sessionCgroupCreated', 'trustedLauncherExec', 'launcherPlaced', 'bwrapSandboxExec', 'bashExec'}
     missing = sorted(required - points.keys())
     return {'status': 'INCOMPLETE' if missing else 'COMPLETE', 'missing': missing,
-            'nanosecondsFromSubmit': points, 'events': observed}
+            'placementObservation': placement, 'nanosecondsFromSubmit': points, 'events': observed}
 
 
 class Trace:

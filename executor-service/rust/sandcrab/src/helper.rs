@@ -8,6 +8,7 @@ use sandcrab_core::{
     cgroup::Cgroup,
     fs::{normal, protected_file},
     job,
+    process::Input,
     unit::checked,
     uuid,
 };
@@ -17,7 +18,6 @@ use std::{
     io::{self, Write},
     os::unix::fs::{DirBuilderExt, OpenOptionsExt},
     path::{Path, PathBuf},
-    process::Stdio,
     sync::atomic::AtomicBool,
     time::Duration,
 };
@@ -75,7 +75,7 @@ impl Context<'_> {
         &self,
         profile: &Profile,
         cancelled: &AtomicBool,
-        input: Stdio,
+        input: Input,
         request: Request<'_>,
     ) -> (io::Result<job::Finished>, io::Result<()>) {
         if !["file", "copy"].contains(&request.kind) || !uuid(request.id) {

@@ -2,8 +2,9 @@
 
 This change serves lightweight deployment by replacing native per-operation
 systemd transactions with daemon-owned cgroups. These local receipts validate
-implementation and measurement paths. All three canonical 5 GB runs retained
-capacity 50; the listener/tool-wait candidate misses the cold-start target. Fresh
+implementation and measurement paths. Three migration-based canonical 5 GB runs retained
+capacity 50; the listener/tool-wait candidate misses the cold-start target. Direct
+placement has local functional and smoke evidence; its canonical run is pending. Fresh
 installation replay completes on five environments. This report establishes
 neither a capacity improvement nor the 30 ms cold-start target.
 
@@ -76,6 +77,38 @@ Rust checks, 176 service tests, [43 native checks](local/native7.json),
 [Java adapter acceptance](local/java-all3.json) and [games](local/java-games3.json)
 passed on this candidate. The latter two include cleanup and process-loss checks.
 
+## Direct placement candidate
+
+Candidate `00937f1c7939c097ecfeb5363512c2d36bacce8d1784233454f78088526ce265`
+creates trusted launchers in their leaves. Its static binary is 4,174,752 bytes,
+8,192 bytes above the listener/tool-wait candidate; tools remain 9,255,073 bytes
+and the executable inventory remains 10. [Footprint smoke](local/direct-spawn/footprint1.json)
+records 3,215,360 bytes median daemon RSS. Its count-one pool deltas are 4,526,080
+bytes per idle session and 2,957,312 per finite run, not a marginal-cost comparison.
+
+[Density smoke](local/direct-spawn/smoke1.json) passes 102 judged attempts with
+p95 29.641244 ms and zero OOM. Two untraced cold starts take 16.799578 and
+16.847467 ms. The [volume-backed trace](local/direct-spawn/cold1.json) observes
+each launcher's cgroup at the kernel fork event, before trusted exec; all three
+session timelines complete. All collectors and cleanup pass. These short runs
+do not establish the canonical 30 ms target or a capacity gain.
+
+[Native acceptance](local/direct-spawn/native3.json) passes 45 checks, including
+birth placement, descriptor/signal hygiene, cancellation before workload setup,
+denied clone3 and failed exec. Contexts pass 10; direct-root and delegated-container
+modes pass 10 each. Volume, file, event, TCP, host-call and resource probes pass.
+[SDK conformance](local/direct-spawn/sdk2.json) passes 21 checks;
+[Inspect](local/direct-spawn/evals1/summary.json) passes 66 scripted cases using
+real sandboxes, `mockllm/model` and zero model tokens. [Java](local/direct-spawn/java-all1.json)
+passes 40 adapter checks and process-loss recovery; [games](local/direct-spawn/java-games1.json)
+passes separately. All fixtures confirm cleanup. [Local gates](local/direct-spawn/local-gates.json)
+retain Rust and consumer verification, including 176 service tests.
+
+The fourth CI receipts belong to preceding head `56396428`, with runtime
+`9f4f93bb…`: [native](41412842791/13125879549/native.json),
+[readiness](41412842789/13125654851/readiness-native.json) and
+[smoke](41412842784/13126222322/smoke.json). They do not verify this new candidate.
+
 ## Functional evidence
 
 At candidate `59047a9ebbe818a1a8724f7d6cb56f147678836ee8cf67cb0e9d75ec49e2ad43`,
@@ -99,6 +132,14 @@ expiry; [games](local/java-games1.json) passed with cleanup.
 
 ## Retained failures
 
+- Direct-placement [native attempt 2](local/direct-spawn/native2.json) expected
+  `completed` for exec failure; the service correctly returned `failed` with 127.
+  The corrected probe passes in attempt 3. [Delegation attempt 1](local/direct-spawn/delegation1.json)
+  stopped because the fixture parent lacked CPU delegation; attempt 2 uses the CI
+  prerequisite. [SDK attempt 1](local/direct-spawn/sdk1.json) supplied a missing
+  client path and ran no checks; its constructor-only residue was verified and
+  removed before attempt 2. Cleanup passed for each. Compiler/import and Clippy
+  failures are retained in the local gates receipt.
 - `contexts1` exposed a runtime regression: aggregate group OOM killed sibling
   contexts and aggregate counters contaminated later results. Per-leaf OOM
   ownership fixed it; `contexts2` and `native2` passed.

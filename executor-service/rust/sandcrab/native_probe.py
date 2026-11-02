@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import pwd
 import shutil
+import signal
 import socket
 import subprocess
 import tempfile
@@ -113,10 +114,15 @@ network = "none"
                         'checks': [], 'cleanup': 'NOT_RUN'}
 
     def start(self):
+        command = [str(self.binary), 'serve', '--config', str(self.config)]
+        if getattr(self, 'inherited_fd_probe', False):
+            command = ['/bin/bash', '-c', 'exec 77<"$1"; shift; exec "$@"',
+                       'sandcrab-fixture', str(self.secret), *command]
+        policy = ['-p', 'SystemCallFilter=~clone3', '-p', 'SystemCallErrorNumber=ENOSYS'] if getattr(self, 'deny_clone3', False) else []
         call('systemd-run', '--quiet', '--collect', '--unit', self.unit, '--slice', self.slice,
              '-p', 'Delegate=yes', '-p', 'MemorySwapMax=0', '-p', 'TasksMax=infinity',
              '-p', 'Environment=PATH=' + getattr(self, 'launch_path', '/usr/bin:/bin'),
-             '-p', 'KillMode=control-group', str(self.binary), 'serve', '--config', str(self.config))
+             '-p', 'KillMode=control-group', *policy, *command)
         self.wait_ready()
 
     def enable_launch_faults(self, directory):
@@ -680,21 +686,31 @@ os.execv('/usr/bin/umount', ['umount', *sys.argv[1:]])
         faults.arm('launch', 'before')
         request = self.session_open(wait=False) if session else self.submit('import time; time.sleep(20)')
         stopped = faults.wait()
-        assert 'populated 0' in stopped['populated']
-        assert '/daemon\n' in stopped['membership'], stopped
+        expected = stopped['cgroup'].removeprefix('/sys/fs/cgroup') + '\n'
+        assert 'populated 1' in stopped['populated']
+        assert expected in stopped['membership'] and expected in stopped['birthMembership'], stopped
+        assert stopped['execFds'] == ['0', '1', '2'], stopped
+        assert int(stopped['birthCaughtSignals'], 16) == 0, stopped
+        assert int(stopped['ignoredSignals'], 16) & (1 << (signal.SIGPIPE - 1)) == 0, stopped
+        if getattr(self, 'inherited_fd_probe', False):
+            daemon = int(call('systemctl', 'show', self.unit, '-p', 'MainPID', '--value').stdout)
+            assert Path(f'/proc/{daemon}/fd/77').resolve() == self.secret
         pid = stopped['pid']
-        assert Path(f'/proc/{pid}').exists(), 'Trusted launcher is not alive before placement'
+        assert Path(f'/proc/{pid}').exists(), 'Trusted launcher is not alive before workload setup'
         started = time.monotonic()
         cancel_path = f'/v1/sessions/{request["id"]}/close' if session else f'/v1/runs/{request["id"]}/cancel'
         assert http(self.socket, 'POST', cancel_path, {})[0] == 200
         result = self.session_wait(request, terminal=True) if session else self.wait(request)
         elapsed = time.monotonic() - started
-        assert not Path(f'/proc/{pid}').exists(), 'Pre-placement launcher was not reaped'
+        assert not Path(f'/proc/{pid}').exists(), 'Pre-workload launcher was not reaped'
         assert not Path(stopped['cgroup']).exists(), 'Cancelled launch cgroup remains'
         faults.release()
         faults.close()
         self.receipt['sessionStartupCancellation' if session else 'startupCancellation'] = {
-            'boundary': 'kernel exec event before cgroup placement', 'initialPopulated': 0,
+            'boundary': 'kernel exec event before trusted setup; placement observed at birth', 'initialPopulated': 1,
+            'birthMembership': stopped['birthMembership'], 'execFds': stopped['execFds'],
+            'birthCaughtSignals': stopped['birthCaughtSignals'],
+            'ignoredSignals': stopped['ignoredSignals'], 'inheritedFdProbe': getattr(self, 'inherited_fd_probe', False),
             'ownedLauncherReaped': True,
             'seconds': round(elapsed, 3), 'state': result['state'], 'limitSeconds': 3,
         }
@@ -702,7 +718,53 @@ os.execv('/usr/bin/umount', ['umount', *sys.argv[1:]])
         self.session_forget(request) if session else self.forget(request)
         assert result['state'] == ('closed' if session else 'cancelled'), result
         assert elapsed < 3, f'pending cancellation waited {elapsed:.3f}s for the runtime deadline'
-        self.done('session-close-before-cgroup-placement' if session else 'cancellation-before-cgroup-placement')
+        self.done('session-close-before-workload-setup' if session else 'cancellation-before-workload-setup')
+
+    def failed_exec(self):
+        directory = self.root / 'failed-exec'
+        directory.mkdir(mode=0o755)
+        faults = self.enable_launch_faults(directory)
+        faults.arm('launch', 'exec-failure')
+        request = self.submit('print("must-not-execute")')
+        observed = faults.wait()
+        result = self.wait(request)
+        assert observed['exitStatus'] == 127 << 8, observed
+        assert result['state'] == 'failed' and result['result']['exitCode'] == 127, result
+        assert result['result']['stdout'] == result['result']['stderr'] == '', result
+        assert not Path(f'/proc/{observed["pid"]}').exists()
+        assert not list((self.socket.parent / 'jobs').iterdir())
+        assert not [path for path in self.workloads_group.iterdir() if path.is_dir()]
+        assert hashlib.sha256(self.binary.read_bytes()).hexdigest() == self.receipt['binarySha256']
+        faults.close()
+        self.forget(request)
+        self.receipt['failedExec'] = {'observed': observed, 'result': result, 'launcherReaped': True}
+        after = self.submit('print("after-exec-failure")')
+        assert self.wait(after)['result']['stdout'] == 'after-exec-failure\n'
+        self.forget(after)
+        self.done('failed-exec-exits-127-without-workload-or-leaked-admission')
+
+    def rejected_clone(self):
+        call('systemctl', 'stop', self.unit, check=False)
+        call('systemctl', 'reset-failed', self.unit, check=False)
+        self.deny_clone3 = True
+        try:
+            self.start()
+            request = self.submit('print("uncontained-fallback")')
+            result = self.wait(request)
+            assert result['state'] == 'failed' and result['result'] == {'code': 'RUN_FAILED'}, result
+            assert not list((self.socket.parent / 'jobs').iterdir())
+            assert not [path for path in self.workloads_group.iterdir() if path.is_dir()]
+            self.forget(request)
+            self.receipt['deniedClone3'] = result
+            self.done('denied-clone3-has-no-process-fallback-and-releases-contained-admission')
+        finally:
+            call('systemctl', 'stop', self.unit, check=False)
+            call('systemctl', 'reset-failed', self.unit, check=False)
+            self.deny_clone3 = False
+        self.start()
+        request = self.submit('print("after-refusal")')
+        assert self.wait(request)['result']['stdout'] == 'after-refusal\n'
+        self.forget(request)
 
     def transport(self):
         with socket.socket(socket.AF_UNIX) as stream:
@@ -931,6 +993,7 @@ def main():
     assert os.geteuid() == 0, 'native probe requires root'
     assert not args.report.exists(), 'preserve the previous receipt; use a fresh output file'
     probe = Probe(args.binary.resolve(), args.tools.resolve(), args.report.resolve())
+    probe.inherited_fd_probe = True
     try:
         probe.setup()
         probe.tests()
@@ -940,6 +1003,8 @@ def main():
         probe.session_cleanup_failure()
         probe.startup_cancellation()
         probe.startup_cancellation(session=True)
+        probe.failed_exec()
+        probe.rejected_clone()
         probe.receipt['result'] = 'PASS'
     except BaseException as error:
         probe.receipt['result'] = 'FAIL'

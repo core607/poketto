@@ -42,6 +42,10 @@ the service, with aggregate limits on its enclosing slice. Set `cgroup_root` to
 the service's full cgroup path; a per-service memory cap also caps its sandboxes.
 An already delegated container or root host can run `sandcrab serve --config FILE`
 directly. No per-sandbox service manager invocation is required.
+The daemon creates launchers directly in their configured leaves with
+`clone3(CLONE_INTO_CGROUP)`. It also requires `close_range` and `cgroup.kill`;
+unsupported or filtered operations fail without an uncontained fallback.
+Child setup or executable failure exits 127 without running the workload.
 Startup locks the runtime and contains old owned leaves before publishing a new
 epoch. The protected ownership marker binds the runtime to its delegation;
 pre-delegation runtime/storage directories require a fresh location.
@@ -439,8 +443,8 @@ Linux, creates its own bounded slice and service and exercises real CLI/HTTP,
 containment, cancellation, replay, capacity, session build/repair, renewal, expiry, restart and cleanup. It uses no
 model API and reports deterministic evidence only. It does not establish agent
 usability, OpenSandbox compatibility or Poketto adoption. Injected cleanup failure
-must retain session admission, and a launcher stopped before cgroup placement must
-remain cancellable. The external `fault_probe.py` controller uses kernel exec/exit
+must retain session admission, and a launcher stopped before workload setup must
+remain cancellable in its leaf. The external `fault_probe.py` controller uses kernel fork/exec/exit
 stops on this fixture's daemon; it is not installed with the service.
 `delegation_probe.py` also takes `--parent CGROUP`, an existing parent delegating
 cpu, memory and pids. It starts the daemon directly, without service-manager calls,

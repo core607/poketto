@@ -1,15 +1,12 @@
 //! Finite process execution, bounded output and confirmed delegated-cgroup containment.
 //! Admission, identity and authorization belong to the caller.
-use crate::process::Launch;
+use crate::process::{Child, Input, Launch};
 use rustix::{
     event::{PollFd, PollFlags, Timespec, poll},
     fs::{OFlags, fcntl_getfl, fcntl_setfl},
 };
 use std::{
-    fs::File,
     io::{self, Read},
-    os::fd::OwnedFd,
-    process::{Child, Stdio},
     sync::atomic::{AtomicBool, Ordering},
     time::{Duration, Instant},
 };
@@ -45,7 +42,7 @@ pub fn run(
     limit: usize,
     on_output: impl FnMut(usize, &[u8]),
 ) -> (io::Result<Finished>, io::Result<()>) {
-    run_input(launch, cancelled, timeout, limit, Stdio::null(), on_output)
+    run_input(launch, cancelled, timeout, limit, Input::Null, on_output)
 }
 
 /// The caller owns the input producer and must stop it on cancellation. Passing a
@@ -55,7 +52,7 @@ pub fn run_input(
     cancelled: &AtomicBool,
     timeout: Duration,
     limit: usize,
-    input: Stdio,
+    input: Input,
     mut on_output: impl FnMut(usize, &[u8]),
 ) -> (io::Result<Finished>, io::Result<()>) {
     let child = launch.spawn(input);
@@ -99,8 +96,8 @@ fn watch(
     on_output: &mut impl FnMut(usize, &[u8]),
 ) -> io::Result<Finished> {
     let mut streams = [
-        File::from(OwnedFd::from(child.stdout.take().ok_or_else(unavailable)?)),
-        File::from(OwnedFd::from(child.stderr.take().ok_or_else(unavailable)?)),
+        child.stdout.take().ok_or_else(unavailable)?,
+        child.stderr.take().ok_or_else(unavailable)?,
     ];
     for stream in &streams {
         fcntl_setfl(stream, fcntl_getfl(stream)? | OFlags::NONBLOCK)?;
@@ -115,8 +112,8 @@ fn watch(
         if *end == End::Normal {
             *end = reason;
         }
-        // The launcher may not have joined yet. Interrupt its owned PID too;
-        // emptiness is only meaningful after that process has been reaped.
+        // Retain direct ownership before and after exec; empty cgroup state
+        // cannot substitute for reaping the known launcher.
         if Instant::now() >= next_kill {
             let _ = launch.interrupt(child);
             next_kill = Instant::now() + Duration::from_millis(100);

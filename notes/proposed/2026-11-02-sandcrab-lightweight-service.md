@@ -153,11 +153,6 @@ save cwd and `export -p`, exit, and restore them on the next command. Background
 processes prohibit eviction. Document lost state and move workspaces from tmpfs
 to disk. Propose other measured optimizations here before implementing them.
 
-[Placement measurements](../../executor-native/evidence/sandcrab-l2-2026-11-02/local/clone-placement2.json)
-identify quiescent `cgroup.procs` migration as startup overhead. Use
-`CLONE_INTO_CGROUP` through an audited spawn boundary; retain parent-death handling,
-identity drop, cancellation and child-reaping ownership, with no uncontained fallback.
-
 ### X: extraction by readiness
 
 Extract when L1-L10 and H1-H4 have landed and CI readiness, conformance and published

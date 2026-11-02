@@ -1,12 +1,13 @@
 //! A single trusted launcher and its delegated cgroup share one cleanup lifetime.
-//! UID/mount setup and placement belong to the trusted child entry, before it can
-//! execute a workload. A launcher that has not joined yet is still owned here.
+//! Clone-time placement precedes the trusted child's identity/mount setup and
+//! workload exec. The child handle remains owned before and after exec.
 use crate::cgroup::Cgroup;
+pub use sandcrab_spawn::{Child, Input};
 use std::{
     io,
     os::unix::process::ExitStatusExt,
     path::Path,
-    process::{Child, Command, ExitStatus, Stdio},
+    process::ExitStatus,
     thread,
     time::{Duration, Instant},
 };
@@ -15,7 +16,7 @@ fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
 }
 
-/// Fresh, single-threaded trusted child entry. Join a parent-configured leaf,
+/// Fresh, single-threaded trusted child entry. Verify its parent-configured leaf,
 /// clear supplementary groups, drop all three UID/GID values and set NNP/umask.
 /// UID zero is only for trusted internal helpers whose mount/capability boundary
 /// is established before their operation; workload profiles must forbid it.
@@ -37,7 +38,7 @@ pub fn enter(group: &Cgroup, uid: u32, gid: u32, parent_pid: u32) -> io::Result<
         Ok(())
     };
     guard_parent()?;
-    group.place_current_process()?;
+    group.require_current_process()?;
     // The daemon may be protected from OOM selection. Per-operation systemd
     // units did not inherit that preference; keep workloads and helpers neutral.
     std::fs::write("/proc/self/oom_score_adj", "0")?;
@@ -82,7 +83,7 @@ impl Exit {
 
 impl Launch {
     /// `arguments` names an absolute, already-verified trusted child entry.
-    /// That entry must join `group` and confirm the intended parent before any
+    /// That entry must verify `group` and the intended parent before any
     /// workload can run; this type does not authorize arbitrary host commands.
     pub fn new(arguments: Vec<String>, group: Cgroup) -> io::Result<Self> {
         if arguments
@@ -109,19 +110,17 @@ impl Launch {
 
     /// One attempt only, including a failed spawn. Keep the returned Child until
     /// `finish` confirms containment; a missing result never authorizes a retry.
-    pub fn spawn(&mut self, input: Stdio) -> io::Result<Child> {
+    pub fn spawn(&mut self, input: Input) -> io::Result<Child> {
         if self.attempted || self.finished {
             return Err(invalid("Launcher has already been attempted"));
         }
         self.attempted = true;
-        let child = Command::new(&self.arguments[0])
-            .args(&self.arguments[1..])
-            .env_clear()
-            .env("PATH", "/usr/bin:/bin")
-            .stdin(input)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+        let child = sandcrab_spawn::spawn(
+            Path::new(&self.arguments[0]),
+            &self.arguments[1..],
+            self.group.as_fd(),
+            input,
+        )?;
         self.child_pid = Some(child.id());
         Ok(child)
     }
@@ -133,8 +132,8 @@ impl Launch {
         Ok(())
     }
 
-    /// Interrupt both the launcher and descendants. The launcher may still be
-    /// preparing to join; killing an empty cgroup alone would miss it.
+    /// Interrupt both the owned launcher and its descendants, including a child
+    /// still preparing to exec. Final cleanup also requires child reaping.
     pub fn interrupt(&self, child: &mut Child) -> io::Result<()> {
         self.owns(child)?;
         if child.try_wait()?.is_none() {

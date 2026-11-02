@@ -101,6 +101,8 @@ class Controller:
     def __init__(self, args):
         self.args = args
         self.traced, self.held, self.selected = set(), set(), {}
+        self.birth = {}
+        self.unavailable_binary = None
         self.gate, self.entered = args.directory / 'gate.json', args.directory / 'entered'
         self.stopping = False
 
@@ -114,6 +116,38 @@ class Controller:
         self.traced.discard(pid)
         self.held.discard(pid)
         self.selected.pop(pid, None)
+        self.birth.pop(pid, None)
+
+    def restore_binary(self):
+        if self.unavailable_binary is not None:
+            assert not self.args.binary.exists()
+            self.unavailable_binary.rename(self.args.binary)
+            self.unavailable_binary = None
+
+    def select_birth_failure(self, child):
+        if not self.gate.exists():
+            return
+        fault = json.loads(self.gate.read_text())
+        if fault['kind'] != 'launch' or fault['phase'] != 'exec-failure':
+            return
+        membership = self.birth[child]['membership']
+        unified = [line.removeprefix('0::') for line in membership.splitlines() if line.startswith('0::')]
+        assert len(unified) == 1
+        group = Path('/sys/fs/cgroup') / unified[0].lstrip('/')
+        if not group.name.startswith('run-'):
+            return
+        record_path = self.args.runtime / 'records' / (group.name.removeprefix('run-') + '.launch.json')
+        record = json.loads(record_path.read_text())
+        assert Path(record['cgroup']) == group and record['parent_pid'] == self.args.pid
+        assert Path(record['root']).parent == self.args.runtime / 'jobs'
+        self.selected[child] = {'fault': fault, 'record': record, 'leaf': False}
+        unavailable = self.args.directory / 'unavailable-binary'
+        assert self.unavailable_binary is None and not unavailable.exists()
+        # The child is stopped before its first instruction. Rename only the
+        # fixture's executable; its running daemon mapping remains intact.
+        self.args.binary.rename(unavailable)
+        self.unavailable_binary = unavailable
+        self.gate.unlink()
 
     def selected_launch(self, argv):
         if len(argv) != 3 or argv[0] != str(self.args.binary) or not self.gate.exists():
@@ -146,14 +180,19 @@ class Controller:
             self.traced.discard(pid)
             self.held.discard(pid)
             self.selected.pop(pid, None)
+            self.birth.pop(pid, None)
             return
         assert os.WIFSTOPPED(status)
         event = status >> 16
         if event in (1, 2, 3):
             child = message(pid)
             self.traced.add(child)
+            fields = dict(line.split(':', 1) for line in (Path('/proc') / str(child) / 'status').read_text().splitlines())
+            self.birth[child] = {'membership': (Path('/proc') / str(child) / 'cgroup').read_text(),
+                                 'caughtSignals': fields['SigCgt'].strip()}
             if pid in self.selected:
                 self.selected[child] = {**self.selected[pid], 'leaf': False}
+            self.select_birth_failure(child)
         if self.stopping:
             self.detach(pid)
             return
@@ -169,12 +208,17 @@ class Controller:
                 group = Path(selected['record']['cgroup'])
                 if phase == 'before':
                     self.held.add(pid)
+                    status_fields = dict(line.split(':', 1) for line in (Path('/proc') / str(pid) / 'status').read_text().splitlines())
                     self.publish({'pid': pid, 'phase': phase, 'cgroup': str(group),
                                   'populated': (group / 'cgroup.events').read_text(),
-                                  'membership': (Path('/proc') / str(pid) / 'cgroup').read_text()})
+                                  'membership': (Path('/proc') / str(pid) / 'cgroup').read_text(),
+                                  'birthMembership': self.birth.get(pid, {}).get('membership'),
+                                  'birthCaughtSignals': self.birth.get(pid, {}).get('caughtSignals'),
+                                  'execFds': sorted(p.name for p in (Path('/proc') / str(pid) / 'fd').iterdir()),
+                                  'ignoredSignals': status_fields['SigIgn'].strip()})
                     return
                 if phase == 'fail':
-                    print(f'inject SIGKILL before placement: pid={pid}', file=sys.stderr, flush=True)
+                    print(f'inject SIGKILL before workload setup: pid={pid}', file=sys.stderr, flush=True)
                     os.kill(pid, signal.SIGKILL)
                 if phase == 'oom':
                     (group / 'memory.max').write_text('8388608')
@@ -187,6 +231,10 @@ class Controller:
         if event == 6 and pid in self.selected:
             selected = self.selected[pid]
             phase = selected['fault']['phase']
+            if phase == 'exec-failure':
+                self.restore_binary()
+                self.publish({'pid': pid, 'phase': phase, 'exitStatus': message(pid),
+                              'birthMembership': self.birth[pid]['membership']})
             if phase == 'oom':
                 group = Path(selected['record']['cgroup'])
                 values = dict(line.split() for line in (group / 'memory.events').read_text().splitlines())
@@ -233,6 +281,7 @@ class Controller:
                             self.traced.discard(pid)
                             self.held.discard(pid)
                             self.selected.pop(pid, None)
+                            self.birth.pop(pid, None)
                         except ProcessLookupError:
                             # ESRCH from ptrace can mean a killed tracee is
                             # entering its exit stop, not that it was reaped.
@@ -240,6 +289,7 @@ class Controller:
                             pass
                     time.sleep(.001)
             finally:
+                self.restore_binary()
                 self.stopping = True
                 for pid in list(self.held):
                     try:

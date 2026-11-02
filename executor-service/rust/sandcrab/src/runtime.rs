@@ -9,7 +9,7 @@ use sandcrab_core::{
     cgroup::{Cgroup, Limits},
     command::{Channel, EndReason, Request as CommandRequest},
     fs::{mounted, protected_directory},
-    process::Launch,
+    process::{Child, Input, Launch},
     unit::checked,
     uuid,
 };
@@ -21,7 +21,6 @@ use std::{
     io::{self, Read, Write},
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
-    process::Stdio,
     sync::{Arc, atomic::AtomicBool},
     time::Duration,
 };
@@ -226,7 +225,7 @@ impl Runtime {
         job: &crate::file_io::Job,
         profile: &Profile,
         cancelled: &AtomicBool,
-        input: Stdio,
+        input: Input,
     ) -> (io::Result<Value>, bool) {
         let execute = || -> io::Result<(io::Result<Value>, bool)> {
             self.resources.verify()?;
@@ -342,7 +341,7 @@ impl Runtime {
                 selection: None,
             };
             let (result, contained) =
-                self.file_helper(&job, profile, &AtomicBool::new(false), Stdio::null());
+                self.file_helper(&job, profile, &AtomicBool::new(false), Input::Null);
             if !contained {
                 return Err(invalid("File cleanup containment unconfirmed"));
             }
@@ -514,7 +513,7 @@ impl Runtime {
                 });
             }
         };
-        let child = match launch.spawn(Stdio::piped()) {
+        let child = match launch.spawn(Input::Pipe) {
             Ok(child) => child,
             Err(_) => {
                 return Err(OpenError {
@@ -574,7 +573,7 @@ impl Runtime {
         .run(
             profile,
             stopped,
-            Stdio::null(),
+            Input::Null,
             crate::helper::Request {
                 kind: "copy",
                 id: operation,
@@ -878,7 +877,7 @@ pub struct OpenError {
 }
 pub struct Shell {
     pub files: Arc<crate::file_access::Access>,
-    pub channel: Channel,
+    pub channel: Channel<Child>,
     launch: Launch,
     root: PathBuf,
     records: [PathBuf; 2],

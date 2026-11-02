@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "scope": "Canonical CI, native checks and diagnostic prototypes. Three canonical runs retain capacity50; latest cold-start target remains unmet. Prototype placement results do not prove full sandbox latency or multithreaded spawn safety.",
+  "scope": "Canonical CI, native checks and diagnostic prototypes. Three migration-based canonical runs retain capacity50 and miss 30ms. Direct placement has local functional and smoke evidence; its canonical measurement and exact-head review remain pending.",
   "files": [
     {
       "path": "local/smoke1.json",
@@ -1071,6 +1071,291 @@
       "path": "local/cold-volume1.json",
       "bytes": 34893,
       "sha256": "707430a5196e347d59e301b8e4a7e79af6c0760c31650a43274cee7195763eb0"
+    },
+    {
+      "path": "local/direct-spawn/native1.json",
+      "bytes": 7379,
+      "sha256": "e01472384fff3e41afa5dcf2013e52ddb99913ee703317db5f398b7951d3b570"
+    },
+    {
+      "path": "local/direct-spawn/native2.json",
+      "bytes": 7098,
+      "sha256": "e12c19d4a1bafaa311410e4702cc4e3347dbf9e774d3b2e9ebe01a8beb8fa9a3"
+    },
+    {
+      "path": "local/direct-spawn/native3.json",
+      "bytes": 8303,
+      "sha256": "3ecb23bfe6d700e17256c784ca96c963bed905316af00c3e06d4a5984d26be44"
+    },
+    {
+      "path": "local/direct-spawn/contexts1.json",
+      "bytes": 1503,
+      "sha256": "d246d0f1a8f0361e8176d221b44e2198685c0337bb8bca1b65beb89ec44a69d9"
+    },
+    {
+      "path": "local/direct-spawn/delegation1.json",
+      "bytes": 566,
+      "sha256": "1e99498607894c5db3b0bdcbee1b716fe535dfd568d6f3839f8a2b48bef2eb49"
+    },
+    {
+      "path": "local/direct-spawn/delegation2.json",
+      "bytes": 1597,
+      "sha256": "f159eb0cdb3cf0fd8ac7201e9afa81b95418966427c4662c50598aeeb9a14e18"
+    },
+    {
+      "path": "local/direct-spawn/volume1.json",
+      "bytes": 2477,
+      "sha256": "0f516795c35256dabcd1cc4a3860e8ffde32ae3f0f7f63bba72ec9a33e4d1765"
+    },
+    {
+      "path": "local/direct-spawn/file1.json",
+      "bytes": 3967,
+      "sha256": "06d72c43b2e1af04b10a861680c1add98079f25ab820428bae7d0d8094eb242b"
+    },
+    {
+      "path": "local/direct-spawn/events1.json",
+      "bytes": 1500,
+      "sha256": "230dbf9729c90fcd41986ddbcc8f2713cd168b6084c6c09e88a85d6822247e52"
+    },
+    {
+      "path": "local/direct-spawn/tcp1.json",
+      "bytes": 1673,
+      "sha256": "0e8277d306ce9a3ecf13c81a7287c64222b1084e36f8548653ceff928e88aa88"
+    },
+    {
+      "path": "local/direct-spawn/host_calls1.json",
+      "bytes": 2823,
+      "sha256": "0cf95bc68b1c39b9d7fd8e6e4c89e413d4633c80a4fcb8714fb83b9cd358d2d7"
+    },
+    {
+      "path": "local/direct-spawn/resources1.json",
+      "bytes": 1111,
+      "sha256": "e22fcc9d923cb991d310cbe437524111279f989f396ea2a6c5d9d4fbe29c681a"
+    },
+    {
+      "path": "local/direct-spawn/sdk1.json",
+      "bytes": 471,
+      "sha256": "65ec3907127a3eaab334f149211da5990efe6450e2c0154531d9e2bcb25c89bd"
+    },
+    {
+      "path": "local/direct-spawn/sdk2.json",
+      "bytes": 11172,
+      "sha256": "38b2ff444aaf9273d39f442233658e26db865d8fe1cac16596d33493c4b0c2eb"
+    },
+    {
+      "path": "local/direct-spawn/cold1.json",
+      "bytes": 39188,
+      "sha256": "62a7243b451cd14c950209b256558aeffa3c6070352c961533acee968e3bafaa"
+    },
+    {
+      "path": "local/direct-spawn/smoke1.json",
+      "bytes": 90613,
+      "sha256": "9d35255ffba59c262b2c2da8a5dca2cb1e20f338d7d0f093c4663d97b7c4a3a5"
+    },
+    {
+      "path": "local/direct-spawn/smoke1.attempts.jsonl",
+      "bytes": 69715,
+      "sha256": "e274cdd1d1f756c11675eb7ad4d802ca5c2bf8a44d1dc869bc88d4b8a62f6776"
+    },
+    {
+      "path": "local/direct-spawn/footprint1.json",
+      "bytes": 22724,
+      "sha256": "6f8779e0f636891530e825f71b0c8c683042d45997b7fcda012fe6bd07cb19bb"
+    },
+    {
+      "path": "local/direct-spawn/footprint1.attempts.jsonl",
+      "bytes": 442,
+      "sha256": "5ce7f1ebd08e717c906fde348a02d396be929dffac56295450f245cdded3a35f"
+    },
+    {
+      "path": "local/direct-spawn/delegated-container1.json",
+      "bytes": 1600,
+      "sha256": "73a8bb51164d5ca44c7e363c4fbc05c53d9f73201dd642ecda29b71c739e50dd"
+    },
+    {
+      "path": "local/direct-spawn/evals1/events.json",
+      "bytes": 1500,
+      "sha256": "230dbf9729c90fcd41986ddbcc8f2713cd168b6084c6c09e88a85d6822247e52"
+    },
+    {
+      "path": "local/direct-spawn/evals1/files.json",
+      "bytes": 3967,
+      "sha256": "1db66a70b29f23ea4195ad49f69246bbe56bc1cd4f7ca7cebbc4c1dd7e413d70"
+    },
+    {
+      "path": "local/direct-spawn/evals1/fixture.json",
+      "bytes": 4281,
+      "sha256": "661e8e287b7fcf7097a8e996eb0727710431e31af4ec233eaa40d5cdf8dca66b"
+    },
+    {
+      "path": "local/direct-spawn/evals1/host-calls.json",
+      "bytes": 2823,
+      "sha256": "0cf95bc68b1c39b9d7fd8e6e4c89e413d4633c80a4fcb8714fb83b9cd358d2d7"
+    },
+    {
+      "path": "local/direct-spawn/evals1/resources.json",
+      "bytes": 1111,
+      "sha256": "e22fcc9d923cb991d310cbe437524111279f989f396ea2a6c5d9d4fbe29c681a"
+    },
+    {
+      "path": "local/direct-spawn/evals1/summary.json",
+      "bytes": 63623,
+      "sha256": "36a06d4a013804cb0337847ce335c172a50a32ee74d13d0ab86e299cf362c33e"
+    },
+    {
+      "path": "local/direct-spawn/evals1/summary.txt",
+      "bytes": 11566,
+      "sha256": "990acefd3d27f619e2f45bf5f3ed12905e49cc102a9a94cd68f4a481ef122958"
+    },
+    {
+      "path": "local/direct-spawn/evals1/tcp.json",
+      "bytes": 1673,
+      "sha256": "0e8277d306ce9a3ecf13c81a7287c64222b1084e36f8548653ceff928e88aa88"
+    },
+    {
+      "path": "local/direct-spawn/evals1/volumes.json",
+      "bytes": 2477,
+      "sha256": "9a6d4821c1e1f64523a53927c0e56cbfe3dd1019123dc3429d638782dff27b84"
+    },
+    {
+      "path": "41412842791/13125879549/contexts.json",
+      "bytes": 1503,
+      "sha256": "ac936388e7ad39a343c46319c240e2a34901ce53f685c720ee28363ddc73c1f5"
+    },
+    {
+      "path": "41412842791/13125879549/delegation.json",
+      "bytes": 1597,
+      "sha256": "3dc31eba2a81e9e8bbef0ed086a5fd15d0ff9cb37602dca3d6fe03ede9f022c2"
+    },
+    {
+      "path": "41412842791/13125879549/events.json",
+      "bytes": 1500,
+      "sha256": "7f03badff21703cd3f41e0c6d75ddc3690c3b4264aed13e4f9eeacd1bfcaf7ce"
+    },
+    {
+      "path": "41412842791/13125879549/files.json",
+      "bytes": 3957,
+      "sha256": "e7f5cf9dc755148200b994b59d91b36b58b426db822514fa34ee3e1e10a9e11b"
+    },
+    {
+      "path": "41412842791/13125879549/fixture.json",
+      "bytes": 3321,
+      "sha256": "dbe96f892cba27064f1675538d092add6aa49cc47dbc0c1c3708011ec9a82c62"
+    },
+    {
+      "path": "41412842791/13125879549/host-calls.json",
+      "bytes": 2823,
+      "sha256": "3d8704ab13464abcd91a9a936f73185056242624bb5ab40a1c0dcc5b68c07e0d"
+    },
+    {
+      "path": "41412842791/13125879549/native.json",
+      "bytes": 6104,
+      "sha256": "07573e1da63300835d35827c75d8b0bd90c3ba23617c0d8193aacae4e149b4f4"
+    },
+    {
+      "path": "41412842791/13125879549/resources.json",
+      "bytes": 1111,
+      "sha256": "c88e85a88990a2652ecc33ec8cc507d797b834f1916c4c502751181098a1b633"
+    },
+    {
+      "path": "41412842791/13125879549/sdk.json",
+      "bytes": 11171,
+      "sha256": "443fa1f564899800c3f81690bf9199086218c7e3110747690ed3af0408044675"
+    },
+    {
+      "path": "41412842791/13125879549/summary.json",
+      "bytes": 63613,
+      "sha256": "f1d4814cab57d9e090a5053fd71d21a79ac04ce572101302a7e9f53cf9b57f7d"
+    },
+    {
+      "path": "41412842791/13125879549/summary.txt",
+      "bytes": 11566,
+      "sha256": "00719d70a293623598d5f8f4651b269bdec99b52cf766f4687405d680e98b42f"
+    },
+    {
+      "path": "41412842791/13125879549/tcp.json",
+      "bytes": 1673,
+      "sha256": "e0f4f40b1785acbedbf35e0abfec10d090f8c9c0c97f2ecb6466b80daa473769"
+    },
+    {
+      "path": "41412842791/13125879549/volumes.json",
+      "bytes": 2477,
+      "sha256": "568f0fd24525b2c7eb3c23b7ad9e33a0944792dd21dfa341a2ff31b54019d916"
+    },
+    {
+      "path": "41412842784/13126222322/cache-smoke.attempts.jsonl",
+      "bytes": 14356,
+      "sha256": "b2e30cc69e0def1e29420a9b3cdeb754d28dc231ddd76989e8f11d6d594017fb"
+    },
+    {
+      "path": "41412842784/13126222322/cache-smoke.json",
+      "bytes": 20993,
+      "sha256": "819b0439f5f0f764fd15b0a898698def47c5de1b46b37f25368dad46a33a79e5"
+    },
+    {
+      "path": "41412842784/13126222322/cold-start-smoke.json",
+      "bytes": 23451,
+      "sha256": "75e727e42bad18d09398156d98b092408911a0652740ca27f2da20a09d69bbd1"
+    },
+    {
+      "path": "41412842784/13126222322/footprint-smoke.attempts.jsonl",
+      "bytes": 436,
+      "sha256": "bab958e9923a914fe78a1712f271e5d5da4494ef3f573cb54292076b39c18c80"
+    },
+    {
+      "path": "41412842784/13126222322/footprint-smoke.json",
+      "bytes": 22542,
+      "sha256": "64c4f093ad1253d168a888197e436072639ed18479ad08f0cb5ab94d33d2ecff"
+    },
+    {
+      "path": "41412842784/13126222322/smoke.attempts.jsonl",
+      "bytes": 66918,
+      "sha256": "c0f7ac9eee2ba35f18ef46b7e5ea8cc8f5aa67393db8c71b9e68e60066ac9c2d"
+    },
+    {
+      "path": "41412842784/13126222322/smoke.json",
+      "bytes": 87776,
+      "sha256": "c3f827faacece86d244dcb4c3602e11977ed36441b99021994c0690ed26525c7"
+    },
+    {
+      "path": "41412842789/13125654851/readiness-native.json",
+      "bytes": 10615,
+      "sha256": "7fc8cc5c1e2be448a0648a946be7f285c97171f38cb5dadc558ececf96d58707"
+    },
+    {
+      "path": "41412842789/13125954610/readiness-ubuntu24.json",
+      "bytes": 12148,
+      "sha256": "2bd82361d5b0ead78856af01c0cef90fea1552906e4745253a323f552b9eba25"
+    },
+    {
+      "path": "41412842789/13126580899/readiness-ubuntu22.json",
+      "bytes": 12051,
+      "sha256": "2c99a05ca65fe347882cdcf30e5277b04cf0b4d9dd06a8f9108456f6c4d763ee"
+    },
+    {
+      "path": "41412842789/13126690871/readiness-debian12.json",
+      "bytes": 12364,
+      "sha256": "013f6c24516c8149c89b735b60b9231d270a70d80a5c639ae21cbcd910715100"
+    },
+    {
+      "path": "41412842789/13127250244/readiness-native.json",
+      "bytes": 10244,
+      "sha256": "a60816d6baf9fe3d6f56f4ced609413573ddfc1c789e2208fec163fc2fa5b197"
+    },
+    {
+      "path": "local/direct-spawn/local-gates.json",
+      "bytes": 1272,
+      "sha256": "2129753c5950be397f30e291703e10d85204e10afd160bb71c346127b8259f0a"
+    },
+    {
+      "path": "local/direct-spawn/java-all1.json",
+      "bytes": 8131,
+      "sha256": "0b2388c0d216cd80d4a315525ffc7c4e3e0b0ffba1683716e87d152f0842fd69"
+    },
+    {
+      "path": "local/direct-spawn/java-games1.json",
+      "bytes": 3525,
+      "sha256": "5efd08b650d164f1f426458453aaac0dcc4baec7eb6542ea2710818645add54b"
     }
   ]
 }

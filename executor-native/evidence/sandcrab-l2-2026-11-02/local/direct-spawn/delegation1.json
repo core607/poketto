@@ -1,0 +1,13 @@
+{
+  "scope": "Direct root daemon under real delegated cgroup v2; no service manager calls",
+  "binarySha256": "00937f1c7939c097ecfeb5363512c2d36bacce8d1784233454f78088526ce265",
+  "probeSha256": "e2216001d1df93e2c2a2f35174928fecfc0fa3c1249afdbcf98352a27195bdeb",
+  "checks": [],
+  "cleanup": "PASS",
+  "deployment": "root-host-direct",
+  "pid1": "systemd",
+  "delegationProbeSha256": "b2e98c0cf18c554b5fac7f608f3d3377c7e18db7f3ca3edf800f06618698e7ad",
+  "result": "FAIL",
+  "failureType": "AssertionError",
+  "failure": "Parent must delegate cpu, memory and pids"
+}
