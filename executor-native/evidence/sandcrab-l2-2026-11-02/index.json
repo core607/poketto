@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "scope": "Development receipts. Sources and binary identities are recorded per attempt; canonical CI measurements are pending.",
+  "scope": "Development and canonical CI receipts; each attempt preserves its source and binary identity. Current listener/tool-wait candidate awaits canonical CI.",
   "files": [
     {
       "path": "local/smoke1.json",
@@ -636,6 +636,211 @@
       "path": "local/control-latency1.json",
       "bytes": 2895,
       "sha256": "e86f8ac7b8b64b70e8f997642fcfa15a631eababc92d64044c26093376f29f18"
+    },
+    {
+      "path": "41392806548/13120988558/cache-smoke.attempts.jsonl",
+      "bytes": 14356,
+      "sha256": "04dedffb5decb9e58e705bb567d8f1a84cf434800380ad1230fa83b5147465b1"
+    },
+    {
+      "path": "41392806548/13120988558/cache-smoke.json",
+      "bytes": 20995,
+      "sha256": "904e908dbefe018cbfb913cd138d2c3a2b3f159e99c145bf0b75f48c9f706943"
+    },
+    {
+      "path": "41392806548/13120988558/cache.attempts.jsonl",
+      "bytes": 14552,
+      "sha256": "e91a6c2004043a52467c81742296363d9d07476ddee8c5c5e61a1d07b90e08e9"
+    },
+    {
+      "path": "41392806548/13120988558/cache.json",
+      "bytes": 21229,
+      "sha256": "3f736bab79878695a09771e8ffcc5826b70def53e4cc190eee31ca02519aa81a"
+    },
+    {
+      "path": "41392806548/13120988558/cold-start-smoke.json",
+      "bytes": 23282,
+      "sha256": "b7da45d94b32abf63f998f31f691bcfca080d9ad7ba930a60be8b52e24574733"
+    },
+    {
+      "path": "41392806548/13120988558/cold-start.json",
+      "bytes": 23565,
+      "sha256": "470d202feb3a890ded6d291f65094e8ff3633936bd760cf3c184ad86573e6773"
+    },
+    {
+      "path": "41392806548/13120988558/density.attempts.jsonl",
+      "bytes": 4761544,
+      "sha256": "71497b4e863bce1571f5ce9ad8b513028b57f0d3d64bda5373ec273b666bd7c5"
+    },
+    {
+      "path": "41392806548/13120988558/density.json",
+      "bytes": 5989507,
+      "sha256": "f526eb33bb4b8c264d1c0fcd617ba79d1b8db1b42c6464000b148b2fd3e135fe"
+    },
+    {
+      "path": "41392806548/13120988558/footprint-smoke.attempts.jsonl",
+      "bytes": 436,
+      "sha256": "dbf37e1a26e967ce6b0c7da3839e0a0d06fbe0205cff8f80ceef5e6a7e1bef2d"
+    },
+    {
+      "path": "41392806548/13120988558/footprint-smoke.json",
+      "bytes": 22547,
+      "sha256": "984b98f8a9c8d925b717aaba96018d04d713ccc627c8c64fee4a79e9cc75bac3"
+    },
+    {
+      "path": "41392806548/13120988558/footprint.attempts.jsonl",
+      "bytes": 26779,
+      "sha256": "e7692f63620c25ba8ce8e801a72ba3e78f047f239f60f57d63e1cdbed804bf81"
+    },
+    {
+      "path": "41392806548/13120988558/footprint.json",
+      "bytes": 71687,
+      "sha256": "5ea783e991e87cda1e8c45d1475cd792b854cc975e7e9cd48d396b4a082c6038"
+    },
+    {
+      "path": "41392806548/13120988558/smoke.attempts.jsonl",
+      "bytes": 59856,
+      "sha256": "12e28e76b62df8ad2ea58f6b0f7f86aeaadf8296fe6730fb9942ec78fc3b6bc6"
+    },
+    {
+      "path": "41392806548/13120988558/smoke.json",
+      "bytes": 78981,
+      "sha256": "6239bf4622070ed996a79f231017df1edfc85cabadc3319f7823be9f53d5c08f"
+    },
+    {
+      "path": "local/cold-smoke3.json",
+      "bytes": 23390,
+      "sha256": "9e0408d7fda400ea7705f941e41265fc7895c0357e8a04539111ca5a368403be"
+    },
+    {
+      "path": "local/control-latency2.json",
+      "bytes": 2794,
+      "sha256": "59746e50a6e2367407e77a9ef73492d9cc8b05eca7fafc02721938d29fb7b576"
+    },
+    {
+      "path": "local/density-smoke3.attempts.jsonl",
+      "bytes": 68434,
+      "sha256": "ff8d75e6647d42be033802e8df668c4e53b7a1c8709838113c35aaa761b0f4b2"
+    },
+    {
+      "path": "local/density-smoke3.json",
+      "bytes": 89749,
+      "sha256": "f6074e56e3c70a43b37a117495980997ce505d11f216a6629d8ad17decb4f14b"
+    },
+    {
+      "path": "local/footprint-smoke3.attempts.jsonl",
+      "bytes": 436,
+      "sha256": "654c1dcba1fc11986ad29e0e928c723872953299349557d4381e4164a9162655"
+    },
+    {
+      "path": "local/footprint-smoke3.json",
+      "bytes": 22670,
+      "sha256": "581f7204c52f4fd56cf32c1c86d000e4fd3448397b432364d7fca9b0a9e561e5"
+    },
+    {
+      "path": "local/native6.json",
+      "bytes": 6103,
+      "sha256": "f9f8d00154e6f4a332144bff8a79f6890f29ddce055d179e5f909cd9e01e8768"
+    },
+    {
+      "path": "local/native7.json",
+      "bytes": 6105,
+      "sha256": "1e8044bff87777413c81cf20b44f53861e8666eba921f8819aaae49478e572f5"
+    },
+    {
+      "path": "local/tcp2.json",
+      "bytes": 1673,
+      "sha256": "7748070330607c56f510562594c8983709ed89c045855de868b9a37b5da0056a"
+    },
+    {
+      "path": "local/cold-smoke4.json",
+      "bytes": 23498,
+      "sha256": "78db926f46cbd565bd3d8321452137c70a13a033962433e2ffbeee5db619ca72"
+    },
+    {
+      "path": "local/cold-smoke5.json",
+      "bytes": 23409,
+      "sha256": "afa8897d629a006e650eb628825530691af58cf2b2c5884aee9e44bd0cda3991"
+    },
+    {
+      "path": "local/density-smoke4.attempts.jsonl",
+      "bytes": 68822,
+      "sha256": "8baf8071fe3643a4579deb59e6b542465416b50fa59c7c587bba5457beb41038"
+    },
+    {
+      "path": "local/density-smoke4.json",
+      "bytes": 89870,
+      "sha256": "7cf4b6e29160b7c6e2b317e4a7c0584c3935d5c2cd29064a6a52eb9753afaeed"
+    },
+    {
+      "path": "local/density-smoke5.attempts.jsonl",
+      "bytes": 70320,
+      "sha256": "55e154862c995ac4c49d552ba2443c95951b88173c0fb7c380b7d445b58e920d"
+    },
+    {
+      "path": "local/density-smoke5.json",
+      "bytes": 91843,
+      "sha256": "8503450332e86827f21854e4a4c578ca9432933189620630b5e46c1e0c22a68f"
+    },
+    {
+      "path": "local/footprint-smoke4.attempts.jsonl",
+      "bytes": 439,
+      "sha256": "a12eac58b04a9b551e7d318102b7e3f1bddf52f90a8d36c7df5753e8b58e90ea"
+    },
+    {
+      "path": "local/footprint-smoke4.json",
+      "bytes": 22661,
+      "sha256": "879411577f5a437e75dacf31263db0e91ed92cd6c2ee71c8041aea870c852596"
+    },
+    {
+      "path": "local/footprint-smoke5.attempts.jsonl",
+      "bytes": 439,
+      "sha256": "993f031851bcb7c1f9bb2ab0c318ffd5fefee868c876388c0a7b4cb7cfc27e7f"
+    },
+    {
+      "path": "local/footprint-smoke5.json",
+      "bytes": 22660,
+      "sha256": "227e34e998db42035ba136a3b3a228ef5e8ba431953c915fe5e15a924f86fe36"
+    },
+    {
+      "path": "local/games2-remediation.json",
+      "bytes": 838,
+      "sha256": "3fe4bc2fed5dbb7caf938558a5f43fab8d9893f93af1c91d06f002f1642c5e6a"
+    },
+    {
+      "path": "local/java-all3.json",
+      "bytes": 8029,
+      "sha256": "c181902b119b35a9ca3fb0761140788cb95dd9aad6336e7019c4c620d0126edf"
+    },
+    {
+      "path": "local/java-games2.json",
+      "bytes": 1813,
+      "sha256": "a2406be9ad0a42a42ee4f3b742ad9d07699ba24b202b3398a93384ce596a4741"
+    },
+    {
+      "path": "local/java-games2.log.txt",
+      "bytes": 16437,
+      "sha256": "e546c9c5fbce016c09c4d552511e95995345295d9bf872ad8a8c0da90b99abe5"
+    },
+    {
+      "path": "local/java-games3.json",
+      "bytes": 3525,
+      "sha256": "bd06599510957c2d18e76856937966aae53caffa1ac446753e45b1771552f120"
+    },
+    {
+      "path": "local/measurement-contamination4.json",
+      "bytes": 587,
+      "sha256": "0d11b6cc439b27c1426af2f5020da3b3e17ee93bdbc7791239ac1f2cb57516e5"
+    },
+    {
+      "path": "local/residue-preflight1.diagnostic.txt",
+      "bytes": 583,
+      "sha256": "c9a0bd5babd65433385d66f036230fc626ec7aab7b52cf3e1a05f8694746f5ec"
+    },
+    {
+      "path": "local/residue-preflight1.json",
+      "bytes": 3546,
+      "sha256": "5fde2b5bab915db6cc2492849eab958386c5d5a56a648cc7c476808f80ce8849"
     }
   ]
 }

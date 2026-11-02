@@ -2,8 +2,8 @@
 
 This change serves lightweight deployment by replacing native per-operation
 systemd transactions with daemon-owned cgroups. These local receipts validate
-implementation and measurement paths. The first canonical 5 GB run retained
-capacity 50; the helper-wait candidate's canonical run remains pending. Fresh
+implementation and measurement paths. Both completed canonical 5 GB runs retained
+capacity 50; the listener/tool-wait candidate still needs canonical measurement. Fresh
 installation replay completes on five environments. This report establishes
 neither a capacity improvement nor the 30 ms cold-start target.
 
@@ -12,7 +12,7 @@ neither a capacity improvement nor the 30 ms cold-start target.
 The [index](index.json) records the size and SHA-256 of each retained receipt.
 Every attempt names its binary/probe hashes. `e0a8b68f6b667673e8025c87884135e8259c151d`
 in local source metadata is the base of a dirty development tree, not an assertion
-that main already contains L2. The measured static candidate is
+that main already contains L2. The initial static measurement uses
 `244a094477681d78c6004c9ab9b16720b0682056db57bd514e268d61d6cb4a2b`.
 Earlier test candidates remain separately identified in their receipts.
 
@@ -62,6 +62,20 @@ to the next step in all three trials; its launcher-placement interval remains
 17–20 ms. The [footprint smoke](local/footprint-smoke2.json) measured 3,338,240 bytes
 median daemon RSS. Both completed with cleanup. The 30 ms target remains unproven.
 
+The listener-only candidate's [control measurement](local/control-latency2.json)
+reduces median latency for 50 new Unix connections from 10.230086 to 0.261476 ms
+in the same local container. This read-only control request is not a cold start.
+The final local listener/tool-wait candidate is `9f4f93bb…`, with 4,166,560 static
+bytes and the same dependencies. Its clean [smoke](local/density-smoke5.json)
+passes 103 judged attempts, p95 29.054405 ms and zero OOM; its two cold starts
+are 45.149886 and 61.307953 ms. [Footprint](local/footprint-smoke5.json) measures
+3,305,472 bytes median daemon RSS; the [trace](local/cold-smoke5.json) retains
+all three startup timelines. All three runs completed with API/host cleanup.
+These small local measurements establish neither canonical capacity nor 30 ms.
+Rust checks, 176 service tests, [43 native checks](local/native7.json),
+[Java adapter acceptance](local/java-all3.json) and [games](local/java-games3.json)
+passed on this candidate. The latter two include cleanup and process-loss checks.
+
 ## Functional evidence
 
 At candidate `59047a9ebbe818a1a8724f7d6cb56f147678836ee8cf67cb0e9d75ec49e2ad43`,
@@ -109,6 +123,15 @@ expiry; [games](local/java-games1.json) passed with cleanup.
   import. Container cleanup passed. Invoking the recipe inside the unpacked source
   fixes that path; a fresh local Ubuntu 24.04 replay completed with cleanup.
   Its 12 commands and two configuration edits still miss the eventual readiness target.
+- [Games attempt 2](local/java-games2.json) passed the gameplay/isolation checks
+  but failed when systemd collected a killed unit before the fixture stopped it.
+  Cleanup then rejected the new nested job `/tmp` mount. The [raw log](local/java-games2.log.txt)
+  and [owned-fixture remediation](local/games2-remediation.json) retain both failures
+  and verified cleanup. `density-smoke4`, `cold-smoke4` and `footprint-smoke4`
+  ran before that remediation; their results are contaminated diagnostic attempts,
+  not clean comparisons. The [preflight](local/residue-preflight1.json) now refuses
+  an existing native fixture directory before allocating resources. Attempt 3
+  passes game restart and cleanup; the clean measurement retry is smoke 5.
 
 Original logs, source manifests, Inspect logs/viewer and all attempts are retained
 with the operator's development artifacts. The indexed JSON and measurement ledgers
@@ -141,6 +164,28 @@ At 100 agents, three rg commands timed out during warm-up and closed their sessi
 remain recorded. Cold-start p50 at the three 50-agent repetitions was 182.978427,
 172.652866 and 172.973170 ms, versus L1's 111.575018, 111.568136 and 121.118090 ms.
 The subsequently optimized candidate requires its own measurement.
+
+## Helper-wait canonical run
+
+[Run 41392806548](https://github.com/core607/poketto/actions/runs/41392806548)
+measured `5d390024554084d4712a4d23950c57d3ac74af58`, binary `ad7cbf72…`, after
+pidfd helper waits and before listener/tool-verification waits changed.
+All collectors and API/host cleanup completed under the same protocol.
+
+The [density result](41392806548/13120988558/density.json) again passes all three
+25- and 50-agent repetitions. Cold-start p50 at 50 agents is 50.747394,
+50.736792 and 50.783314 ms: substantially below the first L2 attempt, still above
+30 ms. Judged p95 at 50 is 0.556153874, 0.567255108 and 0.640679597 seconds.
+These independent runner observations do not prove a stable latency improvement.
+
+At 100, OK rate is 0.2868131868 with 1,298 SESSION_NOT_READY refusals and zero OOM.
+The 0.174084905-second judged p95 includes those refusals; it cannot establish a
+capacity or command-speed gain. The failed OK_RATE criterion stops the protocol.
+
+The [footprint result](41392806548/13120988558/footprint.json) measures 3,215,360 bytes
+median daemon RSS, 1,530,920.96 bytes pool delta per idle session at count 50,
+and 1,070,612.48 bytes per finite run at count 50. The static binary remains
+4,170,656 bytes and requires the same ten executable surfaces.
 
 ## Current installation replay
 
