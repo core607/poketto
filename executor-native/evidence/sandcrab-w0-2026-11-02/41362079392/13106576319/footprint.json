@@ -1,0 +1,2468 @@
+{
+  "schema": 1,
+  "kind": "sandcrab-footprint",
+  "started": "2026-11-01T23:51:34.753569+00:00",
+  "sourceCommit": "6481ea1b8d3aca64c54529c4fdd9c11aa2755aa0",
+  "sourceDirty": false,
+  "sourceSha256": {
+    "page_cache.py": "db994b64f42bf6dad5d1724b1badc722440e1c6d96a4bf2a10f5f1422704c9e8",
+    "test_footprint.py": "dd7aaa0832130306f266c021da30926685543e4de6a290deb0ad99748ce47134",
+    "test_cold_start.py": "ef569b0749b7ef48e73c2a3cfdccb0b1fdede4ce1fef279dd457fcde16069dbe",
+    "test_scoring.py": "68da8da44c9cd9576aa28c4b00fa0373009b4cc112951a8669c5248f1df6b1ad",
+    "metrics.py": "83004cf4be8e9d2de84f9f0e231a88ee86fb612ba6fe19a5cd0d968dc0d422b8",
+    "workload.py": "b7e315cdbfe4b222e41c3025e3e1c700cbb599689e505991f52a0cc0f4f1ccef",
+    "footprint.py": "39816997dd4438d2c771be50d62f218d56b7ef07a5bef912c072b022855bffee",
+    "test_engine.py": "05633ed8e050237695e1939589dab845b414d41b27974619fdd01af88e2d5b7d",
+    "protocol.py": "640bd23e0e6c2aba551ec1414f1f2c4fd7db782d9df491c49815fe27baf2b787",
+    "test_density.py": "6ea72a3003daf5b9883f4f15e087a7d8a04ff0ec75d5f66c04589b53c8d2f9f9",
+    "engine.py": "644572b2426058524fb006534b7a67359277ef9078df6aa14a234561516f5c5b",
+    "host.py": "8bff7b5f2964ce2184368676e7324fee64678b808d74313a3ba2c3a64f90852c",
+    "test_page_cache.py": "4bb1fcfa4e43e73e052ba3c9a8db1933cf6d0c6cd2134c8370043d8202423b8a",
+    "cold_start.py": "e3f32f8ea23e1297896fa667b2dda6d369552a228b9667fa15b2df789e782f32",
+    "test_workload.py": "af0c58334562aa987b3442e92524eec3f3d8a5e3b43c9b60da524c510953e1ec",
+    "test_client.py": "20a12380b397e60b1c62a5111e9e4bfd560df40527d091bcef636013548cef59",
+    "scoring.py": "48b5f42df8a9e3eec81a5fb50d381effc699935037c40e6dca6922a59a8f9cfb",
+    "density.py": "ee4e9f7dec53e7010a993efa531c7d4e4ca6c78dbf168032de8eaf529376a8e7",
+    "client.py": "4564eecf46d694377a9446812b1f61e2f92836cf881b684ae3f5aa5fc6ef92d5"
+  },
+  "parameters": {
+    "counts": [
+      1,
+      10,
+      50
+    ],
+    "samples": 5,
+    "sampleIntervalSeconds": 1,
+    "settleSeconds": 2,
+    "finiteHoldSeconds": 30
+  },
+  "scope": "Idle bash sessions and minimal finite /bin/sleep workloads; includes their memory. Volume capability enabled, with no volume data. No density or readiness claim.",
+  "measurementStatus": "COMPLETED",
+  "apiCleanup": {
+    "result": "PASS",
+    "failures": []
+  },
+  "hostCleanup": "PASS",
+  "modelTokens": 0,
+  "containsProductionContent": false,
+  "fixture": {
+    "scope": "Independent native benchmark fixture; no application, model or private content",
+    "binarySha256": "db8b81132e7a3cc71c43c6c39e02e77f1cc013e66aa5bacc79804113fc48f791",
+    "probeSha256": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
+    "checks": [],
+    "cleanup": "PASS",
+    "preflight": {
+      "memory": {
+        "MemTotal": 16760344576,
+        "MemAvailable": 15602470912
+      },
+      "freeDiskBytes": 91324973056,
+      "otherLoadControllers": 0,
+      "logicalCpuCount": 4,
+      "controllerCpuAffinityCount": 4
+    },
+    "requestedMemoryBytes": 4000000000,
+    "configuredSandboxCeiling": 512,
+    "storagePoolBytes": 8589934592,
+    "configSha256": "ba763e9627e56ce25c7952350b6304fdda99a5b3efcf55b6939a8c66c657a207",
+    "kernel": "7.0.0-1017-azure",
+    "operatingSystem": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+    "fixtureSourceSha256": "8bff7b5f2964ce2184368676e7324fee64678b808d74313a3ba2c3a64f90852c",
+    "effectiveLimits": {
+      "memory.max": 3999997952,
+      "memory.swap.max": 0,
+      "pids.max": 8192,
+      "cpu.max": [
+        200000,
+        100000
+      ]
+    },
+    "resourceAncestors": [
+      {
+        "group": "sandcrab.slice/sandcrab-probe.slice/sandcrab-probe-6ad761780a.slice",
+        "limits": {
+          "memory.max": "3999997952",
+          "cpu.max": "200000 100000",
+          "pids.max": "8192"
+        }
+      },
+      {
+        "group": "sandcrab.slice/sandcrab-probe.slice",
+        "limits": {
+          "memory.max": "max",
+          "cpu.max": "max 100000",
+          "pids.max": "max"
+        }
+      },
+      {
+        "group": "sandcrab.slice",
+        "limits": {
+          "memory.max": "max",
+          "cpu.max": "max 100000",
+          "pids.max": "max",
+          "cpuset.cpus.effective": "0-3"
+        }
+      },
+      {
+        "group": ".",
+        "limits": {
+          "cpuset.cpus.effective": "0-3"
+        }
+      }
+    ],
+    "binaryBytes": 4125600
+  },
+  "binary": {
+    "bytes": 4125600,
+    "sha256": "db8b81132e7a3cc71c43c6c39e02e77f1cc013e66aa5bacc79804113fc48f791",
+    "elfInterpreter": false,
+    "dynamicNeededEntries": 0,
+    "static": true
+  },
+  "dependencies": {
+    "runtimeExecutables": {
+      "core": [
+        {
+          "program": "systemctl",
+          "purpose": "unit lifecycle and containment",
+          "present": true
+        },
+        {
+          "program": "systemd-run",
+          "purpose": "sandbox launch",
+          "present": true
+        },
+        {
+          "program": "env",
+          "purpose": "clear the sandbox launcher environment",
+          "present": true
+        },
+        {
+          "program": "mount",
+          "purpose": "bounded workspace",
+          "present": true
+        },
+        {
+          "program": "umount",
+          "purpose": "workspace cleanup",
+          "present": true
+        },
+        {
+          "program": "extracted/usr/bin/bwrap",
+          "purpose": "namespace and mount isolation",
+          "present": true,
+          "bytes": 72160,
+          "sha256": "e318903862396f96de3df57264e0158682b952fd3fb53ac23d876413e7b30f71"
+        },
+        {
+          "program": "node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp",
+          "purpose": "pinned syscall filter and protected PID namespace",
+          "present": true,
+          "bytes": 755720,
+          "sha256": "64fa7514fa7199584b836159885e59b9ce3684fb8fef7e13de49965b23f54f6b"
+        }
+      ],
+      "sessions": [
+        {
+          "program": "busctl",
+          "purpose": "session resource slice",
+          "present": true
+        },
+        {
+          "program": "bash",
+          "purpose": "persistent shell",
+          "present": true
+        }
+      ],
+      "durableVolumes": [
+        {
+          "program": "findmnt",
+          "purpose": "verify the volume mount",
+          "present": true
+        },
+        {
+          "program": "/usr/sbin/xfs_spaceman",
+          "purpose": "reflink verification",
+          "present": true
+        },
+        {
+          "program": "/usr/sbin/xfs_io",
+          "purpose": "project identity",
+          "present": true
+        },
+        {
+          "program": "/usr/sbin/xfs_quota",
+          "purpose": "project quotas",
+          "present": true
+        },
+        {
+          "program": "/usr/bin/cp",
+          "purpose": "clone volume data",
+          "present": true
+        }
+      ]
+    },
+    "runtimeExecutableCount": 14,
+    "countScope": "Distinct command executables used by the current native implementation; includes optional sessions and durable volumes; excludes shared-library closure and workload tools",
+    "preparationOnly": [
+      {
+        "name": "Node.js/npm/SRT package",
+        "purpose": "obtain the pinned seccomp helper"
+      }
+    ],
+    "preparedTreeBytes": 375103567,
+    "platform": [
+      "Linux cgroup v2",
+      "systemd",
+      "user namespaces",
+      "XFS with project quotas for durable volumes"
+    ]
+  },
+  "daemonIdle": [
+    {
+      "monotonicNs": 1462953886333,
+      "memoryCurrentBytes": 634880,
+      "memoryStat": {
+        "anon": 258048,
+        "file": 8192,
+        "shmem": 0,
+        "kernel": 106496
+      },
+      "cpuUsec": {
+        "pool": 32445,
+        "daemon": 32445,
+        "sandboxes": 0
+      },
+      "oomKills": 0,
+      "pidsCurrent": 1,
+      "daemonRssBytes": 3018752,
+      "liveKernelSandboxes": 0,
+      "liveKernelSessions": 0,
+      "liveKernelFiniteRuns": 0,
+      "executingObserved": 0,
+      "systemManagerCpuSecondsOutsideSlice": 15.3,
+      "hostAvailableBytes": 15597891584
+    },
+    {
+      "monotonicNs": 1463955941650,
+      "memoryCurrentBytes": 790528,
+      "memoryStat": {
+        "anon": 258048,
+        "file": 8192,
+        "shmem": 0,
+        "kernel": 106496
+      },
+      "cpuUsec": {
+        "pool": 34829,
+        "daemon": 34829,
+        "sandboxes": 0
+      },
+      "oomKills": 0,
+      "pidsCurrent": 1,
+      "daemonRssBytes": 3018752,
+      "liveKernelSandboxes": 0,
+      "liveKernelSessions": 0,
+      "liveKernelFiniteRuns": 0,
+      "executingObserved": 0,
+      "systemManagerCpuSecondsOutsideSlice": 15.3,
+      "hostAvailableBytes": 15607570432
+    },
+    {
+      "monotonicNs": 1464957684232,
+      "memoryCurrentBytes": 790528,
+      "memoryStat": {
+        "anon": 258048,
+        "file": 8192,
+        "shmem": 0,
+        "kernel": 106496
+      },
+      "cpuUsec": {
+        "pool": 36917,
+        "daemon": 36917,
+        "sandboxes": 0
+      },
+      "oomKills": 0,
+      "pidsCurrent": 1,
+      "daemonRssBytes": 3018752,
+      "liveKernelSandboxes": 0,
+      "liveKernelSessions": 0,
+      "liveKernelFiniteRuns": 0,
+      "executingObserved": 0,
+      "systemManagerCpuSecondsOutsideSlice": 15.3,
+      "hostAvailableBytes": 15622553600
+    },
+    {
+      "monotonicNs": 1465958633863,
+      "memoryCurrentBytes": 790528,
+      "memoryStat": {
+        "anon": 258048,
+        "file": 8192,
+        "shmem": 0,
+        "kernel": 106496
+      },
+      "cpuUsec": {
+        "pool": 39547,
+        "daemon": 39547,
+        "sandboxes": 0
+      },
+      "oomKills": 0,
+      "pidsCurrent": 1,
+      "daemonRssBytes": 3018752,
+      "liveKernelSandboxes": 0,
+      "liveKernelSessions": 0,
+      "liveKernelFiniteRuns": 0,
+      "executingObserved": 0,
+      "systemManagerCpuSecondsOutsideSlice": 15.3,
+      "hostAvailableBytes": 15638507520
+    },
+    {
+      "monotonicNs": 1466960641197,
+      "memoryCurrentBytes": 786432,
+      "memoryStat": {
+        "anon": 258048,
+        "file": 8192,
+        "shmem": 0,
+        "kernel": 106496
+      },
+      "cpuUsec": {
+        "pool": 41872,
+        "daemon": 41872,
+        "sandboxes": 0
+      },
+      "oomKills": 0,
+      "pidsCurrent": 1,
+      "daemonRssBytes": 3018752,
+      "liveKernelSandboxes": 0,
+      "liveKernelSessions": 0,
+      "liveKernelFiniteRuns": 0,
+      "executingObserved": 0,
+      "systemManagerCpuSecondsOutsideSlice": 15.3,
+      "hostAvailableBytes": 15650734080
+    }
+  ],
+  "idleSessions": [
+    {
+      "count": 1,
+      "status": "COMPLETED",
+      "coldStartNs": [
+        99950130
+      ],
+      "samples": [
+        {
+          "monotonicNs": 1470064718667,
+          "memoryCurrentBytes": 4820992,
+          "memoryStat": {
+            "anon": 2076672,
+            "file": 16384,
+            "shmem": 0,
+            "kernel": 1089536
+          },
+          "cpuUsec": {
+            "pool": 88578,
+            "daemon": 68467,
+            "sandboxes": 20111
+          },
+          "oomKills": 0,
+          "pidsCurrent": 9,
+          "daemonRssBytes": 3194880,
+          "liveKernelSandboxes": 1,
+          "liveKernelSessions": 1,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 15.31,
+          "hostAvailableBytes": 15671218176
+        },
+        {
+          "monotonicNs": 1471066889832,
+          "memoryCurrentBytes": 4820992,
+          "memoryStat": {
+            "anon": 2060288,
+            "file": 16384,
+            "shmem": 0,
+            "kernel": 1073152
+          },
+          "cpuUsec": {
+            "pool": 91433,
+            "daemon": 71367,
+            "sandboxes": 20066
+          },
+          "oomKills": 0,
+          "pidsCurrent": 9,
+          "daemonRssBytes": 3194880,
+          "liveKernelSandboxes": 1,
+          "liveKernelSessions": 1,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 15.31,
+          "hostAvailableBytes": 15677239296
+        },
+        {
+          "monotonicNs": 1472068987682,
+          "memoryCurrentBytes": 4820992,
+          "memoryStat": {
+            "anon": 2060288,
+            "file": 16384,
+            "shmem": 0,
+            "kernel": 1073152
+          },
+          "cpuUsec": {
+            "pool": 94100,
+            "daemon": 73988,
+            "sandboxes": 20112
+          },
+          "oomKills": 0,
+          "pidsCurrent": 9,
+          "daemonRssBytes": 3194880,
+          "liveKernelSandboxes": 1,
+          "liveKernelSessions": 1,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 15.31,
+          "hostAvailableBytes": 15680086016
+        },
+        {
+          "monotonicNs": 1473070782672,
+          "memoryCurrentBytes": 4820992,
+          "memoryStat": {
+            "anon": 2060288,
+            "file": 16384,
+            "shmem": 0,
+            "kernel": 1073152
+          },
+          "cpuUsec": {
+            "pool": 96886,
+            "daemon": 76775,
+            "sandboxes": 20111
+          },
+          "oomKills": 0,
+          "pidsCurrent": 9,
+          "daemonRssBytes": 3194880,
+          "liveKernelSandboxes": 1,
+          "liveKernelSessions": 1,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 15.31,
+          "hostAvailableBytes": 15680086016
+        },
+        {
+          "monotonicNs": 1474072834250,
+          "memoryCurrentBytes": 4820992,
+          "memoryStat": {
+            "anon": 2060288,
+            "file": 16384,
+            "shmem": 0,
+            "kernel": 1073152
+          },
+          "cpuUsec": {
+            "pool": 99746,
+            "daemon": 79634,
+            "sandboxes": 20112
+          },
+          "oomKills": 0,
+          "pidsCurrent": 9,
+          "daemonRssBytes": 3194880,
+          "liveKernelSandboxes": 1,
+          "liveKernelSessions": 1,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 15.31,
+          "hostAvailableBytes": 15680086016
+        }
+      ],
+      "medianDeltaPerSession": {
+        "memoryCurrentBytes": 4030464.0,
+        "daemonRssBytes": 176128.0,
+        "pidsCurrent": 8.0,
+        "memoryStat": {
+          "anon": 1802240.0,
+          "file": 8192.0,
+          "shmem": 0.0,
+          "kernel": 966656.0
+        }
+      }
+    },
+    {
+      "count": 10,
+      "status": "COMPLETED",
+      "coldStartNs": [
+        93453168,
+        101476397,
+        101414164,
+        101404980,
+        101417711,
+        121750848,
+        132008725,
+        101469574,
+        121766301
+      ],
+      "samples": [
+        {
+          "monotonicNs": 1478056505465,
+          "memoryCurrentBytes": 30445568,
+          "memoryStat": {
+            "anon": 18251776,
+            "file": 90112,
+            "shmem": 0,
+            "kernel": 10047488
+          },
+          "cpuUsec": {
+            "pool": 464535,
+            "daemon": 264199,
+            "sandboxes": 200336
+          },
+          "oomKills": 0,
+          "pidsCurrent": 81,
+          "daemonRssBytes": 3497984,
+          "liveKernelSandboxes": 10,
+          "liveKernelSessions": 10,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 15.48,
+          "hostAvailableBytes": 15659704320
+        },
+        {
+          "monotonicNs": 1479059032407,
+          "memoryCurrentBytes": 30584832,
+          "memoryStat": {
+            "anon": 18251776,
+            "file": 90112,
+            "shmem": 0,
+            "kernel": 10051584
+          },
+          "cpuUsec": {
+            "pool": 472372,
+            "daemon": 272036,
+            "sandboxes": 200336
+          },
+          "oomKills": 0,
+          "pidsCurrent": 81,
+          "daemonRssBytes": 3497984,
+          "liveKernelSandboxes": 10,
+          "liveKernelSessions": 10,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 15.48,
+          "hostAvailableBytes": 15662051328
+        },
+        {
+          "monotonicNs": 1480061195158,
+          "memoryCurrentBytes": 30552064,
+          "memoryStat": {
+            "anon": 18251776,
+            "file": 90112,
+            "shmem": 0,
+            "kernel": 10051584
+          },
+          "cpuUsec": {
+            "pool": 479572,
+            "daemon": 279236,
+            "sandboxes": 200336
+          },
+          "oomKills": 0,
+          "pidsCurrent": 81,
+          "daemonRssBytes": 3497984,
+          "liveKernelSandboxes": 10,
+          "liveKernelSessions": 10,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 15.48,
+          "hostAvailableBytes": 15662051328
+        },
+        {
+          "monotonicNs": 1481063475790,
+          "memoryCurrentBytes": 30433280,
+          "memoryStat": {
+            "anon": 18251776,
+            "file": 90112,
+            "shmem": 0,
+            "kernel": 10047488
+          },
+          "cpuUsec": {
+            "pool": 486748,
+            "daemon": 286413,
+            "sandboxes": 200335
+          },
+          "oomKills": 0,
+          "pidsCurrent": 81,
+          "daemonRssBytes": 3497984,
+          "liveKernelSandboxes": 10,
+          "liveKernelSessions": 10,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 15.48,
+          "hostAvailableBytes": 15662051328
+        },
+        {
+          "monotonicNs": 1482066128166,
+          "memoryCurrentBytes": 30093312,
+          "memoryStat": {
+            "anon": 18251776,
+            "file": 90112,
+            "shmem": 0,
+            "kernel": 10047488
+          },
+          "cpuUsec": {
+            "pool": 494539,
+            "daemon": 294203,
+            "sandboxes": 200336
+          },
+          "oomKills": 0,
+          "pidsCurrent": 81,
+          "daemonRssBytes": 3497984,
+          "liveKernelSandboxes": 10,
+          "liveKernelSessions": 10,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 15.48,
+          "hostAvailableBytes": 15661850624
+        }
+      ],
+      "medianDeltaPerSession": {
+        "memoryCurrentBytes": 2965504.0,
+        "daemonRssBytes": 47923.2,
+        "pidsCurrent": 8.0,
+        "memoryStat": {
+          "anon": 1799372.8,
+          "file": 8192.0,
+          "shmem": 0.0,
+          "kernel": 994099.2
+        }
+      }
+    },
+    {
+      "count": 50,
+      "status": "COMPLETED",
+      "coldStartNs": [
+        109116822,
+        111564721,
+        81107156,
+        111578993,
+        111704889,
+        121765799,
+        131839681,
+        131964283,
+        111647421,
+        121824159,
+        111524171,
+        111568494,
+        111616285,
+        131901625,
+        131787261,
+        91238428,
+        111592248,
+        111536104,
+        111583770,
+        91397378,
+        91223850,
+        121626021,
+        131902481,
+        111770195,
+        131961889,
+        131979646,
+        112358718,
+        111529024,
+        111522622,
+        111626947,
+        111736860,
+        142100173,
+        131845485,
+        131877705,
+        111695074,
+        111750996,
+        121783620,
+        111713799,
+        91330214,
+        132013669
+      ],
+      "samples": [
+        {
+          "monotonicNs": 1489701873994,
+          "memoryCurrentBytes": 145375232,
+          "memoryStat": {
+            "anon": 92274688,
+            "file": 483328,
+            "shmem": 0,
+            "kernel": 51007488
+          },
+          "cpuUsec": {
+            "pool": 2452156,
+            "daemon": 1180163,
+            "sandboxes": 1271993
+          },
+          "oomKills": 0,
+          "pidsCurrent": 401,
+          "daemonRssBytes": 4878336,
+          "liveKernelSandboxes": 50,
+          "liveKernelSessions": 50,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 16.22,
+          "hostAvailableBytes": 15554146304
+        },
+        {
+          "monotonicNs": 1490706233610,
+          "memoryCurrentBytes": 145371136,
+          "memoryStat": {
+            "anon": 92274688,
+            "file": 483328,
+            "shmem": 0,
+            "kernel": 51003392
+          },
+          "cpuUsec": {
+            "pool": 2478539,
+            "daemon": 1206556,
+            "sandboxes": 1271983
+          },
+          "oomKills": 0,
+          "pidsCurrent": 401,
+          "daemonRssBytes": 4878336,
+          "liveKernelSandboxes": 50,
+          "liveKernelSessions": 50,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 16.22,
+          "hostAvailableBytes": 15554146304
+        },
+        {
+          "monotonicNs": 1491710576743,
+          "memoryCurrentBytes": 145371136,
+          "memoryStat": {
+            "anon": 92274688,
+            "file": 483328,
+            "shmem": 0,
+            "kernel": 51003392
+          },
+          "cpuUsec": {
+            "pool": 2504164,
+            "daemon": 1232171,
+            "sandboxes": 1271993
+          },
+          "oomKills": 0,
+          "pidsCurrent": 401,
+          "daemonRssBytes": 4878336,
+          "liveKernelSandboxes": 50,
+          "liveKernelSessions": 50,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 16.22,
+          "hostAvailableBytes": 15554310144
+        },
+        {
+          "monotonicNs": 1492715159263,
+          "memoryCurrentBytes": 145371136,
+          "memoryStat": {
+            "anon": 92274688,
+            "file": 483328,
+            "shmem": 0,
+            "kernel": 51007488
+          },
+          "cpuUsec": {
+            "pool": 2528949,
+            "daemon": 1256956,
+            "sandboxes": 1271993
+          },
+          "oomKills": 0,
+          "pidsCurrent": 401,
+          "daemonRssBytes": 4878336,
+          "liveKernelSandboxes": 50,
+          "liveKernelSessions": 50,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 16.22,
+          "hostAvailableBytes": 15554310144
+        },
+        {
+          "monotonicNs": 1493719000200,
+          "memoryCurrentBytes": 145285120,
+          "memoryStat": {
+            "anon": 92274688,
+            "file": 483328,
+            "shmem": 0,
+            "kernel": 51007488
+          },
+          "cpuUsec": {
+            "pool": 2555279,
+            "daemon": 1283287,
+            "sandboxes": 1271992
+          },
+          "oomKills": 0,
+          "pidsCurrent": 401,
+          "daemonRssBytes": 4878336,
+          "liveKernelSandboxes": 50,
+          "liveKernelSessions": 50,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 16.22,
+          "hostAvailableBytes": 15554318336
+        }
+      ],
+      "medianDeltaPerSession": {
+        "memoryCurrentBytes": 2891612.16,
+        "daemonRssBytes": 37191.68,
+        "pidsCurrent": 8.0,
+        "memoryStat": {
+          "anon": 1840332.8,
+          "file": 9502.72,
+          "shmem": 0.0,
+          "kernel": 1018019.84
+        }
+      }
+    }
+  ],
+  "idleCleanup": {
+    "result": "PASS",
+    "failures": []
+  },
+  "finiteRuns": [
+    {
+      "count": 1,
+      "status": "COMPLETED",
+      "baseline": [
+        {
+          "monotonicNs": 1504856034520,
+          "memoryCurrentBytes": 2330624,
+          "memoryStat": {
+            "anon": 294912,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 872448
+          },
+          "cpuUsec": {
+            "pool": 3799459,
+            "daemon": 2455727,
+            "sandboxes": 1343732
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3186688,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.1,
+          "hostAvailableBytes": 15677480960
+        },
+        {
+          "monotonicNs": 1505857661289,
+          "memoryCurrentBytes": 1835008,
+          "memoryStat": {
+            "anon": 282624,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 831488
+          },
+          "cpuUsec": {
+            "pool": 3801977,
+            "daemon": 2458244,
+            "sandboxes": 1343733
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3174400,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.1,
+          "hostAvailableBytes": 15680094208
+        },
+        {
+          "monotonicNs": 1506859579805,
+          "memoryCurrentBytes": 1830912,
+          "memoryStat": {
+            "anon": 282624,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 577536
+          },
+          "cpuUsec": {
+            "pool": 3804428,
+            "daemon": 2460696,
+            "sandboxes": 1343732
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3174400,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.1,
+          "hostAvailableBytes": 15680294912
+        },
+        {
+          "monotonicNs": 1507860663560,
+          "memoryCurrentBytes": 1830912,
+          "memoryStat": {
+            "anon": 282624,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 577536
+          },
+          "cpuUsec": {
+            "pool": 3806660,
+            "daemon": 2462928,
+            "sandboxes": 1343732
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3174400,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.1,
+          "hostAvailableBytes": 15680286720
+        },
+        {
+          "monotonicNs": 1508862640594,
+          "memoryCurrentBytes": 1830912,
+          "memoryStat": {
+            "anon": 282624,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 577536
+          },
+          "cpuUsec": {
+            "pool": 3808843,
+            "daemon": 2465111,
+            "sandboxes": 1343732
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3174400,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.1,
+          "hostAvailableBytes": 15680286720
+        }
+      ],
+      "samples": [
+        {
+          "monotonicNs": 1511920117823,
+          "memoryCurrentBytes": 4661248,
+          "memoryStat": {
+            "anon": 1679360,
+            "file": 81920,
+            "shmem": 0,
+            "kernel": 1466368
+          },
+          "cpuUsec": {
+            "pool": 3874450,
+            "daemon": 2510400,
+            "sandboxes": 1364050
+          },
+          "oomKills": 0,
+          "pidsCurrent": 8,
+          "daemonRssBytes": 3227648,
+          "liveKernelSandboxes": 1,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 1,
+          "executingObserved": 1,
+          "systemManagerCpuSecondsOutsideSlice": 17.12,
+          "hostAvailableBytes": 15678394368
+        },
+        {
+          "monotonicNs": 1512921105874,
+          "memoryCurrentBytes": 4542464,
+          "memoryStat": {
+            "anon": 1679360,
+            "file": 81920,
+            "shmem": 0,
+            "kernel": 1474560
+          },
+          "cpuUsec": {
+            "pool": 3891458,
+            "daemon": 2527408,
+            "sandboxes": 1364050
+          },
+          "oomKills": 0,
+          "pidsCurrent": 8,
+          "daemonRssBytes": 3227648,
+          "liveKernelSandboxes": 1,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 1,
+          "executingObserved": 1,
+          "systemManagerCpuSecondsOutsideSlice": 17.12,
+          "hostAvailableBytes": 15678636032
+        },
+        {
+          "monotonicNs": 1513922601137,
+          "memoryCurrentBytes": 4268032,
+          "memoryStat": {
+            "anon": 1679360,
+            "file": 81920,
+            "shmem": 0,
+            "kernel": 1458176
+          },
+          "cpuUsec": {
+            "pool": 3908841,
+            "daemon": 2544791,
+            "sandboxes": 1364050
+          },
+          "oomKills": 0,
+          "pidsCurrent": 8,
+          "daemonRssBytes": 3227648,
+          "liveKernelSandboxes": 1,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 1,
+          "executingObserved": 1,
+          "systemManagerCpuSecondsOutsideSlice": 17.12,
+          "hostAvailableBytes": 15678357504
+        },
+        {
+          "monotonicNs": 1514924300553,
+          "memoryCurrentBytes": 3973120,
+          "memoryStat": {
+            "anon": 1679360,
+            "file": 81920,
+            "shmem": 0,
+            "kernel": 1462272
+          },
+          "cpuUsec": {
+            "pool": 3926551,
+            "daemon": 2562501,
+            "sandboxes": 1364050
+          },
+          "oomKills": 0,
+          "pidsCurrent": 8,
+          "daemonRssBytes": 3227648,
+          "liveKernelSandboxes": 1,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 1,
+          "executingObserved": 1,
+          "systemManagerCpuSecondsOutsideSlice": 17.12,
+          "hostAvailableBytes": 15677784064
+        },
+        {
+          "monotonicNs": 1515925448458,
+          "memoryCurrentBytes": 4235264,
+          "memoryStat": {
+            "anon": 1679360,
+            "file": 81920,
+            "shmem": 0,
+            "kernel": 1466368
+          },
+          "cpuUsec": {
+            "pool": 3944030,
+            "daemon": 2579980,
+            "sandboxes": 1364050
+          },
+          "oomKills": 0,
+          "pidsCurrent": 8,
+          "daemonRssBytes": 3227648,
+          "liveKernelSandboxes": 1,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 1,
+          "executingObserved": 1,
+          "systemManagerCpuSecondsOutsideSlice": 17.12,
+          "hostAvailableBytes": 15677816832
+        }
+      ],
+      "medianDeltaPerRun": {
+        "memoryCurrentBytes": 2437120.0,
+        "daemonRssBytes": 53248.0,
+        "pidsCurrent": 7.0,
+        "memoryStat": {
+          "anon": 1396736.0,
+          "file": 8192.0,
+          "shmem": 0.0,
+          "kernel": 888832.0
+        }
+      },
+      "results": [
+        {
+          "id": "ffaee8ba-39d9-41bc-9311-76da37be2388",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1509867340300,
+          "outcome": "OK",
+          "elapsedNs": 30147470532,
+          "startedAbsoluteNs": 1509867376076,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "apiCleanup": {
+        "result": "PASS",
+        "failures": []
+      }
+    },
+    {
+      "count": 10,
+      "status": "COMPLETED",
+      "baseline": [
+        {
+          "monotonicNs": 1540058031558,
+          "memoryCurrentBytes": 1695744,
+          "memoryStat": {
+            "anon": 294912,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 606208
+          },
+          "cpuUsec": {
+            "pool": 4381918,
+            "daemon": 3016707,
+            "sandboxes": 1365211
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3186688,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.12,
+          "hostAvailableBytes": 15678664704
+        },
+        {
+          "monotonicNs": 1541059657419,
+          "memoryCurrentBytes": 1626112,
+          "memoryStat": {
+            "anon": 282624,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 577536
+          },
+          "cpuUsec": {
+            "pool": 4384037,
+            "daemon": 3018826,
+            "sandboxes": 1365211
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3174400,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.12,
+          "hostAvailableBytes": 15679954944
+        },
+        {
+          "monotonicNs": 1542061709167,
+          "memoryCurrentBytes": 1540096,
+          "memoryStat": {
+            "anon": 282624,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 569344
+          },
+          "cpuUsec": {
+            "pool": 4386202,
+            "daemon": 3020991,
+            "sandboxes": 1365211
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3174400,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.12,
+          "hostAvailableBytes": 15679954944
+        },
+        {
+          "monotonicNs": 1543063663144,
+          "memoryCurrentBytes": 1536000,
+          "memoryStat": {
+            "anon": 282624,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 569344
+          },
+          "cpuUsec": {
+            "pool": 4388549,
+            "daemon": 3023337,
+            "sandboxes": 1365212
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3174400,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.12,
+          "hostAvailableBytes": 15679954944
+        },
+        {
+          "monotonicNs": 1544065666451,
+          "memoryCurrentBytes": 1536000,
+          "memoryStat": {
+            "anon": 282624,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 565248
+          },
+          "cpuUsec": {
+            "pool": 4390810,
+            "daemon": 3025598,
+            "sandboxes": 1365212
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3174400,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.12,
+          "hostAvailableBytes": 15679954944
+        }
+      ],
+      "samples": [
+        {
+          "monotonicNs": 1547175200405,
+          "memoryCurrentBytes": 27013120,
+          "memoryStat": {
+            "anon": 14356480,
+            "file": 155648,
+            "shmem": 0,
+            "kernel": 9359360
+          },
+          "cpuUsec": {
+            "pool": 5175311,
+            "daemon": 3509663,
+            "sandboxes": 1665648
+          },
+          "oomKills": 0,
+          "pidsCurrent": 71,
+          "daemonRssBytes": 3559424,
+          "liveKernelSandboxes": 10,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 10,
+          "executingObserved": 10,
+          "systemManagerCpuSecondsOutsideSlice": 17.26,
+          "hostAvailableBytes": 15650316288
+        },
+        {
+          "monotonicNs": 1548177474859,
+          "memoryCurrentBytes": 26386432,
+          "memoryStat": {
+            "anon": 14356480,
+            "file": 155648,
+            "shmem": 0,
+            "kernel": 9428992
+          },
+          "cpuUsec": {
+            "pool": 5355976,
+            "daemon": 3690328,
+            "sandboxes": 1665648
+          },
+          "oomKills": 0,
+          "pidsCurrent": 71,
+          "daemonRssBytes": 3559424,
+          "liveKernelSandboxes": 10,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 10,
+          "executingObserved": 10,
+          "systemManagerCpuSecondsOutsideSlice": 17.26,
+          "hostAvailableBytes": 15641260032
+        },
+        {
+          "monotonicNs": 1549179563307,
+          "memoryCurrentBytes": 26484736,
+          "memoryStat": {
+            "anon": 14348288,
+            "file": 155648,
+            "shmem": 0,
+            "kernel": 9449472
+          },
+          "cpuUsec": {
+            "pool": 5533979,
+            "daemon": 3868579,
+            "sandboxes": 1665400
+          },
+          "oomKills": 0,
+          "pidsCurrent": 71,
+          "daemonRssBytes": 3559424,
+          "liveKernelSandboxes": 10,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 10,
+          "executingObserved": 10,
+          "systemManagerCpuSecondsOutsideSlice": 17.26,
+          "hostAvailableBytes": 15648636928
+        },
+        {
+          "monotonicNs": 1550181390963,
+          "memoryCurrentBytes": 26472448,
+          "memoryStat": {
+            "anon": 14381056,
+            "file": 155648,
+            "shmem": 0,
+            "kernel": 9363456
+          },
+          "cpuUsec": {
+            "pool": 5713957,
+            "daemon": 4048309,
+            "sandboxes": 1665648
+          },
+          "oomKills": 0,
+          "pidsCurrent": 71,
+          "daemonRssBytes": 3584000,
+          "liveKernelSandboxes": 10,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 10,
+          "executingObserved": 10,
+          "systemManagerCpuSecondsOutsideSlice": 17.26,
+          "hostAvailableBytes": 15640690688
+        },
+        {
+          "monotonicNs": 1551183617618,
+          "memoryCurrentBytes": 26083328,
+          "memoryStat": {
+            "anon": 14356480,
+            "file": 155648,
+            "shmem": 0,
+            "kernel": 9363456
+          },
+          "cpuUsec": {
+            "pool": 5894991,
+            "daemon": 4229343,
+            "sandboxes": 1665648
+          },
+          "oomKills": 0,
+          "pidsCurrent": 71,
+          "daemonRssBytes": 3559424,
+          "liveKernelSandboxes": 10,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 10,
+          "executingObserved": 10,
+          "systemManagerCpuSecondsOutsideSlice": 17.26,
+          "hostAvailableBytes": 15639724032
+        }
+      ],
+      "medianDeltaPerRun": {
+        "memoryCurrentBytes": 2493235.2,
+        "daemonRssBytes": 38502.4,
+        "pidsCurrent": 7.0,
+        "memoryStat": {
+          "anon": 1407385.6,
+          "file": 8192.0,
+          "shmem": 0.0,
+          "kernel": 879411.2
+        }
+      },
+      "results": [
+        {
+          "id": "8e49c66f-5939-446c-b304-5313c7c65a32",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1545070348892,
+          "outcome": "OK",
+          "elapsedNs": 30389411970,
+          "startedAbsoluteNs": 1545070379028,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "ba3d1aed-6030-446d-9845-f376ba90e98d",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1545070509141,
+          "outcome": "OK",
+          "elapsedNs": 30388817549,
+          "startedAbsoluteNs": 1545070525021,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "50a6b589-fecc-4819-9858-7c71033c634a",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1545070597586,
+          "outcome": "OK",
+          "elapsedNs": 30389036458,
+          "startedAbsoluteNs": 1545070611843,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "70681210-0ff9-45d3-a2b5-f02ae7c8842a",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1545070674520,
+          "outcome": "OK",
+          "elapsedNs": 30389032270,
+          "startedAbsoluteNs": 1545070687595,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "6b664f52-4312-4380-a440-bb9955e5abd9",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1545070746074,
+          "outcome": "OK",
+          "elapsedNs": 30388287076,
+          "startedAbsoluteNs": 1545070768697,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "4682c435-2a47-4e06-9c1c-d6a54b1b4252",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1545070835491,
+          "outcome": "OK",
+          "elapsedNs": 30377715757,
+          "startedAbsoluteNs": 1545070848846,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "2ff71d0a-a31d-4948-addb-d83f72f7beb6",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1545070912906,
+          "outcome": "OK",
+          "elapsedNs": 30355474072,
+          "startedAbsoluteNs": 1545070925640,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "cf386978-e582-4579-9f7e-e4345055fe7c",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1545070982947,
+          "outcome": "OK",
+          "elapsedNs": 30409088510,
+          "startedAbsoluteNs": 1545070994949,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "f24887a8-2d1c-4f0a-ae8c-83591f20f4bd",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1545071083886,
+          "outcome": "OK",
+          "elapsedNs": 30378229557,
+          "startedAbsoluteNs": 1545071099796,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "a0bc1f71-aeca-43be-8e8c-6b32d6954415",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1545071156662,
+          "outcome": "OK",
+          "elapsedNs": 30376950346,
+          "startedAbsoluteNs": 1545071169215,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "apiCleanup": {
+        "result": "PASS",
+        "failures": []
+      }
+    },
+    {
+      "count": 50,
+      "status": "COMPLETED",
+      "baseline": [
+        {
+          "monotonicNs": 1575523690408,
+          "memoryCurrentBytes": 1466368,
+          "memoryStat": {
+            "anon": 299008,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 696320
+          },
+          "cpuUsec": {
+            "pool": 10414651,
+            "daemon": 8736012,
+            "sandboxes": 1678639
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3190784,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.39,
+          "hostAvailableBytes": 15665586176
+        },
+        {
+          "monotonicNs": 1576524665823,
+          "memoryCurrentBytes": 1441792,
+          "memoryStat": {
+            "anon": 299008,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 696320
+          },
+          "cpuUsec": {
+            "pool": 10416949,
+            "daemon": 8738310,
+            "sandboxes": 1678639
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3178496,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.39,
+          "hostAvailableBytes": 15674023936
+        },
+        {
+          "monotonicNs": 1577526710624,
+          "memoryCurrentBytes": 1441792,
+          "memoryStat": {
+            "anon": 286720,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 655360
+          },
+          "cpuUsec": {
+            "pool": 10419367,
+            "daemon": 8740728,
+            "sandboxes": 1678639
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3178496,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.39,
+          "hostAvailableBytes": 15679143936
+        },
+        {
+          "monotonicNs": 1578528677769,
+          "memoryCurrentBytes": 1388544,
+          "memoryStat": {
+            "anon": 286720,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 655360
+          },
+          "cpuUsec": {
+            "pool": 10421627,
+            "daemon": 8742988,
+            "sandboxes": 1678639
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3178496,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.39,
+          "hostAvailableBytes": 15681302528
+        },
+        {
+          "monotonicNs": 1579530748535,
+          "memoryCurrentBytes": 1388544,
+          "memoryStat": {
+            "anon": 286720,
+            "file": 73728,
+            "shmem": 0,
+            "kernel": 655360
+          },
+          "cpuUsec": {
+            "pool": 10423857,
+            "daemon": 8745218,
+            "sandboxes": 1678639
+          },
+          "oomKills": 0,
+          "pidsCurrent": 1,
+          "daemonRssBytes": 3178496,
+          "liveKernelSandboxes": 0,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 0,
+          "executingObserved": 0,
+          "systemManagerCpuSecondsOutsideSlice": 17.39,
+          "hostAvailableBytes": 15681302528
+        }
+      ],
+      "samples": [
+        {
+          "monotonicNs": 1583026713754,
+          "memoryCurrentBytes": 121749504,
+          "memoryStat": {
+            "anon": 73748480,
+            "file": 483328,
+            "shmem": 0,
+            "kernel": 45445120
+          },
+          "cpuUsec": {
+            "pool": 14589267,
+            "daemon": 10444436,
+            "sandboxes": 4144831
+          },
+          "oomKills": 0,
+          "pidsCurrent": 351,
+          "daemonRssBytes": 5099520,
+          "liveKernelSandboxes": 50,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 50,
+          "executingObserved": 50,
+          "systemManagerCpuSecondsOutsideSlice": 18.07,
+          "hostAvailableBytes": 15480250368
+        },
+        {
+          "monotonicNs": 1584031400544,
+          "memoryCurrentBytes": 121528320,
+          "memoryStat": {
+            "anon": 73777152,
+            "file": 483328,
+            "shmem": 0,
+            "kernel": 45424640
+          },
+          "cpuUsec": {
+            "pool": 15267389,
+            "daemon": 11122168,
+            "sandboxes": 4145221
+          },
+          "oomKills": 0,
+          "pidsCurrent": 351,
+          "daemonRssBytes": 5111808,
+          "liveKernelSandboxes": 50,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 50,
+          "executingObserved": 50,
+          "systemManagerCpuSecondsOutsideSlice": 18.07,
+          "hostAvailableBytes": 15437459456
+        },
+        {
+          "monotonicNs": 1585035648091,
+          "memoryCurrentBytes": 121188352,
+          "memoryStat": {
+            "anon": 73760768,
+            "file": 483328,
+            "shmem": 0,
+            "kernel": 45604864
+          },
+          "cpuUsec": {
+            "pool": 15945316,
+            "daemon": 11800068,
+            "sandboxes": 4145248
+          },
+          "oomKills": 0,
+          "pidsCurrent": 351,
+          "daemonRssBytes": 5111808,
+          "liveKernelSandboxes": 50,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 50,
+          "executingObserved": 50,
+          "systemManagerCpuSecondsOutsideSlice": 18.07,
+          "hostAvailableBytes": 15416029184
+        },
+        {
+          "monotonicNs": 1586041258621,
+          "memoryCurrentBytes": 121352192,
+          "memoryStat": {
+            "anon": 73760768,
+            "file": 483328,
+            "shmem": 0,
+            "kernel": 45379584
+          },
+          "cpuUsec": {
+            "pool": 16627264,
+            "daemon": 12482017,
+            "sandboxes": 4145247
+          },
+          "oomKills": 0,
+          "pidsCurrent": 353,
+          "daemonRssBytes": 5115904,
+          "liveKernelSandboxes": 50,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 50,
+          "executingObserved": 50,
+          "systemManagerCpuSecondsOutsideSlice": 18.07,
+          "hostAvailableBytes": 15412817920
+        },
+        {
+          "monotonicNs": 1587048350677,
+          "memoryCurrentBytes": 121548800,
+          "memoryStat": {
+            "anon": 73834496,
+            "file": 483328,
+            "shmem": 0,
+            "kernel": 45645824
+          },
+          "cpuUsec": {
+            "pool": 17304438,
+            "daemon": 13159191,
+            "sandboxes": 4145247
+          },
+          "oomKills": 0,
+          "pidsCurrent": 351,
+          "daemonRssBytes": 5185536,
+          "liveKernelSandboxes": 50,
+          "liveKernelSessions": 0,
+          "liveKernelFiniteRuns": 50,
+          "executingObserved": 50,
+          "systemManagerCpuSecondsOutsideSlice": 18.07,
+          "hostAvailableBytes": 15403888640
+        }
+      ],
+      "medianDeltaPerRun": {
+        "memoryCurrentBytes": 2401730.56,
+        "daemonRssBytes": 38666.24,
+        "pidsCurrent": 7.0,
+        "memoryStat": {
+          "anon": 1469480.96,
+          "file": 8192.0,
+          "shmem": 0.0,
+          "kernel": 895795.2
+        }
+      },
+      "results": [
+        {
+          "id": "12995822-a7f8-4aad-98f4-534af0cfb3a0",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580535941455,
+          "outcome": "OK",
+          "elapsedNs": 30271692211,
+          "startedAbsoluteNs": 1580535968876,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "80129ac4-d229-4dae-beb5-b8fd429e336a",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580536126591,
+          "outcome": "OK",
+          "elapsedNs": 32126099386,
+          "startedAbsoluteNs": 1580536144665,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "f7153e93-ff07-4934-b0aa-42efe7e7882a",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580536214555,
+          "outcome": "OK",
+          "elapsedNs": 32169931755,
+          "startedAbsoluteNs": 1580536226798,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "3f724390-6a8d-4e68-9133-d3674c3e6daa",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580536285929,
+          "outcome": "OK",
+          "elapsedNs": 31957393554,
+          "startedAbsoluteNs": 1580536297350,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "e66e8bc3-1c6f-4a1d-97cb-af0d34ec281c",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580536355048,
+          "outcome": "OK",
+          "elapsedNs": 32170040097,
+          "startedAbsoluteNs": 1580536366650,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "d867cd33-cc1c-44ea-bc0e-8d4d6cddc393",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580536570361,
+          "outcome": "OK",
+          "elapsedNs": 31667328631,
+          "startedAbsoluteNs": 1580536583074,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "1d0d9d2d-e897-4a97-a7cb-75a38bf45d43",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580536642856,
+          "outcome": "OK",
+          "elapsedNs": 32055109741,
+          "startedAbsoluteNs": 1580536654037,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "5cc41bbb-34c1-42db-88a8-296fe3d781af",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580536709751,
+          "outcome": "OK",
+          "elapsedNs": 31513668995,
+          "startedAbsoluteNs": 1580536720091,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "296ccea5-4d53-4be5-963f-4053bf086839",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580536772809,
+          "outcome": "OK",
+          "elapsedNs": 32169296226,
+          "startedAbsoluteNs": 1580536782998,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "7a6ffe3a-ea12-49f0-b185-ff27947de580",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580536835446,
+          "outcome": "OK",
+          "elapsedNs": 32158496191,
+          "startedAbsoluteNs": 1580536845325,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "ba3d7def-66f2-44b0-9397-510b01111d32",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580536897773,
+          "outcome": "OK",
+          "elapsedNs": 31723674892,
+          "startedAbsoluteNs": 1580536907882,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "19ea559a-543b-4b85-b000-1088d3fc91ee",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580536966922,
+          "outcome": "OK",
+          "elapsedNs": 31489207307,
+          "startedAbsoluteNs": 1580536977703,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "af5043fe-481b-4cea-a768-1cb81465f6f4",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537059035,
+          "outcome": "OK",
+          "elapsedNs": 32124774078,
+          "startedAbsoluteNs": 1580537086646,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "ee85ee9a-07a0-4d9d-bfb5-e54d4ad353b2",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537144825,
+          "outcome": "OK",
+          "elapsedNs": 32053545756,
+          "startedAbsoluteNs": 1580537155445,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "3e9b269f-13f0-4eb3-b60b-5d302ee77446",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537210628,
+          "outcome": "OK",
+          "elapsedNs": 31654240683,
+          "startedAbsoluteNs": 1580537221047,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "942e346a-4b1d-466d-a04c-18ce6bdecc22",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537274547,
+          "outcome": "OK",
+          "elapsedNs": 32136229669,
+          "startedAbsoluteNs": 1580537284757,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "b18a748c-1270-4c6b-9ea6-b3eb93223382",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537336543,
+          "outcome": "OK",
+          "elapsedNs": 32054173048,
+          "startedAbsoluteNs": 1580537346272,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "8c8bc840-e6c8-4a34-a8d9-6d8becbe79bd",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537397878,
+          "outcome": "OK",
+          "elapsedNs": 32135814433,
+          "startedAbsoluteNs": 1580537407616,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "0b0bf12a-3fb9-4fe5-8f5c-365f1f727b63",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537459593,
+          "outcome": "OK",
+          "elapsedNs": 31830584351,
+          "startedAbsoluteNs": 1580537469262,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "d080a6ed-4c4e-4f26-ac3a-8768bedc479b",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537525958,
+          "outcome": "OK",
+          "elapsedNs": 32147035269,
+          "startedAbsoluteNs": 1580537536497,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "eba09e3d-4cd3-4bce-b125-841c936d5e32",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537588525,
+          "outcome": "OK",
+          "elapsedNs": 31905953477,
+          "startedAbsoluteNs": 1580537603693,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "de6a25b7-00fc-4116-8ffd-4290e2ae879e",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537659567,
+          "outcome": "OK",
+          "elapsedNs": 31759747891,
+          "startedAbsoluteNs": 1580537669977,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "391197ca-d410-49c2-852c-5460fd386511",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537724279,
+          "outcome": "OK",
+          "elapsedNs": 31378447458,
+          "startedAbsoluteNs": 1580537738104,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "1944bd59-3a36-416f-87f7-ab831ffd71a3",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537793277,
+          "outcome": "OK",
+          "elapsedNs": 32088513749,
+          "startedAbsoluteNs": 1580537803176,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "e0763718-d90f-4c17-b208-a09a8da24d70",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537917059,
+          "outcome": "OK",
+          "elapsedNs": 31943369848,
+          "startedAbsoluteNs": 1580537927579,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "1296d0e4-eb84-48cd-acca-af4115704e76",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580537982131,
+          "outcome": "OK",
+          "elapsedNs": 31236140563,
+          "startedAbsoluteNs": 1580537992260,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "be9e81c8-b68b-417a-b364-8db0917c9da6",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538069404,
+          "outcome": "OK",
+          "elapsedNs": 32027894617,
+          "startedAbsoluteNs": 1580538084091,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "b0b21497-73c2-418d-9030-02bf3c2ea782",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538140557,
+          "outcome": "OK",
+          "elapsedNs": 32178744836,
+          "startedAbsoluteNs": 1580538150656,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "11e1e632-e3cf-4dd6-baa1-5f1490d865ef",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538202463,
+          "outcome": "OK",
+          "elapsedNs": 31639196229,
+          "startedAbsoluteNs": 1580538212241,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "72e26b90-ab01-4721-8427-75e359de2d37",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538274958,
+          "outcome": "OK",
+          "elapsedNs": 32167488937,
+          "startedAbsoluteNs": 1580538285197,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "e820971e-2331-4a96-97a3-c35bae18fa2a",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538338417,
+          "outcome": "OK",
+          "elapsedNs": 31942206152,
+          "startedAbsoluteNs": 1580538348005,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "5d636412-e01b-44f4-8bc0-e9c5996a1731",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538400283,
+          "outcome": "OK",
+          "elapsedNs": 31878890896,
+          "startedAbsoluteNs": 1580538410281,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "a247d5e4-b286-425b-8d7c-c3e85f3a6708",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538462589,
+          "outcome": "OK",
+          "elapsedNs": 31664010866,
+          "startedAbsoluteNs": 1580538476655,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "5a207140-b7f8-4d08-9f82-cf80aee19cef",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538531999,
+          "outcome": "OK",
+          "elapsedNs": 31534747541,
+          "startedAbsoluteNs": 1580538541968,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "c6f37235-21c6-442d-a947-9c1afb222af8",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538594546,
+          "outcome": "OK",
+          "elapsedNs": 31409960623,
+          "startedAbsoluteNs": 1580538604534,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "123132ec-bd2c-4cfe-aea7-15bfbe668efc",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538656912,
+          "outcome": "OK",
+          "elapsedNs": 31529141279,
+          "startedAbsoluteNs": 1580538667302,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "13cce552-b41e-4326-ad5e-01eac7be8132",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538718708,
+          "outcome": "OK",
+          "elapsedNs": 31635887100,
+          "startedAbsoluteNs": 1580538732995,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "923a15a5-b0dd-4969-b0bb-342087b4a0ee",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538786565,
+          "outcome": "OK",
+          "elapsedNs": 31970124602,
+          "startedAbsoluteNs": 1580538796994,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "01a541e5-ec52-40dc-b46f-81d753ef7576",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538858600,
+          "outcome": "OK",
+          "elapsedNs": 30923666235,
+          "startedAbsoluteNs": 1580538869310,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "f49117c4-e7f6-4445-89b9-0e2871630c73",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580538925325,
+          "outcome": "OK",
+          "elapsedNs": 31634940680,
+          "startedAbsoluteNs": 1580538981139,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "b5833730-77b2-400b-81a1-7a143f81fc5d",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580539059485,
+          "outcome": "OK",
+          "elapsedNs": 31604315460,
+          "startedAbsoluteNs": 1580539074553,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "49abf986-60b1-4f1f-a9b2-72543d4754c2",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580539137341,
+          "outcome": "OK",
+          "elapsedNs": 32013450175,
+          "startedAbsoluteNs": 1580539148291,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "9f690257-11b6-411f-b6cd-919747f4f5ec",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580539201110,
+          "outcome": "OK",
+          "elapsedNs": 31705021369,
+          "startedAbsoluteNs": 1580539214425,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "ef497dcb-e252-423e-af6a-b5528126f8aa",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580539268707,
+          "outcome": "OK",
+          "elapsedNs": 32086473083,
+          "startedAbsoluteNs": 1580539278545,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "eadce25d-dfed-48ef-b58b-7e7e3465ae75",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580539330562,
+          "outcome": "OK",
+          "elapsedNs": 32052059928,
+          "startedAbsoluteNs": 1580539349387,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "a29b6cb8-3ed9-4057-a198-da8b1a24c60a",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580539409199,
+          "outcome": "OK",
+          "elapsedNs": 32110175228,
+          "startedAbsoluteNs": 1580539419829,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "2df8c0f7-9ea3-4063-9243-7a51b366af39",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580539476024,
+          "outcome": "OK",
+          "elapsedNs": 31532849493,
+          "startedAbsoluteNs": 1580539486223,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "c65bd2ad-d9b4-4b20-b9ce-d76bd6319ada",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580539542258,
+          "outcome": "OK",
+          "elapsedNs": 32177149102,
+          "startedAbsoluteNs": 1580539552517,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "328cce13-b7e9-41c4-b8c4-3c9133577296",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580539619533,
+          "outcome": "OK",
+          "elapsedNs": 31333169979,
+          "startedAbsoluteNs": 1580539629511,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "id": "426d6921-0603-48af-a7c2-abe412ef8b43",
+          "session": null,
+          "kind": "finite",
+          "createdAbsoluteNs": 1580539680547,
+          "outcome": "OK",
+          "elapsedNs": 32086998235,
+          "startedAbsoluteNs": 1580539690064,
+          "state": "succeeded",
+          "exitCode": 0,
+          "code": null,
+          "stdout": "",
+          "stderr": ""
+        }
+      ],
+      "apiCleanup": {
+        "result": "PASS",
+        "failures": []
+      }
+    }
+  ],
+  "finished": "2026-11-01T23:54:05.780649+00:00"
+}

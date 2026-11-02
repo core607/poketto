@@ -1,0 +1,1186 @@
+{
+  "schema": 1,
+  "kind": "sandcrab-cold-start",
+  "started": "2026-11-02T00:50:34.462778+00:00",
+  "sourceCommit": "6481ea1b8d3aca64c54529c4fdd9c11aa2755aa0",
+  "sourceDirty": false,
+  "sourceSha256": {
+    "page_cache.py": "db994b64f42bf6dad5d1724b1badc722440e1c6d96a4bf2a10f5f1422704c9e8",
+    "test_footprint.py": "dd7aaa0832130306f266c021da30926685543e4de6a290deb0ad99748ce47134",
+    "test_cold_start.py": "ef569b0749b7ef48e73c2a3cfdccb0b1fdede4ce1fef279dd457fcde16069dbe",
+    "test_scoring.py": "68da8da44c9cd9576aa28c4b00fa0373009b4cc112951a8669c5248f1df6b1ad",
+    "metrics.py": "83004cf4be8e9d2de84f9f0e231a88ee86fb612ba6fe19a5cd0d968dc0d422b8",
+    "workload.py": "b7e315cdbfe4b222e41c3025e3e1c700cbb599689e505991f52a0cc0f4f1ccef",
+    "footprint.py": "39816997dd4438d2c771be50d62f218d56b7ef07a5bef912c072b022855bffee",
+    "test_engine.py": "05633ed8e050237695e1939589dab845b414d41b27974619fdd01af88e2d5b7d",
+    "protocol.py": "640bd23e0e6c2aba551ec1414f1f2c4fd7db782d9df491c49815fe27baf2b787",
+    "test_density.py": "6ea72a3003daf5b9883f4f15e087a7d8a04ff0ec75d5f66c04589b53c8d2f9f9",
+    "engine.py": "644572b2426058524fb006534b7a67359277ef9078df6aa14a234561516f5c5b",
+    "host.py": "8bff7b5f2964ce2184368676e7324fee64678b808d74313a3ba2c3a64f90852c",
+    "test_page_cache.py": "4bb1fcfa4e43e73e052ba3c9a8db1933cf6d0c6cd2134c8370043d8202423b8a",
+    "cold_start.py": "e3f32f8ea23e1297896fa667b2dda6d369552a228b9667fa15b2df789e782f32",
+    "test_workload.py": "af0c58334562aa987b3442e92524eec3f3d8a5e3b43c9b60da524c510953e1ec",
+    "test_client.py": "20a12380b397e60b1c62a5111e9e4bfd560df40527d091bcef636013548cef59",
+    "scoring.py": "48b5f42df8a9e3eec81a5fb50d381effc699935037c40e6dca6922a59a8f9cfb",
+    "density.py": "ee4e9f7dec53e7010a993efa531c7d4e4ca6c78dbf168032de8eaf529376a8e7",
+    "client.py": "4564eecf46d694377a9446812b1f61e2f92836cf881b684ae3f5aa5fc6ef92d5"
+  },
+  "scope": "Traced persistent-session startup, diagnostic timing with observer overhead. Use density coldStartNs for untraced latency distributions. No model or private content.",
+  "parameters": {
+    "trials": 3
+  },
+  "measurementStatus": "COMPLETED",
+  "apiCleanup": {
+    "result": "PASS",
+    "failures": []
+  },
+  "hostCleanup": "PASS",
+  "modelTokens": 0,
+  "containsProductionContent": false,
+  "fixture": {
+    "scope": "Independent native benchmark fixture; no application, model or private content",
+    "binarySha256": "db8b81132e7a3cc71c43c6c39e02e77f1cc013e66aa5bacc79804113fc48f791",
+    "probeSha256": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
+    "checks": [],
+    "cleanup": "PASS",
+    "preflight": {
+      "memory": {
+        "MemTotal": 16760344576,
+        "MemAvailable": 15535247360
+      },
+      "freeDiskBytes": 91295068160,
+      "otherLoadControllers": 0,
+      "logicalCpuCount": 4,
+      "controllerCpuAffinityCount": 4
+    },
+    "requestedMemoryBytes": 8000000000,
+    "configuredSandboxCeiling": 512,
+    "storagePoolBytes": 8589934592,
+    "configSha256": "efc4b941c0b2f8bdbc4c2fd75584567855fdbaea7a844c3eccb787dc511bc33b",
+    "kernel": "7.0.0-1017-azure",
+    "operatingSystem": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+    "fixtureSourceSha256": "8bff7b5f2964ce2184368676e7324fee64678b808d74313a3ba2c3a64f90852c",
+    "effectiveLimits": {
+      "memory.max": 8000000000,
+      "memory.swap.max": 0,
+      "pids.max": 8192,
+      "cpu.max": [
+        200000,
+        100000
+      ]
+    },
+    "resourceAncestors": [
+      {
+        "group": "sandcrab.slice/sandcrab-probe.slice/sandcrab-probe-b8907e70bb.slice",
+        "limits": {
+          "memory.max": "8000000000",
+          "cpu.max": "200000 100000",
+          "pids.max": "8192"
+        }
+      },
+      {
+        "group": "sandcrab.slice/sandcrab-probe.slice",
+        "limits": {
+          "memory.max": "max",
+          "cpu.max": "max 100000",
+          "pids.max": "max"
+        }
+      },
+      {
+        "group": "sandcrab.slice",
+        "limits": {
+          "memory.max": "max",
+          "cpu.max": "max 100000",
+          "pids.max": "max",
+          "cpuset.cpus.effective": "0-3"
+        }
+      },
+      {
+        "group": ".",
+        "limits": {
+          "cpuset.cpus.effective": "0-3"
+        }
+      }
+    ],
+    "binaryBytes": 4125600
+  },
+  "trials": [
+    {
+      "status": "COMPLETE",
+      "submitBootNs": 4995014490251,
+      "readyBootNs": 4995097658638,
+      "session": "22dfd1c4-4b22-4a94-b768-223085b2e8e2",
+      "apiElapsedMonotonicNs": 83132873,
+      "sessionCgroupId": 135448,
+      "timeline": {
+        "status": "COMPLETE",
+        "missing": [],
+        "nanosecondsFromSubmit": {
+          "apiSubmit": 0,
+          "apiReadyObserved": 83168387,
+          "dbusClientExec": 2486568,
+          "sessionSliceCreated": 6298494,
+          "systemdRunExec": 51689358,
+          "bwrapSandboxExec": 72985897,
+          "bashExec": 77756872
+        },
+        "events": [
+          {
+            "bootNs": 4995016976819,
+            "event": "exec",
+            "pid": 810581,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/busctl"
+          },
+          {
+            "bootNs": 4995020581333,
+            "event": "exit",
+            "pid": 810581,
+            "cgroupId": 135346
+          },
+          {
+            "bootNs": 4995020788745,
+            "event": "cgroup-created",
+            "cgroupId": 135448
+          },
+          {
+            "bootNs": 4995041229398,
+            "event": "exec",
+            "pid": 810584,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/systemctl"
+          },
+          {
+            "bootNs": 4995044215689,
+            "event": "exit",
+            "pid": 810584,
+            "cgroupId": 135346
+          },
+          {
+            "bootNs": 4995064805195,
+            "event": "exec",
+            "pid": 810587,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/mount"
+          },
+          {
+            "bootNs": 4995065575348,
+            "event": "exit",
+            "pid": 810587,
+            "cgroupId": 135346
+          },
+          {
+            "bootNs": 4995066179609,
+            "event": "exec",
+            "pid": 810588,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/systemd-run"
+          },
+          {
+            "bootNs": 4995070602214,
+            "event": "cgroup-created",
+            "cgroupId": 135499
+          },
+          {
+            "bootNs": 4995080347335,
+            "event": "exec",
+            "pid": 810590,
+            "cgroupId": 135499,
+            "filename": "/usr/bin/env"
+          },
+          {
+            "bootNs": 4995080947586,
+            "event": "exec",
+            "pid": 810590,
+            "cgroupId": 135499,
+            "filename": "/var/lib/sandcrab-native-hg5px7lz/sandcrab"
+          },
+          {
+            "bootNs": 4995082132249,
+            "event": "exec",
+            "pid": 810592,
+            "cgroupId": 135499,
+            "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 4995082532663,
+            "event": "exit",
+            "pid": 810592,
+            "cgroupId": 135499
+          },
+          {
+            "bootNs": 4995087476148,
+            "event": "exec",
+            "pid": 810590,
+            "cgroupId": 135499,
+            "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 4995091512423,
+            "event": "exec",
+            "pid": 810596,
+            "cgroupId": 135499,
+            "filename": "/var/lib/sandcrab-density/tools/node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp"
+          },
+          {
+            "bootNs": 4995091934460,
+            "event": "exec",
+            "pid": 810598,
+            "cgroupId": 135499,
+            "filename": "/sandcrab-driver"
+          },
+          {
+            "bootNs": 4995092247123,
+            "event": "exec",
+            "pid": 810599,
+            "cgroupId": 135499,
+            "filename": "/bin/bash"
+          }
+        ]
+      }
+    },
+    {
+      "status": "COMPLETE",
+      "submitBootNs": 4995301045852,
+      "readyBootNs": 4995391395391,
+      "session": "edc43bba-cf0f-4025-97e6-d4a919a49b92",
+      "apiElapsedMonotonicNs": 90322118,
+      "sessionCgroupId": 135550,
+      "timeline": {
+        "status": "COMPLETE",
+        "missing": [],
+        "nanosecondsFromSubmit": {
+          "apiSubmit": 0,
+          "apiReadyObserved": 90349539,
+          "dbusClientExec": 9688695,
+          "sessionSliceCreated": 13183535,
+          "systemdRunExec": 58393865,
+          "bwrapSandboxExec": 81718694,
+          "bashExec": 86444818
+        },
+        "events": [
+          {
+            "bootNs": 4995310734547,
+            "event": "exec",
+            "pid": 810631,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/busctl"
+          },
+          {
+            "bootNs": 4995314080066,
+            "event": "exit",
+            "pid": 810631,
+            "cgroupId": 135346
+          },
+          {
+            "bootNs": 4995314229387,
+            "event": "cgroup-created",
+            "cgroupId": 135550
+          },
+          {
+            "bootNs": 4995334662247,
+            "event": "exec",
+            "pid": 810634,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/systemctl"
+          },
+          {
+            "bootNs": 4995337525887,
+            "event": "exit",
+            "pid": 810634,
+            "cgroupId": 135346
+          },
+          {
+            "bootNs": 4995358131859,
+            "event": "exec",
+            "pid": 810637,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/mount"
+          },
+          {
+            "bootNs": 4995358883844,
+            "event": "exit",
+            "pid": 810637,
+            "cgroupId": 135346
+          },
+          {
+            "bootNs": 4995359439717,
+            "event": "exec",
+            "pid": 810638,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/systemd-run"
+          },
+          {
+            "bootNs": 4995363846267,
+            "event": "cgroup-created",
+            "cgroupId": 135601
+          },
+          {
+            "bootNs": 4995375717692,
+            "event": "exec",
+            "pid": 810640,
+            "cgroupId": 135601,
+            "filename": "/usr/bin/env"
+          },
+          {
+            "bootNs": 4995376282374,
+            "event": "exec",
+            "pid": 810640,
+            "cgroupId": 135601,
+            "filename": "/var/lib/sandcrab-native-hg5px7lz/sandcrab"
+          },
+          {
+            "bootNs": 4995377455696,
+            "event": "exec",
+            "pid": 810642,
+            "cgroupId": 135601,
+            "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 4995377845985,
+            "event": "exit",
+            "pid": 810642,
+            "cgroupId": 135601
+          },
+          {
+            "bootNs": 4995382764546,
+            "event": "exec",
+            "pid": 810640,
+            "cgroupId": 135601,
+            "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 4995386720562,
+            "event": "exec",
+            "pid": 810646,
+            "cgroupId": 135601,
+            "filename": "/var/lib/sandcrab-density/tools/node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp"
+          },
+          {
+            "bootNs": 4995387184112,
+            "event": "exec",
+            "pid": 810648,
+            "cgroupId": 135601,
+            "filename": "/sandcrab-driver"
+          },
+          {
+            "bootNs": 4995387490670,
+            "event": "exec",
+            "pid": 810649,
+            "cgroupId": 135601,
+            "filename": "/bin/bash"
+          }
+        ]
+      }
+    },
+    {
+      "status": "COMPLETE",
+      "submitBootNs": 4995574175112,
+      "readyBootNs": 4995664274574,
+      "session": "e0eb0b63-7b33-48e4-8653-1ed8d115cc6c",
+      "apiElapsedMonotonicNs": 90075787,
+      "sessionCgroupId": 135652,
+      "timeline": {
+        "status": "COMPLETE",
+        "missing": [],
+        "nanosecondsFromSubmit": {
+          "apiSubmit": 0,
+          "apiReadyObserved": 90099462,
+          "dbusClientExec": 9366173,
+          "sessionSliceCreated": 12203966,
+          "systemdRunExec": 57174665,
+          "bwrapSandboxExec": 76987134,
+          "bashExec": 81624032
+        },
+        "events": [
+          {
+            "bootNs": 4995583541285,
+            "event": "exec",
+            "pid": 810679,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/busctl"
+          },
+          {
+            "bootNs": 4995586269979,
+            "event": "exit",
+            "pid": 810679,
+            "cgroupId": 135346
+          },
+          {
+            "bootNs": 4995586379078,
+            "event": "cgroup-created",
+            "cgroupId": 135652
+          },
+          {
+            "bootNs": 4995606807281,
+            "event": "exec",
+            "pid": 810682,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/systemctl"
+          },
+          {
+            "bootNs": 4995609438542,
+            "event": "exit",
+            "pid": 810682,
+            "cgroupId": 135346
+          },
+          {
+            "bootNs": 4995630062535,
+            "event": "exec",
+            "pid": 810685,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/mount"
+          },
+          {
+            "bootNs": 4995630743372,
+            "event": "exit",
+            "pid": 810685,
+            "cgroupId": 135346
+          },
+          {
+            "bootNs": 4995631349777,
+            "event": "exec",
+            "pid": 810686,
+            "cgroupId": 135346,
+            "filename": "/usr/bin/systemd-run"
+          },
+          {
+            "bootNs": 4995634637599,
+            "event": "cgroup-created",
+            "cgroupId": 135703
+          },
+          {
+            "bootNs": 4995644142713,
+            "event": "exec",
+            "pid": 810688,
+            "cgroupId": 135703,
+            "filename": "/usr/bin/env"
+          },
+          {
+            "bootNs": 4995644690239,
+            "event": "exec",
+            "pid": 810688,
+            "cgroupId": 135703,
+            "filename": "/var/lib/sandcrab-native-hg5px7lz/sandcrab"
+          },
+          {
+            "bootNs": 4995645818386,
+            "event": "exec",
+            "pid": 810690,
+            "cgroupId": 135703,
+            "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 4995646265270,
+            "event": "exit",
+            "pid": 810690,
+            "cgroupId": 135703
+          },
+          {
+            "bootNs": 4995651162246,
+            "event": "exec",
+            "pid": 810688,
+            "cgroupId": 135703,
+            "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 4995655072838,
+            "event": "exec",
+            "pid": 810694,
+            "cgroupId": 135703,
+            "filename": "/var/lib/sandcrab-density/tools/node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp"
+          },
+          {
+            "bootNs": 4995655500803,
+            "event": "exec",
+            "pid": 810696,
+            "cgroupId": 135703,
+            "filename": "/sandcrab-driver"
+          },
+          {
+            "bootNs": 4995655799144,
+            "event": "exec",
+            "pid": 810697,
+            "cgroupId": 135703,
+            "filename": "/bin/bash"
+          }
+        ]
+      }
+    }
+  ],
+  "tracer": {
+    "status": "PASS",
+    "processExitCode": 0,
+    "forcedKill": false,
+    "errors": [],
+    "diagnostic": "",
+    "clock": "CLOCK_BOOTTIME",
+    "version": "bpftrace v0.20.2",
+    "resourceLimits": {
+      "memoryBytes": 536870912,
+      "swapBytes": 0,
+      "tasks": 128,
+      "cpuQuotaPercent": 100,
+      "runtimeSeconds": 120,
+      "insideMeasuredSlice": true
+    },
+    "sourceSha256": "eae3c04cd709190458eb1b66764d2c0896a1fae78ca5be8f9a9ac8e20b1ff381",
+    "events": [
+      {
+        "bootNs": 4995016976819,
+        "event": "exec",
+        "pid": 810581,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/busctl"
+      },
+      {
+        "bootNs": 4995020581333,
+        "event": "exit",
+        "pid": 810581,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995020788745,
+        "event": "cgroup-created",
+        "cgroupId": 135448
+      },
+      {
+        "bootNs": 4995041229398,
+        "event": "exec",
+        "pid": 810584,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995044215689,
+        "event": "exit",
+        "pid": 810584,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995064805195,
+        "event": "exec",
+        "pid": 810587,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/mount"
+      },
+      {
+        "bootNs": 4995065575348,
+        "event": "exit",
+        "pid": 810587,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995066179609,
+        "event": "exec",
+        "pid": 810588,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemd-run"
+      },
+      {
+        "bootNs": 4995070602214,
+        "event": "cgroup-created",
+        "cgroupId": 135499
+      },
+      {
+        "bootNs": 4995080347335,
+        "event": "exec",
+        "pid": 810590,
+        "cgroupId": 135499,
+        "filename": "/usr/bin/env"
+      },
+      {
+        "bootNs": 4995080947586,
+        "event": "exec",
+        "pid": 810590,
+        "cgroupId": 135499,
+        "filename": "/var/lib/sandcrab-native-hg5px7lz/sandcrab"
+      },
+      {
+        "bootNs": 4995082132249,
+        "event": "exec",
+        "pid": 810592,
+        "cgroupId": 135499,
+        "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 4995082532663,
+        "event": "exit",
+        "pid": 810592,
+        "cgroupId": 135499
+      },
+      {
+        "bootNs": 4995087476148,
+        "event": "exec",
+        "pid": 810590,
+        "cgroupId": 135499,
+        "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 4995091512423,
+        "event": "exec",
+        "pid": 810596,
+        "cgroupId": 135499,
+        "filename": "/var/lib/sandcrab-density/tools/node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp"
+      },
+      {
+        "bootNs": 4995091934460,
+        "event": "exec",
+        "pid": 810598,
+        "cgroupId": 135499,
+        "filename": "/sandcrab-driver"
+      },
+      {
+        "bootNs": 4995092247123,
+        "event": "exec",
+        "pid": 810599,
+        "cgroupId": 135499,
+        "filename": "/bin/bash"
+      },
+      {
+        "bootNs": 4995118375507,
+        "event": "exec",
+        "pid": 810603,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995120851624,
+        "event": "exit",
+        "pid": 810590,
+        "cgroupId": 135499
+      },
+      {
+        "bootNs": 4995120953782,
+        "event": "exit",
+        "pid": 810596,
+        "cgroupId": 135499
+      },
+      {
+        "bootNs": 4995121026398,
+        "event": "exit",
+        "pid": 810595,
+        "cgroupId": 135499
+      },
+      {
+        "bootNs": 4995121119504,
+        "event": "exit",
+        "pid": 810597,
+        "cgroupId": 135499
+      },
+      {
+        "bootNs": 4995121200415,
+        "event": "exit",
+        "pid": 810599,
+        "cgroupId": 135499
+      },
+      {
+        "bootNs": 4995121334743,
+        "event": "exit",
+        "pid": 810603,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995122033307,
+        "event": "exit",
+        "pid": 810598,
+        "cgroupId": 135499
+      },
+      {
+        "bootNs": 4995125589429,
+        "event": "exit",
+        "pid": 810588,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995192108777,
+        "event": "exec",
+        "pid": 810614,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995195548051,
+        "event": "exit",
+        "pid": 810614,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995216156892,
+        "event": "exec",
+        "pid": 810617,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995219408330,
+        "event": "exit",
+        "pid": 810617,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995240052808,
+        "event": "exec",
+        "pid": 810621,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995242381062,
+        "event": "exit",
+        "pid": 810621,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995263073774,
+        "event": "exec",
+        "pid": 810624,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/umount"
+      },
+      {
+        "bootNs": 4995264709383,
+        "event": "exit",
+        "pid": 810624,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995310734547,
+        "event": "exec",
+        "pid": 810631,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/busctl"
+      },
+      {
+        "bootNs": 4995314080066,
+        "event": "exit",
+        "pid": 810631,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995314229387,
+        "event": "cgroup-created",
+        "cgroupId": 135550
+      },
+      {
+        "bootNs": 4995334662247,
+        "event": "exec",
+        "pid": 810634,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995337525887,
+        "event": "exit",
+        "pid": 810634,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995358131859,
+        "event": "exec",
+        "pid": 810637,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/mount"
+      },
+      {
+        "bootNs": 4995358883844,
+        "event": "exit",
+        "pid": 810637,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995359439717,
+        "event": "exec",
+        "pid": 810638,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemd-run"
+      },
+      {
+        "bootNs": 4995363846267,
+        "event": "cgroup-created",
+        "cgroupId": 135601
+      },
+      {
+        "bootNs": 4995375717692,
+        "event": "exec",
+        "pid": 810640,
+        "cgroupId": 135601,
+        "filename": "/usr/bin/env"
+      },
+      {
+        "bootNs": 4995376282374,
+        "event": "exec",
+        "pid": 810640,
+        "cgroupId": 135601,
+        "filename": "/var/lib/sandcrab-native-hg5px7lz/sandcrab"
+      },
+      {
+        "bootNs": 4995377455696,
+        "event": "exec",
+        "pid": 810642,
+        "cgroupId": 135601,
+        "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 4995377845985,
+        "event": "exit",
+        "pid": 810642,
+        "cgroupId": 135601
+      },
+      {
+        "bootNs": 4995382764546,
+        "event": "exec",
+        "pid": 810640,
+        "cgroupId": 135601,
+        "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 4995386720562,
+        "event": "exec",
+        "pid": 810646,
+        "cgroupId": 135601,
+        "filename": "/var/lib/sandcrab-density/tools/node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp"
+      },
+      {
+        "bootNs": 4995387184112,
+        "event": "exec",
+        "pid": 810648,
+        "cgroupId": 135601,
+        "filename": "/sandcrab-driver"
+      },
+      {
+        "bootNs": 4995387490670,
+        "event": "exec",
+        "pid": 810649,
+        "cgroupId": 135601,
+        "filename": "/bin/bash"
+      },
+      {
+        "bootNs": 4995413574812,
+        "event": "exec",
+        "pid": 810653,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995415763074,
+        "event": "exit",
+        "pid": 810640,
+        "cgroupId": 135601
+      },
+      {
+        "bootNs": 4995415820206,
+        "event": "exit",
+        "pid": 810645,
+        "cgroupId": 135601
+      },
+      {
+        "bootNs": 4995415897152,
+        "event": "exit",
+        "pid": 810646,
+        "cgroupId": 135601
+      },
+      {
+        "bootNs": 4995416075315,
+        "event": "exit",
+        "pid": 810653,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995416150114,
+        "event": "exit",
+        "pid": 810648,
+        "cgroupId": 135601
+      },
+      {
+        "bootNs": 4995416189639,
+        "event": "exit",
+        "pid": 810647,
+        "cgroupId": 135601
+      },
+      {
+        "bootNs": 4995416246244,
+        "event": "exit",
+        "pid": 810649,
+        "cgroupId": 135601
+      },
+      {
+        "bootNs": 4995419865985,
+        "event": "exit",
+        "pid": 810638,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995486638911,
+        "event": "exec",
+        "pid": 810664,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995489195029,
+        "event": "exit",
+        "pid": 810664,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995509665637,
+        "event": "exec",
+        "pid": 810667,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995512502191,
+        "event": "exit",
+        "pid": 810667,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995532983115,
+        "event": "exec",
+        "pid": 810671,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995535187541,
+        "event": "exit",
+        "pid": 810671,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995555751378,
+        "event": "exec",
+        "pid": 810674,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/umount"
+      },
+      {
+        "bootNs": 4995556437914,
+        "event": "exit",
+        "pid": 810674,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995583541285,
+        "event": "exec",
+        "pid": 810679,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/busctl"
+      },
+      {
+        "bootNs": 4995586269979,
+        "event": "exit",
+        "pid": 810679,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995586379078,
+        "event": "cgroup-created",
+        "cgroupId": 135652
+      },
+      {
+        "bootNs": 4995606807281,
+        "event": "exec",
+        "pid": 810682,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995609438542,
+        "event": "exit",
+        "pid": 810682,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995630062535,
+        "event": "exec",
+        "pid": 810685,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/mount"
+      },
+      {
+        "bootNs": 4995630743372,
+        "event": "exit",
+        "pid": 810685,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995631349777,
+        "event": "exec",
+        "pid": 810686,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemd-run"
+      },
+      {
+        "bootNs": 4995634637599,
+        "event": "cgroup-created",
+        "cgroupId": 135703
+      },
+      {
+        "bootNs": 4995644142713,
+        "event": "exec",
+        "pid": 810688,
+        "cgroupId": 135703,
+        "filename": "/usr/bin/env"
+      },
+      {
+        "bootNs": 4995644690239,
+        "event": "exec",
+        "pid": 810688,
+        "cgroupId": 135703,
+        "filename": "/var/lib/sandcrab-native-hg5px7lz/sandcrab"
+      },
+      {
+        "bootNs": 4995645818386,
+        "event": "exec",
+        "pid": 810690,
+        "cgroupId": 135703,
+        "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 4995646265270,
+        "event": "exit",
+        "pid": 810690,
+        "cgroupId": 135703
+      },
+      {
+        "bootNs": 4995651162246,
+        "event": "exec",
+        "pid": 810688,
+        "cgroupId": 135703,
+        "filename": "/var/lib/sandcrab-density/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 4995655072838,
+        "event": "exec",
+        "pid": 810694,
+        "cgroupId": 135703,
+        "filename": "/var/lib/sandcrab-density/tools/node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp"
+      },
+      {
+        "bootNs": 4995655500803,
+        "event": "exec",
+        "pid": 810696,
+        "cgroupId": 135703,
+        "filename": "/sandcrab-driver"
+      },
+      {
+        "bootNs": 4995655799144,
+        "event": "exec",
+        "pid": 810697,
+        "cgroupId": 135703,
+        "filename": "/bin/bash"
+      },
+      {
+        "bootNs": 4995706932488,
+        "event": "exec",
+        "pid": 810703,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995709148082,
+        "event": "exit",
+        "pid": 810688,
+        "cgroupId": 135703
+      },
+      {
+        "bootNs": 4995709239113,
+        "event": "exit",
+        "pid": 810692,
+        "cgroupId": 135703
+      },
+      {
+        "bootNs": 4995709334723,
+        "event": "exit",
+        "pid": 810695,
+        "cgroupId": 135703
+      },
+      {
+        "bootNs": 4995709379977,
+        "event": "exit",
+        "pid": 810696,
+        "cgroupId": 135703
+      },
+      {
+        "bootNs": 4995709408725,
+        "event": "exit",
+        "pid": 810697,
+        "cgroupId": 135703
+      },
+      {
+        "bootNs": 4995709541776,
+        "event": "exit",
+        "pid": 810703,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995709997618,
+        "event": "exit",
+        "pid": 810694,
+        "cgroupId": 135703
+      },
+      {
+        "bootNs": 4995713650065,
+        "event": "exit",
+        "pid": 810686,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995760288126,
+        "event": "exec",
+        "pid": 810712,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995763031430,
+        "event": "exit",
+        "pid": 810712,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995783507246,
+        "event": "exec",
+        "pid": 810715,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995786344086,
+        "event": "exit",
+        "pid": 810715,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995806866081,
+        "event": "exec",
+        "pid": 810719,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/systemctl"
+      },
+      {
+        "bootNs": 4995809023878,
+        "event": "exit",
+        "pid": 810719,
+        "cgroupId": 135346
+      },
+      {
+        "bootNs": 4995829613053,
+        "event": "exec",
+        "pid": 810722,
+        "cgroupId": 135346,
+        "filename": "/usr/bin/umount"
+      },
+      {
+        "bootNs": 4995830299148,
+        "event": "exit",
+        "pid": 810722,
+        "cgroupId": 135346
+      }
+    ]
+  },
+  "finished": "2026-11-02T00:50:36.733636+00:00"
+}

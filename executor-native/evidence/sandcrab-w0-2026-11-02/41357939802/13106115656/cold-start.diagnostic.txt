@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "/home/runner/work/poketto/poketto/experiments/sandcrab-density/cold_start.py", line 237, in main
+    asyncio.run(measure(fixture, receipt, report, receipt['parameters']['trials']))
+  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/runner/work/poketto/poketto/experiments/sandcrab-density/cold_start.py", line 197, in measure
+    raise RuntimeError('Required startup events were not completely observed')
+RuntimeError: Required startup events were not completely observed

@@ -1,0 +1,274 @@
+{
+  "schema": 1,
+  "kind": "sandcrab-manual-readiness-baseline",
+  "sourceRevision": "5db2b11c893b3c22838c8ed1af01eee89a961939",
+  "started": "2026-11-01T23:41:33.572333+00:00",
+  "scope": "Automated replay of the current README manual operator steps, using a prebuilt candidate. Human editing time and source compilation are excluded; this is a lower bound, not turnkey readiness. Operator commands have temporary resource limits; their wrapper overhead is included.",
+  "acquisition": {
+    "source": "repository checkout plus candidate binary",
+    "operatorCommands": 2
+  },
+  "acquisitionClockIncluded": true,
+  "initialEnvironment": {
+    "osRelease": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+    "kernel": "7.0.0-1017-azure",
+    "logicalCpuCount": 4,
+    "controllerPythonPreinstalled": true,
+    "rootCgroupLimits": {
+      "memory.max": null,
+      "memory.swap.max": null,
+      "pids.max": null,
+      "cpu.max": null
+    },
+    "programs": {
+      "curl": true,
+      "python3": true,
+      "node": true,
+      "npm": true,
+      "bwrap": false,
+      "git": true
+    }
+  },
+  "inputSha256": {
+    "binary": "db8b81132e7a3cc71c43c6c39e02e77f1cc013e66aa5bacc79804113fc48f791",
+    "readme": "b08d8e293a4c0c2d79c15f3ea54cce6851179e1e841b753c13a5f1c19c2675b9",
+    "recipe": "b308eb04a6414a3157046a54b941eb67d70effce9976cbe11c83262f55e22a9e"
+  },
+  "steps": [
+    {
+      "kind": "command",
+      "label": "create protected installation directory",
+      "argv": [
+        "mkdir",
+        "-m",
+        "755",
+        "/var/lib/sandcrab-ready-d7ec3b8cb7"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 17400796
+    },
+    {
+      "kind": "command",
+      "label": "refresh package indexes",
+      "argv": [
+        "apt-get",
+        "update"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]\nHit:2 http://azure.archive.ubuntu.com/ubuntu noble InRelease\nGet:6 https://packages.microsoft.com/ubuntu/24.04/prod noble InRelease [3600 B]\nGet:3 http://azure.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]\nGet:4 http://azure.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]\nGet:5 http://azure.archive.ubuntu.com/ubuntu noble-security InRelease [126 kB]\nGet:7 https://packages.microsoft.com/ubuntu/24.04/prod noble/main arm64 Packages [617 kB]\nGet:8 https://packages.microsoft.com/ubuntu/24.04/prod noble/main amd64 Packages [682 kB]\nGet:9 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1408 kB]\nGet:10 http://azure.archive.ubuntu.com/ubuntu noble-updates/main Translation-en [311 kB]\nGet:11 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [1707 kB]\nGet:12 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe Translation-en [343 kB]\nGet:13 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [1813 kB]\nGet:14 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted Translation-en [412 kB]\nGet:15 http://azure.archive.ubuntu.com/ubuntu noble-updates/multiverse Translation-en [14.3 kB]\nGet:16 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Packages [1146 kB]\nGet:17 http://azure.archive.ubuntu.com/ubuntu noble-security/main Translation-en [231 kB]\nGet:18 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1223 kB]\nGet:19 http://azure.archive.ubuntu.com/ubuntu noble-security/universe Translation-en [246 kB]\nFetched 10.5 MB in 1s (7961 kB/s)\nReading package lists...\n",
+      "stderrTail": "",
+      "elapsedNs": 4882974024
+    },
+    {
+      "kind": "command",
+      "label": "install preparation and Python workload dependencies",
+      "argv": [
+        "apt-get",
+        "install",
+        "--yes",
+        "--no-install-recommends",
+        "curl",
+        "ca-certificates",
+        "xz-utils",
+        "python3",
+        "procps"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "Reading package lists...\nBuilding dependency tree...\nReading state information...\ncurl is already the newest version (8.5.0-2ubuntu10.16).\nca-certificates is already the newest version (20260816ubuntu0.24.04.1).\nxz-utils is already the newest version (5.6.1+really5.4.5-1ubuntu0.4).\npython3 is already the newest version (3.12.3-0ubuntu2.1).\nprocps is already the newest version (2:4.0.4-4ubuntu3.3).\nprocps set to manually installed.\n0 upgraded, 0 newly installed, 0 to remove and 6 not upgraded.\n",
+      "stderrTail": "",
+      "elapsedNs": 464133229
+    },
+    {
+      "kind": "command",
+      "label": "install candidate executable",
+      "argv": [
+        "install",
+        "-m",
+        "755",
+        "/home/runner/work/poketto/poketto/build/executor-service/bin/sandcrab",
+        "/var/lib/sandcrab-ready-d7ec3b8cb7/sandcrab"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 38845706
+    },
+    {
+      "kind": "command",
+      "label": "prepare pinned sandbox toolchain",
+      "argv": [
+        "bash",
+        "/home/runner/work/poketto/poketto/executor-service/prepare-tools.sh",
+        "/var/lib/sandcrab-ready-d7ec3b8cb7/tools"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "\nadded 5 packages in 2s\nGet:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]\nGet:2 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 debianutils amd64 5.17build1 [89.9 kB]\nGet:3 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 ripgrep amd64 14.1.0-1 [1551 kB]\nGet:4 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 bubblewrap amd64 0.9.0-1ubuntu0.3 [50.4 kB]\nGet:5 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 socat amd64 1.8.0.0-4ubuntu0.1 [374 kB]\nFetched 2066 kB in 0s (6111 kB/s)\nPrepared the SRT toolchain in /var/lib/sandcrab-ready-d7ec3b8cb7/tools.\n",
+      "stderrTail": "npm notice\nnpm notice New major version of npm available! 10.9.4 -> 12.2.1\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1\nnpm notice To update run: npm install -g npm@12.2.1\nnpm notice\n\nWARNING: apt does not have a stable CLI interface. Use with caution in scripts.\n\nW: Download is performed unsandboxed as root as file '/var/lib/sandcrab-ready-d7ec3b8cb7/tools/debianutils_5.17build1_amd64.deb' couldn't be accessed by user '_apt'. - pkgAcquire::Run (13: Permission denied)\n",
+      "elapsedNs": 6401876366
+    },
+    {
+      "kind": "command",
+      "label": "create separate execution account",
+      "argv": [
+        "useradd",
+        "--system",
+        "--no-create-home",
+        "--shell",
+        "/usr/sbin/nologin",
+        "scrab-d7ec3b8cb7"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 39539807
+    },
+    {
+      "kind": "manual-configuration",
+      "path": "/var/lib/sandcrab-ready-d7ec3b8cb7/config.toml",
+      "fields": [
+        "runtime_root",
+        "socket",
+        "client_uid",
+        "client_gid",
+        "resource_slice",
+        "supervisor_unit",
+        "unit_prefix",
+        "exec_user",
+        "tools"
+      ],
+      "status": "PASS",
+      "sha256": "e9428a5213c2d3a961531ac7dd1be49bd58e5a3c8f3346ef24dcf248f1254ab5",
+      "elapsedNs": 599863
+    },
+    {
+      "kind": "manual-configuration",
+      "path": "/run/systemd/system/sandcrab-ready-d7ec3b8cb7.slice",
+      "fields": [
+        "MemoryMax",
+        "MemorySwapMax",
+        "TasksMax",
+        "CPUQuota"
+      ],
+      "status": "PASS",
+      "sha256": "9d5ec8a65ad341e5174d7d5c406f944fc48aac9dd7098b8124d44c32087d53c4",
+      "elapsedNs": 52858
+    },
+    {
+      "kind": "command",
+      "label": "allow capability-bearing user namespaces on this disposable host",
+      "argv": [
+        "sysctl",
+        "-w",
+        "kernel.apparmor_restrict_unprivileged_userns=0"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "kernel.apparmor_restrict_unprivileged_userns = 0\n",
+      "stderrTail": "",
+      "elapsedNs": 32947392
+    },
+    {
+      "kind": "command",
+      "label": "load the resource slice",
+      "argv": [
+        "systemctl",
+        "daemon-reload"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 290503848
+    },
+    {
+      "kind": "command",
+      "label": "start the resource slice",
+      "argv": [
+        "systemctl",
+        "start",
+        "sandcrab-ready-d7ec3b8cb7.slice"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 26335351
+    },
+    {
+      "kind": "command",
+      "label": "start the root service in its bounded unit",
+      "argv": [
+        "systemd-run",
+        "--quiet",
+        "--collect",
+        "--unit",
+        "sandcrab-ready-d7ec3b8cb7.service",
+        "--slice",
+        "sandcrab-ready-d7ec3b8cb7.slice",
+        "-p",
+        "MemoryMax=128M",
+        "-p",
+        "MemorySwapMax=0",
+        "-p",
+        "TasksMax=128",
+        "-p",
+        "KillMode=control-group",
+        "-p",
+        "RuntimeMaxSec=180",
+        "/var/lib/sandcrab-ready-d7ec3b8cb7/sandcrab",
+        "serve",
+        "--config",
+        "/var/lib/sandcrab-ready-d7ec3b8cb7/config.toml"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 27825125
+    },
+    {
+      "kind": "command",
+      "label": "first README sandboxed command",
+      "argv": [
+        "/var/lib/sandcrab-ready-d7ec3b8cb7/sandcrab",
+        "run",
+        "--socket",
+        "/var/lib/sandcrab-ready-d7ec3b8cb7/runtime/control.sock",
+        "--profile",
+        "python",
+        "--",
+        "python3",
+        "-c",
+        "print(6 * 7)"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "{\"id\":\"e46f164c-7b99-46a3-8e45-15feb6d44b33\",\"serverId\":\"1b5833f6-7b77-4074-aa65-47d85b7e8f20\",\"profile\":\"python\",\"state\":\"succeeded\",\"result\":{\"exitCode\":0,\"truncated\":false,\"stdout\":\"42\\n\",\"stderr\":\"\"}}\n",
+      "stderrTail": "runId=e46f164c-7b99-46a3-8e45-15feb6d44b33\n",
+      "elapsedNs": 177563178
+    }
+  ],
+  "measurementStatus": "COMPLETED",
+  "cleanup": "PASS",
+  "modelTokens": 0,
+  "containsProductionContent": false,
+  "manualHostPolicyEdits": 1,
+  "readiness": {
+    "firstSandboxedCommand": "PASS",
+    "operatorCommands": 13,
+    "manualConfigurationEdits": 3,
+    "automatedWallNs": 15254184649,
+    "humanEditingTimeIncluded": false,
+    "targetPass": false
+  },
+  "hostPolicyRestored": true,
+  "finished": "2026-11-01T23:41:47.251683+00:00"
+}
