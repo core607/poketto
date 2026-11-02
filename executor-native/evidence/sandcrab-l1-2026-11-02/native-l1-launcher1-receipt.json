@@ -1,0 +1,6 @@
+{
+  "sourceLogSha256": "512bd28966d6f8e0cdec9a8b0677e56e17599a6fd45ecb677509fc140e364f45",
+  "scope": "Local isolated privileged Ubuntu 24.04 container, 2 GiB/2 CPU; synthetic consumer acceptance, not CI or capacity",
+  "observations": [],
+  "diagnostic": "Traceback (most recent call last):\r\n  File \"/source/executor-native/sandbox_probe.py\", line 308, in <module>\r\n    main()\r\n  File \"/source/executor-native/sandbox_probe.py\", line 117, in main\r\n    from worker import Session, SystemdBackend, verify_launch\r\n  File \"/var/lib/sandcrab-l1/worker/worker.py\", line 36, in <module>\r\n    from cryptography.hazmat.primitives.serialization import load_pem_public_key\r\nModuleNotFoundError: No module named 'cryptography'\r\n"
+}

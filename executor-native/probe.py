@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Root-only disposable Java -> worker -> SRT fixture; no production settings or accounts."""
+"""Root-only disposable Java -> worker -> sandbox fixture; no production settings or accounts."""
 import argparse
 import hashlib
 import json

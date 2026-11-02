@@ -7,7 +7,7 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 tools=$(realpath -e -- "${1:?Usage: install-sandbox-tools.sh EXISTING_TOOLS_DIRECTORY}")
-test -f "$tools/node_modules/@anthropic-ai/sandbox-runtime/package.json"
+test -x "$tools/extracted/usr/bin/bwrap"
 for directory in "$tools" "$tools/extracted" "$tools/extracted/usr" "$tools/extracted/usr/bin"; do
     test ! -L "$directory"
     if [[ -e $directory ]]; then
@@ -27,8 +27,13 @@ done
 
 apt-get update
 apt-get install --yes --no-install-recommends \
+    curl ca-certificates xz-utils \
     python3-pil python3-bs4 python3-lxml python3-pypdf \
     python3-openpyxl python3-docx mawk zip poppler-utils fonts-noto-cjk
+
+if [[ ! -e $tools/node ]]; then
+    bash "$(dirname -- "$0")/prepare-node.sh" "$tools"
+fi
 
 # /etc/alternatives is outside the sandbox read allowlist.
 test -x /usr/bin/python3

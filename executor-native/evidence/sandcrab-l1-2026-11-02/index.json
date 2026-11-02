@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "scope": "Uncommitted candidate measured locally before exact-head CI. Source/binary digests in each receipt identify its scope; separate 5 GB canonical and fresh-distro readiness results are pending.",
+  "candidateBinarySha256": "b1952efe3ede94472a43c18489622148f253d40de5a118ec6c44cd5e90eefc8f",
+  "candidateLauncherSha256": "1550d9dc651f527674e50833fb673e028b9d61d113064f55673ace47ebaace96",
+  "files": [
+    {
+      "path": "native-l1-probe1.json",
+      "sha256": "0bbf20d2dacd98b59e23229a222b9734c2a76c52dd04aa9eb0ca18f9a0f03a02",
+      "bytes": 4794
+    },
+    {
+      "path": "native-l1-probe2.json",
+      "sha256": "fd4ea43a99393cf91b46e232d04cfce0155e813bea4e9665eb43847f7dee46ec",
+      "bytes": 5432
+    },
+    {
+      "path": "native-l1-footprint1.json",
+      "sha256": "d9dcfe1ecd99e33a5f0b21bcd98ac520c23cb648a9e6f6850a6188e7ad626d2c",
+      "bytes": 22856
+    },
+    {
+      "path": "native-l1-launcher3.json",
+      "sha256": "de5b3470804b6a21873f79409a20e92cef4212f6b19a771783efbfe6b2581c72",
+      "bytes": 12314
+    },
+    {
+      "path": "native-l1-launcher1-receipt.json",
+      "sha256": "9cad1211d7d38b75254e79574020a63fb33cb1d4e21f3a96945f4b75104255f9",
+      "bytes": 743
+    },
+    {
+      "path": "native-l1-launcher2-receipt.json",
+      "sha256": "425651e9bc568b5932ab007784414c9564b2fa2703c7292df793735eea0696d4",
+      "bytes": 2159
+    },
+    {
+      "path": "native-l1-launcher3-receipt.json",
+      "sha256": "8c607003008fc41b54c4473d10b82be0139f9e85720469c28f818e03babfa04f",
+      "bytes": 1088
+    },
+    {
+      "path": "native-l1-java-all1-receipt.json",
+      "sha256": "60e0d0d407b995737c2622d9f49e3b1c5a2d5b580a72643438bebae3f5b489e5",
+      "bytes": 8161
+    },
+    {
+      "path": "native-l1-java-games1-receipt.json",
+      "sha256": "a52ce1453706393b3ad49dabec15f92323c2a076b4ca5e993422b1f33d70a737",
+      "bytes": 3553
+    }
+  ],
+  "attempts": [
+    {
+      "name": "launcher1",
+      "outcome": "Missing test-only cryptography dependency, before fixture creation; prepared the worker pinned test dependencies separately from bare Sandcrab tools."
+    },
+    {
+      "name": "launcher2",
+      "outcome": "Old snapshot observer rejected visible bwrap PID 1; cleanup PASS. Updated observer requires the init filter and keeps ptrace denial, mount and peer checks."
+    },
+    {
+      "name": "launcher3",
+      "outcome": "PASS, including filtered init and ptrace denial; cleanup PASS."
+    }
+  ],
+  "validation": {
+    "executorRustCheck": "PASS",
+    "executorServiceTests": {
+      "tests": 176,
+      "result": "PASS"
+    },
+    "densityComponentTests": {
+      "tests": 32,
+      "result": "PASS"
+    },
+    "nativeProbe": "PASS",
+    "javaConsumer": "40 checks PASS plus process-loss expiry; cleanup PASS",
+    "games": "PASS and cleanup PASS",
+    "repoCheck": "PASS"
+  }
+}

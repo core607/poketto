@@ -1,5 +1,5 @@
 """The Rust launcher's own tests (rust/sandcrab-launch, rust/poketto-launch) cover policy
-translation, tool pins, versions and ownership on real root-owned files. These cases run the installed binary
+translation, filters, versions and ownership on real root-owned files. These cases run the installed binary
 as an unprivileged account and keep the Python worker's policies and launch records matched to it."""
 import json
 import os
@@ -41,8 +41,7 @@ class SandboxLauncherTests(unittest.TestCase):
         self.assertNotEqual(0, os.geteuid())
         with tempfile.TemporaryDirectory() as directory:
             tools = Path(directory) / 'tools'
-            for relative in ('extracted/usr/bin/bwrap',
-                             'node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp'):
+            for relative in ('extracted/usr/bin/bwrap',):
                 (tools / relative).parent.mkdir(parents=True, exist_ok=True)
                 (tools / relative).write_text('#!/bin/sh\necho bubblewrap 0.6.1\n')
                 (tools / relative).chmod(0o755)
