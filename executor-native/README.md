@@ -125,10 +125,11 @@ CPU/memory/tasks, and requires each direct/reference median resource ratio to be
 Add `--toolkit` and [sandbox_toolkit.py](sandbox_toolkit.py) to verify installed image, PDF, Office,
 archive and Git operations. Require exit zero and `cleanup: PASS`; these figures do not establish HTTP capacity.
 
-`--reference-worker-source` takes a previous complete staged tree. With a Python
-driver, add `--idle-seconds 60`; the idle CPU ratio must be at most one tenth. With
-`launcher.py` and the native driver, only the launchers differ and snapshots must match.
-Either way startup, memory and task ratios are reported without the SRT threshold.
+`--reference-worker-source` selects a staged reference. Python drivers require
+`--idle-seconds 60` and an idle CPU ratio at most one tenth. Native-driver snapshots
+allow only the [filter replacement's](../notes/implemented/2026-11-02-native-seccomp-filter.md)
+init, capability bounding and environment differences. Startup, memory and task
+ratios have no SRT threshold.
 
 ## Evidence
 

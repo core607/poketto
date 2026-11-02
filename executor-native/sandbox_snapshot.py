@@ -82,7 +82,13 @@ for process in Path('/proc').iterdir():
             processes.append({'pid': int(process.name), 'comm': (process / 'comm').read_text().strip()})
         except OSError:
             pass
-check('outer-processes-hidden', not any(p['comm'] in ('bwrap', 'node', 'socat', 'systemd') for p in processes))
+check('outer-processes-hidden', not any(p['comm'] in ('node', 'socat', 'systemd')
+                                      or (p['comm'] == 'bwrap' and p['pid'] != 1) for p in processes))
+init = next(p for p in processes if p['pid'] == 1)
+if init['comm'] == 'bwrap':
+    init_status = dict(line.split(':', 1) for line in Path('/proc/1/status').read_text().splitlines() if ':' in line)
+    check('namespace-init-filtered', init_status['Seccomp'].strip() == '2'
+          and init_status['NoNewPrivs'].strip() == '1' and int(init_status['CapEff'].strip(), 16) == 0)
 ctypes.set_errno(0)
 check('pid-one-trace-denied', libc.ptrace(16, 1, 0, 0) == -1 and ctypes.get_errno() == errno.EPERM)
 print(json.dumps({'assertions': assertions, 'security': security, 'processes': processes,

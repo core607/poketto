@@ -6,8 +6,9 @@ Date: 2026-11-02
 
 The [native service](../../executor-service/rust/sandcrab/README.md) has an independent
 API, but installation requires manually prepared tools, accounts, systemd units
-and profiles; durable volumes require XFS. [Tool preparation](../../executor-service/prepare-tools.sh)
-installs Node.js and npm to obtain the pinned SRT seccomp helper. Each sandbox
+and profiles; durable volumes require XFS. The
+[native seccomp filter](../implemented/2026-11-02-native-seccomp-filter.md) implements L1,
+removing the helper's Node.js/npm/SRT provisioning. Each sandbox
 starts through [systemd-run](../../executor-service/rust/sandcrab-core/src/unit.rs).
 Independent API tests do not establish first-use cost or capacity on a small host.
 
@@ -38,10 +39,9 @@ extraction.
 
 ### W0: decision record and baseline
 
-Land this decision record before implementation, then add
-`experiments/sandcrab-density/` with a README, footprint script, public-API density
-driver and breakdown measurements. The following numbers are targets and protocol
-definitions, not measured results.
+The independent [measurement suite](../../experiments/sandcrab-density/README.md)
+owns the implemented W0 protocol, collectors, raw receipts and failure handling.
+The following targets remain acceptance criteria for the remaining work.
 
 | Measure | Definition |
 |---|---|
@@ -49,47 +49,25 @@ definitions, not measured results.
 | Readiness | Fresh Ubuntu 22.04, Ubuntu 24.04 and Debian 12: download to first `sandcrab run` in at most three commands, no manual configuration edits, under five minutes; record all three quantities |
 | Density | Largest tested agent count with ok rate at least 0.99, judged p95 at most 1.0 s and zero OOM kills |
 
-Run daemon and sandboxes together in a slice with `CPUQuota=200%`,
-`MemorySwapMax=0` and `MemoryMax` set to 8, 5 or 4 GB. The 5 GB budget approximates
-the space left beside the default [application containers](../../deploy/compose.yaml)
-on an 8 GB host; it is not a production capacity claim. W0 and the final comparison
-run all three budgets; intermediate changes may use 5 GB alone. Record the effective
-kernel byte limits and runner capacity so a larger configured limit cannot stand
-in for available host memory.
-
-Use a seeded synthetic corpus of approximately 20,000 Markdown files and a small
-Git repository. Each of N agents repeatedly thinks for uniform(3, 10) seconds and
-runs one command: `rg` 35%, `cat`/`head` 20%, `sed -i` 15%, `ls`/`find` 10%,
-`git status`/`diff` 10%, and `python3 -c` 10%. Stages are 25, 50, 100, 200 and 400
-agents, stopping at the first failure. Use only the public API, with no Poketto
-application. Fix seeds, stage durations, warm-up, repetitions, latency boundaries
-and scoring before collecting results; retain refused and failed attempts in the
-judged population. Do not silently replace a limit refusal with a smaller cohort.
-
-For each stage record latency percentiles, refusals by code, live versus executing
-sandboxes, `memory.stat` anon/file/shmem/kernel, CPU split, OOM kills and cold-start
-distribution. Separately measure 1, 10 and 50 idle sessions; the cold-start timeline
-from slice creation through systemd-run/D-Bus, bwrap and exec; and page-cache use for
-10 sessions over reflink copies versus one shared read-only tree. A missing capability
-is a recorded baseline limitation, not an invented passing measurement.
-
-Write a JSON receipt for every run under `executor-native/evidence/`, retaining
-failures and cleanup outcomes. Production-host runs use low traffic and the existing
-[load-suite preflight](../../acceptance/load-suite.py), with ownership-aware cleanup
-and bounded resource use. No private configuration, credentials or content enters
-public fixtures or receipts.
+W0 and the final comparison use every protocol budget; intermediate changes may
+use 5 GB alone. That budget approximates memory beside the default
+[application containers](../../deploy/compose.yaml), not production capacity.
+The suite fixes the synthetic corpus, command mix, think intervals, stages,
+repetitions, scoring boundaries and shared cgroup limits before measurement.
+Keep all failures, observations and cleanup receipts under `executor-native/evidence/`;
+missing capabilities or smaller admitted cohorts cannot count as passing evidence.
+Production runs retain low-traffic [load-suite preflight](../../acceptance/load-suite.py),
+bounded resources and ownership-aware cleanup. Public evidence contains no private
+configuration, credentials or content.
 
 ### L: lightweight and ready to use
 
 Implement L1 through L10 in order, normally one change per item. Preserve independent
 SDK conformance while changing the implementation.
 
-1. L1: replace the helper dependency. Read the source of the pinned SRT helper
-   and enumerate its actual rules. Generate an equivalent seccomp filter in Rust
-   with seccompiler or libseccomp and supply it through bwrap `--seccomp FD`.
-   This is equivalence, not hardening. Remove Node.js, npm and SRT from the Sandcrab
-   toolchain, retain the AF_UNIX probe and add a real probe for every rule.
-   Programs selected by a consumer, including Node.js, remain workload tools.
+1. L1 is implemented by the [native filter decision](../implemented/2026-11-02-native-seccomp-filter.md):
+   equivalent rules and per-rule native probes, with consumer workload interpreters
+   provisioned separately.
 2. L2: delegated cgroups. Replace per-sandbox systemd-run with leaves created
    in a delegated cgroup v2 subtree. Set `memory.max`, `memory.swap.max`, `pids.max`
    and `cpu.max`; launch bwrap with CLONE_INTO_CGROUP or join before exec. Contain

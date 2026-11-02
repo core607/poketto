@@ -4,7 +4,7 @@
 //! record's mode and replaces itself with bubblewrap. `--verify` checks the tools and the
 //! sandbox program directory without launching.
 use sandcrab_launch::{
-    Error, enter_bootstrap, exec, sandbox_arguments, verify_programs, verify_tools,
+    Error, Seccomp, enter_bootstrap, exec, sandbox_arguments, verify_programs, verify_tools,
 };
 use serde_json::Value;
 use std::{
@@ -45,19 +45,19 @@ fn read_json(path: &Path) -> Result<Value, Error> {
 }
 
 /// Bubblewrap arguments and the complete environment of the replaced process.
-type Launch = (Vec<String>, Vec<(String, String)>);
+type Launch = (Vec<String>, Vec<(String, String)>, Seccomp);
 /// The launch for one record.
 fn plan(record: &Value) -> Result<Launch, Error> {
     let root = PathBuf::from(text(record, "root")?);
     let tools = PathBuf::from(text(record, "tools")?);
-    let (bwrap, seccomp) = verify_tools(&tools)?;
+    let bwrap = verify_tools(&tools)?;
+    let seccomp = Seccomp::new()?;
     let mode = text(record, "mode")?;
     let programs = program_directory()?;
     verify_programs(&programs, &PROGRAMS)?;
     let policy = read_json(Path::new(text(record, "settings")?))?;
     enter_bootstrap(&root)?;
     let (root_text, tools_text) = (root.display().to_string(), tools.display().to_string());
-    // The compile cache is read-only here: install-compile-cache.sh, run as root, is its only writer.
     let path = format!(
         "{}:{root_text}/bootstrap:{tools_text}:{tools_text}/extracted/usr/bin:/usr/bin:/bin",
         programs.display()
@@ -67,10 +67,6 @@ fn plan(record: &Value) -> Result<Launch, Error> {
         ("TMPDIR".into(), "/tmp".into()),
         ("PATH".into(), path),
         ("POKETTO_BRIDGE".into(), format!("{root_text}/bridge")),
-        (
-            "NODE_COMPILE_CACHE".into(),
-            format!("{tools_text}/compile-cache"),
-        ),
         ("GIT_CONFIG_NOSYSTEM".into(), "1".into()),
         ("GIT_CONFIG_GLOBAL".into(), "/dev/null".into()),
         ("SANDBOX_RUNTIME".into(), "1".into()),
@@ -98,7 +94,7 @@ fn plan(record: &Value) -> Result<Launch, Error> {
         _ => return Err(Error("Invalid execution mode".into())),
     };
     let arguments = sandbox_arguments(&bwrap, &seccomp, &policy, &command)?;
-    Ok((arguments, environment))
+    Ok((arguments, environment, seccomp))
 }
 
 fn run(args: &[String]) -> Result<(), Error> {
@@ -111,8 +107,8 @@ fn run(args: &[String]) -> Result<(), Error> {
             if rustix::process::geteuid().is_root() {
                 return Err(Error("Dedicated unprivileged account required".into()));
             }
-            let (arguments, environment) = plan(&read_json(Path::new(record))?)?;
-            Err(exec(&arguments, &environment))
+            let (arguments, environment, seccomp) = plan(&read_json(Path::new(record))?)?;
+            Err(exec(&arguments, &environment, &seccomp))
         }
         _ => Err(Error(
             "Usage: poketto-launch RECORD | --verify TOOLS".into(),
@@ -145,12 +141,13 @@ mod tests {
         for mode in ["initialize", "shell", "baseline"] {
             let args = sandbox_arguments(
                 Path::new("/tools/bwrap"),
-                Path::new("/tools/apply-seccomp"),
+                &Seccomp::new().unwrap(),
                 &policies[mode],
                 &command,
             )
             .unwrap();
-            assert_eq!(args[args.len() - 4], "/tools/apply-seccomp", "{mode}");
+            assert_eq!(args[args.len() - 4], "--", "{mode}");
+            assert!(args.contains(&"--seccomp".to_string()), "{mode}");
             assert_eq!(args[args.len() - 3..], command[..], "{mode}");
             for flag in [
                 "--unshare-net",

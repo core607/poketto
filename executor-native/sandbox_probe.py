@@ -30,24 +30,24 @@ def launch_command(launcher):
 
 def integrity_checks(root, tools, launcher, record, user, verify_tools):
     copied = root / 'integrity-tools'
-    for relative in ('extracted/usr/bin/bwrap',
-                     'node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp'):
-        target = copied / relative
-        target.parent.mkdir(parents=True, mode=0o755, exist_ok=True)
-        shutil.copy2(tools / relative, target)
+    target = copied / 'extracted/usr/bin/bwrap'
+    target.parent.mkdir(parents=True, mode=0o755, exist_ok=True)
+    shutil.copy2(tools / 'extracted/usr/bin/bwrap', target)
     verify_tools(copied)
     invalid_record = root / 'invalid-tools.json'
     invalid_record.write_text(json.dumps({**json.loads(record.read_text()), 'tools': str(copied)}))
     invalid_record.chmod(0o444)
-    for name, relative, expected in (
-            ('seccomp-tamper', 'node_modules/@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp', 'checksum mismatch'),
-            ('writable-bwrap', 'extracted/usr/bin/bwrap', 'root-owned and not writable')):
-        target = copied / relative
+    for name, expected in (
+            ('writable-bwrap', 'root-owned and not writable'),
+            ('non-executable-bwrap', 'not executable'),
+            ('old-bwrap', 'bubblewrap 0.6.1 or newer')):
         original = target.read_bytes()
-        if name == 'seccomp-tamper':
-            target.write_bytes(original + b'modified')
-        else:
+        if name == 'writable-bwrap':
             target.chmod(0o777)
+        elif name == 'non-executable-bwrap':
+            target.chmod(0o644)
+        else:
+            target.write_text('#!/bin/sh\nprintf "bubblewrap 0.5.0\\n"\n')
         try:
             try:
                 verify_tools(copied)
@@ -64,11 +64,23 @@ def integrity_checks(root, tools, launcher, record, user, verify_tools):
 
 
 def compare_snapshots(reference, direct, driver_comparison=False, reference_driver='python3'):
-    assert reference['assertions'] == direct['assertions']
-    assert reference['security'] == direct['security']
+    assert 'namespace-init-filtered' in direct['assertions']
+    assert set(reference['assertions']) - {'namespace-init-filtered'} == set(direct['assertions']) - {'namespace-init-filtered'}
+    for name, value in direct['security'].items():
+        if name == 'CapBnd':
+            # The helper's nested user namespace may retain bounding bits;
+            # removing it must never add a capability to the direct path.
+            assert int(value, 16) & ~int(reference['security'][name], 16) == 0
+        else:
+            assert reference['security'][name] == value
     processes = []
     for snapshot, driver in ((reference, reference_driver), (direct, 'poketto-shell')):
         rows = [dict(row) for row in snapshot['processes']]
+        init = next(row for row in rows if row['pid'] == 1)
+        assert init['comm'] in ('apply-seccomp', 'bwrap')
+        if snapshot is direct:
+            assert init['comm'] == 'bwrap'
+        init['comm'] = '$FILTERED_OR_UNTRACEABLE_INIT'
         selected = next(row for row in rows if row['pid'] == 2)
         assert selected['comm'] == driver
         selected['comm'] = '$DRIVER'
@@ -78,7 +90,7 @@ def compare_snapshots(reference, direct, driver_comparison=False, reference_driv
     assert not after - before
     for name in before - after:
         assert (name.lower().endswith('_proxy') or name.startswith(('CLAUDE_CODE_HOST_', 'CLOUDSDK_PROXY_'))
-                or name in ('GIT_CONFIG_PARAMETERS', 'GIT_SSH_COMMAND', 'JAVA_TOOL_OPTIONS')), name
+                or name in ('GIT_CONFIG_PARAMETERS', 'GIT_SSH_COMMAND', 'JAVA_TOOL_OPTIONS', 'NODE_COMPILE_CACHE')), name
     assert reference['temporaryDirectory'] == ('/tmp' if driver_comparison else '/tmp/claude')
     assert direct['temporaryDirectory'] == '/tmp'
     # The direct mount table contains only the grants, synthetic devices and fresh proc.

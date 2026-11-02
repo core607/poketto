@@ -1,0 +1,33 @@
+{
+  "sourceLogSha256": "93c945bd96bcb3e63241cf300482bcd3880b048039500b036ee2a4ebf55c2849",
+  "scope": "Local isolated privileged Ubuntu 24.04 container, 2 GiB/2 CPU; synthetic consumer acceptance, not CI or capacity",
+  "observations": [
+    {
+      "integrity": "writable-bwrap",
+      "supervisorAndLauncher": "PASS"
+    },
+    {
+      "integrity": "non-executable-bwrap",
+      "supervisorAndLauncher": "PASS"
+    },
+    {
+      "integrity": "old-bwrap",
+      "supervisorAndLauncher": "PASS"
+    },
+    {
+      "measurement": {
+        "path": "direct",
+        "iteration": 0,
+        "startupCpuUsec": 6332,
+        "memoryBytes": 2170880,
+        "idleTasks": 4,
+        "readyMs": 43,
+        "commandMs": 0
+      }
+    },
+    {
+      "cleanup": "PASS"
+    }
+  ],
+  "diagnostic": "{\"integrity\": \"writable-bwrap\", \"supervisorAndLauncher\": \"PASS\"}\r\n{\"integrity\": \"non-executable-bwrap\", \"supervisorAndLauncher\": \"PASS\"}\r\n{\"integrity\": \"old-bwrap\", \"supervisorAndLauncher\": \"PASS\"}\r\n{\"measurement\": {\"path\": \"direct\", \"iteration\": 0, \"startupCpuUsec\": 6332, \"memoryBytes\": 2170880, \"idleTasks\": 4, \"readyMs\": 43, \"commandMs\": 0}}\r\n{\"cleanup\": \"PASS\"}\r\nTraceback (most recent call last):\r\n  File \"/source/executor-native/sandbox_probe.py\", line 308, in <module>\r\n    main()\r\n  File \"/source/executor-native/sandbox_probe.py\", line 240, in main\r\n    assert value['exitCode'] == 0 and not any(truncated), bytes(output[1])\r\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\nAssertionError: b'Traceback (most recent call last):\\n  File \"/var/lib/poketto-sandbox-65f28eb3-5n8ym11n/sessions/6e37e0eb-8116-46cd-bcd4-791a54c7d93d/bootstrap/sandbox_snapshot.py\", line 85, in <module>\\n    check(\\'outer-processes-hidden\\', not any(p[\\'comm\\'] in (\\'bwrap\\', \\'node\\', \\'socat\\', \\'systemd\\') for p in processes))\\n  File \"/var/lib/poketto-sandbox-65f28eb3-5n8ym11n/sessions/6e37e0eb-8116-46cd-bcd4-791a54c7d93d/bootstrap/sandbox_snapshot.py\", line 18, in check\\n    assert condition, name\\n           ^^^^^^^^^\\nAssertionError: outer-processes-hidden\\n'\r\n"
+}

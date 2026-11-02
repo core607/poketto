@@ -1,0 +1,48 @@
+{
+  "sourceLogSha256": "a05ab29fab01dab98d180adde981124da58a51917bf3094e41321ab77128c1a3",
+  "scope": "Local isolated privileged Ubuntu 24.04 container, 2 GiB/2 CPU; synthetic consumer acceptance, not CI or capacity",
+  "observations": [
+    {
+      "integrity": "writable-bwrap",
+      "supervisorAndLauncher": "PASS"
+    },
+    {
+      "integrity": "non-executable-bwrap",
+      "supervisorAndLauncher": "PASS"
+    },
+    {
+      "integrity": "old-bwrap",
+      "supervisorAndLauncher": "PASS"
+    },
+    {
+      "measurement": {
+        "path": "direct",
+        "iteration": 0,
+        "startupCpuUsec": 6736,
+        "memoryBytes": 1916928,
+        "idleTasks": 4,
+        "readyMs": 41,
+        "commandMs": 0
+      }
+    },
+    {
+      "snapshot": "direct",
+      "passedAssertions": 38
+    },
+    {
+      "sandboxComparison": "PASS",
+      "medians": {
+        "direct": {
+          "startupCpuUsec": 6736,
+          "memoryBytes": 1916928,
+          "idleTasks": 4,
+          "readyMs": 41
+        }
+      },
+      "ratios": null
+    },
+    {
+      "cleanup": "PASS"
+    }
+  ]
+}
