@@ -2,11 +2,10 @@
 
 This change serves lightweight deployment by replacing native per-operation
 systemd transactions with daemon-owned cgroups. These local receipts validate
-implementation and measurement paths. Three migration-based canonical 5 GB runs retained
-capacity 50; the listener/tool-wait candidate misses the cold-start target. Direct
-placement has local functional and smoke evidence; its canonical run is pending. Fresh
-installation replay completes on five environments. This report establishes
-neither a capacity improvement nor the 30 ms cold-start target.
+implementation and measurement paths. The fourth canonical 5 GB run meets the
+30 ms cold-start target with direct placement; capacity remains 50. Fresh
+installation replay completes on five environments but still misses the command
+and edit targets. This report establishes no capacity improvement or production capacity.
 
 ## Sources and scope
 
@@ -24,7 +23,54 @@ It does not emulate the canonical 4/5/8 GB cohort protocol. Separate delegated
 container checks run Python as PID 1 without a systemd manager; root-direct
 checks start the daemon without service-manager calls on an already delegated parent.
 
-## Observations
+## Current canonical measurement
+
+[Run 41423194616](https://github.com/core607/poketto/actions/runs/41423194616)
+measures clean head `5381258890f722c99d476fac5f9bd69365ae15ed`, binary `00937f1c…`.
+The [density receipt](41423194616/13133046532/density.json) uses the unchanged W0
+protocol: daemon and sandboxes share 5 GB, two CPUs and zero swap. All collectors,
+API cleanup and host cleanup complete successfully.
+
+| Repetition at 50 agents | Cold-start p50 | Judged command p95 | OK rate | OOM |
+|---|---:|---:|---:|---:|
+| 0 | 24.692576 ms | 374.746544 ms | 1.0 | 0 |
+| 1 | 24.234246 ms | 396.700343 ms | 1.0 | 0 |
+| 2 | 24.830883 ms | 378.733077 ms | 1.0 | 0 |
+
+All three 25-agent repetitions also pass. Capacity remains 50: the first 100-agent
+stage fails both OK_RATE and P95, with 1,194 successful and 18 refused judged
+attempts, OK rate 0.9851485149, p95 14.118392770 seconds and zero OOM. Refusals are
+`SESSION_NOT_READY`; they remain in the judged distribution.
+
+[Footprint](41423194616/13133046532/footprint.json) records 3,215,360 bytes median
+daemon RSS, versus [L1](../sandcrab-l1-2026-11-02/README.md)'s 3,084,288. At count
+50, pool deltas are 1,562,869.76 bytes per idle session and 1,122,631.68 per finite
+run, versus L1's 2,672,476.16 and 2,194,227.20. Static size is 4,174,752 bytes
+versus 4,125,600; the corrected executable count is 10 versus 14. Tools remain
+9,255,073 bytes. These bounded observations do not predict other host budgets.
+
+[CI 41423166962](https://github.com/core607/poketto/actions/runs/41423166962)
+passes at the same head, including [45 native checks](41423166962/13131042018/native.json),
+[21 SDK checks](41423166962/13131042018/sdk.json) and
+[66 scripted Inspect cases](41423166962/13131042018/summary.json) with real
+sandboxes and zero model tokens. Their fixtures confirm cleanup. The separately
+retained [CI smoke](41423166781/13129939986/smoke.json) does not replace the canonical run.
+
+The current [installation replay](https://github.com/core607/poketto/actions/runs/41423166655)
+completes all five environments with cleanup. Its clock excludes compilation,
+controller/image preparation and human editing; containers share the runner kernel.
+
+| Environment | Commands | Manual edits | Automated seconds | Receipt |
+|---|---:|---:|---:|---|
+| Native Ubuntu 22.04 | 12 | 2 | 16.139 | [JSON](41423166655/13129499982/readiness-native.json) |
+| Native Ubuntu 24.04 | 13 | 3 | 11.804 | [JSON](41423166655/13130688107/readiness-native.json) |
+| Ubuntu 22.04 container | 13 | 3 | 11.026 | [JSON](41423166655/13130049745/readiness-ubuntu22.json) |
+| Ubuntu 24.04 container | 13 | 3 | 7.658 | [JSON](41423166655/13130657462/readiness-ubuntu24.json) |
+| Debian 12 container | 13 | 3 | 4.576 | [JSON](41423166655/13130737991/readiness-debian12.json) |
+
+The first sandboxed command passes. L5/L10 still own the unmet command/edit targets.
+
+## Earlier local observations
 
 | Measurement | Local result |
 |---|---|
@@ -49,7 +95,7 @@ and 202.289373 ms. Its [kernel trace](ci-first-smoke/cold-start-smoke.json)
 records approximately 20 ms gaps after some mount processes exit. The bounded
 host-helper wait polled without a child-exit descriptor; the delegated-cgroup
 decision owns the corresponding optimization. These observations do not replace
-the pending canonical measurements.
+canonical measurements.
 
 The subsequent helper-wait candidate is
 `ad7cbf7218b096ad14429ceda142ddd8d075b18bfd2d44448b14f4f77a6cae9a`:
@@ -228,7 +274,7 @@ median daemon RSS, 1,530,920.96 bytes pool delta per idle session at count 50,
 and 1,070,612.48 bytes per finite run at count 50. The static binary remains
 4,170,656 bytes and requires the same ten executable surfaces.
 
-## Current installation replay
+## Helper-wait installation replay
 
 [Run 41392761102](https://github.com/core607/poketto/actions/runs/41392761102)
 completed all five environments with cleanup using the helper-wait candidate.

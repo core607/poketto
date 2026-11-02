@@ -1,0 +1,2 @@
+{"event":"created","id":"504614ae-bead-45eb-83d6-bdf46d78f6d4","session":null,"kind":"finite","createdAbsoluteNs":61868977828,"outcome":"PENDING","elapsedNs":null}
+{"event":"completed","id":"504614ae-bead-45eb-83d6-bdf46d78f6d4","session":null,"kind":"finite","createdAbsoluteNs":61868977828,"outcome":"OK","elapsedNs":30029896988,"startedAbsoluteNs":61869032571,"state":"succeeded","exitCode":0,"code":null,"stdout":"","stderr":""}

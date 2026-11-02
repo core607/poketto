@@ -1,0 +1,34 @@
+{
+  "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+  "binarySha256": "00937f1c7939c097ecfeb5363512c2d36bacce8d1784233454f78088526ce265",
+  "probeSha256": "e2216001d1df93e2c2a2f35174928fecfc0fa3c1249afdbcf98352a27195bdeb",
+  "checks": [
+    {
+      "name": "profile-resource-caps-and-memory-floor-are-discoverable",
+      "result": "PASS"
+    },
+    {
+      "name": "finite-resource-caps-reach-the-kernel-and-bind-replay-identity",
+      "result": "PASS"
+    },
+    {
+      "name": "session-resource-caps-reach-the-kernel-for-its-lifetime",
+      "result": "PASS"
+    },
+    {
+      "name": "session-aggregate-memory-cap-rounds-down-to-a-kernel-page",
+      "result": "PASS"
+    },
+    {
+      "name": "resource-escalation-and-invalid-caps-refuse-before-admission",
+      "result": "PASS"
+    },
+    {
+      "name": "ordinary-cli-run-and-session-options-enforce-lower-kernel-limits",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "resourcesProbeSha256": "a4bfe3572bdb1e6d95a391d8671a5aee658712f9ccf9480204f2e62e0395ee7c",
+  "result": "PASS"
+}

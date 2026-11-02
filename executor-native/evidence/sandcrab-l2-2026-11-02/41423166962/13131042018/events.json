@@ -1,0 +1,46 @@
+{
+  "scope": "Real native command events, explicit resume, CLI, observer bounds and containment faults; no model calls or production cutover",
+  "binarySha256": "00937f1c7939c097ecfeb5363512c2d36bacce8d1784233454f78088526ce265",
+  "probeSha256": "e2216001d1df93e2c2a2f35174928fecfc0fa3c1249afdbcf98352a27195bdeb",
+  "checks": [
+    {
+      "name": "finite-live-output-cancel-containment-and-connection-reuse",
+      "result": "PASS"
+    },
+    {
+      "name": "session-live-output-binary-resume-and-single-execution",
+      "result": "PASS"
+    },
+    {
+      "name": "cursor-rejects-invalid-future-foreign-and-reused-identities",
+      "result": "PASS"
+    },
+    {
+      "name": "observer-capacity-reserves-control-and-slow-reader-does-not-stop-run",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-live-binary-output-cancellation-session-and-explicit-resume",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-complete-result-survives-lost-terminator-partial-result-does-not",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-repeated-cancellation-signals-preserve-the-original-response",
+      "result": "PASS"
+    },
+    {
+      "name": "daemon-loss-does-not-acknowledge-completion-or-replay-command",
+      "result": "PASS"
+    },
+    {
+      "name": "unconfirmed-containment-emits-error-and-keeps-admission",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "eventProbeSha256": "fbf93a05b4a2504c8450ddc75a5e26f20ff9f424b90650e21438f9ee0175c12d",
+  "result": "PASS"
+}
