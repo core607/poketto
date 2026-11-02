@@ -173,13 +173,14 @@ It does not replace the full-corpus comparison.
 ## Startup timeline
 
 [cold_start.py](cold_start.py) uses the same arguments and additionally requires
-bpftrace, kernel BTF, the raw cgroup-create tracepoint and scheduler exec/exit
+bpftrace, kernel BTF, cgroup-create/attach and scheduler exec/exit
 tracepoints on an isolated Linux 5.7+ host.
 It observes three new persistent sessions; smoke uses the smaller fixture budget.
-Only the fixture's daemon cgroup and new descendants of its pool emit events.
-The trace records D-Bus client exec, session-slice creation, systemd-run exec,
-the sandbox bwrap exec and bash exec. It distinguishes bwrap's version check from
-the actual sandbox launch by matching the launcher's PID and cgroup across its
+Only the fixture's daemon cgroup and new descendants of its workload subtree emit events.
+The trace records session cgroup creation, trusted launcher exec, placement in its
+leaf, sandbox bwrap exec and bash exec. It distinguishes bwrap's version check from
+the actual sandbox launch by following the launcher's PID through the observed
+cgroup attachment and its
 `exec` replacement, as implemented by
 [`sandcrab-launch`](../../executor-service/rust/sandcrab-launch/src/lib.rs).
 A process exit invalidates that identity. No user argv pointers are read.

@@ -5,11 +5,12 @@ Date: 2026-11-02
 ## Problem
 
 The [native service](../../executor-service/rust/sandcrab/README.md) has an independent
-API, but installation requires manually prepared tools, accounts, systemd units
+API, but installation requires manually prepared tools, accounts, resource delegation
 and profiles; durable volumes require XFS. The
 [native seccomp filter](../implemented/2026-11-02-native-seccomp-filter.md) implements L1,
-removing the helper's Node.js/npm/SRT provisioning. Each sandbox
-starts through [systemd-run](../../executor-service/rust/sandcrab-core/src/unit.rs).
+removing the helper's Node.js/npm/SRT provisioning.
+[Delegated cgroups](../implemented/2026-11-02-delegated-sandbox-cgroups.md)
+replace native per-sandbox service-manager transactions.
 Independent API tests do not establish first-use cost or capacity on a small host.
 
 The [service proposal](2026-10-26-sandcrab-sandbox-service.md) originally tied extraction
@@ -68,15 +69,9 @@ SDK conformance while changing the implementation.
 1. L1 is implemented by the [native filter decision](../implemented/2026-11-02-native-seccomp-filter.md):
    equivalent rules and per-rule native probes, with consumer workload interpreters
    provisioned separately.
-2. L2: delegated cgroups. Replace per-sandbox systemd-run with leaves created
-   in a delegated cgroup v2 subtree. Set `memory.max`, `memory.swap.max`, `pids.max`
-   and `cpu.max`; launch bwrap with CLONE_INTO_CGROUP or join before exec. Contain
-   with `cgroup.kill` and observed `populated 0`. Carry over user/group dropping,
-   no_new_privs, umask, sized private `/tmp` and binds from the current unit owner.
-   Support systemd `Delegate=yes`, containers with a delegated cgroup namespace,
-   and root on a cgroup v2 host. No unrestricted fallback; retain admission until
-   containment and clean old leaves before publishing a new epoch. Target
-   cold-start p50 at most 30 ms.
+2. L2 uses [delegated cgroups](../implemented/2026-11-02-delegated-sandbox-cgroups.md)
+   for native launches and confirmed containment. The native README owns systemd,
+   container and root-host deployment. Target cold-start p50 at most 30 ms.
 3. L3: ordinary filesystems. Default volumes and session workspaces to plain
    directories. Reflink where supported, copy otherwise. Enforce XFS project quotas
    when configured. Without quotas, report usage and refuse growth through periodic

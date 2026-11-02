@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trace a new session's actual cgroup, D-Bus client, launcher and sandbox exec events."""
+"""Trace a new session's cgroup creation, launcher placement and sandbox exec."""
 import argparse
 import asyncio
 import datetime
@@ -17,11 +17,10 @@ import traceback
 from density import save
 from engine import Engine
 from host import Fixture
-from metrics import Metrics
 
 
-def program(name, daemon_group, pool_group):
-    if not re.fullmatch(r'sandcrab-probe-[a-f0-9]{10}', name) or min(daemon_group, pool_group) <= 0:
+def program(name, daemon_group, workloads_group):
+    if not re.fullmatch(r'sandcrab-probe-[a-f0-9]{10}', name) or min(daemon_group, workloads_group) <= 0:
         raise ValueError('Invalid trace namespace')
     # Parent cgroup IDs avoid path truncation and work in a cgroup namespace.
     # Exec identity comes from the kernel; no process argv pointers are read.
@@ -32,12 +31,15 @@ rawtracepoint:cgroup_mkdir {{
  $parent = $group->self.parent;
  if ((uint64)$parent != 0) {{
   $parent_id = $parent->cgroup->kn->id;
-  if ($parent_id == {pool_group} || @owned[$parent_id]) {{
+  if ($parent_id == {workloads_group} || @owned[$parent_id]) {{
    $id = $group->kn->id;
    @owned[$id] = 1;
    printf("%llu\\tgroup\\t%llu\\n", nsecs, $id);
   }}
  }}
+}}
+tracepoint:cgroup:cgroup_attach_task /@owned[args->dst_id]/ {{
+ printf("%llu\\tattach\\t%u\\t%llu\\n", nsecs, args->pid, args->dst_id);
 }}
 tracepoint:sched:sched_process_exec /cgroup == {daemon_group} || @owned[cgroup]/ {{
  printf("%llu\\texec\\t%u\\t%llu\\t%s\\n", nsecs, pid, cgroup, str(args->filename));
@@ -58,32 +60,38 @@ def parse_event(line):
                 'cgroupId': int(values[3]), 'filename': values[4]}
     if len(values) == 4 and values[1] == 'exit':
         return {'bootNs': int(values[0]), 'event': 'exit', 'pid': int(values[2]), 'cgroupId': int(values[3])}
+    if len(values) == 4 and values[1] == 'attach':
+        return {'bootNs': int(values[0]), 'event': 'cgroup-placement', 'pid': int(values[2]), 'cgroupId': int(values[3])}
     raise ValueError('Unrecognized trace event')
 
 
 def timeline(events, started, ready, session_group, launcher):
     observed = sorted((event for event in events if started <= event['bootNs'] <= ready), key=lambda event: event['bootNs'])
     points = {'apiSubmit': 0, 'apiReadyObserved': ready - started}
-    launchers = set()
+    launchers = {}
     for event in observed:
         label = None
         if event['event'] == 'cgroup-created' and event['cgroupId'] == session_group:
-            label = 'sessionSliceCreated'
+            label = 'sessionCgroupCreated'
+        elif event['event'] == 'cgroup-placement' and event['pid'] in launchers:
+            launchers[event['pid']] = event['cgroupId']
+            label = 'launcherPlaced'
         elif event['event'] == 'exec':
-            identity = (event['pid'], event['cgroupId'])
             if event['filename'] == launcher:
-                launchers.add(identity)
+                launchers[event['pid']] = event['cgroupId']
+                label = 'trustedLauncherExec'
             name = Path(event['filename']).name
-            label = {'busctl': 'dbusClientExec', 'systemd-run': 'systemdRunExec', 'bash': 'bashExec'}.get(name)
+            if name == 'bash':
+                label = 'bashExec'
             # sandcrab_launch::exec replaces the launcher process with bwrap;
             # its version check is a separate child, never that same identity.
-            if name == 'bwrap' and identity in launchers:
+            if name == 'bwrap' and launchers.get(event['pid']) == event['cgroupId']:
                 label = 'bwrapSandboxExec'
         elif event['event'] == 'exit':
-            launchers.discard((event['pid'], event['cgroupId']))
+            launchers.pop(event['pid'], None)
         if label and label not in points:
             points[label] = event['bootNs'] - started
-    required = {'sessionSliceCreated', 'dbusClientExec', 'systemdRunExec', 'bwrapSandboxExec', 'bashExec'}
+    required = {'sessionCgroupCreated', 'trustedLauncherExec', 'launcherPlaced', 'bwrapSandboxExec', 'bashExec'}
     missing = sorted(required - points.keys())
     return {'status': 'INCOMPLETE' if missing else 'COMPLETE', 'missing': missing,
             'nanosecondsFromSubmit': points, 'events': observed}
@@ -129,7 +137,7 @@ class Trace:
             raise RuntimeError('The trace clock requires Linux 5.7+ CLOCK_BOOTTIME')
         self.version = subprocess.check_output(['bpftrace', '--version'], text=True, timeout=10).strip()
         source = program(self.fixture.name, self.fixture.daemon_group.stat().st_ino,
-                         self.fixture.pool_group.stat().st_ino)
+                         self.fixture.workloads_group.stat().st_ino)
         self.source_sha256 = hashlib.sha256(source.encode()).hexdigest()
         before = time.clock_gettime_ns(time.CLOCK_BOOTTIME)
         self.process = await asyncio.create_subprocess_exec(
@@ -187,7 +195,7 @@ async def measure(fixture, receipt, report, trials):
             session, elapsed = await engine.session()
             item.update(readyBootNs=time.clock_gettime_ns(time.CLOCK_BOOTTIME), session=session,
                         apiElapsedMonotonicNs=elapsed)
-            group = fixture.pool_group / (Metrics(fixture).family + session.replace('-', '') + '.slice')
+            group = fixture.workloads_group / ('session-' + session)
             item['sessionCgroupId'] = group.stat().st_ino
             await engine.close(session)
             item['status'] = 'OBSERVED'

@@ -47,9 +47,9 @@ runtime_root = {json.dumps(str(self.runtime))}
 socket = {json.dumps(str(self.socket))}
 client_uid = {app.pw_uid}
 client_gid = {app.pw_gid}
-resource_slice = "{self.pool.name}"
-supervisor_unit = "{self.supervisor}.service"
-unit_prefix = "{self.prefix}"
+cgroup_root = "/sys/fs/cgroup/{self.pool.name}/{self.supervisor}.service"
+daemon_memory_bytes = 134217728
+daemon_tasks_max = 128
 max_sandboxes = 1
 max_records = 128
 max_output_bytes = 1048576
@@ -105,8 +105,8 @@ host_calls = false
         self.socket.unlink(missing_ok=True)
         supervisor = str(self.root / 'sandcrab')
         run(['systemd-run', '--quiet', '--collect', '--unit', self.supervisor, '--slice', self.pool.name,
-             '-p', 'User=root', '-p', 'UMask=0077', '-p', 'MemoryMax=128M', '-p', 'MemorySwapMax=0',
-             '-p', 'TasksMax=128', supervisor, 'serve', '--config', str(self.config_path)])
+             '-p', 'User=root', '-p', 'UMask=0077', '-p', 'Delegate=yes', '-p', 'MemorySwapMax=0',
+             '-p', 'TasksMax=infinity', supervisor, 'serve', '--config', str(self.config_path)])
         deadline = time.monotonic() + 25
         while time.monotonic() < deadline:
             if self.socket.is_socket():
