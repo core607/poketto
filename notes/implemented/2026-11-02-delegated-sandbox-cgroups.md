@@ -4,9 +4,9 @@ Date: 2026-11-02
 
 ## Problem
 
-Per-sandbox service-manager transactions add startup work and a systemd requirement.
-Removing them must preserve identity, temporary-storage and containment boundaries;
-an empty leaf cannot prove containment while its launcher can still enter it.
+Per-sandbox systemd transactions add startup and host requirements. Replacement
+must preserve identity, temporary storage and containment: an empty leaf is
+insufficient while its launcher can still enter.
 
 ## Decision
 

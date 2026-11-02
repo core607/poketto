@@ -286,6 +286,71 @@
       "path": "local/native4.json",
       "bytes": 6105,
       "sha256": "d3dace861a5706a0804e1e4cbc716b7b760616d623644bec9206a8551ce50325"
+    },
+    {
+      "path": "ci-first-readiness/readiness-debian12/readiness-debian12.json",
+      "bytes": 1666,
+      "sha256": "eee77f5f4f34b50cfb4e12f7c2090503dc54ee1352825ffb93f823464e054786"
+    },
+    {
+      "path": "ci-first-readiness/readiness-native-ubuntu22/readiness-native.json",
+      "bytes": 10246,
+      "sha256": "b8b0a6daeaea1a56dbadd18b7a3eb9c02c720633fc2e11e45b0df8d55d36067d"
+    },
+    {
+      "path": "ci-first-readiness/readiness-native-ubuntu24/readiness-native.json",
+      "bytes": 10616,
+      "sha256": "207e13258bbbeab1944915c38032703d9ff8a9d2005c5c3cc839a4921587a633"
+    },
+    {
+      "path": "ci-first-readiness/readiness-ubuntu22/readiness-ubuntu22.json",
+      "bytes": 1602,
+      "sha256": "e1536223315133313898d84e9333a4b7bb0f90fa64cc145675ea3f30d3a13c47"
+    },
+    {
+      "path": "ci-first-readiness/readiness-ubuntu24/readiness-ubuntu24.json",
+      "bytes": 1666,
+      "sha256": "cf851318bc779d284aa7de35f7ed162ad41a1315dca42463498a0079bfabc9b3"
+    },
+    {
+      "path": "ci-first-smoke/cache-smoke.attempts.jsonl",
+      "bytes": 14355,
+      "sha256": "46e18bddb6834d9095fc3787bd7ecd96eead321bb0185ca441f30d55df0111c8"
+    },
+    {
+      "path": "ci-first-smoke/cache-smoke.json",
+      "bytes": 20993,
+      "sha256": "f3d7be71e4171088b434552f3426365e4dde1988b1d7dda08482da1acea6ecb0"
+    },
+    {
+      "path": "ci-first-smoke/cold-start-smoke.json",
+      "bytes": 23282,
+      "sha256": "2e95073f8bff8981b229a57cfdb527d8a353993b26a262dbb9bc979e10d62431"
+    },
+    {
+      "path": "ci-first-smoke/footprint-smoke.attempts.jsonl",
+      "bytes": 433,
+      "sha256": "b17e56e6d6673acdb69f83791bac70c555017a092ad14dfdf626d59bc327928d"
+    },
+    {
+      "path": "ci-first-smoke/footprint-smoke.json",
+      "bytes": 22507,
+      "sha256": "8c32cc802d7889dd27fa4dded1c80fca1a3113daa4e420da087faa5ee89e6e18"
+    },
+    {
+      "path": "ci-first-smoke/smoke.attempts.jsonl",
+      "bytes": 60498,
+      "sha256": "68f61a8d017a0ecf36b0eba3ed3a7dd58bb35fc1b1efcfcf682725fc34343260"
+    },
+    {
+      "path": "ci-first-smoke/smoke.json",
+      "bytes": 80212,
+      "sha256": "01302284dde87f406f5ce8c0382fe7eface46386596d712310c860d907906528"
+    },
+    {
+      "path": "local/readiness-ubuntu24-fixed.json",
+      "bytes": 11688,
+      "sha256": "691d0c789a0f275f256ee1333fd49101ff271d821d76d8b74f46fc37611033fe"
     }
   ]
 }

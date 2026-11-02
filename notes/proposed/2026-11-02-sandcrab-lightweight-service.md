@@ -149,15 +149,17 @@ records footprint before and after and adds no runtime dependency or resident pr
 
 ### P: measured performance work
 
-Rerun W0 after L2, L7 and L9 and report footprint and density before/after. Implement
-P1 idle shell eviction only if idle sessions consume at least 40% of sandbox memory
-at the measured capacity stage. Otherwise record the numbers and skip P1.
+Rerun W0 after L2, L7 and L9, comparing footprint and density. P1 requires idle
+sessions to hold at least 40% of sandbox memory at measured capacity; otherwise
+record the numbers and skip it. After `idle_evict_millis`, evict only a lone shell:
+save cwd and `export -p`, exit, and restore them on the next command. Background
+processes prohibit eviction. Document lost state and move workspaces from tmpfs
+to disk. Propose other measured optimizations here before implementing them.
 
-If triggered, after `idle_evict_millis` and only when the shell is the sole cgroup
-process, save cwd and `export -p`, exit the shell and restore that state on the next
-command. Never evict while background processes exist; document lost state and move
-session workspaces from tmpfs to disk. Propose any other measured bottleneck, such
-as interpreter startup, in the decision record before implementing an optimization.
+[L2 traces](../../executor-native/evidence/sandcrab-l2-2026-11-02/ci-first-smoke/cold-start-smoke.json)
+show approximately 20 ms gaps after mount exits; bounded host helpers poll without
+process-exit readiness. Use pidfds in that wait, retaining output/timeout bounds
+and rejection on unavailable observation. Re-measure cold starts before attributing a gain.
 
 ### X: extraction by readiness
 

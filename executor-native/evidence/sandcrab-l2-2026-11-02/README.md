@@ -41,6 +41,14 @@ remain unchanged. Memory and latency observations above are not compared with
 the independent canonical L1 runner. Density, footprint, cache and trace smoke
 all completed with API and host cleanup.
 
+The [first CI smoke](ci-first-smoke/smoke.json) also completed with cleanup:
+88 judged attempts passed, while its two untraced session starts took 161.649067
+and 202.289373 ms. Its [kernel trace](ci-first-smoke/cold-start-smoke.json)
+records approximately 20 ms gaps after some mount processes exit. The bounded
+host-helper wait polls without a child-exit descriptor; the proposed performance
+workstream owns the corresponding optimization. These observations do not replace
+the pending canonical measurements.
+
 ## Functional evidence
 
 At candidate `59047a9ebbe818a1a8724f7d6cb56f147678836ee8cf67cb0e9d75ec49e2ad43`,
@@ -83,6 +91,11 @@ expiry; [games](local/java-games1.json) passed with cleanup.
   preceded the successful adapter and game runs.
 - `native3` supplied a nonexistent optional example path and failed after the
   lifecycle checks. `native4` uses the CI command and passes; both retain cleanup evidence.
+- The first CI readiness run completed on native Ubuntu 22.04/24.04 but failed
+  in all three containers: copying the recipe to `/root` broke its source-relative
+  import. Container cleanup passed. Invoking the recipe inside the unpacked source
+  fixes that path; a fresh local Ubuntu 24.04 replay completed with cleanup.
+  Its 12 commands and two configuration edits still miss the eventual readiness target.
 
 Original logs, source manifests, Inspect logs/viewer and all attempts are retained
 with the operator's development artifacts. The indexed JSON and measurement ledgers

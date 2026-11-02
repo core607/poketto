@@ -1,0 +1,253 @@
+{
+  "schema": 1,
+  "kind": "sandcrab-manual-readiness-baseline",
+  "sourceRevision": "17bb7b3ab1d768f476e4f03ea7bf7bb6f2e5864d",
+  "started": "2026-11-02T04:57:04.376555+00:00",
+  "scope": "Automated replay of the current README manual operator steps, using a prebuilt candidate. Human editing time and source compilation are excluded; this is a lower bound, not turnkey readiness. Operator commands have temporary resource limits; their wrapper overhead is included.",
+  "acquisition": {
+    "source": "repository checkout plus candidate binary",
+    "operatorCommands": 2
+  },
+  "acquisitionClockIncluded": true,
+  "initialEnvironment": {
+    "osRelease": "PRETTY_NAME=\"Ubuntu 22.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"22.04\"\nVERSION=\"22.04.5 LTS (Jammy Jellyfish)\"\nVERSION_CODENAME=jammy\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=jammy\n",
+    "kernel": "6.8.0-1070-azure",
+    "logicalCpuCount": 4,
+    "controllerPythonPreinstalled": true,
+    "rootCgroupLimits": {
+      "memory.max": null,
+      "memory.swap.max": null,
+      "pids.max": null,
+      "cpu.max": null
+    },
+    "programs": {
+      "curl": true,
+      "python3": true,
+      "node": true,
+      "npm": true,
+      "bwrap": false,
+      "git": true
+    }
+  },
+  "inputSha256": {
+    "binary": "d78c28011680253bd1e28b1844774f8940a8e7f5c8036cf8c733fd1150e8061e",
+    "readme": "bf358fb9733c6d951576f85a737036f5e7fddbbd006b59f12c9abbcc3a238808",
+    "recipe": "e3214760d4d3dd73a450952e62d6ed69a55ad94bf717c960623020dfad427ed5"
+  },
+  "steps": [
+    {
+      "kind": "command",
+      "label": "create protected installation directory",
+      "argv": [
+        "mkdir",
+        "-m",
+        "755",
+        "/var/lib/sandcrab-ready-0bf6391195"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 17930672
+    },
+    {
+      "kind": "command",
+      "label": "refresh package indexes",
+      "argv": [
+        "apt-get",
+        "update"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]\nHit:2 http://azure.archive.ubuntu.com/ubuntu jammy InRelease\nGet:6 https://packages.microsoft.com/ubuntu/22.04/prod jammy InRelease [3632 B]\nGet:3 http://azure.archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]\nGet:4 http://azure.archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]\nGet:5 http://azure.archive.ubuntu.com/ubuntu jammy-security InRelease [129 kB]\nGet:7 https://packages.microsoft.com/ubuntu/22.04/prod jammy/main arm64 Packages [709 kB]\nGet:8 https://packages.microsoft.com/ubuntu/22.04/prod jammy/main amd64 Packages [974 kB]\nGet:9 http://azure.archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [3939 kB]\nGet:10 http://azure.archive.ubuntu.com/ubuntu jammy-updates/main Translation-en [579 kB]\nGet:11 http://azure.archive.ubuntu.com/ubuntu jammy-updates/restricted amd64 Packages [6778 kB]\nGet:12 http://azure.archive.ubuntu.com/ubuntu jammy-updates/restricted Translation-en [1303 kB]\nGet:13 http://azure.archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages [1290 kB]\nGet:14 http://azure.archive.ubuntu.com/ubuntu jammy-updates/universe Translation-en [326 kB]\nGet:15 http://azure.archive.ubuntu.com/ubuntu jammy-security/main amd64 Packages [3670 kB]\nGet:16 http://azure.archive.ubuntu.com/ubuntu jammy-security/main Translation-en [511 kB]\nGet:17 http://azure.archive.ubuntu.com/ubuntu jammy-security/restricted amd64 Packages [6545 kB]\nGet:18 http://azure.archive.ubuntu.com/ubuntu jammy-security/restricted Translation-en [1260 kB]\nGet:19 http://azure.archive.ubuntu.com/ubuntu jammy-security/universe amd64 Packages [1055 kB]\nGet:20 http://azure.archive.ubuntu.com/ubuntu jammy-security/universe Translation-en [238 kB]\nFetched 29.6 MB in 4s (8053 kB/s)\nReading package lists...\n",
+      "stderrTail": "",
+      "elapsedNs": 8794238619
+    },
+    {
+      "kind": "command",
+      "label": "install preparation and Python workload dependencies",
+      "argv": [
+        "apt-get",
+        "install",
+        "--yes",
+        "--no-install-recommends",
+        "python3",
+        "procps"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "Reading package lists...\nBuilding dependency tree...\nReading state information...\nprocps is already the newest version (2:3.3.17-6ubuntu2.1).\nprocps set to manually installed.\npython3 is already the newest version (3.10.6-1~22.04.1).\n0 upgraded, 0 newly installed, 0 to remove and 19 not upgraded.\n",
+      "stderrTail": "",
+      "elapsedNs": 543514804
+    },
+    {
+      "kind": "command",
+      "label": "install candidate executable",
+      "argv": [
+        "install",
+        "-m",
+        "755",
+        "/home/runner/work/poketto/poketto/build/executor-service/bin/sandcrab",
+        "/var/lib/sandcrab-ready-0bf6391195/sandcrab"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 31891227
+    },
+    {
+      "kind": "command",
+      "label": "prepare pinned sandbox toolchain",
+      "argv": [
+        "bash",
+        "/home/runner/work/poketto/poketto/executor-service/prepare-tools.sh",
+        "/var/lib/sandcrab-ready-0bf6391195/tools"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]\nGet:2 http://azure.archive.ubuntu.com/ubuntu jammy/main amd64 debianutils amd64 5.5-1ubuntu2 [107 kB]\nGet:3 http://azure.archive.ubuntu.com/ubuntu jammy/main amd64 socat amd64 1.7.4.1-3ubuntu4 [349 kB]\nGet:4 http://azure.archive.ubuntu.com/ubuntu jammy-updates/main amd64 bubblewrap amd64 0.6.1-1ubuntu0.3 [46.3 kB]\nGet:5 http://azure.archive.ubuntu.com/ubuntu jammy-updates/universe amd64 ripgrep amd64 13.0.0-2ubuntu0.1 [1300 kB]\nFetched 1802 kB in 0s (6992 kB/s)\nPrepared Sandcrab tools in /var/lib/sandcrab-ready-0bf6391195/tools.\n",
+      "stderrTail": "\nWARNING: apt does not have a stable CLI interface. Use with caution in scripts.\n\nW: Download is performed unsandboxed as root as file '/var/lib/sandcrab-ready-0bf6391195/tools/debianutils_5.5-1ubuntu2_amd64.deb' couldn't be accessed by user '_apt'. - pkgAcquire::Run (13: Permission denied)\n",
+      "elapsedNs": 661509389
+    },
+    {
+      "kind": "command",
+      "label": "create separate execution account",
+      "argv": [
+        "useradd",
+        "--system",
+        "--no-create-home",
+        "--shell",
+        "/usr/sbin/nologin",
+        "scrab-0bf6391195"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 37417534
+    },
+    {
+      "kind": "manual-configuration",
+      "path": "/var/lib/sandcrab-ready-0bf6391195/config.toml",
+      "fields": [
+        "runtime_root",
+        "socket",
+        "client_uid",
+        "client_gid",
+        "cgroup_root",
+        "exec_user",
+        "tools"
+      ],
+      "status": "PASS",
+      "sha256": "385b2b112407e5224a77facd15c3f7b112949decba51cab7a32ce0f47bf1a82b",
+      "elapsedNs": 464600
+    },
+    {
+      "kind": "manual-configuration",
+      "path": "/run/systemd/system/sandcrab-ready-0bf6391195.slice",
+      "fields": [
+        "MemoryMax",
+        "MemorySwapMax",
+        "TasksMax",
+        "CPUQuota"
+      ],
+      "status": "PASS",
+      "sha256": "9d5ec8a65ad341e5174d7d5c406f944fc48aac9dd7098b8124d44c32087d53c4",
+      "elapsedNs": 50245
+    },
+    {
+      "kind": "command",
+      "label": "load the resource slice",
+      "argv": [
+        "systemctl",
+        "daemon-reload"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 253388868
+    },
+    {
+      "kind": "command",
+      "label": "start the resource slice",
+      "argv": [
+        "systemctl",
+        "start",
+        "sandcrab-ready-0bf6391195.slice"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 31783988
+    },
+    {
+      "kind": "command",
+      "label": "start the root service in its bounded unit",
+      "argv": [
+        "systemd-run",
+        "--quiet",
+        "--collect",
+        "--unit",
+        "sandcrab-ready-0bf6391195.service",
+        "--slice",
+        "sandcrab-ready-0bf6391195.slice",
+        "-p",
+        "Delegate=yes",
+        "-p",
+        "MemorySwapMax=0",
+        "-p",
+        "TasksMax=infinity",
+        "-p",
+        "KillMode=control-group",
+        "-p",
+        "RuntimeMaxSec=180",
+        "/var/lib/sandcrab-ready-0bf6391195/sandcrab",
+        "serve",
+        "--config",
+        "/var/lib/sandcrab-ready-0bf6391195/config.toml"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "",
+      "stderrTail": "",
+      "elapsedNs": 24200382
+    },
+    {
+      "kind": "command",
+      "label": "first README sandboxed command",
+      "argv": [
+        "/var/lib/sandcrab-ready-0bf6391195/sandcrab",
+        "run",
+        "--socket",
+        "/var/lib/sandcrab-ready-0bf6391195/runtime/control.sock",
+        "--profile",
+        "python",
+        "--",
+        "python3",
+        "-c",
+        "print(6 * 7)"
+      ],
+      "status": "PASS",
+      "exitCode": 0,
+      "stdoutTail": "{\"id\":\"0e43fd26-98a9-42ee-9cb7-1365d48aaa2b\",\"serverId\":\"b7826e6f-23db-45bb-892d-ad967d558029\",\"profile\":\"python\",\"state\":\"succeeded\",\"result\":{\"exitCode\":0,\"truncated\":false,\"stdout\":\"42\\n\",\"stderr\":\"\"}}\n",
+      "stderrTail": "runId=0e43fd26-98a9-42ee-9cb7-1365d48aaa2b\n",
+      "elapsedNs": 121786016
+    }
+  ],
+  "measurementStatus": "COMPLETED",
+  "cleanup": "PASS",
+  "modelTokens": 0,
+  "containsProductionContent": false,
+  "readiness": {
+    "firstSandboxedCommand": "PASS",
+    "operatorCommands": 12,
+    "manualConfigurationEdits": 2,
+    "automatedWallNs": 14739420662,
+    "humanEditingTimeIncluded": false,
+    "targetPass": false
+  },
+  "finished": "2026-11-02T04:57:15.398375+00:00"
+}
