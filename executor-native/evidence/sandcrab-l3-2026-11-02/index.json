@@ -1,7 +1,137 @@
 {
   "schema": 1,
-  "scope": "Local development attempts on different recorded candidates; authoritative CI, readiness and canonical density remain pending.",
+  "scope": "Retained local candidates and first CI head 28eb726c; canonical density and plain-accounting scale measurements remain pending.",
   "files": [
+    {
+      "path": "41461303539/13150636174/native-load.json",
+      "bytes": 1626,
+      "sha256": "8047304a8a98ad8235ff24efd50c25499d196f5aa3a553e73c2c6ae93b65385a"
+    },
+    {
+      "path": "41461303539/13150695523/contexts.json",
+      "bytes": 1503,
+      "sha256": "dab6c2229f5a680ca871efb93261edfe171c8ed625d12382d9f3d94ee4c632e5"
+    },
+    {
+      "path": "41461303539/13150695523/delegation.json",
+      "bytes": 1597,
+      "sha256": "c8e2150a1ab73801cf29ee294f43b55c42548808a6786061fb3991918daf3086"
+    },
+    {
+      "path": "41461303539/13150695523/events.json",
+      "bytes": 1500,
+      "sha256": "cd02e0bfc09b64b6ffbe416cb5227586337447c0ec89a590f219f6fb858f6326"
+    },
+    {
+      "path": "41461303539/13150695523/files.json",
+      "bytes": 3967,
+      "sha256": "bf876d01f7ebfe6f39c0b3e6ab71c4525e8e1f59f026bcb5bececb99db8806b8"
+    },
+    {
+      "path": "41461303539/13150695523/fixture.json",
+      "bytes": 4281,
+      "sha256": "f79a30754a4a6c5bd6c51ece5b61d74d69c564433b1142979c08bc9f4a7d441e"
+    },
+    {
+      "path": "41461303539/13150695523/host-calls.json",
+      "bytes": 2823,
+      "sha256": "a953cea91f0ebf28712f7648c7d3af7204638fab3fa80f38fcad507bc0928866"
+    },
+    {
+      "path": "41461303539/13150695523/native.json",
+      "bytes": 8296,
+      "sha256": "b6cdccac22ef7f5ee07225ea83c358e3b660565acc4dd509561c8bec5efcb6fe"
+    },
+    {
+      "path": "41461303539/13150695523/plain-storage.json",
+      "bytes": 2552,
+      "sha256": "12d59b8a9e2dccc54a6c91c8c97acbd442e7c07a708e024808529e019be8108b"
+    },
+    {
+      "path": "41461303539/13150695523/resources.json",
+      "bytes": 1111,
+      "sha256": "6a0465f049c6b8ccc24eff52396c0d3da52b634334718369245869eaf169cb34"
+    },
+    {
+      "path": "41461303539/13150695523/sdk.json",
+      "bytes": 11171,
+      "sha256": "d66ed4cd7b55dbdb29b79cd605a5bbb63ac64c671a7b93e87b6ceb7065b58d01"
+    },
+    {
+      "path": "41461303539/13150695523/summary.json",
+      "bytes": 63613,
+      "sha256": "34f7ff3efd33f09c985eee808afd167e877b8061e8e7674c90d2c073d0d533d9"
+    },
+    {
+      "path": "41461303539/13150695523/tcp.json",
+      "bytes": 1673,
+      "sha256": "2b4d524b49e9461c4922fba30638b2b6eb49f403c304f6fedf037ddade0e6ebd"
+    },
+    {
+      "path": "41461303539/13150695523/volumes.json",
+      "bytes": 2477,
+      "sha256": "da2dd5c34549814bd5da0fddad3bb077900e9d69942edff49024b5f27b964425"
+    },
+    {
+      "path": "41461303561/13149097416/readiness-debian12.json",
+      "bytes": 12367,
+      "sha256": "01364e6d1fb84e70fe61d7d9d5508ca54e98f14a7b7a3bc6a59e0eb3aa7118b0"
+    },
+    {
+      "path": "41461303561/13149820902/readiness-native.json",
+      "bytes": 10245,
+      "sha256": "b0929bcb08932af89ce536580a5b66ed1d4b7b0d11a0e13ed38f8252f5c07b04"
+    },
+    {
+      "path": "41461303561/13150075729/readiness-ubuntu24.json",
+      "bytes": 12148,
+      "sha256": "cab44eca01a4ac3c7927bec0b2ca3d209e3abf3c2c1bf6da677ff407faa222fd"
+    },
+    {
+      "path": "41461303561/13150341855/readiness-ubuntu22.json",
+      "bytes": 12051,
+      "sha256": "7a8e9119c01ec73636dbaa2f7749003396311f49769be20f250d0b99700309df"
+    },
+    {
+      "path": "41461303561/13150515141/readiness-native.json",
+      "bytes": 10908,
+      "sha256": "ec036e5d75e12ae11ac6895e4d5c9bc4fc40599dd399162e2fbf2c9a19f8e428"
+    },
+    {
+      "path": "41461303652/13149990950/cache-smoke.attempts.jsonl",
+      "bytes": 14356,
+      "sha256": "55f773f2799081e68425e643112000300198747c2ea1276783af340ec8e8e931"
+    },
+    {
+      "path": "41461303652/13149990950/cache-smoke.json",
+      "bytes": 20993,
+      "sha256": "d630783bf7b2c15cab187c542924d694208cb83ced3ef9c7d15519a9caac36e9"
+    },
+    {
+      "path": "41461303652/13149990950/cold-start-smoke.json",
+      "bytes": 27480,
+      "sha256": "62f6cd5ccc3a6a89107fc39a759b50b63124ce41efb6c7293b81b73aeeed3bc4"
+    },
+    {
+      "path": "41461303652/13149990950/footprint-smoke.attempts.jsonl",
+      "bytes": 433,
+      "sha256": "a5e4b3c9c287945cd50584d498e4e6408b143a9cb3e4812813d7a66397c5c062"
+    },
+    {
+      "path": "41461303652/13149990950/footprint-smoke.json",
+      "bytes": 22525,
+      "sha256": "a8923b594f10237e4d179582080ba9d0bbafaf0026b597ba39f5a4d61d60e91b"
+    },
+    {
+      "path": "41461303652/13149990950/smoke.attempts.jsonl",
+      "bytes": 67037,
+      "sha256": "f7838b58c737bec9aeb987d0f31e9f390c218143e7e83ac0e95fbf332b7cdb24"
+    },
+    {
+      "path": "41461303652/13149990950/smoke.json",
+      "bytes": 88282,
+      "sha256": "9fb670787df33c9996fcf3ae8697600b2b4eb3abb0ef99d6adea50be7df0a6c7"
+    },
     {
       "path": "local/contexts1.json",
       "bytes": 604,
@@ -21,6 +151,11 @@
       "path": "local/local-gates.json",
       "bytes": 8514,
       "sha256": "089924174597cfbbfd6d6b6cecfc73e33e59b1400ecda0d71e22c42053d525d5"
+    },
+    {
+      "path": "local/measurement-tests1.json",
+      "bytes": 3045,
+      "sha256": "bcaaa8051071af0879600e4fff4928b7a34f7f9a2af7260e69525377720a4825"
     },
     {
       "path": "local/native1.json",

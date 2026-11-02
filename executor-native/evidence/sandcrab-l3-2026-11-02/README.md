@@ -2,7 +2,7 @@
 
 These local development receipts cover ordinary storage, disk session directories
 and periodic accounting. They do not establish canonical density, installation
-readiness or final CI acceptance. [The index](index.json) hashes the committed
+readiness or final-head acceptance. [The index](index.json) hashes the committed
 receipt bytes; [local gates](local/local-gates.json) retain each build attempt,
 including failures. Original logs and source snapshots remain with the operator.
 
@@ -39,3 +39,38 @@ attempt 2. [SDK attempt 1](local/sdk1.json) passes both clients but fails a faul
 fixture still watching the old staging path; attempt 2 corrects the fixture.
 Both failed attempts retain successful cleanup. Earlier plain-storage and Rust
 attempts keep their original identities; they do not verify the final source.
+
+## First CI acceptance
+
+[CI 41461303539](https://github.com/core607/poketto/actions/runs/41461303539)
+passes at PR head `28eb726c`, including the authoritative Rust checks and consumer
+lanes. Its tested merge ref `6127c52b` has the same tree, `da4327b2`.
+The static CI binary is `57169e02cc2c0d431c7c354f9a670e9254ae1ac09f1d4774e7e5284c58860b36`,
+4,240,288 bytes; the local candidates above have separate identities.
+
+[Native](41461303539/13150695523/native.json),
+[ordinary storage](41461303539/13150695523/plain-storage.json),
+[quota volumes](41461303539/13150695523/volumes.json),
+[files](41461303539/13150695523/files.json) and
+[published SDK conformance](41461303539/13150695523/sdk.json) pass with cleanup.
+[Inspect](41461303539/13150695523/summary.json) passes 66 scripted cases using
+real sandboxes, `mockllm/model` and zero model tokens. Context, delegation, event,
+TCP, host-call and resource receipts are retained alongside them.
+
+The [two-agent XFS smoke](41461303652/13149990950/smoke.json) passes 99 judged
+attempts, 100% OK and zero OOM; p95 is 38.602757 ms. Its two cold starts take
+22.627549 and 22.753766 ms. The [footprint smoke](41461303652/13149990950/footprint-smoke.json)
+records 3,284,992 bytes median daemon RSS. These are small entry-path checks,
+not canonical capacity or marginal-cost comparisons. The dependency inventory in
+that receipt still includes the removed `xfs_spaceman`; the current collector
+corrects that inventory and separates optional quota tools.
+
+[Installation replay](https://github.com/core607/poketto/actions/runs/41461303561)
+completes all five environments with cleanup. It still requires 12–13 commands
+and 2–3 manual edits, so L5/L10's release readiness targets remain unmet.
+The clock excludes compilation, preparation of the controller and images, and
+human editing; distribution containers share the runner kernel.
+
+[Measurement component checks](local/measurement-tests1.json) pass 33 Linux tests,
+including observation placement outside the command window. The plain-storage
+variant and canonical 5 GB runs still require native measurement.
