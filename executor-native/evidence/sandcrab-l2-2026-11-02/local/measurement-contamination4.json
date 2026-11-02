@@ -1,0 +1,17 @@
+{
+  "kind": "measurement-environment-contamination",
+  "attempts": [
+    "density-smoke4.json",
+    "cold-smoke4.json",
+    "footprint-smoke4.json"
+  ],
+  "reason": "Java games2 cleanup failed before these runs. A synthetic XFS image and nested tmpfs mounts remained until games2-remediation.json. No clean comparison or performance claim may use these runs.",
+  "recordsUnchanged": true,
+  "remediation": "games2-remediation.json",
+  "preflightRefusal": "residue-preflight1.json",
+  "cleanRetries": [
+    "density-smoke5.json",
+    "cold-smoke5.json",
+    "footprint-smoke5.json"
+  ]
+}

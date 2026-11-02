@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "result": "FAIL",
+  "stage": "source-revision-before-Inspect",
+  "errorType": "CalledProcessError",
+  "reason": "Staged source tree lacked Git metadata",
+  "modelTokens": 0,
+  "evidenceKind": "scripted",
+  "retainedProbeCleanup": "PASS"
+}

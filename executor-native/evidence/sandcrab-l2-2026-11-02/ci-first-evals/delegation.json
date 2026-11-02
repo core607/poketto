@@ -1,0 +1,52 @@
+{
+  "scope": "Direct root daemon under real delegated cgroup v2; no service manager calls",
+  "binarySha256": "d78c28011680253bd1e28b1844774f8940a8e7f5c8036cf8c733fd1150e8061e",
+  "probeSha256": "69d4f51fe7a999b4b6b4e3e8d4a28283b338643a5ca232f9e6efd826d15a4aba",
+  "checks": [
+    {
+      "name": "profile-resource-caps-and-memory-floor-are-discoverable",
+      "result": "PASS"
+    },
+    {
+      "name": "finite-resource-caps-reach-the-kernel-and-bind-replay-identity",
+      "result": "PASS"
+    },
+    {
+      "name": "session-resource-caps-reach-the-kernel-for-its-lifetime",
+      "result": "PASS"
+    },
+    {
+      "name": "session-aggregate-memory-cap-rounds-down-to-a-kernel-page",
+      "result": "PASS"
+    },
+    {
+      "name": "resource-escalation-and-invalid-caps-refuse-before-admission",
+      "result": "PASS"
+    },
+    {
+      "name": "ordinary-cli-run-and-session-options-enforce-lower-kernel-limits",
+      "result": "PASS"
+    },
+    {
+      "name": "direct-private-tmp-identity-umask-and-neutral-oom-priority",
+      "result": "PASS"
+    },
+    {
+      "name": "direct-leaf-oom-does-not-stop-the-daemon",
+      "result": "PASS"
+    },
+    {
+      "name": "direct-restart-refuses-foreign-cgroups-and-contains-old-leaves-before-epoch",
+      "result": "PASS"
+    },
+    {
+      "name": "direct-delegation-requires-the-actual-cgroup2-filesystem",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "deployment": "root-host-direct",
+  "pid1": "systemd",
+  "delegationProbeSha256": "b2e98c0cf18c554b5fac7f608f3d3377c7e18db7f3ca3edf800f06618698e7ad",
+  "result": "PASS"
+}

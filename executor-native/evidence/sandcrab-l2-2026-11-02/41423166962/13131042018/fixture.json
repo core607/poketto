@@ -1,0 +1,136 @@
+{
+  "scope": "Disposable native service for Inspect scripted all evaluation; no production endpoint",
+  "binarySha256": "00937f1c7939c097ecfeb5363512c2d36bacce8d1784233454f78088526ce265",
+  "probeSha256": "e2216001d1df93e2c2a2f35174928fecfc0fa3c1249afdbcf98352a27195bdeb",
+  "checks": [
+    {
+      "name": "volume-bootstrap-refuses-preexisting-data",
+      "result": "PASS"
+    },
+    {
+      "name": "http-sequential-reuse-body-boundary-and-declared-close",
+      "result": "PASS"
+    },
+    {
+      "name": "http-invalid-framing-closes-without-dispatch",
+      "result": "PASS"
+    },
+    {
+      "name": "http-deadline-does-not-reset-on-progress",
+      "result": "PASS"
+    },
+    {
+      "name": "http-idle-expiry-closes-without-an-unsolicited-response",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-outcome-survives-forget-failure",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-reuses-connection-and-does-not-replay-incomplete-response",
+      "result": "PASS"
+    },
+    {
+      "name": "cancellation-before-workload-setup",
+      "result": "PASS"
+    },
+    {
+      "name": "session-build-repair-state-isolation-and-descendant-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "session-cli-reconnects-and-explicit-lifecycle",
+      "result": "PASS"
+    },
+    {
+      "name": "session-shared-admission-exclusive-command-and-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "session-results-share-the-global-retention-bound",
+      "result": "PASS"
+    },
+    {
+      "name": "session-sigkill-and-exit-137-are-not-memory-evidence",
+      "result": "PASS"
+    },
+    {
+      "name": "session-timeout-output-memory-and-shell-exit-end-the-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-renewal-and-expiry-cancel-an-active-command",
+      "result": "PASS"
+    },
+    {
+      "name": "session-command-cancellation-closes-the-whole-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-supervisor-loss-cleans-units-and-invalidates-the-epoch",
+      "result": "PASS"
+    },
+    {
+      "name": "independent-build-test-example",
+      "result": "PASS"
+    },
+    {
+      "name": "session-unconfirmed-cleanup-holds-capacity-until-restart",
+      "result": "PASS"
+    },
+    {
+      "name": "session-close-before-workload-setup",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "volumeProbeSha256": "68bd8d1af49753bd18dadf6c4198edf3492135f7bbcee4c5b578939a0d0293a8",
+  "slowRequestDeadlineSeconds": 5.003,
+  "idleDisconnectSeconds": 5.501,
+  "startupCancellation": {
+    "boundary": "kernel exec event before trusted setup; placement observed at birth",
+    "initialPopulated": 1,
+    "birthMembership": "0::/sandcrab.slice/sandcrab-probe.slice/sandcrab-probe-097ba76530.slice/sandcrab-probe-097ba76530.service/sandcrab-34d76acbe4541e7b44b8e5b25888ba088fb309023d012b30e20b10963536dd9b/workloads/run-7cf1bac1-d2c7-4fc2-a8fd-7989f93884d8\n",
+    "execFds": [
+      "0",
+      "1",
+      "2"
+    ],
+    "birthCaughtSignals": "0000000000000000",
+    "ignoredSignals": "0000000000000000",
+    "inheritedFdProbe": false,
+    "ownedLauncherReaped": true,
+    "seconds": 0.111,
+    "state": "cancelled",
+    "limitSeconds": 3
+  },
+  "exampleSha256": "48512f23c91d749b2860770974b907bae28b152f945d4c6ef656505a271a4517",
+  "sessionStartupCancellation": {
+    "boundary": "kernel exec event before trusted setup; placement observed at birth",
+    "initialPopulated": 1,
+    "birthMembership": "0::/sandcrab.slice/sandcrab-probe.slice/sandcrab-probe-097ba76530.slice/sandcrab-probe-097ba76530.service/sandcrab-34d76acbe4541e7b44b8e5b25888ba088fb309023d012b30e20b10963536dd9b/workloads/session-43d327fd-fbfc-4a5d-89d5-ca96fc16e2ff/run-43d327fd-fbfc-4a5d-89d5-ca96fc16e2ff\n",
+    "execFds": [
+      "0",
+      "1",
+      "2"
+    ],
+    "birthCaughtSignals": "0000000000000000",
+    "ignoredSignals": "0000000000000000",
+    "inheritedFdProbe": false,
+    "ownedLauncherReaped": true,
+    "seconds": 0.06,
+    "state": "closed",
+    "limitSeconds": 3
+  },
+  "evaluationSessionTtlMillis": 600000,
+  "workspaceClient": "both",
+  "result": "PASS",
+  "faultControllerLogs": {
+    "trace-18243.log": "",
+    "trace-18311.log": "",
+    "trace-18111.log": "",
+    "trace-18182.log": "",
+    "trace-17380.log": ""
+  }
+}

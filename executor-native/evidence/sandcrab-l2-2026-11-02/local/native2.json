@@ -1,0 +1,220 @@
+{
+  "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+  "binarySha256": "59047a9ebbe818a1a8724f7d6cb56f147678836ee8cf67cb0e9d75ec49e2ad43",
+  "probeSha256": "8ce249835dade18ea0559bd09ba0f183331ab6b315aec84d6de9cf14ba88e6ca",
+  "checks": [
+    {
+      "name": "http-sequential-reuse-body-boundary-and-declared-close",
+      "result": "PASS"
+    },
+    {
+      "name": "http-invalid-framing-closes-without-dispatch",
+      "result": "PASS"
+    },
+    {
+      "name": "http-deadline-does-not-reset-on-progress",
+      "result": "PASS"
+    },
+    {
+      "name": "http-idle-expiry-closes-without-an-unsolicited-response",
+      "result": "PASS"
+    },
+    {
+      "name": "native-inventories-retain-active-and-terminal-identities-without-output",
+      "result": "PASS"
+    },
+    {
+      "name": "independent-cli",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-outcome-survives-forget-failure",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-reuses-connection-and-does-not-replay-incomplete-response",
+      "result": "PASS"
+    },
+    {
+      "name": "profile-identity-workspace-and-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "request-authority-and-profile-bounds",
+      "result": "PASS"
+    },
+    {
+      "name": "host-network-and-unix-socket-denial",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-socket-af-unix-0x1",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-socket-af-unix-0x100000001",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-socket-af-unix-0xffffffff00000001",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-io-uring-setup",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-io-uring-enter",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-io-uring-register",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-inet-creation-allowed",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-unix-socketpair-allowed",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-native-and-negative-one-syscalls-preserved",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-x32-abi-killed",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-i386-abi-killed",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-every-visible-process-filtered-including-init",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-filter-descriptor-consumed-before-workload",
+      "result": "PASS"
+    },
+    {
+      "name": "exit-timeout-and-output-bounds",
+      "result": "PASS"
+    },
+    {
+      "name": "workspace-quota-and-descendant-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "admission-and-cancellation",
+      "result": "PASS"
+    },
+    {
+      "name": "bounded-results-and-release",
+      "result": "PASS"
+    },
+    {
+      "name": "peer-refusal-before-request",
+      "result": "PASS"
+    },
+    {
+      "name": "abrupt-loss-cleanup-and-stale-epoch",
+      "result": "PASS"
+    },
+    {
+      "name": "session-build-repair-state-isolation-and-descendant-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "session-cli-reconnects-and-explicit-lifecycle",
+      "result": "PASS"
+    },
+    {
+      "name": "session-shared-admission-exclusive-command-and-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "session-results-share-the-global-retention-bound",
+      "result": "PASS"
+    },
+    {
+      "name": "session-sigkill-and-exit-137-are-not-memory-evidence",
+      "result": "PASS"
+    },
+    {
+      "name": "session-timeout-output-memory-and-shell-exit-end-the-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-renewal-and-expiry-cancel-an-active-command",
+      "result": "PASS"
+    },
+    {
+      "name": "session-command-cancellation-closes-the-whole-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-supervisor-loss-cleans-units-and-invalidates-the-epoch",
+      "result": "PASS"
+    },
+    {
+      "name": "session-unconfirmed-cleanup-holds-capacity-until-restart",
+      "result": "PASS"
+    },
+    {
+      "name": "cancellation-before-cgroup-placement",
+      "result": "PASS"
+    },
+    {
+      "name": "session-close-before-cgroup-placement",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "slowRequestDeadlineSeconds": 5.016,
+  "idleDisconnectSeconds": 5.079,
+  "seccompProbeSha256": "daceef579f6395497d139d94d82f48242335d66e127e4b8dfeb8a743da8a9527",
+  "nativeSeccomp": {
+    "checks": [
+      "socket-af-unix-0x1",
+      "socket-af-unix-0x100000001",
+      "socket-af-unix-0xffffffff00000001",
+      "io-uring-setup",
+      "io-uring-enter",
+      "io-uring-register",
+      "inet-creation-allowed",
+      "unix-socketpair-allowed",
+      "native-and-negative-one-syscalls-preserved",
+      "x32-abi-killed",
+      "i386-abi-killed",
+      "every-visible-process-filtered-including-init",
+      "filter-descriptor-consumed-before-workload"
+    ],
+    "visiblePids": [
+      1,
+      2
+    ]
+  },
+  "startupCancellation": {
+    "boundary": "kernel exec event before cgroup placement",
+    "initialPopulated": 0,
+    "ownedLauncherReaped": true,
+    "seconds": 0.081,
+    "state": "cancelled",
+    "limitSeconds": 3
+  },
+  "sessionStartupCancellation": {
+    "boundary": "kernel exec event before cgroup placement",
+    "initialPopulated": 0,
+    "ownedLauncherReaped": true,
+    "seconds": 0.082,
+    "state": "closed",
+    "limitSeconds": 3
+  },
+  "result": "PASS",
+  "faultControllerLogs": {
+    "trace-10315.log": ""
+  }
+}

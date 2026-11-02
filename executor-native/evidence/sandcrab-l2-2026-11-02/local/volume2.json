@@ -1,0 +1,78 @@
+{
+  "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+  "binarySha256": "9fef59f916ffd1ebc4e92f26394041bb38bb69738b606aeea4db7475b802a955",
+  "probeSha256": "a0dcc482f11fd56e6ce8d194ebb5d1268f7d922016dcad0195cd604a6efbd7dd",
+  "checks": [
+    {
+      "name": "volume-bootstrap-refuses-preexisting-data",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-capability-discovery-fits-model-tool-output",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-exclusive-attachment-and-closed-session-persistence",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-block-and-inode-quotas-apply-to-untrusted-writes",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-supervisor-loss-retains-published-data-and-durable-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-clone-holds-source-and-the-single-storage-slot",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-interrupted-clone-recovers-only-unpublished-data",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-publication-failure-fences-mutations-until-recovery",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-attachment-survives-unconfirmed-session-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-namespace-change-preserves-data-and-refuses-startup",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-live-and-durable-record-capacity-with-ordered-discovery",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-data-pool-exhaustion-leaves-deletion-metadata-writable",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-cli-creates-attaches-lists-deletes-and-forgets",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-explicit-deletion-tombstone-and-record-release",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "volumeProbeSha256": "68bd8d1af49753bd18dadf6c4198edf3492135f7bbcee4c5b578939a0d0293a8",
+  "result": "PASS"
+}

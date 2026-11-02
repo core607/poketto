@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/source-l2-full/experiments/sandcrab-density/density.py", line 244, in main
+    fixture = Fixture(args.binary.resolve(), args.tools.resolve(), report, budget, args.smoke)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/source-l2-full/experiments/sandcrab-density/host.py", line 63, in __init__
+    raise RuntimeError('Another native fixture directory is present; reconcile it before measuring')
+RuntimeError: Another native fixture directory is present; reconcile it before measuring

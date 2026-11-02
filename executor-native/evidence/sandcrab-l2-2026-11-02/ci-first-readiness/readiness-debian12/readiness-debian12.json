@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "kind": "sandcrab-container-readiness-baseline",
+  "started": "2026-11-02T04:57:15.393206+00:00",
+  "sourceCommit": "17bb7b3ab1d768f476e4f03ea7bf7bb6f2e5864d",
+  "sourceDirty": false,
+  "binarySha256": "d78c28011680253bd1e28b1844774f8940a8e7f5c8036cf8c733fd1150e8061e",
+  "image": "sandcrab-readiness:fixture",
+  "imageId": "sha256:57d76f445b47e1a1ab3d986bf45eb6820a6bf4a324d2c54b35af96169a63e67a",
+  "scope": "Fresh distribution userland in a privileged disposable systemd container. The host kernel is shared; this is not a separate distribution-kernel or production-container test. Image build, controller bootstrap and source compilation are outside the installation clock. Acquisition copies a source archive and prebuilt candidate; no published release download is claimed.",
+  "limits": {
+    "memoryBytes": 2147483648,
+    "swapBytes": 0,
+    "cpus": 2,
+    "pids": 2048,
+    "privateCgroupNamespace": true,
+    "hostCgroupBindMount": false
+  },
+  "measurementStatus": "ERROR",
+  "containerCleanup": "PASS",
+  "modelTokens": 0,
+  "containsProductionContent": false,
+  "recipeExitCode": 1,
+  "recipeStdout": "",
+  "recipeStderr": "Traceback (most recent call last):\n  File \"/root/readiness.py\", line 18, in <module>\n    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'executor-service/rust/sandcrab'))\n                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^\n  File \"/usr/lib/python3.11/pathlib.py\", line 446, in __getitem__\n    raise IndexError(idx)\nIndexError: 2\n",
+  "errorType": "RuntimeError",
+  "error": "The manual recipe failed; retain its receipt",
+  "finished": "2026-11-02T04:57:21.880510+00:00"
+}

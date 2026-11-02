@@ -5,7 +5,7 @@ Partially superseded by: [Lightweight, ready-to-use Sandcrab](2026-11-02-sandcra
 
 ## Problem
 
-Repository execution and games share Rust mechanisms ([in-repository split](../implemented/2026-10-27-sandcrab-in-repository-split.md), [shared process runner](../implemented/2026-10-27-sandcrab-in-repository-split.md)). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases through TypeScript.
+Repository execution and games share [Rust mechanisms](../implemented/2026-10-27-sandcrab-in-repository-split.md). The [retrieval lab](../../experiments/retrieval-lab/README.md) signs leases through TypeScript.
 
 The [retained-session service](../../executor-service/rust/sandcrab-daemon/src/lib.rs) still requires Poketto identities, revisions and signed requests. [Native runs, sessions, volumes, files, command events and host calls](../../executor-service/rust/sandcrab/README.md) are independent. [OpenSandbox integration](../../executor-service/rust/sandcrab/opensandbox.md) documents the implemented SDK subset. Repository adoption remains in scope; replicating repository operations would retain product coupling.
 
@@ -17,7 +17,7 @@ The service must fit the default two-core, 4 GB deployment target ([continuous d
 
 **Sandcrab defines its public contract; Poketto adapts.** Independent consumers and extensibility govern the interface, not preservation of Poketto's operations, journals or copy behavior. Every primitive needs a use outside Poketto.
 
-Sandcrab is an Apache-2.0 Rust daemon and CLI in one static x64 Linux binary. Its current implementation uses cgroup v2, systemd and [direct sandbox launch](../implemented/2026-10-18-direct-sandbox-launch.md); the [lightweight proposal](2026-11-02-sandcrab-lightweight-service.md#l-lightweight-and-ready-to-use) owns replacement runtime requirements. Its same-kernel boundary targets trusted or semi-trusted code and is weaker than a microVM.
+Sandcrab is an Apache-2.0 Rust daemon and CLI in one static x64 Linux binary. It uses [delegated cgroup v2](../implemented/2026-11-02-delegated-sandbox-cgroups.md) and [direct sandbox launch](../implemented/2026-10-18-direct-sandbox-launch.md); the [lightweight proposal](2026-11-02-sandcrab-lightweight-service.md#l-lightweight-and-ready-to-use) owns remaining runtime targets. Its same-kernel boundary targets trusted or semi-trusted code and is weaker than a microVM.
 
 Integration requires neither Rust nor product identifiers. Native HTTP, CLI and OpenAPI share lifecycle, errors and ownership. Unix sockets authenticate peer UIDs; loopback TCP uses tokens. Operator-owned TOML profiles set mounts, limits, accounts, tools and network policy, initially "none". Callers select allowed profiles, never host paths, UIDs or weaker isolation. Labels grant no authority.
 
@@ -30,13 +30,13 @@ Integration requires neither Rust nor product identifiers. Native HTTP, CLI and 
 - Host calls: a program inside the sandbox sends an opaque request that the daemon relays to the caller and answers with the caller's reply; the daemon interprets neither.
 - Public API selection, templates and retention follow L6/L7 of the lightweight proposal. A freeze flag, checksummed manifest or staged upload lifecycle is not retained solely to preserve Poketto operations.
 
-Current captures stream archives ([wire reference](../../executor-service/README.md#wire-version-1)); incoming moves and materialization remain chunked. Current public transfers stage bounded uploads before briefly freezing to validate and install; L6 decides which of those mechanisms remain public. Commands and host calls use SSE over reusable connections. Cancellation, expiry and shutdown retain admission until containment. Errors distinguish refusal from uncertain execution, with explicit recovery behavior.
+The [native reference](../../executor-service/rust/sandcrab/README.md) owns current transfers and command streams. L6 decides which mechanisms remain public. Cancellation, expiry and shutdown retain admission until containment; errors distinguish refusal from uncertain execution and define recovery.
 
 Atomic batches and frozen jobs need independent uses and failure contracts before implementation; consumer orchestration may replace old operations. Consumer-side durable operation IDs bind plan digests across reconnects and restarts, separately from transport IDs; they do not require matching daemon operations. Git transactions and reconciliation stay outside Sandcrab.
 
 ### Compatibility
 
-The adapter implements the OpenSandbox `release-1.1.0` [lifecycle](https://github.com/alibaba/OpenSandbox/blob/release-1.1.0/specs/sandbox-lifecycle.yml) and [execd](https://github.com/alibaba/OpenSandbox/blob/release-1.1.0/specs/execd-api.yaml) subset: create, get, list, delete, renew, endpoint lookup, SSE commands, sessions, files and directories. Evidence pins the specification commit and Python/Kotlin SDK versions. Native clients need neither SDK. `image.uri` selects a profile; images, caller-selected UIDs and unsupported features are rejected. Extensions use a separate prefix; optional MCP defaults off.
+The [OpenSandbox mapping](../../executor-service/rust/sandcrab/opensandbox.md) owns supported operations, profile selection and refusals. Evidence pins the specification commit and Python/Kotlin SDK versions. Native clients need neither SDK. Extensions use a separate prefix; optional MCP defaults off.
 
 Compatibility is checked through [both published SDKs](../../evals/sdk/README.md), not endpoint resemblance. Authentication adapters may support Ed25519 for deployments that need it; the existing signed Poketto envelope does not define the native API.
 
@@ -56,7 +56,7 @@ Poketto owns repositories, publication, writes and recovery. It may redesign cop
 
 Recorded on 2026-10-27 against OpenSandbox `main` and the tags `release-1.1.0` and `release-1.2.0-rc.2`.
 
-**SDK reachability.** Kotlin constructs `protocol://endpoint` and forwards endpoint headers, allowing path-routed execd and token authentication. Its OkHttp integration exposes a connection pool, not Unix transport. Python accepts an httpx transport. Neither observation proves SDK conformance.
+**SDK reachability.** Kotlin's endpoint/header routing permits loopback HTTP with tokens but supplies no Unix transport. Python accepts an httpx transport. These observations required the subsequent published-SDK conformance gate.
 
 **Operation map.** Historical candidates for translating the original protocol, not required daemon features; L6/L7 own the public target:
 
@@ -100,4 +100,4 @@ Consumers retain downloaded artifacts. General uses determine whether a candidat
 
 Poketto absorbs adaptation costs, including simpler copy semantics. Sandcrab owns isolation, API, examples and evals; independent consumers expose integration costs that product-specific probes miss. After extraction, cross-boundary changes require a Sandcrab release before adoption. OpenSandbox adds versioned conformance work without promising its entire API.
 
-Per-session slices add kernel bookkeeping so shells share resource and file-freeze boundaries. Per-shell budgets would multiply the caller's allowance; shell-owned workspaces would make context closure destroy unrelated files.
+Per-session cgroups add kernel bookkeeping so shells share resource and file-freeze boundaries. Per-shell budgets would multiply the caller's allowance; shell-owned workspaces would make context closure destroy unrelated files.

@@ -1,0 +1,45 @@
+{
+  "scope": "L2 development smoke on the real delegated cgroup kernel; not full conformance or a density measurement",
+  "binarySha256": "9fef59f916ffd1ebc4e92f26394041bb38bb69738b606aeea4db7475b802a955",
+  "probeSha256": "b3149247f61e19d370c306951d6632cb4b580732506d78b32a8a7c1f8c1f9057",
+  "checks": [
+    {
+      "name": "profile-resource-caps-and-memory-floor-are-discoverable",
+      "result": "PASS"
+    },
+    {
+      "name": "finite-resource-caps-reach-the-kernel-and-bind-replay-identity",
+      "result": "PASS"
+    },
+    {
+      "name": "session-resource-caps-reach-the-kernel-for-its-lifetime",
+      "result": "PASS"
+    },
+    {
+      "name": "session-aggregate-memory-cap-rounds-down-to-a-kernel-page",
+      "result": "PASS"
+    },
+    {
+      "name": "resource-escalation-and-invalid-caps-refuse-before-admission",
+      "result": "PASS"
+    },
+    {
+      "name": "ordinary-cli-run-and-session-options-enforce-lower-kernel-limits",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "identity": {
+    "id": "9980092e-ef5e-43c1-9ea3-5dcab378b0e3",
+    "serverId": "5359bc02-50da-4fd9-8007-e02d21bfefc5",
+    "profile": "python",
+    "state": "succeeded",
+    "result": {
+      "exitCode": 0,
+      "truncated": false,
+      "stdout": "65534\nName:\tpython3\nUmask:\t0077\nState:\tR (running)\nTgid:\t2\nNgid:\t0\nPid:\t2\nPPid:\t1\nTracerPid:\t0\nUid:\t65534\t65534\t65534\t65534\nGid:\t65534\t65534\t65534\t65534\nFDSize:\t64\nGroups:\t \nNStgid:\t2\nNSpid:\t2\nNSpgid:\t1\nNSsid:\t1\nKthread:\t0\nVmPeak:\t   15116 kB\nVmSize:\t   15116 kB\nVmLck:\t       0 kB\nVmPin:\t       0 kB\nVmHWM:\t    9300 kB\nVmRSS:\t    9300 kB\nRssAnon:\t    2860 kB\nRssFile:\t    6440 kB\nRssShmem:\t       0 kB\nVmData:\t    4756 kB\nVmStk:\t     132 kB\nVmExe:\t    2956 kB\nVmLib:\t    2456 kB\nVmPTE:\t      72 kB\nVmSwap:\t       0 kB\nHugetlbPages:\t       0 kB\nCoreDumping:\t0\nTHP_enabled:\t1\nuntag_mask:\t0xffffffffffffffff\nThreads:\t1\nSigQ:\t0/63591\nSigPnd:\t0000000000000000\nShdPnd:\t0000000000000000\nSigBlk:\t0000000000000000\nSigIgn:\t0000000001001000\nSigCgt:\t0000000000000002\nCapInh:\t0000000000000000\nCapPrm:\t0000000000000000\nCapEff:\t0000000000000000\nCapBnd:\t0000000000000000\nCapAmb:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t2\nSeccomp_filters:\t3\nSpeculation_Store_Bypass:\tthread vulnerable\nSpeculationIndirectBranch:\tconditional enabled\nCpus_allowed:\tfffff\nCpus_allowed_list:\t0-19\nMems_allowed:\t00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001\nMems_allowed_list:\t0\nvoluntary_ctxt_switches:\t0\nnonvoluntary_ctxt_switches:\t0\n\n0\n\n",
+      "stderr": ""
+    }
+  },
+  "result": "PASS"
+}

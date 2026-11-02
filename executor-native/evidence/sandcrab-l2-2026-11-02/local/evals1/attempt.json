@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "result": "FAIL",
+  "stage": "host-call-preflight",
+  "errorType": "AssertionError",
+  "reason": "Caller example omitted from the staged source tree",
+  "modelTokens": 0,
+  "evidenceKind": "scripted",
+  "retainedProbeCleanup": "PASS"
+}

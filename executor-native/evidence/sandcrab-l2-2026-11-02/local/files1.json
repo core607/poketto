@@ -1,0 +1,16 @@
+{
+  "scope": "Native raw/tar upload, snapshot, quota, cancellation and crash recovery; synthetic files, no model or production cutover",
+  "binarySha256": "9fef59f916ffd1ebc4e92f26394041bb38bb69738b606aeea4db7475b802a955",
+  "probeSha256": "a0dcc482f11fd56e6ce8d194ebb5d1268f7d922016dcad0195cd604a6efbd7dd",
+  "checks": [
+    {
+      "name": "volume-bootstrap-refuses-preexisting-data",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "volumeProbeSha256": "68bd8d1af49753bd18dadf6c4198edf3492135f7bbcee4c5b578939a0d0293a8",
+  "fileProbeSha256": "8a43da74cc78e16369ec3b403b93f716cd7f4d4ddbfdb36d3ef2109e73364d74",
+  "result": "FAIL",
+  "failureType": "KeyError"
+}

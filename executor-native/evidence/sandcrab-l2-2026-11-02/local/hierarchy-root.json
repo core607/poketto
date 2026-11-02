@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "recordedAt": "2026-11-02T04:52:36.412042+00:00",
+  "sourceBase": "e0a8b68f6b667673e8025c87884135e8259c151d",
+  "sourceDirty": true,
+  "binarySha256": "d78c28011680253bd1e28b1844774f8940a8e7f5c8036cf8c733fd1150e8061e",
+  "binaryBytes": 4162464,
+  "result": "PASS",
+  "scope": "Read-only real cgroup hierarchy root, not a private namespace root",
+  "image": "sha256:ad06c99633919f4f11b098f45aa6396609ef9c053ca0bbd8660a837c7c3bdf7a",
+  "runtimeBounds": {
+    "readOnly": true,
+    "network": "none",
+    "cgroupNamespace": "host",
+    "memoryBytes": 134217728,
+    "swapBytes": 0,
+    "cpus": 1,
+    "tasksMax": 32
+  },
+  "test": "cgroup::tests::hierarchy_root_is_readable_with_implicit_or_explicit_domain_type",
+  "cgroupTypeExists": false,
+  "output": "cgroup.type=absent\n\nrunning 1 test\ntest cgroup::tests::hierarchy_root_is_readable_with_implicit_or_explicit_domain_type ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 46 filtered out; finished in 0.00s\n\n",
+  "rustCheck": {
+    "command": "./gradlew executorRustCheck buildExecutorRust",
+    "result": "PASS",
+    "logSha256": "fc301a141a5e418e33431a574b836acb9359d283d6e81833d37e8ac09c20d33f"
+  }
+}

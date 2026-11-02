@@ -1,0 +1,47 @@
+{
+  "scope": "Standalone volume API and CLI on a disposable 512 MiB XFS filesystem; no production data or model",
+  "binarySha256": "9fef59f916ffd1ebc4e92f26394041bb38bb69738b606aeea4db7475b802a955",
+  "probeSha256": "a0dcc482f11fd56e6ce8d194ebb5d1268f7d922016dcad0195cd604a6efbd7dd",
+  "checks": [
+    {
+      "name": "volume-bootstrap-refuses-preexisting-data",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-capability-discovery-fits-model-tool-output",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-authority-quotas-request-identity-and-explicit-forget",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-exclusive-attachment-and-closed-session-persistence",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-reflink-preserves-links-and-independent-copy-on-write",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-clone-quota-failure-removes-only-the-unpublished-target",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-block-and-inode-quotas-apply-to-untrusted-writes",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-supervisor-loss-retains-published-data-and-durable-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "volume-clone-holds-source-and-the-single-storage-slot",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "volumeProbeSha256": "216a40a8c18ff442987817832fc346ba4c34b84407f73cf7dd7fa29d8484501a",
+  "result": "FAIL",
+  "failureType": "TimeoutExpired"
+}

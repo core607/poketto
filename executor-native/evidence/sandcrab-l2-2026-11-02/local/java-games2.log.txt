@@ -1,0 +1,154 @@
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+06:38:52.004 [main] WARN io.github.core607.poketto.executor.internal.SandboxHttp -- Sandbox exchange failed during peer-verification
+io.github.core607.poketto.executor.internal.WorkerUnavailableException: Isolated worker unavailable; execution was not confirmed. Inspect the working copy before retrying writes.
+	at io.github.core607.poketto.executor.internal.ExecutorConfiguration.verifyPeer(ExecutorConfiguration.java:122)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:99)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:69)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:58)
+	at io.github.core607.poketto.executor.internal.WorkerClient.exchange(WorkerClient.java:216)
+	at io.github.core607.poketto.executor.internal.WorkerClient.exchange(WorkerClient.java:206)
+	at io.github.core607.poketto.executor.internal.WorkerClient.hello(WorkerClient.java:53)
+	at io.github.core607.poketto.executor.internal.IsolatedRepositoryExecutor.accountSession(IsolatedRepositoryExecutor.java:252)
+	at io.github.core607.poketto.executor.internal.IsolatedRepositoryExecutor.execute(IsolatedRepositoryExecutor.java:125)
+	at io.github.core607.poketto.executor.internal.RememberingExecutorClient.execute(RememberingExecutorClient.java:27)
+	at io.github.core607.poketto.executor.internal.ExecutorNativeProbe.execute(ExecutorNativeProbe.java:2174)
+	at io.github.core607.poketto.executor.internal.ExecutorNativeProbe.lambda$rejectNonRootPeer$0(ExecutorNativeProbe.java:248)
+	at org.assertj.core.api.ThrowableAssert.catchThrowable(ThrowableAssert.java:66)
+	at org.assertj.core.api.AssertionsForClassTypes.catchThrowable(AssertionsForClassTypes.java:908)
+	at org.assertj.core.api.Assertions.catchThrowable(Assertions.java:1476)
+	at org.assertj.core.api.Assertions.assertThatThrownBy(Assertions.java:1319)
+	at io.github.core607.poketto.executor.internal.ExecutorNativeProbe.rejectNonRootPeer(ExecutorNativeProbe.java:248)
+	at io.github.core607.poketto.executor.internal.ExecutorNativeProbe.games(ExecutorNativeProbe.java:194)
+	at io.github.core607.poketto.executor.internal.ExecutorNativeProbe.main(ExecutorNativeProbe.java:177)
+06:38:52.016 [main] WARN io.github.core607.poketto.executor.internal.IsolatedRepositoryExecutor -- Account copy admission failed
+io.github.core607.poketto.executor.internal.WorkerUnavailableException: Isolated worker unavailable; execution was not confirmed. Inspect the working copy before retrying writes.
+	at io.github.core607.poketto.executor.internal.SandboxHttp.unavailable(SandboxHttp.java:123)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:109)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:69)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:58)
+	at io.github.core607.poketto.executor.internal.WorkerClient.exchange(WorkerClient.java:216)
+	at io.github.core607.poketto.executor.internal.WorkerClient.exchange(WorkerClient.java:206)
+	at io.github.core607.poketto.executor.internal.WorkerClient.hello(WorkerClient.java:53)
+	at io.github.core607.poketto.executor.internal.IsolatedRepositoryExecutor.accountSession(IsolatedRepositoryExecutor.java:252)
+	at io.github.core607.poketto.executor.internal.IsolatedRepositoryExecutor.execute(IsolatedRepositoryExecutor.java:125)
+	at io.github.core607.poketto.executor.internal.RememberingExecutorClient.execute(RememberingExecutorClient.java:27)
+	at io.github.core607.poketto.executor.internal.ExecutorNativeProbe.execute(ExecutorNativeProbe.java:2174)
+	at io.github.core607.poketto.executor.internal.ExecutorNativeProbe.lambda$rejectNonRootPeer$0(ExecutorNativeProbe.java:248)
+	at org.assertj.core.api.ThrowableAssert.catchThrowable(ThrowableAssert.java:66)
+	at org.assertj.core.api.AssertionsForClassTypes.catchThrowable(AssertionsForClassTypes.java:908)
+	at org.assertj.core.api.Assertions.catchThrowable(Assertions.java:1476)
+	at org.assertj.core.api.Assertions.assertThatThrownBy(Assertions.java:1319)
+	at io.github.core607.poketto.executor.internal.ExecutorNativeProbe.rejectNonRootPeer(ExecutorNativeProbe.java:248)
+	at io.github.core607.poketto.executor.internal.ExecutorNativeProbe.games(ExecutorNativeProbe.java:194)
+	at io.github.core607.poketto.executor.internal.ExecutorNativeProbe.main(ExecutorNativeProbe.java:177)
+Caused by: io.github.core607.poketto.executor.internal.WorkerUnavailableException: Isolated worker unavailable; execution was not confirmed. Inspect the working copy before retrying writes.
+	at io.github.core607.poketto.executor.internal.ExecutorConfiguration.verifyPeer(ExecutorConfiguration.java:122)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:99)
+	... 17 common frames omitted
+06:38:52.018 [main] INFO io.github.core607.poketto.executor.internal.ExecutionTimings -stoppedIn="admitMs" authorizeMs="1" journalMs="15" permitMs="0" admitMs="19" prepareMs="-1" commandMs="-1" completeMs="-1" bridgeMs="0" bridgeRequests="0" cleanupMs="0" totalMs="37"- repo_exec stages stoppedIn=admitMs authorizeMs=1 journalMs=15 permitMs=0 admitMs=19 prepareMs=-1 commandMs=-1 completeMs=-1 bridgeMs=0 bridgeRequests=0 cleanupMs=0 totalMs=37
+{"result":"PASS","observation":{"requestBytes":0,"accepted":true},"test":"root-owned-socket-rejects-non-root-peer"}
+{"test":"native-game-shared-example-and-complete-utf8-save","result":"PASS","repositoryBaselineMillis":null,"repositoryWithGameMillis":null}
+{"test":"native-game-denies-host-files-credentials-tcp-unix-and-bridge","result":"PASS","repositoryBaselineMillis":null,"repositoryWithGameMillis":null}
+{"test":"native-game-output-memory-descendants-and-readmission","result":"PASS","repositoryBaselineMillis":null,"repositoryWithGameMillis":null}
+{"test":"native-game-orphan-discovery-reclaims-unowned-ephemeral-records","result":"PASS","repositoryBaselineMillis":null,"repositoryWithGameMillis":null}
+06:38:56.389 [main] INFO io.github.core607.poketto.executor.internal.ExecutionTimings -stoppedIn="none" authorizeMs="0" journalMs="5" permitMs="0" admitMs="7" prepareMs="418" commandMs="72" completeMs="21" freshSandbox="true" workerRoomMs="0" workerLockMs="0" workerPrepareMs="0" workerRunMs="60" workerReadyMs="60" workerCommandMs="0" workerReleaseMs="0" workerFlushMs="4" bridgeMs="0" bridgeRequests="0" cleanupMs="0" totalMs="526"- repo_exec stages stoppedIn=none authorizeMs=0 journalMs=5 permitMs=0 admitMs=7 prepareMs=418 commandMs=72 completeMs=21 bridgeMs=0 bridgeRequests=0 cleanupMs=0 totalMs=526 freshSandbox=true workerRoomMs=0 workerLockMs=0 workerPrepareMs=0 workerRunMs=60 workerReadyMs=60 workerCommandMs=0 workerReleaseMs=0 workerFlushMs=4
+06:38:56.469 [main] INFO io.github.core607.poketto.executor.internal.ExecutionTimings -stoppedIn="none" authorizeMs="0" journalMs="27" permitMs="0" admitMs="2" prepareMs="15" commandMs="18" completeMs="13" freshSandbox="false" workerRoomMs="0" workerLockMs="0" workerPrepareMs="10" workerRunMs="0" workerReadyMs="0" workerCommandMs="0" workerReleaseMs="0" workerFlushMs="4" bridgeMs="0" bridgeRequests="0" cleanupMs="0" totalMs="78"- repo_exec stages stoppedIn=none authorizeMs=0 journalMs=27 permitMs=0 admitMs=2 prepareMs=15 commandMs=18 completeMs=13 bridgeMs=0 bridgeRequests=0 cleanupMs=0 totalMs=78 freshSandbox=false workerRoomMs=0 workerLockMs=0 workerPrepareMs=10 workerRunMs=0 workerReadyMs=0 workerCommandMs=0 workerReleaseMs=0 workerFlushMs=4
+06:38:56.893 [main] INFO io.github.core607.poketto.executor.internal.ExecutionTimings -stoppedIn="none" authorizeMs="0" journalMs="1" permitMs="0" admitMs="0" prepareMs="16" commandMs="30" completeMs="15" freshSandbox="false" workerRoomMs="0" workerLockMs="0" workerPrepareMs="10" workerRunMs="0" workerReadyMs="0" workerCommandMs="0" workerReleaseMs="10" workerFlushMs="6" bridgeMs="0" bridgeRequests="0" cleanupMs="0" totalMs="65"- repo_exec stages stoppedIn=none authorizeMs=0 journalMs=1 permitMs=0 admitMs=0 prepareMs=16 commandMs=30 completeMs=15 bridgeMs=0 bridgeRequests=0 cleanupMs=0 totalMs=65 freshSandbox=false workerRoomMs=0 workerLockMs=0 workerPrepareMs=10 workerRunMs=0 workerReadyMs=0 workerCommandMs=0 workerReleaseMs=10 workerFlushMs=6
+{"test":"native-game-admission-does-not-consume-repository-capacity","result":"PASS","repositoryBaselineMillis":80.37446,"repositoryWithGameMillis":65.765716}
+{"test":"native-game-account-revocation-terminates-active-job","result":"PASS","repositoryBaselineMillis":null,"repositoryWithGameMillis":null}
+06:39:02.728 [ForkJoinPool.commonPool-worker-1] WARN io.github.core607.poketto.executor.internal.SandboxHttp -- Sandbox exchange failed during connect
+java.net.ConnectException: Connection refused
+	at java.base/sun.nio.ch.UnixDomainSockets.connect0(Native Method)
+	at java.base/sun.nio.ch.UnixDomainSockets.connect(UnixDomainSockets.java:126)
+	at java.base/sun.nio.ch.UnixDomainSockets.connect(UnixDomainSockets.java:122)
+	at java.base/sun.nio.ch.SocketChannelImpl.connect(SocketChannelImpl.java:947)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:93)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:69)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:58)
+	at io.github.core607.poketto.executor.internal.SandcrabClient.exchange(SandcrabClient.java:379)
+	at io.github.core607.poketto.executor.internal.SandcrabClient.request(SandcrabClient.java:368)
+	at io.github.core607.poketto.executor.internal.SandcrabClient.get(SandcrabClient.java:165)
+	at io.github.core607.poketto.executor.internal.GameSandboxJob.execute(GameSandboxJob.java:75)
+	at io.github.core607.poketto.executor.internal.IsolatedGameRunner.run(IsolatedGameRunner.java:37)
+	at io.github.core607.poketto.executor.internal.GameNativeProbe.lambda$restart$0(GameNativeProbe.java:210)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1789)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.exec(CompletableFuture.java:1781)
+	at java.base/java.util.concurrent.ForkJoinTask.doExec(ForkJoinTask.java:511)
+	at java.base/java.util.concurrent.ForkJoinPool$WorkQueue.topLevelExec(ForkJoinPool.java:1450)
+	at java.base/java.util.concurrent.ForkJoinPool.runWorker(ForkJoinPool.java:2019)
+	at java.base/java.util.concurrent.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:187)
+06:39:02.729 [ForkJoinPool.commonPool-worker-1] WARN io.github.core607.poketto.executor.internal.SandboxHttp -- Sandbox exchange failed during connect
+java.net.ConnectException: Connection refused
+	at java.base/sun.nio.ch.UnixDomainSockets.connect0(Native Method)
+	at java.base/sun.nio.ch.UnixDomainSockets.connect(UnixDomainSockets.java:126)
+	at java.base/sun.nio.ch.UnixDomainSockets.connect(UnixDomainSockets.java:122)
+	at java.base/sun.nio.ch.SocketChannelImpl.connect(SocketChannelImpl.java:947)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:93)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:69)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:58)
+	at io.github.core607.poketto.executor.internal.SandcrabClient.exchange(SandcrabClient.java:379)
+	at io.github.core607.poketto.executor.internal.SandcrabClient.request(SandcrabClient.java:368)
+	at io.github.core607.poketto.executor.internal.SandcrabClient.info(SandcrabClient.java:63)
+	at io.github.core607.poketto.executor.internal.GameSandboxPool.info(GameSandboxPool.java:95)
+	at io.github.core607.poketto.executor.internal.GameSandboxPool.finish(GameSandboxPool.java:119)
+	at io.github.core607.poketto.executor.internal.IsolatedGameRunner.run(IsolatedGameRunner.java:48)
+	at io.github.core607.poketto.executor.internal.GameNativeProbe.lambda$restart$0(GameNativeProbe.java:210)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1789)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.exec(CompletableFuture.java:1781)
+	at java.base/java.util.concurrent.ForkJoinTask.doExec(ForkJoinTask.java:511)
+	at java.base/java.util.concurrent.ForkJoinPool$WorkQueue.topLevelExec(ForkJoinPool.java:1450)
+	at java.base/java.util.concurrent.ForkJoinPool.runWorker(ForkJoinPool.java:2019)
+	at java.base/java.util.concurrent.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:187)
+06:39:02.729 [ForkJoinPool.commonPool-worker-1] WARN io.github.core607.poketto.executor.internal.GameSandboxPool -- Game cleanup is unconfirmed; its owner and admission remain retained
+io.github.core607.poketto.executor.internal.WorkerUnavailableException: Isolated worker unavailable; execution was not confirmed. Inspect the working copy before retrying writes.
+	at io.github.core607.poketto.executor.internal.SandboxHttp.unavailable(SandboxHttp.java:123)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:109)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:69)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:58)
+	at io.github.core607.poketto.executor.internal.SandcrabClient.exchange(SandcrabClient.java:379)
+	at io.github.core607.poketto.executor.internal.SandcrabClient.request(SandcrabClient.java:368)
+	at io.github.core607.poketto.executor.internal.SandcrabClient.info(SandcrabClient.java:63)
+	at io.github.core607.poketto.executor.internal.GameSandboxPool.info(GameSandboxPool.java:95)
+	at io.github.core607.poketto.executor.internal.GameSandboxPool.finish(GameSandboxPool.java:119)
+	at io.github.core607.poketto.executor.internal.IsolatedGameRunner.run(IsolatedGameRunner.java:48)
+	at io.github.core607.poketto.executor.internal.GameNativeProbe.lambda$restart$0(GameNativeProbe.java:210)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1789)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.exec(CompletableFuture.java:1781)
+	at java.base/java.util.concurrent.ForkJoinTask.doExec(ForkJoinTask.java:511)
+	at java.base/java.util.concurrent.ForkJoinPool$WorkQueue.topLevelExec(ForkJoinPool.java:1450)
+	at java.base/java.util.concurrent.ForkJoinPool.runWorker(ForkJoinPool.java:2019)
+	at java.base/java.util.concurrent.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:187)
+Caused by: java.net.ConnectException: Connection refused
+	at java.base/sun.nio.ch.UnixDomainSockets.connect0(Native Method)
+	at java.base/sun.nio.ch.UnixDomainSockets.connect(UnixDomainSockets.java:126)
+	at java.base/sun.nio.ch.UnixDomainSockets.connect(UnixDomainSockets.java:122)
+	at java.base/sun.nio.ch.SocketChannelImpl.connect(SocketChannelImpl.java:947)
+	at io.github.core607.poketto.executor.internal.SandboxHttp.exchange(SandboxHttp.java:93)
+	... 15 common frames omitted
+Traceback (most recent call last):
+  File "/var/lib/sandcrab-l2/probe.py", line 350, in main
+    execute_java('main' if args.scenario == 'all' else args.scenario)
+  File "/var/lib/sandcrab-l2/probe.py", line 203, in execute_java
+    control(request)
+  File "/var/lib/sandcrab-l2/probe.py", line 137, in control
+    game_fixture.control(operation)
+  File "/var/lib/sandcrab-l2/game_fixture.py", line 140, in control
+    run(['systemctl', 'stop', self.supervisor])
+  File "/var/lib/sandcrab-l2/game_fixture.py", line 16, in run
+    return subprocess.run(args, check=True, capture_output=True, text=True, timeout=30).stdout.strip()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['systemctl', 'stop', 'sandcrab-game-probe-99944460']' returned non-zero exit status 5.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/var/lib/sandcrab-l2/probe.py", line 408, in <module>
+    main()
+  File "/var/lib/sandcrab-l2/probe.py", line 382, in main
+    game_fixture.close()
+  File "/var/lib/sandcrab-l2/game_fixture.py", line 164, in close
+    assert path.parent == jobs and not path.is_symlink()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

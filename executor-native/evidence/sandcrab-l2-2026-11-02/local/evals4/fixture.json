@@ -1,0 +1,118 @@
+{
+  "scope": "Disposable native service for Inspect scripted all evaluation; no production endpoint",
+  "binarySha256": "59047a9ebbe818a1a8724f7d6cb56f147678836ee8cf67cb0e9d75ec49e2ad43",
+  "probeSha256": "8ce249835dade18ea0559bd09ba0f183331ab6b315aec84d6de9cf14ba88e6ca",
+  "checks": [
+    {
+      "name": "volume-bootstrap-refuses-preexisting-data",
+      "result": "PASS"
+    },
+    {
+      "name": "http-sequential-reuse-body-boundary-and-declared-close",
+      "result": "PASS"
+    },
+    {
+      "name": "http-invalid-framing-closes-without-dispatch",
+      "result": "PASS"
+    },
+    {
+      "name": "http-deadline-does-not-reset-on-progress",
+      "result": "PASS"
+    },
+    {
+      "name": "http-idle-expiry-closes-without-an-unsolicited-response",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-outcome-survives-forget-failure",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-reuses-connection-and-does-not-replay-incomplete-response",
+      "result": "PASS"
+    },
+    {
+      "name": "cancellation-before-cgroup-placement",
+      "result": "PASS"
+    },
+    {
+      "name": "session-build-repair-state-isolation-and-descendant-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "session-cli-reconnects-and-explicit-lifecycle",
+      "result": "PASS"
+    },
+    {
+      "name": "session-shared-admission-exclusive-command-and-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "session-results-share-the-global-retention-bound",
+      "result": "PASS"
+    },
+    {
+      "name": "session-sigkill-and-exit-137-are-not-memory-evidence",
+      "result": "PASS"
+    },
+    {
+      "name": "session-timeout-output-memory-and-shell-exit-end-the-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-renewal-and-expiry-cancel-an-active-command",
+      "result": "PASS"
+    },
+    {
+      "name": "session-command-cancellation-closes-the-whole-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-supervisor-loss-cleans-units-and-invalidates-the-epoch",
+      "result": "PASS"
+    },
+    {
+      "name": "independent-build-test-example",
+      "result": "PASS"
+    },
+    {
+      "name": "session-unconfirmed-cleanup-holds-capacity-until-restart",
+      "result": "PASS"
+    },
+    {
+      "name": "session-close-before-cgroup-placement",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "volumeProbeSha256": "68bd8d1af49753bd18dadf6c4198edf3492135f7bbcee4c5b578939a0d0293a8",
+  "slowRequestDeadlineSeconds": 5.012,
+  "idleDisconnectSeconds": 5.167,
+  "startupCancellation": {
+    "boundary": "kernel exec event before cgroup placement",
+    "initialPopulated": 0,
+    "ownedLauncherReaped": true,
+    "seconds": 0.082,
+    "state": "cancelled",
+    "limitSeconds": 3
+  },
+  "exampleSha256": "48512f23c91d749b2860770974b907bae28b152f945d4c6ef656505a271a4517",
+  "sessionStartupCancellation": {
+    "boundary": "kernel exec event before cgroup placement",
+    "initialPopulated": 0,
+    "ownedLauncherReaped": true,
+    "seconds": 0.082,
+    "state": "closed",
+    "limitSeconds": 3
+  },
+  "evaluationSessionTtlMillis": 600000,
+  "workspaceClient": "both",
+  "result": "PASS",
+  "faultControllerLogs": {
+    "trace-35378.log": "",
+    "trace-35304.log": "",
+    "trace-35242.log": "",
+    "trace-34442.log": "",
+    "trace-35166.log": ""
+  }
+}

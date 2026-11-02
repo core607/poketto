@@ -5,11 +5,12 @@ Date: 2026-11-02
 ## Problem
 
 The [native service](../../executor-service/rust/sandcrab/README.md) has an independent
-API, but installation requires manually prepared tools, accounts, systemd units
+API, but installation requires manually prepared tools, accounts, resource delegation
 and profiles; durable volumes require XFS. The
 [native seccomp filter](../implemented/2026-11-02-native-seccomp-filter.md) implements L1,
-removing the helper's Node.js/npm/SRT provisioning. Each sandbox
-starts through [systemd-run](../../executor-service/rust/sandcrab-core/src/unit.rs).
+removing the helper's Node.js/npm/SRT provisioning.
+[Delegated cgroups](../implemented/2026-11-02-delegated-sandbox-cgroups.md)
+replace native per-sandbox service-manager transactions.
 Independent API tests do not establish first-use cost or capacity on a small host.
 
 The [service proposal](2026-10-26-sandcrab-sandbox-service.md) originally tied extraction
@@ -65,18 +66,9 @@ configuration, credentials or content.
 Implement L1 through L10 in order, normally one change per item. Preserve independent
 SDK conformance while changing the implementation.
 
-1. L1 is implemented by the [native filter decision](../implemented/2026-11-02-native-seccomp-filter.md):
-   equivalent rules and per-rule native probes, with consumer workload interpreters
-   provisioned separately.
-2. L2: delegated cgroups. Replace per-sandbox systemd-run with leaves created
-   in a delegated cgroup v2 subtree. Set `memory.max`, `memory.swap.max`, `pids.max`
-   and `cpu.max`; launch bwrap with CLONE_INTO_CGROUP or join before exec. Contain
-   with `cgroup.kill` and observed `populated 0`. Carry over user/group dropping,
-   no_new_privs, umask, sized private `/tmp` and binds from the current unit owner.
-   Support systemd `Delegate=yes`, containers with a delegated cgroup namespace,
-   and root on a cgroup v2 host. No unrestricted fallback; retain admission until
-   containment and clean old leaves before publishing a new epoch. Target
-   cold-start p50 at most 30 ms.
+1. L1 is implemented by the [native filter decision](../implemented/2026-11-02-native-seccomp-filter.md).
+2. L2 uses [delegated cgroups](../implemented/2026-11-02-delegated-sandbox-cgroups.md)
+   for native launches and confirmed containment. Target cold-start p50 at most 30 ms.
 3. L3: ordinary filesystems. Default volumes and session workspaces to plain
    directories. Reflink where supported, copy otherwise. Enforce XFS project quotas
    when configured. Without quotas, report usage and refuse growth through periodic
@@ -154,20 +146,17 @@ records footprint before and after and adds no runtime dependency or resident pr
 
 ### P: measured performance work
 
-Rerun W0 after L2, L7 and L9 and report footprint and density before/after. Implement
-P1 idle shell eviction only if idle sessions consume at least 40% of sandbox memory
-at the measured capacity stage. Otherwise record the numbers and skip P1.
-
-If triggered, after `idle_evict_millis` and only when the shell is the sole cgroup
-process, save cwd and `export -p`, exit the shell and restore that state on the next
-command. Never evict while background processes exist; document lost state and move
-session workspaces from tmpfs to disk. Propose any other measured bottleneck, such
-as interpreter startup, in the decision record before implementing an optimization.
+Rerun W0 after L2, L7 and L9, comparing footprint and density. P1 requires idle
+sessions to hold at least 40% of sandbox memory at measured capacity; otherwise
+record the numbers and skip it. After `idle_evict_millis`, evict only a lone shell:
+save cwd and `export -p`, exit, and restore them on the next command. Background
+processes prohibit eviction. Document lost state and move workspaces from tmpfs
+to disk. Propose other measured optimizations here before implementing them.
 
 ### X: extraction by readiness
 
 Extract when L1-L10 and H1-H4 have landed and CI readiness, conformance and published
-SDK gates pass. There is no waiting interval and no dependency on Poketto cutover.
+SDK gates pass.
 Preserve history when splitting the generic crates, docs, OpenAPI, examples, evals
 and benchmark. Prepare a release workflow for static x86_64 musl Sandcrab plus bundled
 bwrap, SHA-256 checksums, the container image and H4's threat model.

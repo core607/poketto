@@ -1,0 +1,78 @@
+# Sandcrab evaluation
+
+Evidence: **scripted**. Revision: `bcc6c1e17e1e6637e1bba67c0ea1d16f1e964e75`.
+Model: `mockllm/model`. Corpus: `df60cc9a570615f0282585cefd19a6131a881cfb686796c1390f74c85b9446f4`.
+
+Scripted results validate the harness and selected interfaces; they do not measure model usability.
+
+Workspace client: `both`. Grader: `independent native sandbox`.
+
+[Inspect log](logs/2026-11-02T08-30-38-00-00_sandcrab-native_3pbCFqJ6JjLf8Wc6DzjJT6.eval) · [Transcript viewer](viewer/index.html)
+
+| Case | Passes / attempts | Tool calls | Agent / harness API calls | Refused / tool errors / transport failures | Help reads | Seconds mean / max | Tokens | Cost USD |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| arithmetic | 3 / 3 | 9 | 13 / not counted | 0 / 0 / 0 | 3 | 0.10 / 0.13 | 0 | 0 (no model calls) |
+| cancel | 3 / 3 | 12 | 15 / not counted | 0 / 0 / 0 | 3 | 0.08 / 0.08 | 0 | 0 (no model calls) |
+| forget | 3 / 3 | 12 | 15 / not counted | 0 / 0 / 0 | 3 | 0.11 / 0.18 | 0 | 0 (no model calls) |
+| output-limit | 3 / 3 | 9 | 12 / not counted | 0 / 0 / 0 | 3 | 0.07 / 0.07 | 0 | 0 (no model calls) |
+| profile-recovery | 3 / 3 | 12 | 16 / not counted | 3 / 0 / 0 | 3 | 0.10 / 0.13 | 0 | 0 (no model calls) |
+| replay | 3 / 3 | 15 | 18 / not counted | 3 / 0 / 0 | 3 | 0.08 / 0.08 | 0 | 0 (no model calls) |
+| sdk-workspace-binary-index | 3 / 3 | 15 | 27 / 216 | 0 / 0 / 0 | 0 | 2.80 / 2.87 | 0 | 0 (no model calls) |
+| sdk-workspace-csv-report | 3 / 3 | 15 | 27 / 111 | 0 / 0 / 0 | 0 | 1.50 / 1.52 | 0 | 0 (no model calls) |
+| sdk-workspace-inventory | 3 / 3 | 18 | 30 / 189 | 0 / 0 / 0 | 0 | 2.63 / 2.67 | 0 | 0 (no model calls) |
+| sdk-workspace-log-repair | 3 / 3 | 15 | 27 / 111 | 0 / 0 / 0 | 0 | 1.78 / 1.82 | 0 | 0 (no model calls) |
+| sdk-workspace-multi-file-build | 3 / 3 | 24 | 36 / 150 | 0 / 0 / 0 | 0 | 2.23 / 2.24 | 0 | 0 (no model calls) |
+| sdk-workspace-range-repair | 3 / 3 | 15 | 27 / 123 | 0 / 0 / 0 | 0 | 1.79 / 1.81 | 0 | 0 (no model calls) |
+| stderr | 3 / 3 | 9 | 12 / not counted | 0 / 0 / 0 | 3 | 0.07 / 0.07 | 0 | 0 (no model calls) |
+| timeout | 3 / 3 | 9 | 24 / not counted | 0 / 0 / 0 | 3 | 0.28 / 0.28 | 0 | 0 (no model calls) |
+| unicode | 3 / 3 | 9 | 13 / not counted | 0 / 0 / 0 | 3 | 0.09 / 0.13 | 0 | 0 (no model calls) |
+| workspace | 3 / 3 | 9 | 12 / not counted | 0 / 0 / 0 | 3 | 0.08 / 0.08 | 0 | 0 (no model calls) |
+| workspace-binary-index | 3 / 3 | 15 | 54 / 272 | 0 / 0 / 0 | 3 | 2.74 / 2.81 | 0 | 0 (no model calls) |
+| workspace-csv-report | 3 / 3 | 15 | 54 / 153 | 0 / 0 / 0 | 3 | 1.36 / 1.38 | 0 | 0 (no model calls) |
+| workspace-inventory | 3 / 3 | 18 | 66 / 227 | 0 / 0 / 0 | 3 | 2.48 / 2.53 | 0 | 0 (no model calls) |
+| workspace-log-repair | 3 / 3 | 15 | 54 / 160 | 0 / 0 / 0 | 3 | 1.62 / 1.64 | 0 | 0 (no model calls) |
+| workspace-multi-file-build | 3 / 3 | 24 | 84 / 193 | 0 / 0 / 0 | 3 | 2.20 / 2.28 | 0 | 0 (no model calls) |
+| workspace-range-repair | 3 / 3 | 15 | 54 / 172 | 0 / 0 / 0 | 3 | 1.70 / 1.71 | 0 | 0 (no model calls) |
+
+Submitted artifacts:
+
+- sdk-workspace-binary-index, trial 1: [submitted tar](artifacts/sdk-workspace-binary-index/1/sdk-export-edc8179b-84ad-4abe-8ba8-d40fc03a2c8a.tar) (10240 bytes, SHA-256 `f39e6064148437bb9d193786a5695a5e40cd7767692742d38b458dec859d5c54`)
+- sdk-workspace-binary-index, trial 2: [submitted tar](artifacts/sdk-workspace-binary-index/2/sdk-export-dd14c6b1-0997-45d3-99c1-50b1f7b6419b.tar) (10240 bytes, SHA-256 `07214363464724ffd61a16516c8b7e7511bc5216a593398684af99010e56d46b`)
+- sdk-workspace-binary-index, trial 3: [submitted tar](artifacts/sdk-workspace-binary-index/3/sdk-export-8a99dd8e-1436-47bb-8228-a78894c2ec66.tar) (10240 bytes, SHA-256 `f38ba8577f08b2c93c779f1fd094bbabcc1fad52305f296fa403499d941964c9`)
+- sdk-workspace-csv-report, trial 1: [submitted tar](artifacts/sdk-workspace-csv-report/1/sdk-export-1c08e5b2-b3d5-49fb-9545-110dd1ec39e6.tar) (10240 bytes, SHA-256 `932a9ddff469b95b000d8f795967f2be55387a1a01dae1ec04d1b0f718681086`)
+- sdk-workspace-csv-report, trial 2: [submitted tar](artifacts/sdk-workspace-csv-report/2/sdk-export-3cf240e1-6ef1-471b-814d-21a9904aa1b0.tar) (10240 bytes, SHA-256 `51ddc2140f2d0d5f23adff450839717f42f8442489121bd4adbd43c3602a4629`)
+- sdk-workspace-csv-report, trial 3: [submitted tar](artifacts/sdk-workspace-csv-report/3/sdk-export-6b2ebf3e-402d-4e0f-abcd-2b53c5a82b00.tar) (10240 bytes, SHA-256 `7e3fc2680303a1be29197ee88141dd5204a85a08869d5290688f43788f3f3053`)
+- sdk-workspace-inventory, trial 1: [submitted tar](artifacts/sdk-workspace-inventory/1/sdk-export-8d69b8fb-9054-42a0-9512-12057861922b.tar) (10240 bytes, SHA-256 `9b61f9c1529ff9b853521f2060f067a8b55a816d925c7ab110bd0be23b8f47d1`)
+- sdk-workspace-inventory, trial 2: [submitted tar](artifacts/sdk-workspace-inventory/2/sdk-export-0e5b2297-667b-4650-80c8-8e085be5133b.tar) (10240 bytes, SHA-256 `ee252acd51c4fa999388290d3fed1e613fe88d4925e1800de1ef6872fb6d92af`)
+- sdk-workspace-inventory, trial 3: [submitted tar](artifacts/sdk-workspace-inventory/3/sdk-export-606360d3-9276-441b-833a-346eb48042ed.tar) (10240 bytes, SHA-256 `f5ceaa3e766ff3c0a30874f0570f935c598931d7c7b6fb0e940ac138daeaf471`)
+- sdk-workspace-log-repair, trial 1: [submitted tar](artifacts/sdk-workspace-log-repair/1/sdk-export-b4e4e0b1-bfb7-4865-8d69-7c502aa4865f.tar) (20480 bytes, SHA-256 `aad8622a8136c7de72bd49b509c09f170001d41c542de8fef5a21ee2517d47b0`)
+- sdk-workspace-log-repair, trial 2: [submitted tar](artifacts/sdk-workspace-log-repair/2/sdk-export-6a6f2b79-9e8d-4f9a-bee2-c83062569bf1.tar) (20480 bytes, SHA-256 `4da15db2f9c7ac3ea0986d801bd3ceea7ea5ff40beb2ee05a05acc364793db7a`)
+- sdk-workspace-log-repair, trial 3: [submitted tar](artifacts/sdk-workspace-log-repair/3/sdk-export-eb884b44-d521-4a96-8b74-3b3772563ecb.tar) (20480 bytes, SHA-256 `f95b0348f90ff714a9a597f681ed9380b1487816ac683f5916acd9c4f836a236`)
+- sdk-workspace-multi-file-build, trial 1: [submitted tar](artifacts/sdk-workspace-multi-file-build/1/sdk-export-1f71e9ff-5f0e-448a-b368-e63cb5987661.tar) (20480 bytes, SHA-256 `5397dfed33b4bedf9fcdce13eef5afa076dc162dac6a8da12f874884134fba54`)
+- sdk-workspace-multi-file-build, trial 2: [submitted tar](artifacts/sdk-workspace-multi-file-build/2/sdk-export-30431f2d-3aae-4178-ab6a-dc4c6a98f516.tar) (20480 bytes, SHA-256 `1e64509f73d9ad2662e820314947641dd0f40f98db569782d7e0e4610c2403c5`)
+- sdk-workspace-multi-file-build, trial 3: [submitted tar](artifacts/sdk-workspace-multi-file-build/3/sdk-export-fe44abc4-9465-4f59-b305-84214deca4a3.tar) (20480 bytes, SHA-256 `c492c143ea31167cfaa33dd26160fd39634fdf5a71a4c434c9514d713ca0a9d5`)
+- sdk-workspace-range-repair, trial 1: [submitted tar](artifacts/sdk-workspace-range-repair/1/sdk-export-a1424552-d6c1-4fbf-85e0-a61556e4608c.tar) (20480 bytes, SHA-256 `314ed3e7a5f04e2951b99b57b92a43687e775a4c2bd9283574fb624a7d19eed3`)
+- sdk-workspace-range-repair, trial 2: [submitted tar](artifacts/sdk-workspace-range-repair/2/sdk-export-b39b0178-6ffb-4823-aead-11b146cefd9a.tar) (20480 bytes, SHA-256 `6ec308d0e641bbf5d63a8d69fd3c9f9ae1ccb698961afb59ae2151f7f250f53f`)
+- sdk-workspace-range-repair, trial 3: [submitted tar](artifacts/sdk-workspace-range-repair/3/sdk-export-7083322a-459e-4d68-bcce-e4c6aac0fd7e.tar) (20480 bytes, SHA-256 `4a01584157cde9e2d0571723fa15ef75b75ac574804184cdb215c83bc910300f`)
+- workspace-binary-index, trial 1: [submitted tar](artifacts/workspace-binary-index/1/1d2076ba-3022-49cd-9bb8-2fdb9829b482.tar) (4608 bytes, SHA-256 `fae24bc4dbe0d98c76d23ad1caa4adf2df1d9589bde0783fb6efa025fe787f54`)
+- workspace-binary-index, trial 2: [submitted tar](artifacts/workspace-binary-index/2/c68a3472-68c1-4c6d-ab0c-df17073802ac.tar) (4608 bytes, SHA-256 `c61d8c6678e49714b802c6ceb6697c59bd6938853fd000930266e4dc9e75b150`)
+- workspace-binary-index, trial 3: [submitted tar](artifacts/workspace-binary-index/3/97df34f9-0944-4a85-88c8-f19413ffb6ad.tar) (4608 bytes, SHA-256 `6bb6699b34cfd574c57ab32946eee9e305bb3d4f3d02aef7f3716768bf81a0b7`)
+- workspace-csv-report, trial 1: [submitted tar](artifacts/workspace-csv-report/1/c6fd127d-8aa3-40e1-92fb-747e27ef0810.tar) (3072 bytes, SHA-256 `8d778c0ba8dbee6955d29bcc90874d49b6f1ce9e99c62bb491be483bfb7c6fc1`)
+- workspace-csv-report, trial 2: [submitted tar](artifacts/workspace-csv-report/2/71afe5f3-a5e4-4f24-bad5-c24c5dde62f8.tar) (3072 bytes, SHA-256 `1fe90d4c064eaf547606d0286cca7ddcc9b39370deaa2fbd5c7f8e345d6adccd`)
+- workspace-csv-report, trial 3: [submitted tar](artifacts/workspace-csv-report/3/58c8612f-cc05-4454-9984-d3429e434a38.tar) (3072 bytes, SHA-256 `0d8ff732d463bb5c7520a8d6d83522a15bd7680b84fd6e67c5b42222b4631b62`)
+- workspace-inventory, trial 1: [submitted tar](artifacts/workspace-inventory/1/b03a5f7d-fe87-48c2-8958-a9cbebfcfb5d.tar) (4096 bytes, SHA-256 `8a67793897f4e3667508e04cd60b7ca9433d40276e8cb7572132e937288f9a42`)
+- workspace-inventory, trial 2: [submitted tar](artifacts/workspace-inventory/2/3f812ca6-91f8-4eb7-9bbe-e24906016922.tar) (4096 bytes, SHA-256 `df795846033721b8881abf525694264c7afd0a87211ab11894a2803018142f47`)
+- workspace-inventory, trial 3: [submitted tar](artifacts/workspace-inventory/3/62d6afde-7ca9-43b4-8961-6b158601ede4.tar) (4096 bytes, SHA-256 `feca2e0ca91bc83dd8026baa7f6ef519cf1add1658875d1d338bb3ace4dc04fc`)
+- workspace-log-repair, trial 1: [submitted tar](artifacts/workspace-log-repair/1/4e0ddbed-14f6-49e4-b65b-5f9522e1fbf3.tar) (8192 bytes, SHA-256 `60bb4e3b6407d89afd0c46e1feeb2fcc817502bec43f2867f71471e8521143c6`)
+- workspace-log-repair, trial 2: [submitted tar](artifacts/workspace-log-repair/2/8f1794df-b997-4817-bc54-a78967c45171.tar) (8192 bytes, SHA-256 `b1da52a9d98b89643682b7dd9382fcfcef2262c07a876cf119e0fd07633806f4`)
+- workspace-log-repair, trial 3: [submitted tar](artifacts/workspace-log-repair/3/6f39c7b6-993e-4e84-a8fc-4715ca562e85.tar) (8192 bytes, SHA-256 `fea9ef062df1afe88719abcc114387d40879bd49723bc1e3b2345776f721516b`)
+- workspace-multi-file-build, trial 1: [submitted tar](artifacts/workspace-multi-file-build/1/9f07b598-a735-4a38-a517-8921983a7212.tar) (7680 bytes, SHA-256 `ec2784dace5a6f459f53d7eabc977a32a739d19b1b9f21f5f0345f3be107524b`)
+- workspace-multi-file-build, trial 2: [submitted tar](artifacts/workspace-multi-file-build/2/b45e3d7e-c2b4-40b9-b429-3bf9eb8a7d6a.tar) (7680 bytes, SHA-256 `5d3c78d127deb9c240b7093a9f394e42746bcdd6b8c0690a2826badcc94b915a`)
+- workspace-multi-file-build, trial 3: [submitted tar](artifacts/workspace-multi-file-build/3/b25fed45-de1b-43f3-9bc1-1aed71ae73df.tar) (7680 bytes, SHA-256 `447d1168e832cb6e101313170e096205241ebf656877b937f3c9c016215dc2ed`)
+- workspace-range-repair, trial 1: [submitted tar](artifacts/workspace-range-repair/1/755d3c94-ca0c-491b-83f0-c3d5dd246a09.tar) (7680 bytes, SHA-256 `764d2a28dc44e2ea5403ca80c2a571c2fe4f3e5466a341ba8a06f05921edb488`)
+- workspace-range-repair, trial 2: [submitted tar](artifacts/workspace-range-repair/2/7f6e0e3b-e789-4dc9-b7c6-29a096dadb4e.tar) (7680 bytes, SHA-256 `f41a785995577eb5e225df043e9159305d89eac47960149f37f51cec13080643`)
+- workspace-range-repair, trial 3: [submitted tar](artifacts/workspace-range-repair/3/c9b2e519-f4f6-4559-985d-aa6d8c7e2c32.tar) (7680 bytes, SHA-256 `4ad1e3b4b935056fbf8230d061ad3820c78e4bfa9759b20dfd150e47fedfa8d3`)
+
+Every attempt remains in the log, including errors and limit exits. Deliberate refusal cases count in refused calls.
+Agent API calls count tool traffic only. Workspace setup, grading and cleanup calls are counted separately; legacy native-case harness traffic is not counted.
+No automatic model baseline comparison is made. Download the artifact and serve its viewer directory to inspect transcripts.

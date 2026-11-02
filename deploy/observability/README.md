@@ -27,8 +27,8 @@ endpoint does not exist. The output includes:
 **Logs.** Every service writes to the host journal. Application lines are one ECS JSON record each;
 [Diagnostics](../../docs/usage.md#diagnostics) owns what the records contain and never contain.
 Containers log under `SYSLOG_IDENTIFIER=poketto-<container>`. The executor and game runner are the
-`poketto-executor.service` and `sandcrab-games.service` units, and each command sandbox is a
-`poketto-exec-…` unit in their slice.
+`poketto-executor.service` and `sandcrab-games.service` units. Repository command sandboxes
+use `poketto-exec-…` units; native game sandboxes use delegated cgroups inside their service.
 
 ## Executor command timings
 

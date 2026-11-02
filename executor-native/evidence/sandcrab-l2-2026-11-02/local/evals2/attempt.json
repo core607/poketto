@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "result": "FAIL",
+  "stage": "host-call-preflight",
+  "errorType": "CalledProcessError",
+  "reason": "Six deliberate daemon start requests within nine seconds triggered systemd start-limit-hit",
+  "modelTokens": 0,
+  "evidenceKind": "scripted",
+  "retainedProbeCleanup": "PASS"
+}

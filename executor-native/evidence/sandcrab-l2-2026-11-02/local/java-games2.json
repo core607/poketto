@@ -1,0 +1,58 @@
+{
+  "scope": "Real native Java consumer acceptance; synthetic authentication and content",
+  "result": "FAIL",
+  "records": [
+    {
+      "result": "PASS",
+      "observation": {
+        "requestBytes": 0,
+        "accepted": true
+      },
+      "test": "root-owned-socket-rejects-non-root-peer"
+    },
+    {
+      "test": "native-game-shared-example-and-complete-utf8-save",
+      "result": "PASS",
+      "repositoryBaselineMillis": null,
+      "repositoryWithGameMillis": null
+    },
+    {
+      "test": "native-game-denies-host-files-credentials-tcp-unix-and-bridge",
+      "result": "PASS",
+      "repositoryBaselineMillis": null,
+      "repositoryWithGameMillis": null
+    },
+    {
+      "test": "native-game-output-memory-descendants-and-readmission",
+      "result": "PASS",
+      "repositoryBaselineMillis": null,
+      "repositoryWithGameMillis": null
+    },
+    {
+      "test": "native-game-orphan-discovery-reclaims-unowned-ephemeral-records",
+      "result": "PASS",
+      "repositoryBaselineMillis": null,
+      "repositoryWithGameMillis": null
+    },
+    {
+      "test": "native-game-admission-does-not-consume-repository-capacity",
+      "result": "PASS",
+      "repositoryBaselineMillis": 80.37446,
+      "repositoryWithGameMillis": 65.765716
+    },
+    {
+      "test": "native-game-account-revocation-terminates-active-job",
+      "result": "PASS",
+      "repositoryBaselineMillis": null,
+      "repositoryWithGameMillis": null
+    }
+  ],
+  "logSha256": "231eeeda2005e825cf284ea601513c71b6c7cf0b6a570436bc297bc931f4ed3c",
+  "cleanup": "FAILED; see games2-remediation.json",
+  "failure": "Collected unit stop returned exit 5; cleanup then rejected nested job/tmp mount",
+  "contaminatedFollowingMeasurements": [
+    "density-smoke4.json",
+    "cold-smoke4.json",
+    "footprint-smoke4.json"
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "kind": "owned-java-games-fixture-remediation",
+  "started": "2026-11-02T06:56:05.088197+00:00",
+  "root": "/var/lib/poketto-java-native-llgjxt91",
+  "verifiedUsers": [
+    "pkt-game-99944460",
+    "pkt-jexec-00869188",
+    "pkt-japp-00869188"
+  ],
+  "verifiedCollectedUnits": [
+    "sandcrab-game-probe-99944460.service",
+    "poketto-java-worker-00869188.service",
+    "poketto-java-app-00869188.service",
+    "poketto-java-fake-00869188.service"
+  ],
+  "mountsBefore": [
+    "/var/lib/poketto-java-native-llgjxt91/copy-pool",
+    "/var/lib/poketto-java-native-llgjxt91/game-runtime/jobs/45618ebd-f0f1-452f-a3b1-c237c1ad8434",
+    "/var/lib/poketto-java-native-llgjxt91/game-runtime/jobs/45618ebd-f0f1-452f-a3b1-c237c1ad8434/tmp"
+  ],
+  "syntheticOnly": true,
+  "cleanup": "PASS",
+  "finished": "2026-11-02T06:56:05.322885+00:00"
+}
