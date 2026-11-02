@@ -274,8 +274,8 @@
     },
     {
       "path": "local/hierarchy-root.json",
-      "bytes": 1227,
-      "sha256": "54207bf58fe73b3b59aa00fa986f033d821b4e0bc72816bd9a5ed1c3ffba4547"
+      "bytes": 1199,
+      "sha256": "55af3100b20dcf10ad307409727173e87e2c2eb84a48d2c0d854961577492a52"
     },
     {
       "path": "local/native3.json",
