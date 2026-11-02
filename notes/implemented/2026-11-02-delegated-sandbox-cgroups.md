@@ -25,9 +25,10 @@ A shared parent bounds contexts; each shell leaf owns group termination and OOM
 evidence, so a sibling's failure cannot contaminate later results. Trusted file
 helpers retain mount, capability and network isolation, not arbitrary root execution.
 
-Helpers poll pidfd/output readiness to avoid EOF-before-exit delay. Exit still
-requires draining within timeout; unavailable observation kills the helper and
-reports failure.
+Helpers poll pidfd/output readiness to avoid EOF-before-exit delay, draining within
+timeout. Failed observation kills the helper and reports failure. Tool-version
+checks retain output, status and deadline bounds. Listener readiness removes the
+measured accept delay; a 10 ms bound preserves idle maintenance and shutdown.
 
 This partially supersedes [direct launch](2026-10-18-direct-sandbox-launch.md)
 for native runs and games. The repository worker retains its unit backend.

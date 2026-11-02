@@ -871,7 +871,7 @@ pub fn launch(path: &Path) -> io::Result<()> {
     )))
 }
 
-/// Owns one persistent unit. Storage can be released only after its launcher and cgroup stop.
+/// Owns one persistent shell. Storage can be released only after its launcher and cgroup stop.
 pub struct OpenError {
     pub code: &'static str,
     pub contained: bool,
