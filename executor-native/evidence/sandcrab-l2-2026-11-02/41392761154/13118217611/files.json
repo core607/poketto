@@ -1,0 +1,125 @@
+{
+  "scope": "Native raw/tar upload, snapshot, quota, cancellation and crash recovery; synthetic files, no model or production cutover",
+  "binarySha256": "ad7cbf7218b096ad14429ceda142ddd8d075b18bfd2d44448b14f4f77a6cae9a",
+  "probeSha256": "69d4f51fe7a999b4b6b4e3e8d4a28283b338643a5ca232f9e6efd826d15a4aba",
+  "checks": [
+    {
+      "name": "volume-bootstrap-refuses-preexisting-data",
+      "result": "PASS"
+    },
+    {
+      "name": "files-first-start-refuses-unowned-upload-state-before-touching-prior-workspaces",
+      "result": "PASS"
+    },
+    {
+      "name": "files-first-start-recovers-prior-session-residue-and-preserves-durable-volume-data",
+      "result": "PASS"
+    },
+    {
+      "name": "files-stream-beyond-json-limit-empty-binary-replace-and-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "files-expect-continue-after-admission",
+      "result": "PASS"
+    },
+    {
+      "name": "files-refusals-and-checksum-failure-preserve-the-old-file",
+      "result": "PASS"
+    },
+    {
+      "name": "files-ordinary-tar-preserves-unicode-modes-and-links-without-following-host-links",
+      "result": "PASS"
+    },
+    {
+      "name": "files-tar-escape-links-and-special-nodes-never-publish",
+      "result": "PASS"
+    },
+    {
+      "name": "files-gnu-and-pax-sparse-archives-are-refused-without-publication",
+      "result": "PASS"
+    },
+    {
+      "name": "files-tar-replaces-a-nonempty-directory-and-cleans-the-old-tree",
+      "result": "PASS"
+    },
+    {
+      "name": "files-cli-roundtrip-status-and-safe-local-installation",
+      "result": "PASS"
+    },
+    {
+      "name": "files-cli-truncated-or-corrupted-download-preserves-local-destination",
+      "result": "PASS"
+    },
+    {
+      "name": "files-volume-quota-and-restart-retain-data-and-upload-identity",
+      "result": "PASS"
+    },
+    {
+      "name": "files-bounded-records-discovery-and-cancel-before-content",
+      "result": "PASS"
+    },
+    {
+      "name": "files-disconnect-cancel-and-body-deadline-preserve-data-and-release-admission",
+      "result": "PASS"
+    },
+    {
+      "name": "files-session-close-cancels-receive-before-releasing-the-volume",
+      "result": "PASS"
+    },
+    {
+      "name": "files-session-expiry-cancels-an-active-upload-and-retains-volume-data",
+      "result": "PASS"
+    },
+    {
+      "name": "files-supervisor-loss-before-publication-recovers-without-writing",
+      "result": "PASS"
+    },
+    {
+      "name": "files-before-publication-loss-reconciles-without-overwriting-a-later-edit",
+      "result": "PASS"
+    },
+    {
+      "name": "files-after-publication-loss-reconciles-without-overwriting-a-later-edit",
+      "result": "PASS"
+    },
+    {
+      "name": "files-metadata-publication-loss-reconciles-without-overwriting-a-later-edit",
+      "result": "PASS"
+    },
+    {
+      "name": "files-snapshot-cleanup-pins-volume-and-withholds-success-until-release",
+      "result": "PASS"
+    },
+    {
+      "name": "files-disconnected-snapshot-thaws-the-session-and-removes-staging",
+      "result": "PASS"
+    },
+    {
+      "name": "files-uncertain-cleanup-retains-ownership-until-restart-recovery",
+      "result": "PASS"
+    },
+    {
+      "name": "files-receive-helper-oom-is-contained-without-ending-the-service-or-session",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "volumeProbeSha256": "68bd8d1af49753bd18dadf6c4198edf3492135f7bbcee4c5b578939a0d0293a8",
+  "fileProbeSha256": "8cff5d37d745b4f9980aa25748a832de3e9458a2f13f0c82c3a08529ffbaf4a6",
+  "quotaResponseLost": true,
+  "uploadDeadlineSeconds": 30.037,
+  "fileHelperOom": {
+    "injectedMemoryMaxBytes": 8388608,
+    "oomKills": 4
+  },
+  "result": "PASS",
+  "faultControllerLogs": {
+    "trace-14709.log": "inject SIGKILL before placement: pid=14903\ninject SIGKILL before placement: pid=14908\n",
+    "trace-14417.log": "",
+    "trace-15076.log": "",
+    "trace-14919.log": "",
+    "trace-14254.log": "",
+    "trace-14557.log": ""
+  }
+}

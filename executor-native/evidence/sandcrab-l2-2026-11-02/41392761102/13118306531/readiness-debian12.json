@@ -1,0 +1,296 @@
+{
+  "schema": 1,
+  "kind": "sandcrab-container-readiness-baseline",
+  "started": "2026-11-02T05:16:33.078877+00:00",
+  "sourceCommit": "453098675c1a1ea733842256af309ad6da9c189e",
+  "sourceDirty": false,
+  "binarySha256": "ad7cbf7218b096ad14429ceda142ddd8d075b18bfd2d44448b14f4f77a6cae9a",
+  "image": "sandcrab-readiness:fixture",
+  "imageId": "sha256:fa5f6c8e6c3963f1577b88b9dcc71fe573c5f2232c12695bdb1782cca5792a70",
+  "scope": "Fresh distribution userland in a privileged disposable systemd container. The host kernel is shared; this is not a separate distribution-kernel or production-container test. Image build, controller bootstrap and source compilation are outside the installation clock. Acquisition copies a source archive and prebuilt candidate; no published release download is claimed.",
+  "limits": {
+    "memoryBytes": 2147483648,
+    "swapBytes": 0,
+    "cpus": 2,
+    "pids": 2048,
+    "privateCgroupNamespace": true,
+    "hostCgroupBindMount": false
+  },
+  "measurementStatus": "COMPLETED",
+  "containerCleanup": "PASS",
+  "modelTokens": 0,
+  "containsProductionContent": false,
+  "recipeExitCode": 0,
+  "recipeStdout": "",
+  "recipeStderr": "",
+  "recipe": {
+    "schema": 1,
+    "kind": "sandcrab-manual-readiness-baseline",
+    "sourceRevision": "453098675c1a1ea733842256af309ad6da9c189e",
+    "started": "2026-11-02T05:16:35.065733+00:00",
+    "scope": "Automated replay of the current README manual operator steps, using a prebuilt candidate. Human editing time and source compilation are excluded; this is a lower bound, not turnkey readiness. Operator commands have temporary resource limits; their wrapper overhead is included.",
+    "acquisition": {
+      "source": "repository checkout plus candidate binary",
+      "operatorCommands": 2
+    },
+    "acquisitionClockIncluded": true,
+    "initialEnvironment": {
+      "osRelease": "PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"12\"\nVERSION=\"12 (bookworm)\"\nVERSION_CODENAME=bookworm\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"\n",
+      "kernel": "7.0.0-1017-azure",
+      "logicalCpuCount": 4,
+      "controllerPythonPreinstalled": true,
+      "rootCgroupLimits": {
+        "memory.max": "2147483648",
+        "memory.swap.max": "0",
+        "pids.max": "2048",
+        "cpu.max": "200000 100000"
+      },
+      "programs": {
+        "curl": false,
+        "python3": true,
+        "node": false,
+        "npm": false,
+        "bwrap": false,
+        "git": false
+      }
+    },
+    "inputSha256": {
+      "binary": "ad7cbf7218b096ad14429ceda142ddd8d075b18bfd2d44448b14f4f77a6cae9a",
+      "readme": "bf358fb9733c6d951576f85a737036f5e7fddbbd006b59f12c9abbcc3a238808",
+      "recipe": "e3214760d4d3dd73a450952e62d6ed69a55ad94bf717c960623020dfad427ed5"
+    },
+    "steps": [
+      {
+        "kind": "command",
+        "label": "create protected installation directory",
+        "argv": [
+          "mkdir",
+          "-m",
+          "755",
+          "/var/lib/sandcrab-ready-cf31cd7732"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "",
+        "stderrTail": "",
+        "elapsedNs": 18977378
+      },
+      {
+        "kind": "command",
+        "label": "refresh package indexes",
+        "argv": [
+          "apt-get",
+          "update"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]\nGet:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]\nGet:3 http://deb.debian.org/debian-security bookworm-security InRelease [34.8 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8790 kB]\nGet:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6924 B]\nGet:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [360 kB]\nFetched 9398 kB in 1s (9592 kB/s)\nReading package lists...\n",
+        "stderrTail": "",
+        "elapsedNs": 1496503669
+      },
+      {
+        "kind": "command",
+        "label": "install preparation and Python workload dependencies",
+        "argv": [
+          "apt-get",
+          "install",
+          "--yes",
+          "--no-install-recommends",
+          "python3",
+          "procps"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "Reading package lists...\nBuilding dependency tree...\nReading state information...\npython3 is already the newest version (3.11.2-1+b1).\nRecommended packages:\n  psmisc\nThe following NEW packages will be installed:\n  libproc2-0 procps\n0 upgraded, 2 newly installed, 0 to remove and 1 not upgraded.\nNeed to get 772 kB of archives.\nAfter this operation, 2379 kB of additional disk space will be used.\nGet:1 http://deb.debian.org/debian bookworm/main amd64 libproc2-0 amd64 2:4.0.2-3 [62.8 kB]\nGet:2 http://deb.debian.org/debian bookworm/main amd64 procps amd64 2:4.0.2-3 [709 kB]\nFetched 772 kB in 0s (26.6 MB/s)\nSelecting previously unselected package libproc2-0:amd64.\n(Reading database ... \n(Reading database ... 5%\n(Reading database ... 10%\n(Reading database ... 15%\n(Reading database ... 20%\n(Reading database ... 25%\n(Reading database ... 30%\n(Reading database ... 35%\n(Reading database ... 40%\n(Reading database ... 45%\n(Reading database ... 50%\n(Reading database ... 55%\n(Reading database ... 60%\n(Reading database ... 65%\n(Reading database ... 70%\n(Reading database ... 75%\n(Reading database ... 80%\n(Reading database ... 85%\n(Reading database ... 90%\n(Reading database ... 95%\n(Reading database ... 100%\n(Reading database ... 7968 files and directories currently installed.)\nPreparing to unpack .../libproc2-0_2%3a4.0.2-3_amd64.deb ...\nUnpacking libproc2-0:amd64 (2:4.0.2-3) ...\nSelecting previously unselected package procps.\nPreparing to unpack .../procps_2%3a4.0.2-3_amd64.deb ...\nUnpacking procps (2:4.0.2-3) ...\nSetting up libproc2-0:amd64 (2:4.0.2-3) ...\nSetting up procps (2:4.0.2-3) ...\nProcessing triggers for libc-bin (2.36-9+deb12u14) ...\n",
+        "stderrTail": "debconf: delaying package configuration, since apt-utils is not installed\n",
+        "elapsedNs": 1216804408
+      },
+      {
+        "kind": "command",
+        "label": "install candidate executable",
+        "argv": [
+          "install",
+          "-m",
+          "755",
+          "/root/sandcrab",
+          "/var/lib/sandcrab-ready-cf31cd7732/sandcrab"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "",
+        "stderrTail": "",
+        "elapsedNs": 42721379
+      },
+      {
+        "kind": "command",
+        "label": "prepare pinned sandbox toolchain",
+        "argv": [
+          "bash",
+          "/source/executor-service/prepare-tools.sh",
+          "/var/lib/sandcrab-ready-cf31cd7732/tools"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "Get:1 http://deb.debian.org/debian bookworm/main amd64 bubblewrap amd64 0.8.0-2+deb12u1 [47.3 kB]\nGet:2 http://deb.debian.org/debian bookworm/main amd64 debianutils amd64 5.7-0.5~deb12u1 [103 kB]\nGet:3 http://deb.debian.org/debian bookworm/main amd64 ripgrep amd64 13.0.0-4+b2 [1253 kB]\nGet:4 http://deb.debian.org/debian bookworm/main amd64 socat amd64 1.7.4.4-2 [375 kB]\nFetched 1778 kB in 0s (64.8 MB/s)\nPrepared Sandcrab tools in /var/lib/sandcrab-ready-cf31cd7732/tools.\n",
+        "stderrTail": "\nWARNING: apt does not have a stable CLI interface. Use with caution in scripts.\n\nW: Download is performed unsandboxed as root as file '/var/lib/sandcrab-ready-cf31cd7732/tools/bubblewrap_0.8.0-2+deb12u1_amd64.deb' couldn't be accessed by user '_apt'. - pkgAcquire::Run (13: Permission denied)\n",
+        "elapsedNs": 796815719
+      },
+      {
+        "kind": "command",
+        "label": "create separate execution account",
+        "argv": [
+          "useradd",
+          "--system",
+          "--no-create-home",
+          "--shell",
+          "/usr/sbin/nologin",
+          "scrab-cf31cd7732"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "",
+        "stderrTail": "",
+        "elapsedNs": 45025917
+      },
+      {
+        "kind": "manual-configuration",
+        "path": "/var/lib/sandcrab-ready-cf31cd7732/config.toml",
+        "fields": [
+          "runtime_root",
+          "socket",
+          "client_uid",
+          "client_gid",
+          "cgroup_root",
+          "exec_user",
+          "tools"
+        ],
+        "status": "PASS",
+        "sha256": "e6054da34bfc7269abf2ee029ab53ba6cf4c1ac7eee89afb80b4b7b547aac9ea",
+        "elapsedNs": 406948
+      },
+      {
+        "kind": "manual-configuration",
+        "path": "/run/systemd/system/sandcrab-ready-cf31cd7732.slice",
+        "fields": [
+          "MemoryMax",
+          "MemorySwapMax",
+          "TasksMax",
+          "CPUQuota"
+        ],
+        "status": "PASS",
+        "sha256": "9d5ec8a65ad341e5174d7d5c406f944fc48aac9dd7098b8124d44c32087d53c4",
+        "elapsedNs": 44784
+      },
+      {
+        "kind": "command",
+        "label": "allow capability-bearing user namespaces on this disposable host",
+        "argv": [
+          "sysctl",
+          "-w",
+          "kernel.apparmor_restrict_unprivileged_userns=0"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "kernel.apparmor_restrict_unprivileged_userns = 0\n",
+        "stderrTail": "",
+        "elapsedNs": 34818606
+      },
+      {
+        "kind": "command",
+        "label": "load the resource slice",
+        "argv": [
+          "systemctl",
+          "daemon-reload"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "",
+        "stderrTail": "",
+        "elapsedNs": 127668311
+      },
+      {
+        "kind": "command",
+        "label": "start the resource slice",
+        "argv": [
+          "systemctl",
+          "start",
+          "sandcrab-ready-cf31cd7732.slice"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "",
+        "stderrTail": "",
+        "elapsedNs": 52134665
+      },
+      {
+        "kind": "command",
+        "label": "start the root service in its bounded unit",
+        "argv": [
+          "systemd-run",
+          "--quiet",
+          "--collect",
+          "--unit",
+          "sandcrab-ready-cf31cd7732.service",
+          "--slice",
+          "sandcrab-ready-cf31cd7732.slice",
+          "-p",
+          "Delegate=yes",
+          "-p",
+          "MemorySwapMax=0",
+          "-p",
+          "TasksMax=infinity",
+          "-p",
+          "KillMode=control-group",
+          "-p",
+          "RuntimeMaxSec=180",
+          "/var/lib/sandcrab-ready-cf31cd7732/sandcrab",
+          "serve",
+          "--config",
+          "/var/lib/sandcrab-ready-cf31cd7732/config.toml"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "",
+        "stderrTail": "",
+        "elapsedNs": 26690654
+      },
+      {
+        "kind": "command",
+        "label": "first README sandboxed command",
+        "argv": [
+          "/var/lib/sandcrab-ready-cf31cd7732/sandcrab",
+          "run",
+          "--socket",
+          "/var/lib/sandcrab-ready-cf31cd7732/runtime/control.sock",
+          "--profile",
+          "python",
+          "--",
+          "python3",
+          "-c",
+          "print(6 * 7)"
+        ],
+        "status": "PASS",
+        "exitCode": 0,
+        "stdoutTail": "{\"id\":\"7062936c-ba45-4568-8a6d-4074801543d8\",\"serverId\":\"12fa9450-c187-4ba5-a827-c0a7b765c025\",\"profile\":\"python\",\"state\":\"succeeded\",\"result\":{\"exitCode\":0,\"truncated\":false,\"stdout\":\"42\\n\",\"stderr\":\"\"}}\n",
+        "stderrTail": "runId=7062936c-ba45-4568-8a6d-4074801543d8\n",
+        "elapsedNs": 75928469
+      }
+    ],
+    "measurementStatus": "COMPLETED",
+    "cleanup": "PASS",
+    "modelTokens": 0,
+    "containsProductionContent": false,
+    "manualHostPolicyEdits": 1,
+    "readiness": {
+      "firstSandboxedCommand": "PASS",
+      "operatorCommands": 13,
+      "manualConfigurationEdits": 3,
+      "automatedWallNs": 4482975229,
+      "humanEditingTimeIncluded": false,
+      "targetPass": false
+    },
+    "hostPolicyRestored": true,
+    "finished": "2026-11-02T05:16:39.443826+00:00"
+  },
+  "finished": "2026-11-02T05:16:40.198622+00:00"
+}

@@ -25,10 +25,9 @@ A shared parent bounds contexts; each shell leaf owns group termination and OOM
 evidence, so a sibling's failure cannot contaminate later results. Trusted file
 helpers retain mount, capability and network isolation, not arbitrary root execution.
 
-Pipe EOF can precede waitable helper exit. Bounded host commands observe pidfd
-readiness as well as output, avoiding polling delay without shorter busy waits.
-Exit never bypasses draining or timeout bounds; unavailable observation kills the
-helper and reports failure.
+Helpers poll pidfd/output readiness to avoid EOF-before-exit delay. Exit still
+requires draining within timeout; unavailable observation kills the helper and
+reports failure.
 
 This partially supersedes [direct launch](2026-10-18-direct-sandbox-launch.md)
 for native runs and games. The repository worker retains its unit backend.

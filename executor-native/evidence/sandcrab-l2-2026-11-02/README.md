@@ -2,9 +2,10 @@
 
 This change serves lightweight deployment by replacing native per-operation
 systemd transactions with daemon-owned cgroups. These local receipts validate
-implementation and measurement paths. Canonical 5 GB measurements and fresh
-installation results remain pending; this report establishes neither capacity
-improvement nor the 30 ms cold-start target.
+implementation and measurement paths. The first canonical 5 GB run retained
+capacity 50; the helper-wait candidate's canonical run remains pending. Fresh
+installation replay completes on five environments. This report establishes
+neither a capacity improvement nor the 30 ms cold-start target.
 
 ## Sources and scope
 
@@ -112,3 +113,49 @@ expiry; [games](local/java-games1.json) passed with cleanup.
 Original logs, source manifests, Inspect logs/viewer and all attempts are retained
 with the operator's development artifacts. The indexed JSON and measurement ledgers
 are the portable evidence; CI must still verify the final committed source.
+
+## First canonical 5 GB run
+
+[Run 41391010940](https://github.com/core607/poketto/actions/runs/41391010940)
+measured head `a105f6c97fae1cb094584136f6e3fd95a04b66b9`, binary `d78c2801…`,
+before the helper-wait optimization. The [density receipt](41391010940/13119127073/density.json)
+uses the unchanged W0 protocol, with daemon and sandboxes sharing 5 GB, two CPUs
+and zero swap. Density, footprint, cache and trace collectors completed with cleanup.
+
+| Measurement | L1 canonical | L2 before helper-wait change |
+|---|---:|---:|
+| Largest passing stage | 50 | 50 |
+| First failed stage | 100 | 100 |
+| Failed-stage judged p95 | 3.712206361 s | 9.085206797 s |
+| Failed-stage OK rate | 1.0 | 0.9592134013 |
+| Failed-stage refusals | 0 | 56 SESSION_NOT_READY |
+| Failed-stage OOM kills | 0 | 0 |
+| Median daemon idle RSS | 3,084,288 bytes | 3,153,920 bytes |
+| Pool memory delta per idle session at count 50 | 2,672,476.16 bytes | 1,537,884.16 bytes |
+| Pool memory delta per finite run at count 50 | 2,194,227.20 bytes | 1,075,281.92 bytes |
+
+The [footprint receipt](41391010940/13119127073/footprint.json) owns these fixed-cost
+observations; independent CI runners do not establish a stable causal latency gain.
+At 100 agents, three rg commands timed out during warm-up and closed their sessions;
+56 later refusals entered the judged window. Both failure reasons, OK_RATE and P95,
+remain recorded. Cold-start p50 at the three 50-agent repetitions was 182.978427,
+172.652866 and 172.973170 ms, versus L1's 111.575018, 111.568136 and 121.118090 ms.
+The subsequently optimized candidate requires its own measurement.
+
+## Current installation replay
+
+[Run 41392761102](https://github.com/core607/poketto/actions/runs/41392761102)
+completed all five environments with cleanup using the helper-wait candidate.
+The automatic installation clock excludes compilation, controller/image preparation
+and human editing. Containers share their runner's kernel.
+
+| Environment | Commands | Manual edits | Automated seconds | Receipt |
+|---|---:|---:|---:|---|
+| Native Ubuntu 22.04 | 12 | 2 | 15.068 | [JSON](41392761102/13118530488/readiness-native.json) |
+| Native Ubuntu 24.04 | 13 | 3 | 8.582 | [JSON](41392761102/13118585252/readiness-native.json) |
+| Ubuntu 22.04 container | 13 | 3 | 9.028 | [JSON](41392761102/13118540507/readiness-ubuntu22.json) |
+| Ubuntu 24.04 container | 13 | 3 | 9.336 | [JSON](41392761102/13117498837/readiness-ubuntu24.json) |
+| Debian 12 container | 13 | 3 | 4.483 | [JSON](41392761102/13118306531/readiness-debian12.json) |
+
+The first sandboxed command passes; command/edit counts still miss the release
+readiness target. L5/L10 own the installer and released quickstart.

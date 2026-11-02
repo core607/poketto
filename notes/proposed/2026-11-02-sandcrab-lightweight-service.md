@@ -156,6 +156,10 @@ save cwd and `export -p`, exit, and restore them on the next command. Background
 processes prohibit eviction. Document lost state and move workspaces from tmpfs
 to disk. Propose other measured optimizations here before implementing them.
 
+[Control measurements](../../executor-native/evidence/sandcrab-l2-2026-11-02/local/control-latency1.json)
+expose 10 ms acceptance polling; use listener readiness without changing maintenance
+deadlines, then remeasure.
+
 ### X: extraction by readiness
 
 Extract when L1-L10 and H1-H4 have landed and CI readiness, conformance and published
