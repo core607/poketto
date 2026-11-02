@@ -2,8 +2,8 @@
 
 This change serves lightweight deployment by replacing native per-operation
 systemd transactions with daemon-owned cgroups. These local receipts validate
-implementation and measurement paths. Both completed canonical 5 GB runs retained
-capacity 50; the listener/tool-wait candidate still needs canonical measurement. Fresh
+implementation and measurement paths. All three canonical 5 GB runs retained
+capacity 50; the listener/tool-wait candidate misses the cold-start target. Fresh
 installation replay completes on five environments. This report establishes
 neither a capacity improvement nor the 30 ms cold-start target.
 
@@ -204,3 +204,43 @@ and human editing. Containers share their runner's kernel.
 
 The first sandboxed command passes; command/edit counts still miss the release
 readiness target. L5/L10 own the installer and released quickstart.
+
+## Listener/tool-wait canonical run and placement diagnosis
+
+[Run 41403851267](https://github.com/core607/poketto/actions/runs/41403851267)
+measured clean head `d5c07b018e800678a3320abd300f127397db7f9f`, binary `9f4f93bb…`.
+Every collector and API/host cleanup completed. The [density receipt](41403851267/13125285147/density.json)
+passes all three 25- and 50-agent repetitions. At 50, cold-start p50 is 39.047217,
+36.670389 and 38.881163 ms; judged p95 is 0.606127653, 0.577810979 and 0.640154951 s.
+The 30 ms target remains unmet. At 100, OK rate is 0.3041804180 with 1,265
+SESSION_NOT_READY refusals and zero OOM. Its 0.169809532-second p95 includes refusals
+and does not establish a speed or capacity gain.
+
+The [footprint receipt](41403851267/13125285147/footprint.json) reports 3,219,456 bytes
+median daemon RSS, 1,504,542.72 bytes pool delta per idle session at count 50,
+and 1,096,417.28 bytes per finite run at count 50. Binary size is 4,166,560 bytes;
+dependencies are unchanged. [CI](https://github.com/core607/poketto/actions/runs/41403832502)
+passed at this head, including native 43, contexts 10, direct-root 10, SDK 21 and
+[66 scripted Inspect cases](41403832502/13122663389/summary.json), with real sandboxes,
+zero model tokens and cleanup. The PR merge tree is `e2228929f7e5a208a0fbc6b3ff354918bdabeed1`.
+Five fresh [installation replays](https://github.com/core607/poketto/actions/runs/41403832450)
+completed with cleanup but retain 12–13 commands and 2–3 manual edits.
+
+The CI [smoke](41403832544/13123085136/smoke.json) has two cold starts of 22.688285
+and 22.286267 ms; these do not replace the failed canonical metric. A local
+[volume attachment trace](local/cold-volume1.json) observes roughly 6–7 ms in
+validation helpers and 18–31 ms between trusted launcher exec and cgroup placement.
+[Syscall tracing](local/cold-volume-syscalls2.json) attributes almost all that latter
+interval to a one-byte `write`: 35.653506, 24.902773 and 12.871320 ms. It records
+only syscall numbers, durations and results, not arguments or file contents.
+The first syscall trace failed BPF compilation because it contained two END probes;
+[that failure](local/cold-volume-syscalls1.json) retains successful cleanup.
+
+Two bounded, single-threaded C prototypes compare `fork` plus migration with
+`clone3(CLONE_INTO_CGROUP)`. [Burst trials](local/clone-placement1.json) show medians
+of 0.087303 and 0.067796 ms. [Trials spaced 50 ms apart](local/clone-placement2.json)
+show 21.878773 and 0.190946 ms, respectively. Each mode reaps all 50 children;
+fixture cleanup passes. [Burst source](local/clone-placement1.source.c) and
+[spaced source](local/clone-placement2.source.c) are retained. These are placement
+measurements, not multithreaded spawn-safety or full sandbox-latency evidence.
+The lightweight proposal owns the resulting direct-placement implementation target.

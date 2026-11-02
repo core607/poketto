@@ -1,0 +1,4639 @@
+{
+  "schema": 1,
+  "kind": "sandcrab-cold-start-smoke",
+  "started": "2026-11-02T08:01:26.469747+00:00",
+  "sourceCommit": "e0a8b68f6b667673e8025c87884135e8259c151d",
+  "sourceDirty": true,
+  "sourceSha256": {
+    "scoring.py": "48b5f42df8a9e3eec81a5fb50d381effc699935037c40e6dca6922a59a8f9cfb",
+    "test_engine.py": "05633ed8e050237695e1939589dab845b414d41b27974619fdd01af88e2d5b7d",
+    "test_page_cache.py": "4bb1fcfa4e43e73e052ba3c9a8db1933cf6d0c6cd2134c8370043d8202423b8a",
+    "test_density.py": "6ea72a3003daf5b9883f4f15e087a7d8a04ff0ec75d5f66c04589b53c8d2f9f9",
+    "engine.py": "644572b2426058524fb006534b7a67359277ef9078df6aa14a234561516f5c5b",
+    "footprint.py": "0ee998369771b8ff7a4dd6a7dc7eccb7b0fd9c225e2c6d63ea9f055f4379c82f",
+    "cold_start.py": "2696f28c82edf5dff2b00ab4ee3a705388e1a2f202170f4f75af0cc0cb83f130",
+    "test_scoring.py": "68da8da44c9cd9576aa28c4b00fa0373009b4cc112951a8669c5248f1df6b1ad",
+    "readiness_container.py": "a848e22d8c7ae6a47df80d881eee6ba0c29f03e336e4a50411affa93faec18f0",
+    "page_cache.py": "db994b64f42bf6dad5d1724b1badc722440e1c6d96a4bf2a10f5f1422704c9e8",
+    "client.py": "4564eecf46d694377a9446812b1f61e2f92836cf881b684ae3f5aa5fc6ef92d5",
+    "density.py": "ee4e9f7dec53e7010a993efa531c7d4e4ca6c78dbf168032de8eaf529376a8e7",
+    "host.py": "3298c23bc34f99800ffad3525036388f3138b3377afca580f180b31e3acdff30",
+    "readiness.py": "e3214760d4d3dd73a450952e62d6ed69a55ad94bf717c960623020dfad427ed5",
+    "test_cold_start.py": "a126400e188986947cbf861ce345a1f25be803ecd4445892465cfc627784cf19",
+    "workload.py": "b7e315cdbfe4b222e41c3025e3e1c700cbb599689e505991f52a0cc0f4f1ccef",
+    "test_client.py": "20a12380b397e60b1c62a5111e9e4bfd560df40527d091bcef636013548cef59",
+    "test_workload.py": "af0c58334562aa987b3442e92524eec3f3d8a5e3b43c9b60da524c510953e1ec",
+    "protocol.py": "640bd23e0e6c2aba551ec1414f1f2c4fd7db782d9df491c49815fe27baf2b787",
+    "test_footprint.py": "dd7aaa0832130306f266c021da30926685543e4de6a290deb0ad99748ce47134",
+    "metrics.py": "9b9acf0782ec21619a8125c7d4be28d65feeb0722ae462104b6ab31ef3d77d69"
+  },
+  "scope": "Traced persistent-session startup, diagnostic timing with observer overhead. Use density coldStartNs for untraced latency distributions. No model or private content.",
+  "parameters": {
+    "trials": 3,
+    "workspace": "empty-volume",
+    "prePlacementSyscalls": true
+  },
+  "measurementStatus": "COMPLETED",
+  "apiCleanup": {
+    "result": "PASS",
+    "failures": []
+  },
+  "hostCleanup": "PASS",
+  "modelTokens": 0,
+  "containsProductionContent": false,
+  "fixture": {
+    "scope": "Independent native benchmark fixture; no application, model or private content",
+    "binarySha256": "9f4f93bb2aadc6aca9017dade306761a9f020f53e19ff2d50f79de0c0eb9a0ff",
+    "probeSha256": "69d4f51fe7a999b4b6b4e3e8d4a28283b338643a5ca232f9e6efd826d15a4aba",
+    "checks": [],
+    "cleanup": "PASS",
+    "preflight": {
+      "memory": {
+        "MemTotal": 16681439232,
+        "MemAvailable": 15343878144
+      },
+      "freeDiskBytes": 925894692864,
+      "otherLoadControllers": 0,
+      "logicalCpuCount": 20,
+      "controllerCpuAffinityCount": 20
+    },
+    "requestedMemoryBytes": 1073741824,
+    "configuredSandboxCeiling": 512,
+    "storagePoolBytes": 536870912,
+    "configSha256": "d4b72e8fc3dec172f5c216bd25dafff7b6ce872aab276e1be15b8def4dd5455d",
+    "kernel": "6.18.33.2-microsoft-standard-WSL2",
+    "operatingSystem": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo\n",
+    "fixtureSourceSha256": "3298c23bc34f99800ffad3525036388f3138b3377afca580f180b31e3acdff30",
+    "effectiveLimits": {
+      "memory.max": 1073741824,
+      "memory.swap.max": 0,
+      "pids.max": 8192,
+      "cpu.max": [
+        200000,
+        100000
+      ]
+    },
+    "resourceAncestors": [
+      {
+        "group": "sandcrab.slice/sandcrab-probe.slice/sandcrab-probe-6f81fd0e3a.slice",
+        "limits": {
+          "memory.max": "1073741824",
+          "cpu.max": "200000 100000",
+          "pids.max": "8192"
+        }
+      },
+      {
+        "group": "sandcrab.slice/sandcrab-probe.slice",
+        "limits": {
+          "memory.max": "max",
+          "cpu.max": "max 100000",
+          "pids.max": "max"
+        }
+      },
+      {
+        "group": "sandcrab.slice",
+        "limits": {
+          "memory.max": "max",
+          "cpu.max": "max 100000",
+          "pids.max": "max"
+        }
+      },
+      {
+        "group": ".",
+        "limits": {
+          "memory.max": "2147483648",
+          "cpu.max": "200000 100000",
+          "pids.max": "2048",
+          "cpuset.cpus.effective": "0-19"
+        }
+      }
+    ],
+    "daemonEffectiveLimits": {
+      "memory.max": 536870912,
+      "memory.swap.max": 0,
+      "pids.max": 2048
+    },
+    "binaryBytes": 4166560
+  },
+  "trials": [
+    {
+      "status": "COMPLETE",
+      "submitBootNs": 6863649731199,
+      "readyBootNs": 6863707737184,
+      "session": "36083bac-65be-4f6d-9dd5-45414124f7bc",
+      "apiElapsedMonotonicNs": 57980082,
+      "sessionCgroupId": 42592,
+      "timeline": {
+        "status": "COMPLETE",
+        "missing": [],
+        "nanosecondsFromSubmit": {
+          "apiSubmit": 0,
+          "apiReadyObserved": 58005985,
+          "sessionCgroupCreated": 7707733,
+          "trustedLauncherExec": 10495783,
+          "launcherPlaced": 46433635,
+          "bwrapSandboxExec": 48459195,
+          "bashExec": 52407078
+        },
+        "events": [
+          {
+            "bootNs": 6863650452196,
+            "event": "exec",
+            "pid": 30662,
+            "cgroupId": 42417,
+            "filename": "/usr/bin/findmnt"
+          },
+          {
+            "bootNs": 6863651294799,
+            "event": "exit",
+            "pid": 30662,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863651645872,
+            "event": "exec",
+            "pid": 30664,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_spaceman"
+          },
+          {
+            "bootNs": 6863652262595,
+            "event": "exit",
+            "pid": 30664,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863652829276,
+            "event": "exec",
+            "pid": 30665,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_io"
+          },
+          {
+            "bootNs": 6863653861384,
+            "event": "exit",
+            "pid": 30665,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863654260019,
+            "event": "exec",
+            "pid": 30666,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_io"
+          },
+          {
+            "bootNs": 6863655318793,
+            "event": "exit",
+            "pid": 30666,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863655742785,
+            "event": "exec",
+            "pid": 30667,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_quota"
+          },
+          {
+            "bootNs": 6863656317366,
+            "event": "exit",
+            "pid": 30667,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863656534637,
+            "event": "exec",
+            "pid": 30669,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_quota"
+          },
+          {
+            "bootNs": 6863657044961,
+            "event": "exit",
+            "pid": 30669,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863657438932,
+            "event": "cgroup-created",
+            "cgroupId": 42592
+          },
+          {
+            "bootNs": 6863657858042,
+            "event": "exec",
+            "pid": 30670,
+            "cgroupId": 42417,
+            "filename": "/usr/bin/mount"
+          },
+          {
+            "bootNs": 6863658415117,
+            "event": "exit",
+            "pid": 30670,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863658646786,
+            "event": "exec",
+            "pid": 30671,
+            "cgroupId": 42417,
+            "filename": "/usr/bin/mount"
+          },
+          {
+            "bootNs": 6863659124422,
+            "event": "exit",
+            "pid": 30671,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863660003896,
+            "event": "cgroup-created",
+            "cgroupId": 42638
+          },
+          {
+            "bootNs": 6863660226982,
+            "event": "exec",
+            "pid": 30672,
+            "cgroupId": 42417,
+            "filename": "/var/lib/sandcrab-native-2ugsxqrl/sandcrab"
+          },
+          {
+            "bootNs": 6863660325988,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 9,
+            "durationNs": 1987,
+            "result": 127097036414976
+          },
+          {
+            "bootNs": 6863660337904,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 158,
+            "durationNs": 347,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660338599,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 218,
+            "durationNs": 382,
+            "result": 33326
+          },
+          {
+            "bootNs": 6863660342685,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 7,
+            "durationNs": 748,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660343475,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 13,
+            "durationNs": 355,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660345502,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 13,
+            "durationNs": 194,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660347253,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 131,
+            "durationNs": 258,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660348264,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 9,
+            "durationNs": 688,
+            "result": 127097036402688
+          },
+          {
+            "bootNs": 6863660349932,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 10,
+            "durationNs": 1370,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660350460,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 131,
+            "durationNs": 236,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660350981,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 14,
+            "durationNs": 256,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660351465,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 13,
+            "durationNs": 229,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660351913,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 13,
+            "durationNs": 188,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660352374,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 13,
+            "durationNs": 173,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660355397,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 12,
+            "durationNs": 243,
+            "result": 93825681747968
+          },
+          {
+            "bootNs": 6863660359975,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 12,
+            "durationNs": 4334,
+            "result": 93825681756160
+          },
+          {
+            "bootNs": 6863660361916,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 9,
+            "durationNs": 1619,
+            "result": 93825681747968
+          },
+          {
+            "bootNs": 6863660365792,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 9,
+            "durationNs": 1099,
+            "result": 127097036398592
+          },
+          {
+            "bootNs": 6863660383423,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 2571,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660393806,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 782,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660394750,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 554,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660395699,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 617,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660396498,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 468,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660397312,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 492,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660400252,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 2,
+            "durationNs": 2384,
+            "result": 3
+          },
+          {
+            "bootNs": 6863660400881,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 72,
+            "durationNs": 296,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660401791,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 5,
+            "durationNs": 477,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660407115,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 0,
+            "durationNs": 4785,
+            "result": 32
+          },
+          {
+            "bootNs": 6863660408651,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 0,
+            "durationNs": 340,
+            "result": 32
+          },
+          {
+            "bootNs": 6863660409481,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 0,
+            "durationNs": 269,
+            "result": 64
+          },
+          {
+            "bootNs": 6863660410264,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 0,
+            "durationNs": 275,
+            "result": 128
+          },
+          {
+            "bootNs": 6863660411860,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 9,
+            "durationNs": 1111,
+            "result": 127097036394496
+          },
+          {
+            "bootNs": 6863660413713,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 0,
+            "durationNs": 355,
+            "result": 256
+          },
+          {
+            "bootNs": 6863660416120,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 9,
+            "durationNs": 569,
+            "result": 127097036390400
+          },
+          {
+            "bootNs": 6863660429488,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 11,
+            "durationNs": 3243,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660431010,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 0,
+            "durationNs": 682,
+            "result": 228
+          },
+          {
+            "bootNs": 6863660431674,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 0,
+            "durationNs": 281,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660433078,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 3,
+            "durationNs": 1071,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660438111,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 318,
+            "durationNs": 527,
+            "result": 16
+          },
+          {
+            "bootNs": 6863660447019,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 9,
+            "durationNs": 1560,
+            "result": 127097036394496
+          },
+          {
+            "bootNs": 6863660462323,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 11,
+            "durationNs": 1868,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660472197,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 4701,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660483101,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 1601,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660484673,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 1089,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660486685,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 1583,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660488792,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 1324,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660490770,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 1335,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660492471,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 1167,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660494221,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 1123,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660495805,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 977,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660497251,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 826,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660500078,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 599,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660509944,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 6,
+            "durationNs": 584,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660512762,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 2,
+            "durationNs": 2184,
+            "result": 3
+          },
+          {
+            "bootNs": 6863660513638,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 138,
+            "durationNs": 542,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660515759,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 257,
+            "durationNs": 1594,
+            "result": 4
+          },
+          {
+            "bootNs": 6863660517909,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 0,
+            "durationNs": 1721,
+            "result": 7
+          },
+          {
+            "bootNs": 6863660518917,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 0,
+            "durationNs": 354,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660520319,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 3,
+            "durationNs": 1043,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660526649,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 2,
+            "durationNs": 5370,
+            "result": 4
+          },
+          {
+            "bootNs": 6863660535747,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 72,
+            "durationNs": 249,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660537294,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 9,
+            "durationNs": 1174,
+            "result": 127097036386304
+          },
+          {
+            "bootNs": 6863660541510,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 217,
+            "durationNs": 2348,
+            "result": 80
+          },
+          {
+            "bootNs": 6863660542484,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 217,
+            "durationNs": 248,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660543042,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 107,
+            "durationNs": 270,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660543833,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 157,
+            "durationNs": 512,
+            "result": 0
+          },
+          {
+            "bootNs": 6863660544439,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 110,
+            "durationNs": 352,
+            "result": 33261
+          },
+          {
+            "bootNs": 6863660548588,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 257,
+            "durationNs": 3724,
+            "result": 5
+          },
+          {
+            "bootNs": 6863696164834,
+            "event": "cgroup-placement",
+            "pid": 30672,
+            "cgroupId": 42638
+          },
+          {
+            "bootNs": 6863696202084,
+            "event": "syscall",
+            "pid": 30672,
+            "number": 1,
+            "durationNs": 35653506,
+            "result": 1
+          },
+          {
+            "bootNs": 6863696844395,
+            "event": "exec",
+            "pid": 30680,
+            "cgroupId": 42638,
+            "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 6863697606953,
+            "event": "exit",
+            "pid": 30680,
+            "cgroupId": 42638
+          },
+          {
+            "bootNs": 6863698190394,
+            "event": "exec",
+            "pid": 30672,
+            "cgroupId": 42638,
+            "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 6863701815596,
+            "event": "exec",
+            "pid": 30682,
+            "cgroupId": 42638,
+            "filename": "/sandcrab-driver"
+          },
+          {
+            "bootNs": 6863702138277,
+            "event": "exec",
+            "pid": 30683,
+            "cgroupId": 42638,
+            "filename": "/bin/bash"
+          }
+        ]
+      }
+    },
+    {
+      "status": "COMPLETE",
+      "submitBootNs": 6863742697124,
+      "readyBootNs": 6863791150351,
+      "session": "c432962a-924e-4439-8f9c-c6ea36e741a0",
+      "apiElapsedMonotonicNs": 48417538,
+      "sessionCgroupId": 42684,
+      "timeline": {
+        "status": "COMPLETE",
+        "missing": [],
+        "nanosecondsFromSubmit": {
+          "apiSubmit": 0,
+          "apiReadyObserved": 48453227,
+          "sessionCgroupCreated": 9260337,
+          "trustedLauncherExec": 12348945,
+          "launcherPlaced": 37490252,
+          "bwrapSandboxExec": 39018954,
+          "bashExec": 42764728
+        },
+        "events": [
+          {
+            "bootNs": 6863743683342,
+            "event": "exec",
+            "pid": 30699,
+            "cgroupId": 42417,
+            "filename": "/usr/bin/findmnt"
+          },
+          {
+            "bootNs": 6863745211738,
+            "event": "exit",
+            "pid": 30699,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863745615450,
+            "event": "exec",
+            "pid": 30701,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_spaceman"
+          },
+          {
+            "bootNs": 6863746278394,
+            "event": "exit",
+            "pid": 30701,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863746801655,
+            "event": "exec",
+            "pid": 30702,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_io"
+          },
+          {
+            "bootNs": 6863748744301,
+            "event": "exit",
+            "pid": 30702,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863749061395,
+            "event": "exec",
+            "pid": 30703,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_io"
+          },
+          {
+            "bootNs": 6863749935807,
+            "event": "exit",
+            "pid": 30703,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863750150854,
+            "event": "exec",
+            "pid": 30705,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_quota"
+          },
+          {
+            "bootNs": 6863750650896,
+            "event": "exit",
+            "pid": 30705,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863750896071,
+            "event": "exec",
+            "pid": 30706,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_quota"
+          },
+          {
+            "bootNs": 6863751371678,
+            "event": "exit",
+            "pid": 30706,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863751957461,
+            "event": "cgroup-created",
+            "cgroupId": 42684
+          },
+          {
+            "bootNs": 6863752757298,
+            "event": "exec",
+            "pid": 30707,
+            "cgroupId": 42417,
+            "filename": "/usr/bin/mount"
+          },
+          {
+            "bootNs": 6863753372807,
+            "event": "exit",
+            "pid": 30707,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863753624850,
+            "event": "exec",
+            "pid": 30708,
+            "cgroupId": 42417,
+            "filename": "/usr/bin/mount"
+          },
+          {
+            "bootNs": 6863754194841,
+            "event": "exit",
+            "pid": 30708,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863754785167,
+            "event": "cgroup-created",
+            "cgroupId": 42730
+          },
+          {
+            "bootNs": 6863755046069,
+            "event": "exec",
+            "pid": 30710,
+            "cgroupId": 42417,
+            "filename": "/var/lib/sandcrab-native-2ugsxqrl/sandcrab"
+          },
+          {
+            "bootNs": 6863755176413,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 9,
+            "durationNs": 2349,
+            "result": 130707707404288
+          },
+          {
+            "bootNs": 6863755189423,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 158,
+            "durationNs": 384,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755190122,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 218,
+            "durationNs": 390,
+            "result": 33364
+          },
+          {
+            "bootNs": 6863755194550,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 7,
+            "durationNs": 806,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755195158,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 13,
+            "durationNs": 277,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755197553,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 13,
+            "durationNs": 166,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755199447,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 131,
+            "durationNs": 245,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755200762,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 9,
+            "durationNs": 995,
+            "result": 130707707392000
+          },
+          {
+            "bootNs": 6863755202774,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 10,
+            "durationNs": 1754,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755203344,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 131,
+            "durationNs": 220,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755203845,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 14,
+            "durationNs": 251,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755204258,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 13,
+            "durationNs": 181,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755204643,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 13,
+            "durationNs": 157,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755205108,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 13,
+            "durationNs": 147,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755208339,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 12,
+            "durationNs": 214,
+            "result": 93825860026368
+          },
+          {
+            "bootNs": 6863755211190,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 12,
+            "durationNs": 2621,
+            "result": 93825860034560
+          },
+          {
+            "bootNs": 6863755213387,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 9,
+            "durationNs": 1918,
+            "result": 93825860026368
+          },
+          {
+            "bootNs": 6863755217836,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 9,
+            "durationNs": 978,
+            "result": 130707707387904
+          },
+          {
+            "bootNs": 6863755238533,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 3172,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755239585,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 607,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755240529,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 581,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755241605,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 629,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755242379,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 452,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755243124,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 449,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755247023,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 2,
+            "durationNs": 3330,
+            "result": 3
+          },
+          {
+            "bootNs": 6863755247639,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 72,
+            "durationNs": 284,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755248419,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 5,
+            "durationNs": 436,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755251413,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 0,
+            "durationNs": 1166,
+            "result": 32
+          },
+          {
+            "bootNs": 6863755252810,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 0,
+            "durationNs": 280,
+            "result": 32
+          },
+          {
+            "bootNs": 6863755253560,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 0,
+            "durationNs": 240,
+            "result": 64
+          },
+          {
+            "bootNs": 6863755254309,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 0,
+            "durationNs": 231,
+            "result": 128
+          },
+          {
+            "bootNs": 6863755255642,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 9,
+            "durationNs": 1001,
+            "result": 130707707383808
+          },
+          {
+            "bootNs": 6863755257575,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 0,
+            "durationNs": 339,
+            "result": 256
+          },
+          {
+            "bootNs": 6863755258405,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 9,
+            "durationNs": 482,
+            "result": 130707707379712
+          },
+          {
+            "bootNs": 6863755263938,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 11,
+            "durationNs": 4098,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755265278,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 0,
+            "durationNs": 577,
+            "result": 228
+          },
+          {
+            "bootNs": 6863755265821,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 0,
+            "durationNs": 265,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755267058,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 3,
+            "durationNs": 949,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755271694,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 318,
+            "durationNs": 502,
+            "result": 16
+          },
+          {
+            "bootNs": 6863755280959,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 9,
+            "durationNs": 1664,
+            "result": 130707707383808
+          },
+          {
+            "bootNs": 6863755286997,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 11,
+            "durationNs": 1896,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755301415,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 7134,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755314470,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 1529,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755316025,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 1121,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755317360,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 959,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755318633,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 895,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755319769,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 793,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755320862,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 744,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755321869,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 667,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755322841,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 646,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755323685,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 519,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755324457,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 448,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755325213,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 6,
+            "durationNs": 459,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755327805,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 2,
+            "durationNs": 2009,
+            "result": 3
+          },
+          {
+            "bootNs": 6863755328795,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 138,
+            "durationNs": 639,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755331505,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 257,
+            "durationNs": 2282,
+            "result": 4
+          },
+          {
+            "bootNs": 6863755334681,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 0,
+            "durationNs": 2865,
+            "result": 7
+          },
+          {
+            "bootNs": 6863755335571,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 0,
+            "durationNs": 221,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755337403,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 3,
+            "durationNs": 1527,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755345642,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 2,
+            "durationNs": 7095,
+            "result": 4
+          },
+          {
+            "bootNs": 6863755346205,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 72,
+            "durationNs": 207,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755347559,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 9,
+            "durationNs": 1024,
+            "result": 130707707375616
+          },
+          {
+            "bootNs": 6863755353183,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 217,
+            "durationNs": 3598,
+            "result": 80
+          },
+          {
+            "bootNs": 6863755354094,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 217,
+            "durationNs": 258,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755354866,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 107,
+            "durationNs": 512,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755355990,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 157,
+            "durationNs": 870,
+            "result": 0
+          },
+          {
+            "bootNs": 6863755356663,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 110,
+            "durationNs": 438,
+            "result": 33261
+          },
+          {
+            "bootNs": 6863755361303,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 257,
+            "durationNs": 3992,
+            "result": 5
+          },
+          {
+            "bootNs": 6863780187376,
+            "event": "cgroup-placement",
+            "pid": 30710,
+            "cgroupId": 42730
+          },
+          {
+            "bootNs": 6863780263813,
+            "event": "syscall",
+            "pid": 30710,
+            "number": 1,
+            "durationNs": 24902773,
+            "result": 1
+          },
+          {
+            "bootNs": 6863780625755,
+            "event": "exec",
+            "pid": 30715,
+            "cgroupId": 42730,
+            "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 6863781150549,
+            "event": "exit",
+            "pid": 30715,
+            "cgroupId": 42730
+          },
+          {
+            "bootNs": 6863781716078,
+            "event": "exec",
+            "pid": 30710,
+            "cgroupId": 42730,
+            "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 6863785152674,
+            "event": "exec",
+            "pid": 30718,
+            "cgroupId": 42730,
+            "filename": "/sandcrab-driver"
+          },
+          {
+            "bootNs": 6863785461852,
+            "event": "exec",
+            "pid": 30719,
+            "cgroupId": 42730,
+            "filename": "/bin/bash"
+          }
+        ]
+      }
+    },
+    {
+      "status": "COMPLETE",
+      "submitBootNs": 6863822677479,
+      "readyBootNs": 6863853132364,
+      "session": "71b9a417-9466-4929-9960-cdc46097ca30",
+      "apiElapsedMonotonicNs": 30425659,
+      "sessionCgroupId": 42776,
+      "timeline": {
+        "status": "COMPLETE",
+        "missing": [],
+        "nanosecondsFromSubmit": {
+          "apiSubmit": 0,
+          "apiReadyObserved": 30454885,
+          "sessionCgroupCreated": 6163566,
+          "trustedLauncherExec": 8442196,
+          "launcherPlaced": 21516656,
+          "bwrapSandboxExec": 22959774,
+          "bashExec": 26680476
+        },
+        "events": [
+          {
+            "bootNs": 6863823328329,
+            "event": "exec",
+            "pid": 30733,
+            "cgroupId": 42417,
+            "filename": "/usr/bin/findmnt"
+          },
+          {
+            "bootNs": 6863824128603,
+            "event": "exit",
+            "pid": 30733,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863824396961,
+            "event": "exec",
+            "pid": 30735,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_spaceman"
+          },
+          {
+            "bootNs": 6863824946966,
+            "event": "exit",
+            "pid": 30735,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863825212586,
+            "event": "exec",
+            "pid": 30736,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_io"
+          },
+          {
+            "bootNs": 6863826063367,
+            "event": "exit",
+            "pid": 30736,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863826265689,
+            "event": "exec",
+            "pid": 30737,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_io"
+          },
+          {
+            "bootNs": 6863827077341,
+            "event": "exit",
+            "pid": 30737,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863827280761,
+            "event": "exec",
+            "pid": 30738,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_quota"
+          },
+          {
+            "bootNs": 6863827777432,
+            "event": "exit",
+            "pid": 30738,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863827982139,
+            "event": "exec",
+            "pid": 30739,
+            "cgroupId": 42417,
+            "filename": "/usr/sbin/xfs_quota"
+          },
+          {
+            "bootNs": 6863828484354,
+            "event": "exit",
+            "pid": 30739,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863828841045,
+            "event": "cgroup-created",
+            "cgroupId": 42776
+          },
+          {
+            "bootNs": 6863829174263,
+            "event": "exec",
+            "pid": 30741,
+            "cgroupId": 42417,
+            "filename": "/usr/bin/mount"
+          },
+          {
+            "bootNs": 6863829695650,
+            "event": "exit",
+            "pid": 30741,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863830109210,
+            "event": "exec",
+            "pid": 30742,
+            "cgroupId": 42417,
+            "filename": "/usr/bin/mount"
+          },
+          {
+            "bootNs": 6863830602284,
+            "event": "exit",
+            "pid": 30742,
+            "cgroupId": 42417
+          },
+          {
+            "bootNs": 6863830909736,
+            "event": "cgroup-created",
+            "cgroupId": 42822
+          },
+          {
+            "bootNs": 6863831119675,
+            "event": "exec",
+            "pid": 30743,
+            "cgroupId": 42417,
+            "filename": "/var/lib/sandcrab-native-2ugsxqrl/sandcrab"
+          },
+          {
+            "bootNs": 6863831219631,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 9,
+            "durationNs": 1720,
+            "result": 140044633583616
+          },
+          {
+            "bootNs": 6863831232369,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 158,
+            "durationNs": 316,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831232979,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 218,
+            "durationNs": 324,
+            "result": 33397
+          },
+          {
+            "bootNs": 6863831236731,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 7,
+            "durationNs": 713,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831238774,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 13,
+            "durationNs": 326,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831240881,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 13,
+            "durationNs": 177,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831243159,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 131,
+            "durationNs": 369,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831244168,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 9,
+            "durationNs": 715,
+            "result": 140044633571328
+          },
+          {
+            "bootNs": 6863831245794,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 10,
+            "durationNs": 1368,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831246270,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 131,
+            "durationNs": 221,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831246746,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 14,
+            "durationNs": 236,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831247175,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 13,
+            "durationNs": 196,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831247557,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 13,
+            "durationNs": 153,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831247968,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 13,
+            "durationNs": 143,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831251656,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 12,
+            "durationNs": 231,
+            "result": 93825558134784
+          },
+          {
+            "bootNs": 6863831253768,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 12,
+            "durationNs": 1895,
+            "result": 93825558142976
+          },
+          {
+            "bootNs": 6863831255967,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 9,
+            "durationNs": 1910,
+            "result": 93825558134784
+          },
+          {
+            "bootNs": 6863831260169,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 9,
+            "durationNs": 925,
+            "result": 140044633567232
+          },
+          {
+            "bootNs": 6863831277494,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 2615,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831278571,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 686,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831279407,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 517,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831280327,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 592,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831281111,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 459,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831281893,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 470,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831285016,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 2,
+            "durationNs": 2696,
+            "result": 3
+          },
+          {
+            "bootNs": 6863831285515,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 72,
+            "durationNs": 226,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831286328,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 5,
+            "durationNs": 407,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831287965,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 0,
+            "durationNs": 1141,
+            "result": 32
+          },
+          {
+            "bootNs": 6863831289371,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 0,
+            "durationNs": 284,
+            "result": 32
+          },
+          {
+            "bootNs": 6863831290086,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 0,
+            "durationNs": 241,
+            "result": 64
+          },
+          {
+            "bootNs": 6863831290810,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 0,
+            "durationNs": 257,
+            "result": 128
+          },
+          {
+            "bootNs": 6863831292091,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 9,
+            "durationNs": 956,
+            "result": 140044633563136
+          },
+          {
+            "bootNs": 6863831293972,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 0,
+            "durationNs": 283,
+            "result": 256
+          },
+          {
+            "bootNs": 6863831294788,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 9,
+            "durationNs": 507,
+            "result": 140044633559040
+          },
+          {
+            "bootNs": 6863831300820,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 11,
+            "durationNs": 3700,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831302175,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 0,
+            "durationNs": 634,
+            "result": 228
+          },
+          {
+            "bootNs": 6863831302717,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 0,
+            "durationNs": 237,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831303889,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 3,
+            "durationNs": 880,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831308886,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 318,
+            "durationNs": 426,
+            "result": 16
+          },
+          {
+            "bootNs": 6863831316609,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 9,
+            "durationNs": 1618,
+            "result": 140044633563136
+          },
+          {
+            "bootNs": 6863831322334,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 11,
+            "durationNs": 2116,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831332901,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 5472,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831334719,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 1433,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831336189,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 1081,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831337608,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 1049,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831338875,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 929,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831339989,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 783,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831341037,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 737,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831342013,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 658,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831342984,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 628,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831343870,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 499,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831344570,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 400,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831345283,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 6,
+            "durationNs": 421,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831347567,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 2,
+            "durationNs": 1804,
+            "result": 3
+          },
+          {
+            "bootNs": 6863831348367,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 138,
+            "durationNs": 467,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831350629,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 257,
+            "durationNs": 1853,
+            "result": 4
+          },
+          {
+            "bootNs": 6863831352896,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 0,
+            "durationNs": 1910,
+            "result": 7
+          },
+          {
+            "bootNs": 6863831353771,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 0,
+            "durationNs": 235,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831355076,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 3,
+            "durationNs": 1014,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831361013,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 2,
+            "durationNs": 5039,
+            "result": 4
+          },
+          {
+            "bootNs": 6863831361530,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 72,
+            "durationNs": 194,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831362851,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 9,
+            "durationNs": 1012,
+            "result": 140044633554944
+          },
+          {
+            "bootNs": 6863831366582,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 217,
+            "durationNs": 2040,
+            "result": 80
+          },
+          {
+            "bootNs": 6863831367472,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 217,
+            "durationNs": 238,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831367986,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 107,
+            "durationNs": 257,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831368785,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 157,
+            "durationNs": 553,
+            "result": 0
+          },
+          {
+            "bootNs": 6863831369465,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 110,
+            "durationNs": 457,
+            "result": 33261
+          },
+          {
+            "bootNs": 6863831373998,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 257,
+            "durationNs": 3938,
+            "result": 5
+          },
+          {
+            "bootNs": 6863844194135,
+            "event": "cgroup-placement",
+            "pid": 30743,
+            "cgroupId": 42822
+          },
+          {
+            "bootNs": 6863844244995,
+            "event": "syscall",
+            "pid": 30743,
+            "number": 1,
+            "durationNs": 12871320,
+            "result": 1
+          },
+          {
+            "bootNs": 6863844640571,
+            "event": "exec",
+            "pid": 30747,
+            "cgroupId": 42822,
+            "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 6863845066159,
+            "event": "exit",
+            "pid": 30747,
+            "cgroupId": 42822
+          },
+          {
+            "bootNs": 6863845637253,
+            "event": "exec",
+            "pid": 30743,
+            "cgroupId": 42822,
+            "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+          },
+          {
+            "bootNs": 6863848651518,
+            "event": "exec",
+            "pid": 30750,
+            "cgroupId": 42822,
+            "filename": "/sandcrab-driver"
+          },
+          {
+            "bootNs": 6863849357955,
+            "event": "exec",
+            "pid": 30751,
+            "cgroupId": 42822,
+            "filename": "/bin/bash"
+          }
+        ]
+      }
+    }
+  ],
+  "volumeId": "2d457102-a5e9-4999-a36f-260273de81a6",
+  "tracer": {
+    "status": "PASS",
+    "processExitCode": 0,
+    "forcedKill": false,
+    "errors": [],
+    "diagnostic": "",
+    "clock": "CLOCK_BOOTTIME",
+    "version": "bpftrace v0.20.2",
+    "resourceLimits": {
+      "memoryBytes": 536870912,
+      "swapBytes": 0,
+      "tasks": 128,
+      "cpuQuotaPercent": 100,
+      "runtimeSeconds": 120,
+      "insideMeasuredSlice": true
+    },
+    "sourceSha256": "f26434d79e44713ee9c254824803825e16b425bc7d07df815c7ca21c55797b08",
+    "events": [
+      {
+        "bootNs": 6863650452196,
+        "event": "exec",
+        "pid": 30662,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/findmnt"
+      },
+      {
+        "bootNs": 6863651294799,
+        "event": "exit",
+        "pid": 30662,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863651645872,
+        "event": "exec",
+        "pid": 30664,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_spaceman"
+      },
+      {
+        "bootNs": 6863652262595,
+        "event": "exit",
+        "pid": 30664,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863652829276,
+        "event": "exec",
+        "pid": 30665,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_io"
+      },
+      {
+        "bootNs": 6863653861384,
+        "event": "exit",
+        "pid": 30665,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863654260019,
+        "event": "exec",
+        "pid": 30666,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_io"
+      },
+      {
+        "bootNs": 6863655318793,
+        "event": "exit",
+        "pid": 30666,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863655742785,
+        "event": "exec",
+        "pid": 30667,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_quota"
+      },
+      {
+        "bootNs": 6863656317366,
+        "event": "exit",
+        "pid": 30667,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863656534637,
+        "event": "exec",
+        "pid": 30669,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_quota"
+      },
+      {
+        "bootNs": 6863657044961,
+        "event": "exit",
+        "pid": 30669,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863657438932,
+        "event": "cgroup-created",
+        "cgroupId": 42592
+      },
+      {
+        "bootNs": 6863657858042,
+        "event": "exec",
+        "pid": 30670,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/mount"
+      },
+      {
+        "bootNs": 6863658415117,
+        "event": "exit",
+        "pid": 30670,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863658646786,
+        "event": "exec",
+        "pid": 30671,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/mount"
+      },
+      {
+        "bootNs": 6863659124422,
+        "event": "exit",
+        "pid": 30671,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863660003896,
+        "event": "cgroup-created",
+        "cgroupId": 42638
+      },
+      {
+        "bootNs": 6863660226982,
+        "event": "exec",
+        "pid": 30672,
+        "cgroupId": 42417,
+        "filename": "/var/lib/sandcrab-native-2ugsxqrl/sandcrab"
+      },
+      {
+        "bootNs": 6863660325988,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 9,
+        "durationNs": 1987,
+        "result": 127097036414976
+      },
+      {
+        "bootNs": 6863660337904,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 158,
+        "durationNs": 347,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660338599,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 218,
+        "durationNs": 382,
+        "result": 33326
+      },
+      {
+        "bootNs": 6863660342685,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 7,
+        "durationNs": 748,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660343475,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 13,
+        "durationNs": 355,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660345502,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 13,
+        "durationNs": 194,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660347253,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 131,
+        "durationNs": 258,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660348264,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 9,
+        "durationNs": 688,
+        "result": 127097036402688
+      },
+      {
+        "bootNs": 6863660349932,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 10,
+        "durationNs": 1370,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660350460,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 131,
+        "durationNs": 236,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660350981,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 14,
+        "durationNs": 256,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660351465,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 13,
+        "durationNs": 229,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660351913,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 13,
+        "durationNs": 188,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660352374,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 13,
+        "durationNs": 173,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660355397,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 12,
+        "durationNs": 243,
+        "result": 93825681747968
+      },
+      {
+        "bootNs": 6863660359975,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 12,
+        "durationNs": 4334,
+        "result": 93825681756160
+      },
+      {
+        "bootNs": 6863660361916,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 9,
+        "durationNs": 1619,
+        "result": 93825681747968
+      },
+      {
+        "bootNs": 6863660365792,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 9,
+        "durationNs": 1099,
+        "result": 127097036398592
+      },
+      {
+        "bootNs": 6863660383423,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 2571,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660393806,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 782,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660394750,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 554,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660395699,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 617,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660396498,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 468,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660397312,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 492,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660400252,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 2,
+        "durationNs": 2384,
+        "result": 3
+      },
+      {
+        "bootNs": 6863660400881,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 72,
+        "durationNs": 296,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660401791,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 5,
+        "durationNs": 477,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660407115,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 0,
+        "durationNs": 4785,
+        "result": 32
+      },
+      {
+        "bootNs": 6863660408651,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 0,
+        "durationNs": 340,
+        "result": 32
+      },
+      {
+        "bootNs": 6863660409481,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 0,
+        "durationNs": 269,
+        "result": 64
+      },
+      {
+        "bootNs": 6863660410264,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 0,
+        "durationNs": 275,
+        "result": 128
+      },
+      {
+        "bootNs": 6863660411860,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 9,
+        "durationNs": 1111,
+        "result": 127097036394496
+      },
+      {
+        "bootNs": 6863660413713,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 0,
+        "durationNs": 355,
+        "result": 256
+      },
+      {
+        "bootNs": 6863660416120,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 9,
+        "durationNs": 569,
+        "result": 127097036390400
+      },
+      {
+        "bootNs": 6863660429488,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 11,
+        "durationNs": 3243,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660431010,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 0,
+        "durationNs": 682,
+        "result": 228
+      },
+      {
+        "bootNs": 6863660431674,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 0,
+        "durationNs": 281,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660433078,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 3,
+        "durationNs": 1071,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660438111,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 318,
+        "durationNs": 527,
+        "result": 16
+      },
+      {
+        "bootNs": 6863660447019,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 9,
+        "durationNs": 1560,
+        "result": 127097036394496
+      },
+      {
+        "bootNs": 6863660462323,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 11,
+        "durationNs": 1868,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660472197,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 4701,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660483101,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 1601,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660484673,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 1089,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660486685,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 1583,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660488792,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 1324,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660490770,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 1335,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660492471,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 1167,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660494221,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 1123,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660495805,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 977,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660497251,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 826,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660500078,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 599,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660509944,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 6,
+        "durationNs": 584,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660512762,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 2,
+        "durationNs": 2184,
+        "result": 3
+      },
+      {
+        "bootNs": 6863660513638,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 138,
+        "durationNs": 542,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660515759,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 257,
+        "durationNs": 1594,
+        "result": 4
+      },
+      {
+        "bootNs": 6863660517909,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 0,
+        "durationNs": 1721,
+        "result": 7
+      },
+      {
+        "bootNs": 6863660518917,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 0,
+        "durationNs": 354,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660520319,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 3,
+        "durationNs": 1043,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660526649,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 2,
+        "durationNs": 5370,
+        "result": 4
+      },
+      {
+        "bootNs": 6863660535747,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 72,
+        "durationNs": 249,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660537294,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 9,
+        "durationNs": 1174,
+        "result": 127097036386304
+      },
+      {
+        "bootNs": 6863660541510,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 217,
+        "durationNs": 2348,
+        "result": 80
+      },
+      {
+        "bootNs": 6863660542484,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 217,
+        "durationNs": 248,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660543042,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 107,
+        "durationNs": 270,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660543833,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 157,
+        "durationNs": 512,
+        "result": 0
+      },
+      {
+        "bootNs": 6863660544439,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 110,
+        "durationNs": 352,
+        "result": 33261
+      },
+      {
+        "bootNs": 6863660548588,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 257,
+        "durationNs": 3724,
+        "result": 5
+      },
+      {
+        "bootNs": 6863696164834,
+        "event": "cgroup-placement",
+        "pid": 30672,
+        "cgroupId": 42638
+      },
+      {
+        "bootNs": 6863696202084,
+        "event": "syscall",
+        "pid": 30672,
+        "number": 1,
+        "durationNs": 35653506,
+        "result": 1
+      },
+      {
+        "bootNs": 6863696844395,
+        "event": "exec",
+        "pid": 30680,
+        "cgroupId": 42638,
+        "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 6863697606953,
+        "event": "exit",
+        "pid": 30680,
+        "cgroupId": 42638
+      },
+      {
+        "bootNs": 6863698190394,
+        "event": "exec",
+        "pid": 30672,
+        "cgroupId": 42638,
+        "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 6863701815596,
+        "event": "exec",
+        "pid": 30682,
+        "cgroupId": 42638,
+        "filename": "/sandcrab-driver"
+      },
+      {
+        "bootNs": 6863702138277,
+        "event": "exec",
+        "pid": 30683,
+        "cgroupId": 42638,
+        "filename": "/bin/bash"
+      },
+      {
+        "bootNs": 6863728120716,
+        "event": "exit",
+        "pid": 30681,
+        "cgroupId": 42638
+      },
+      {
+        "bootNs": 6863728120735,
+        "event": "exit",
+        "pid": 30672,
+        "cgroupId": 42638
+      },
+      {
+        "bootNs": 6863728139510,
+        "event": "exit",
+        "pid": 30682,
+        "cgroupId": 42638
+      },
+      {
+        "bootNs": 6863728163578,
+        "event": "exit",
+        "pid": 30683,
+        "cgroupId": 42638
+      },
+      {
+        "bootNs": 6863730720648,
+        "event": "exec",
+        "pid": 30692,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/umount"
+      },
+      {
+        "bootNs": 6863731485616,
+        "event": "exit",
+        "pid": 30692,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863731906334,
+        "event": "exec",
+        "pid": 30693,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/umount"
+      },
+      {
+        "bootNs": 6863732590079,
+        "event": "exit",
+        "pid": 30693,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863743683342,
+        "event": "exec",
+        "pid": 30699,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/findmnt"
+      },
+      {
+        "bootNs": 6863745211738,
+        "event": "exit",
+        "pid": 30699,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863745615450,
+        "event": "exec",
+        "pid": 30701,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_spaceman"
+      },
+      {
+        "bootNs": 6863746278394,
+        "event": "exit",
+        "pid": 30701,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863746801655,
+        "event": "exec",
+        "pid": 30702,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_io"
+      },
+      {
+        "bootNs": 6863748744301,
+        "event": "exit",
+        "pid": 30702,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863749061395,
+        "event": "exec",
+        "pid": 30703,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_io"
+      },
+      {
+        "bootNs": 6863749935807,
+        "event": "exit",
+        "pid": 30703,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863750150854,
+        "event": "exec",
+        "pid": 30705,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_quota"
+      },
+      {
+        "bootNs": 6863750650896,
+        "event": "exit",
+        "pid": 30705,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863750896071,
+        "event": "exec",
+        "pid": 30706,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_quota"
+      },
+      {
+        "bootNs": 6863751371678,
+        "event": "exit",
+        "pid": 30706,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863751957461,
+        "event": "cgroup-created",
+        "cgroupId": 42684
+      },
+      {
+        "bootNs": 6863752757298,
+        "event": "exec",
+        "pid": 30707,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/mount"
+      },
+      {
+        "bootNs": 6863753372807,
+        "event": "exit",
+        "pid": 30707,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863753624850,
+        "event": "exec",
+        "pid": 30708,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/mount"
+      },
+      {
+        "bootNs": 6863754194841,
+        "event": "exit",
+        "pid": 30708,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863754785167,
+        "event": "cgroup-created",
+        "cgroupId": 42730
+      },
+      {
+        "bootNs": 6863755046069,
+        "event": "exec",
+        "pid": 30710,
+        "cgroupId": 42417,
+        "filename": "/var/lib/sandcrab-native-2ugsxqrl/sandcrab"
+      },
+      {
+        "bootNs": 6863755176413,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 9,
+        "durationNs": 2349,
+        "result": 130707707404288
+      },
+      {
+        "bootNs": 6863755189423,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 158,
+        "durationNs": 384,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755190122,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 218,
+        "durationNs": 390,
+        "result": 33364
+      },
+      {
+        "bootNs": 6863755194550,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 7,
+        "durationNs": 806,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755195158,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 13,
+        "durationNs": 277,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755197553,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 13,
+        "durationNs": 166,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755199447,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 131,
+        "durationNs": 245,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755200762,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 9,
+        "durationNs": 995,
+        "result": 130707707392000
+      },
+      {
+        "bootNs": 6863755202774,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 10,
+        "durationNs": 1754,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755203344,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 131,
+        "durationNs": 220,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755203845,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 14,
+        "durationNs": 251,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755204258,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 13,
+        "durationNs": 181,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755204643,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 13,
+        "durationNs": 157,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755205108,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 13,
+        "durationNs": 147,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755208339,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 12,
+        "durationNs": 214,
+        "result": 93825860026368
+      },
+      {
+        "bootNs": 6863755211190,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 12,
+        "durationNs": 2621,
+        "result": 93825860034560
+      },
+      {
+        "bootNs": 6863755213387,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 9,
+        "durationNs": 1918,
+        "result": 93825860026368
+      },
+      {
+        "bootNs": 6863755217836,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 9,
+        "durationNs": 978,
+        "result": 130707707387904
+      },
+      {
+        "bootNs": 6863755238533,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 3172,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755239585,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 607,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755240529,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 581,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755241605,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 629,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755242379,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 452,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755243124,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 449,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755247023,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 2,
+        "durationNs": 3330,
+        "result": 3
+      },
+      {
+        "bootNs": 6863755247639,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 72,
+        "durationNs": 284,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755248419,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 5,
+        "durationNs": 436,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755251413,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 0,
+        "durationNs": 1166,
+        "result": 32
+      },
+      {
+        "bootNs": 6863755252810,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 0,
+        "durationNs": 280,
+        "result": 32
+      },
+      {
+        "bootNs": 6863755253560,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 0,
+        "durationNs": 240,
+        "result": 64
+      },
+      {
+        "bootNs": 6863755254309,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 0,
+        "durationNs": 231,
+        "result": 128
+      },
+      {
+        "bootNs": 6863755255642,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 9,
+        "durationNs": 1001,
+        "result": 130707707383808
+      },
+      {
+        "bootNs": 6863755257575,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 0,
+        "durationNs": 339,
+        "result": 256
+      },
+      {
+        "bootNs": 6863755258405,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 9,
+        "durationNs": 482,
+        "result": 130707707379712
+      },
+      {
+        "bootNs": 6863755263938,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 11,
+        "durationNs": 4098,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755265278,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 0,
+        "durationNs": 577,
+        "result": 228
+      },
+      {
+        "bootNs": 6863755265821,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 0,
+        "durationNs": 265,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755267058,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 3,
+        "durationNs": 949,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755271694,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 318,
+        "durationNs": 502,
+        "result": 16
+      },
+      {
+        "bootNs": 6863755280959,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 9,
+        "durationNs": 1664,
+        "result": 130707707383808
+      },
+      {
+        "bootNs": 6863755286997,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 11,
+        "durationNs": 1896,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755301415,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 7134,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755314470,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 1529,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755316025,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 1121,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755317360,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 959,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755318633,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 895,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755319769,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 793,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755320862,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 744,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755321869,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 667,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755322841,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 646,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755323685,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 519,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755324457,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 448,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755325213,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 6,
+        "durationNs": 459,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755327805,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 2,
+        "durationNs": 2009,
+        "result": 3
+      },
+      {
+        "bootNs": 6863755328795,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 138,
+        "durationNs": 639,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755331505,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 257,
+        "durationNs": 2282,
+        "result": 4
+      },
+      {
+        "bootNs": 6863755334681,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 0,
+        "durationNs": 2865,
+        "result": 7
+      },
+      {
+        "bootNs": 6863755335571,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 0,
+        "durationNs": 221,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755337403,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 3,
+        "durationNs": 1527,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755345642,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 2,
+        "durationNs": 7095,
+        "result": 4
+      },
+      {
+        "bootNs": 6863755346205,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 72,
+        "durationNs": 207,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755347559,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 9,
+        "durationNs": 1024,
+        "result": 130707707375616
+      },
+      {
+        "bootNs": 6863755353183,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 217,
+        "durationNs": 3598,
+        "result": 80
+      },
+      {
+        "bootNs": 6863755354094,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 217,
+        "durationNs": 258,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755354866,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 107,
+        "durationNs": 512,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755355990,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 157,
+        "durationNs": 870,
+        "result": 0
+      },
+      {
+        "bootNs": 6863755356663,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 110,
+        "durationNs": 438,
+        "result": 33261
+      },
+      {
+        "bootNs": 6863755361303,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 257,
+        "durationNs": 3992,
+        "result": 5
+      },
+      {
+        "bootNs": 6863780187376,
+        "event": "cgroup-placement",
+        "pid": 30710,
+        "cgroupId": 42730
+      },
+      {
+        "bootNs": 6863780263813,
+        "event": "syscall",
+        "pid": 30710,
+        "number": 1,
+        "durationNs": 24902773,
+        "result": 1
+      },
+      {
+        "bootNs": 6863780625755,
+        "event": "exec",
+        "pid": 30715,
+        "cgroupId": 42730,
+        "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 6863781150549,
+        "event": "exit",
+        "pid": 30715,
+        "cgroupId": 42730
+      },
+      {
+        "bootNs": 6863781716078,
+        "event": "exec",
+        "pid": 30710,
+        "cgroupId": 42730,
+        "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 6863785152674,
+        "event": "exec",
+        "pid": 30718,
+        "cgroupId": 42730,
+        "filename": "/sandcrab-driver"
+      },
+      {
+        "bootNs": 6863785461852,
+        "event": "exec",
+        "pid": 30719,
+        "cgroupId": 42730,
+        "filename": "/bin/bash"
+      },
+      {
+        "bootNs": 6863811327164,
+        "event": "exit",
+        "pid": 30710,
+        "cgroupId": 42730
+      },
+      {
+        "bootNs": 6863811373834,
+        "event": "exit",
+        "pid": 30719,
+        "cgroupId": 42730
+      },
+      {
+        "bootNs": 6863811379405,
+        "event": "exit",
+        "pid": 30716,
+        "cgroupId": 42730
+      },
+      {
+        "bootNs": 6863811383172,
+        "event": "exit",
+        "pid": 30718,
+        "cgroupId": 42730
+      },
+      {
+        "bootNs": 6863813776796,
+        "event": "exec",
+        "pid": 30727,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/umount"
+      },
+      {
+        "bootNs": 6863814436589,
+        "event": "exit",
+        "pid": 30727,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863814716487,
+        "event": "exec",
+        "pid": 30728,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/umount"
+      },
+      {
+        "bootNs": 6863815303518,
+        "event": "exit",
+        "pid": 30728,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863823328329,
+        "event": "exec",
+        "pid": 30733,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/findmnt"
+      },
+      {
+        "bootNs": 6863824128603,
+        "event": "exit",
+        "pid": 30733,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863824396961,
+        "event": "exec",
+        "pid": 30735,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_spaceman"
+      },
+      {
+        "bootNs": 6863824946966,
+        "event": "exit",
+        "pid": 30735,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863825212586,
+        "event": "exec",
+        "pid": 30736,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_io"
+      },
+      {
+        "bootNs": 6863826063367,
+        "event": "exit",
+        "pid": 30736,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863826265689,
+        "event": "exec",
+        "pid": 30737,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_io"
+      },
+      {
+        "bootNs": 6863827077341,
+        "event": "exit",
+        "pid": 30737,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863827280761,
+        "event": "exec",
+        "pid": 30738,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_quota"
+      },
+      {
+        "bootNs": 6863827777432,
+        "event": "exit",
+        "pid": 30738,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863827982139,
+        "event": "exec",
+        "pid": 30739,
+        "cgroupId": 42417,
+        "filename": "/usr/sbin/xfs_quota"
+      },
+      {
+        "bootNs": 6863828484354,
+        "event": "exit",
+        "pid": 30739,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863828841045,
+        "event": "cgroup-created",
+        "cgroupId": 42776
+      },
+      {
+        "bootNs": 6863829174263,
+        "event": "exec",
+        "pid": 30741,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/mount"
+      },
+      {
+        "bootNs": 6863829695650,
+        "event": "exit",
+        "pid": 30741,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863830109210,
+        "event": "exec",
+        "pid": 30742,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/mount"
+      },
+      {
+        "bootNs": 6863830602284,
+        "event": "exit",
+        "pid": 30742,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863830909736,
+        "event": "cgroup-created",
+        "cgroupId": 42822
+      },
+      {
+        "bootNs": 6863831119675,
+        "event": "exec",
+        "pid": 30743,
+        "cgroupId": 42417,
+        "filename": "/var/lib/sandcrab-native-2ugsxqrl/sandcrab"
+      },
+      {
+        "bootNs": 6863831219631,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 9,
+        "durationNs": 1720,
+        "result": 140044633583616
+      },
+      {
+        "bootNs": 6863831232369,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 158,
+        "durationNs": 316,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831232979,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 218,
+        "durationNs": 324,
+        "result": 33397
+      },
+      {
+        "bootNs": 6863831236731,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 7,
+        "durationNs": 713,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831238774,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 13,
+        "durationNs": 326,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831240881,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 13,
+        "durationNs": 177,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831243159,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 131,
+        "durationNs": 369,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831244168,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 9,
+        "durationNs": 715,
+        "result": 140044633571328
+      },
+      {
+        "bootNs": 6863831245794,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 10,
+        "durationNs": 1368,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831246270,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 131,
+        "durationNs": 221,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831246746,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 14,
+        "durationNs": 236,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831247175,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 13,
+        "durationNs": 196,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831247557,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 13,
+        "durationNs": 153,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831247968,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 13,
+        "durationNs": 143,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831251656,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 12,
+        "durationNs": 231,
+        "result": 93825558134784
+      },
+      {
+        "bootNs": 6863831253768,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 12,
+        "durationNs": 1895,
+        "result": 93825558142976
+      },
+      {
+        "bootNs": 6863831255967,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 9,
+        "durationNs": 1910,
+        "result": 93825558134784
+      },
+      {
+        "bootNs": 6863831260169,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 9,
+        "durationNs": 925,
+        "result": 140044633567232
+      },
+      {
+        "bootNs": 6863831277494,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 2615,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831278571,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 686,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831279407,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 517,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831280327,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 592,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831281111,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 459,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831281893,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 470,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831285016,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 2,
+        "durationNs": 2696,
+        "result": 3
+      },
+      {
+        "bootNs": 6863831285515,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 72,
+        "durationNs": 226,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831286328,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 5,
+        "durationNs": 407,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831287965,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 0,
+        "durationNs": 1141,
+        "result": 32
+      },
+      {
+        "bootNs": 6863831289371,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 0,
+        "durationNs": 284,
+        "result": 32
+      },
+      {
+        "bootNs": 6863831290086,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 0,
+        "durationNs": 241,
+        "result": 64
+      },
+      {
+        "bootNs": 6863831290810,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 0,
+        "durationNs": 257,
+        "result": 128
+      },
+      {
+        "bootNs": 6863831292091,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 9,
+        "durationNs": 956,
+        "result": 140044633563136
+      },
+      {
+        "bootNs": 6863831293972,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 0,
+        "durationNs": 283,
+        "result": 256
+      },
+      {
+        "bootNs": 6863831294788,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 9,
+        "durationNs": 507,
+        "result": 140044633559040
+      },
+      {
+        "bootNs": 6863831300820,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 11,
+        "durationNs": 3700,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831302175,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 0,
+        "durationNs": 634,
+        "result": 228
+      },
+      {
+        "bootNs": 6863831302717,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 0,
+        "durationNs": 237,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831303889,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 3,
+        "durationNs": 880,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831308886,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 318,
+        "durationNs": 426,
+        "result": 16
+      },
+      {
+        "bootNs": 6863831316609,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 9,
+        "durationNs": 1618,
+        "result": 140044633563136
+      },
+      {
+        "bootNs": 6863831322334,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 11,
+        "durationNs": 2116,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831332901,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 5472,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831334719,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 1433,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831336189,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 1081,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831337608,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 1049,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831338875,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 929,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831339989,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 783,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831341037,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 737,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831342013,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 658,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831342984,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 628,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831343870,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 499,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831344570,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 400,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831345283,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 6,
+        "durationNs": 421,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831347567,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 2,
+        "durationNs": 1804,
+        "result": 3
+      },
+      {
+        "bootNs": 6863831348367,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 138,
+        "durationNs": 467,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831350629,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 257,
+        "durationNs": 1853,
+        "result": 4
+      },
+      {
+        "bootNs": 6863831352896,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 0,
+        "durationNs": 1910,
+        "result": 7
+      },
+      {
+        "bootNs": 6863831353771,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 0,
+        "durationNs": 235,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831355076,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 3,
+        "durationNs": 1014,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831361013,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 2,
+        "durationNs": 5039,
+        "result": 4
+      },
+      {
+        "bootNs": 6863831361530,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 72,
+        "durationNs": 194,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831362851,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 9,
+        "durationNs": 1012,
+        "result": 140044633554944
+      },
+      {
+        "bootNs": 6863831366582,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 217,
+        "durationNs": 2040,
+        "result": 80
+      },
+      {
+        "bootNs": 6863831367472,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 217,
+        "durationNs": 238,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831367986,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 107,
+        "durationNs": 257,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831368785,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 157,
+        "durationNs": 553,
+        "result": 0
+      },
+      {
+        "bootNs": 6863831369465,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 110,
+        "durationNs": 457,
+        "result": 33261
+      },
+      {
+        "bootNs": 6863831373998,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 257,
+        "durationNs": 3938,
+        "result": 5
+      },
+      {
+        "bootNs": 6863844194135,
+        "event": "cgroup-placement",
+        "pid": 30743,
+        "cgroupId": 42822
+      },
+      {
+        "bootNs": 6863844244995,
+        "event": "syscall",
+        "pid": 30743,
+        "number": 1,
+        "durationNs": 12871320,
+        "result": 1
+      },
+      {
+        "bootNs": 6863844640571,
+        "event": "exec",
+        "pid": 30747,
+        "cgroupId": 42822,
+        "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 6863845066159,
+        "event": "exit",
+        "pid": 30747,
+        "cgroupId": 42822
+      },
+      {
+        "bootNs": 6863845637253,
+        "event": "exec",
+        "pid": 30743,
+        "cgroupId": 42822,
+        "filename": "/var/lib/sandcrab-l1/tools/extracted/usr/bin/bwrap"
+      },
+      {
+        "bootNs": 6863848651518,
+        "event": "exec",
+        "pid": 30750,
+        "cgroupId": 42822,
+        "filename": "/sandcrab-driver"
+      },
+      {
+        "bootNs": 6863849357955,
+        "event": "exec",
+        "pid": 30751,
+        "cgroupId": 42822,
+        "filename": "/bin/bash"
+      },
+      {
+        "bootNs": 6863876128105,
+        "event": "exit",
+        "pid": 30743,
+        "cgroupId": 42822
+      },
+      {
+        "bootNs": 6863876144651,
+        "event": "exit",
+        "pid": 30748,
+        "cgroupId": 42822
+      },
+      {
+        "bootNs": 6863876226499,
+        "event": "exit",
+        "pid": 30750,
+        "cgroupId": 42822
+      },
+      {
+        "bootNs": 6863876337056,
+        "event": "exit",
+        "pid": 30751,
+        "cgroupId": 42822
+      },
+      {
+        "bootNs": 6863878958728,
+        "event": "exec",
+        "pid": 30760,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/umount"
+      },
+      {
+        "bootNs": 6863879736304,
+        "event": "exit",
+        "pid": 30760,
+        "cgroupId": 42417
+      },
+      {
+        "bootNs": 6863880246910,
+        "event": "exec",
+        "pid": 30761,
+        "cgroupId": 42417,
+        "filename": "/usr/bin/umount"
+      },
+      {
+        "bootNs": 6863880930734,
+        "event": "exit",
+        "pid": 30761,
+        "cgroupId": 42417
+      }
+    ]
+  },
+  "finished": "2026-11-02T08:01:28.833848+00:00"
+}

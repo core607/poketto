@@ -82,6 +82,12 @@ relevant pull requests; manual dispatch with `canonical=true` runs all three bud
 on separate hosts after smoke. Select `budgets=5` for an intermediate change;
 W0 and final comparisons use `budgets=all`. Its binary build uses a separate runner.
 
+`cold_start.py --volume` traces attachment of a prepared empty XFS volume, including
+its validation helpers. The default traces an ephemeral workspace. Both include
+observer overhead; neither replaces the density driver's untraced cold-start metric.
+Add `--syscalls` for at most 256 syscall numbers, durations and return values per
+launcher before placement; arguments and file contents are not collected.
+
 The JSON receipt includes source and binary identities, effective resource limits,
 all stage attempts, kernel counters, refusal codes and cleanup results. The sibling
 `.attempts.jsonl` records a command's identity before submission, including setup

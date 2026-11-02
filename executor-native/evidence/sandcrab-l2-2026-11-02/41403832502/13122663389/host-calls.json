@@ -1,0 +1,83 @@
+{
+  "scope": "Actual guest CLI, native HTTP/SSE and command lifecycle for opaque host calls; synthetic caller effects, no model or production cutover",
+  "binarySha256": "9f4f93bb2aadc6aca9017dade306761a9f020f53e19ff2d50f79de0c0eb9a0ff",
+  "probeSha256": "69d4f51fe7a999b4b6b4e3e8d4a28283b338643a5ca232f9e6efd826d15a4aba",
+  "checks": [
+    {
+      "name": "host-call-capability-is-discoverable-and-reserved-mounts-are-refused",
+      "result": "PASS"
+    },
+    {
+      "name": "guest-cannot-modify-mailbox-state-requests-or-host-responses",
+      "result": "PASS"
+    },
+    {
+      "name": "finite-guest-call-relays-opaque-bytes-and-idempotent-replies",
+      "result": "PASS"
+    },
+    {
+      "name": "session-calls-preserve-shell-state-and-bind-replies-to-the-command",
+      "result": "PASS"
+    },
+    {
+      "name": "unanswered-call-resumes-by-id-and-lost-reply-acknowledgement-is-reconciled",
+      "result": "PASS"
+    },
+    {
+      "name": "cancelled-command-closes-pending-calls-before-accepting-late-replies",
+      "result": "PASS"
+    },
+    {
+      "name": "maximum-binary-request-and-reply-cross-chunks-and-oversize-input-is-not-sent",
+      "result": "PASS"
+    },
+    {
+      "name": "ordinary-client-cli-observes-replies-lists-and-resumes-host-calls",
+      "result": "PASS"
+    },
+    {
+      "name": "daemon-reply-handles-isolate-reused-run-and-guest-request-identities",
+      "result": "PASS"
+    },
+    {
+      "name": "run-and-session-cli-retain-results-for-independent-observers-when-requested",
+      "result": "PASS"
+    },
+    {
+      "name": "independent-unprivileged-build-caller-signs-and-verifies-an-artifact-digest",
+      "result": "PASS"
+    },
+    {
+      "name": "per-command-total-and-unacknowledged-call-limits-contain-excess-work",
+      "result": "PASS"
+    },
+    {
+      "name": "timeout-session-expiry-and-daemon-restart-refuse-late-replies-and-recover",
+      "result": "PASS"
+    },
+    {
+      "name": "uncertain-reply-publication-cancels-the-command-and-never-republishes-on-retry",
+      "result": "PASS"
+    },
+    {
+      "name": "malformed-http-replies-preserve-pending-calls-and-invalid-guest-frames-fail-closed",
+      "result": "PASS"
+    },
+    {
+      "name": "host-call-and-output-observers-share-capacity-and-preserve-cancellation",
+      "result": "PASS"
+    },
+    {
+      "name": "authenticated-tcp-host-call-events-and-cli-replies-refuse-unauthenticated-bodies",
+      "result": "PASS"
+    },
+    {
+      "name": "host-calls-default-off-without-guest-mounts-and-callers-cannot-enable-them",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "hostCallsProbeSha256": "df31762786a07f7e0954f05466562cf21391f19ee50fb25343a9b8a7995ade00",
+  "callerExampleSha256": "768b48445859544ff7a8a213a87dcbb62d72c9666a845730b492819e811787f8",
+  "result": "PASS"
+}

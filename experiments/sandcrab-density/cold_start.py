@@ -19,12 +19,12 @@ from engine import Engine
 from host import Fixture
 
 
-def program(name, daemon_group, workloads_group):
+def program(name, daemon_group, workloads_group, launcher=None):
     if not re.fullmatch(r'sandcrab-probe-[a-f0-9]{10}', name) or min(daemon_group, workloads_group) <= 0:
         raise ValueError('Invalid trace namespace')
     # Parent cgroup IDs avoid path truncation and work in a cgroup namespace.
     # Exec identity comes from the kernel; no process argv pointers are read.
-    return f'''
+    source = f'''
 BEGIN {{ printf("READY\\t%llu\\n", nsecs); }}
 rawtracepoint:cgroup_mkdir {{
  $group = (struct cgroup *)arg0;
@@ -47,8 +47,33 @@ tracepoint:sched:sched_process_exec /cgroup == {daemon_group} || @owned[cgroup]/
 tracepoint:sched:sched_process_exit /pid == tid && (cgroup == {daemon_group} || @owned[cgroup])/ {{
  printf("%llu\\texit\\t%u\\t%llu\\n", nsecs, pid, cgroup);
 }}
-END {{ clear(@owned); }}
 '''
+    cleanup = 'clear(@owned);'
+    if launcher is not None:
+        if not re.fullmatch(r'/var/lib/sandcrab-native-[a-zA-Z0-9_-]+/sandcrab', launcher):
+            raise ValueError('Invalid traced launcher path')
+        source += f'''
+tracepoint:sched:sched_process_exec /cgroup == {daemon_group}/ {{
+ if (str(args->filename) == "{launcher}") {{ @tracking[pid] = 1; }}
+}}
+tracepoint:raw_syscalls:sys_enter /@tracking[pid] && @count[pid] < 256/ {{
+ @count[pid] = @count[pid] + 1;
+ @started[tid] = nsecs;
+ @number[tid] = args->id;
+}}
+tracepoint:raw_syscalls:sys_exit /@started[tid]/ {{
+ printf("%llu\\tsyscall\\t%u\\t%u\\t%llu\\t%lld\\n", nsecs, pid, @number[tid], nsecs - @started[tid], args->ret);
+ delete(@started[tid]); delete(@number[tid]);
+}}
+tracepoint:cgroup:cgroup_attach_task /@tracking[args->pid]/ {{
+ delete(@tracking[args->pid]); delete(@count[args->pid]);
+}}
+tracepoint:sched:sched_process_exit /@tracking[pid]/ {{
+ delete(@tracking[pid]); delete(@count[pid]); delete(@started[tid]); delete(@number[tid]);
+}}
+'''
+        cleanup += ' clear(@tracking); clear(@count); clear(@started); clear(@number);'
+    return source + 'END { ' + cleanup + ' }\n'
 
 
 def parse_event(line):
@@ -62,6 +87,9 @@ def parse_event(line):
         return {'bootNs': int(values[0]), 'event': 'exit', 'pid': int(values[2]), 'cgroupId': int(values[3])}
     if len(values) == 4 and values[1] == 'attach':
         return {'bootNs': int(values[0]), 'event': 'cgroup-placement', 'pid': int(values[2]), 'cgroupId': int(values[3])}
+    if len(values) == 6 and values[1] == 'syscall':
+        return {'bootNs': int(values[0]), 'event': 'syscall', 'pid': int(values[2]),
+                'number': int(values[3]), 'durationNs': int(values[4]), 'result': int(values[5])}
     raise ValueError('Unrecognized trace event')
 
 
@@ -137,7 +165,8 @@ class Trace:
             raise RuntimeError('The trace clock requires Linux 5.7+ CLOCK_BOOTTIME')
         self.version = subprocess.check_output(['bpftrace', '--version'], text=True, timeout=10).strip()
         source = program(self.fixture.name, self.fixture.daemon_group.stat().st_ino,
-                         self.fixture.workloads_group.stat().st_ino)
+                         self.fixture.workloads_group.stat().st_ino,
+                         str(self.fixture.binary) if getattr(self.fixture, 'trace_syscalls', False) else None)
         self.source_sha256 = hashlib.sha256(source.encode()).hexdigest()
         before = time.clock_gettime_ns(time.CLOCK_BOOTTIME)
         self.process = await asyncio.create_subprocess_exec(
@@ -183,16 +212,18 @@ class Trace:
                 'sourceSha256': getattr(self, 'source_sha256', None), 'events': self.events}
 
 
-async def measure(fixture, receipt, report, trials):
+async def measure(fixture, receipt, report, trials, with_volume=False):
     engine = Engine(fixture.socket, fixture.info['serverId'])
     trace = Trace(fixture)
     receipt['trials'] = []
     try:
+        volume = await engine.volume() if with_volume else None
+        receipt['volumeId'] = volume
         await trace.start()
         for _ in range(trials):
             item = {'status': 'STARTING', 'submitBootNs': time.clock_gettime_ns(time.CLOCK_BOOTTIME)}
             receipt['trials'].append(item)
-            session, elapsed = await engine.session()
+            session, elapsed = await engine.session(volume)
             item.update(readyBootNs=time.clock_gettime_ns(time.CLOCK_BOOTTIME), session=session,
                         apiElapsedMonotonicNs=elapsed)
             group = fixture.workloads_group / ('session-' + session)
@@ -226,6 +257,8 @@ def main():
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--budget', type=int, choices=(4, 5, 8), default=5)
     parser.add_argument('--smoke', action='store_true')
+    parser.add_argument('--volume', action='store_true', help='Trace attachment of a prepared empty XFS volume')
+    parser.add_argument('--syscalls', action='store_true', help='Record at most 256 pre-placement syscalls per launcher, without arguments')
     args = parser.parse_args()
     report = args.report.resolve()
     if report.exists() or report.with_name(report.name + '.pending').exists():
@@ -241,7 +274,8 @@ def main():
                                 for path in Path(__file__).parent.glob('*.py')},
                'scope': 'Traced persistent-session startup, diagnostic timing with observer overhead. '
                         'Use density coldStartNs for untraced latency distributions. No model or private content.',
-               'parameters': {'trials': 3},
+               'parameters': {'trials': 3, 'workspace': 'empty-volume' if args.volume else 'ephemeral',
+                              'prePlacementSyscalls': args.syscalls},
                'measurementStatus': 'STARTING', 'apiCleanup': 'NOT_RUN', 'hostCleanup': 'NOT_RUN',
                'modelTokens': 0, 'containsProductionContent': False}
     with report.open('x') as output:
@@ -253,9 +287,10 @@ def main():
     try:
         fixture = Fixture(args.binary.resolve(), args.tools.resolve(), report,
                           1024**3 if args.smoke else args.budget * 1_000_000_000, args.smoke)
+        fixture.trace_syscalls = args.syscalls
         fixture.setup()
         receipt['fixture'] = fixture.receipt
-        asyncio.run(measure(fixture, receipt, report, receipt['parameters']['trials']))
+        asyncio.run(measure(fixture, receipt, report, receipt['parameters']['trials'], args.volume))
     except BaseException as error:
         receipt.update(measurementStatus='ERROR', errorType=type(error).__name__)
         report.with_suffix('.diagnostic.txt').write_text(traceback.format_exc())

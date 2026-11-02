@@ -1,0 +1,20 @@
+{
+  "scope": "Placement prototype builds only; no runtime or performance claim from the failed compilation",
+  "attempts": [
+    {
+      "result": "FAIL",
+      "compiler": "cc -O2 -Wall -Wextra -Werror -static in pinned Rust Alpine image",
+      "diagnostic": "fatal error: linux/sched.h: No such file or directory"
+    },
+    {
+      "result": "PASS",
+      "change": "Explicit clone3 version-2 UAPI fields replace the unavailable kernel header",
+      "source": "clone-placement1.source.c"
+    },
+    {
+      "result": "PASS",
+      "change": "Wait 50 ms before each timed spawn to preserve quiescent migration cost",
+      "source": "clone-placement2.source.c"
+    }
+  ]
+}

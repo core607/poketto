@@ -66,12 +66,9 @@ configuration, credentials or content.
 Implement L1 through L10 in order, normally one change per item. Preserve independent
 SDK conformance while changing the implementation.
 
-1. L1 is implemented by the [native filter decision](../implemented/2026-11-02-native-seccomp-filter.md):
-   equivalent rules and per-rule native probes, with consumer workload interpreters
-   provisioned separately.
+1. L1 is implemented by the [native filter decision](../implemented/2026-11-02-native-seccomp-filter.md).
 2. L2 uses [delegated cgroups](../implemented/2026-11-02-delegated-sandbox-cgroups.md)
-   for native launches and confirmed containment. The native README owns systemd,
-   container and root-host deployment. Target cold-start p50 at most 30 ms.
+   for native launches and confirmed containment. Target cold-start p50 at most 30 ms.
 3. L3: ordinary filesystems. Default volumes and session workspaces to plain
    directories. Reflink where supported, copy otherwise. Enforce XFS project quotas
    when configured. Without quotas, report usage and refuse growth through periodic
@@ -156,10 +153,15 @@ save cwd and `export -p`, exit, and restore them on the next command. Background
 processes prohibit eviction. Document lost state and move workspaces from tmpfs
 to disk. Propose other measured optimizations here before implementing them.
 
+[Placement measurements](../../executor-native/evidence/sandcrab-l2-2026-11-02/local/clone-placement2.json)
+identify quiescent `cgroup.procs` migration as startup overhead. Use
+`CLONE_INTO_CGROUP` through an audited spawn boundary; retain parent-death handling,
+identity drop, cancellation and child-reaping ownership, with no uncontained fallback.
+
 ### X: extraction by readiness
 
 Extract when L1-L10 and H1-H4 have landed and CI readiness, conformance and published
-SDK gates pass. There is no waiting interval and no dependency on Poketto cutover.
+SDK gates pass.
 Preserve history when splitting the generic crates, docs, OpenAPI, examples, evals
 and benchmark. Prepare a release workflow for static x86_64 musl Sandcrab plus bundled
 bwrap, SHA-256 checksums, the container image and H4's threat model.

@@ -274,7 +274,7 @@ Children inherit the parent's effective profile, aggregate memory/CPU/process
 limits and expiry; they cannot select another profile or create grandchildren.
 Renewal and file operations use the parent ID. Frozen file operations cover every
 shell in that workspace. Kernel OOM victims are selected within the aggregate
-budget; an unaffected shell's results do not inherit another unit's OOM history.
+budget; an unaffected shell's results do not inherit another leaf's OOM history.
 Every child consumes a retained `max_records` entry until explicitly forgotten.
 Parent closure, expiry, primary-shell failure or shutdown contains all children
 before releasing storage. Unconfirmed child cleanup fences the parent and keeps
@@ -324,7 +324,7 @@ The selected profile must use the volume's execution UID/GID. One session owns a
 volume exclusively until confirmed cleanup; a failed cleanup retains that ownership.
 Cloning requires an unattached source and holds it for the operation. Reflinks
 preserve hard links and symlinks without following them, and subsequent writes
-are independent. Clone work uses the selected profile's bounded unit and timeout.
+are independent. Clone work uses the selected profile's bounded cgroup and timeout.
 
 Byte quotas count allocated XFS blocks, including managed metadata, rather than
 sparse logical lengths. Inode quotas also count managed metadata. Requests may
@@ -350,7 +350,7 @@ ID needs the current server epoch. The CLI prints its recovery ID before submiss
 `--id UUID` permits an explicit replay. Never substitute a new ID after a lost response.
 Forgetting ends replay protection; never reuse that client ID.
 
-Startup contains prior units before recovering unfinished creation or deletion.
+Startup contains owned cgroups before recovering unfinished creation or deletion.
 Published volumes remain intact. Uncertain metadata or volume cleanup fences
 mutations (`STORAGE_UNCERTAIN`, `storage.available=false`) until restart and
 reconciliation; it never exposes uncommitted data as ready. Unexpected data,
