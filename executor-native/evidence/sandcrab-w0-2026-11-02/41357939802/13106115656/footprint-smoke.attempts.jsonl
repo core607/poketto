@@ -1,0 +1,2 @@
+{"event":"created","id":"6d867748-46ac-4227-b858-a23b781614c0","session":null,"kind":"finite","createdAbsoluteNs":79852374605,"outcome":"PENDING","elapsedNs":null}
+{"event":"completed","id":"6d867748-46ac-4227-b858-a23b781614c0","session":null,"kind":"finite","createdAbsoluteNs":79852374605,"outcome":"OK","elapsedNs":30164400422,"startedAbsoluteNs":79852417418,"state":"succeeded","exitCode":0,"code":null,"stdout":"","stderr":""}

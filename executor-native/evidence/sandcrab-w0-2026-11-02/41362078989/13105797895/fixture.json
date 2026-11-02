@@ -1,0 +1,109 @@
+{
+  "scope": "Disposable native service for Inspect scripted all evaluation; no production endpoint",
+  "binarySha256": "db8b81132e7a3cc71c43c6c39e02e77f1cc013e66aa5bacc79804113fc48f791",
+  "probeSha256": "b7f5370d754feacf114577c4e338f797c502252a77b44341e5c5e994614ef338",
+  "checks": [
+    {
+      "name": "volume-bootstrap-refuses-preexisting-data",
+      "result": "PASS"
+    },
+    {
+      "name": "http-sequential-reuse-body-boundary-and-declared-close",
+      "result": "PASS"
+    },
+    {
+      "name": "http-invalid-framing-closes-without-dispatch",
+      "result": "PASS"
+    },
+    {
+      "name": "http-deadline-does-not-reset-on-progress",
+      "result": "PASS"
+    },
+    {
+      "name": "http-idle-expiry-closes-without-an-unsolicited-response",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-outcome-survives-forget-failure",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-reuses-connection-and-does-not-replay-incomplete-response",
+      "result": "PASS"
+    },
+    {
+      "name": "cancellation-before-unit-registration",
+      "result": "PASS"
+    },
+    {
+      "name": "session-build-repair-state-isolation-and-descendant-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "session-cli-reconnects-and-explicit-lifecycle",
+      "result": "PASS"
+    },
+    {
+      "name": "session-shared-admission-exclusive-command-and-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "session-results-share-the-global-retention-bound",
+      "result": "PASS"
+    },
+    {
+      "name": "session-sigkill-and-exit-137-are-not-memory-evidence",
+      "result": "PASS"
+    },
+    {
+      "name": "session-timeout-output-memory-and-shell-exit-end-the-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-renewal-and-expiry-cancel-an-active-command",
+      "result": "PASS"
+    },
+    {
+      "name": "session-command-cancellation-closes-the-whole-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-supervisor-loss-cleans-units-and-invalidates-the-epoch",
+      "result": "PASS"
+    },
+    {
+      "name": "independent-build-test-example",
+      "result": "PASS"
+    },
+    {
+      "name": "session-unconfirmed-cleanup-holds-capacity-until-restart",
+      "result": "PASS"
+    },
+    {
+      "name": "session-close-before-unit-registration",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "volumeProbeSha256": "56a37936319179a93f28e89df82588cd00a639ba6821c213a3e1cb995bab0568",
+  "slowRequestDeadlineSeconds": 5.012,
+  "idleDisconnectSeconds": 5.071,
+  "startupCancellation": {
+    "initialKillExitCode": 1,
+    "killAttempts": 2,
+    "seconds": 0.485,
+    "state": "cancelled",
+    "limitSeconds": 3
+  },
+  "exampleSha256": "48512f23c91d749b2860770974b907bae28b152f945d4c6ef656505a271a4517",
+  "sessionStartupCancellation": {
+    "initialKillExitCode": 1,
+    "killAttempts": 2,
+    "seconds": 0.424,
+    "state": "closed",
+    "limitSeconds": 3
+  },
+  "evaluationSessionTtlMillis": 600000,
+  "workspaceClient": "both",
+  "result": "PASS"
+}

@@ -1,0 +1,712 @@
+{
+  "schema": 1,
+  "state": "COMPLETE; canonical 8/5/4 GB and first-use baseline, with all earlier failed attempts retained",
+  "scope": "Synthetic W0 measurements and failed attempts. No production content or model calls.",
+  "runs": [
+    {
+      "id": 41357939802,
+      "url": "https://github.com/core607/poketto/actions/runs/41357939802",
+      "scope": "First canonical attempt; 8/4GB trace preflight failed;5GB density/footprint/cache completed then oldtrace failed",
+      "artifacts": [
+        {
+          "id": 13104127741,
+          "archiveSha256": "15db30c6dd540eae6b789e0ce2a70cf992c8441fc872f5f44a618d0233fe0459",
+          "files": [
+            {
+              "path": "41357939802/13104127741/cache-smoke.attempts.jsonl",
+              "bytes": 14356,
+              "sha256": "cb27617261257f8e995f3bdb019f269bbd9f10f1271d7c13d1bee85a220c538c"
+            },
+            {
+              "path": "41357939802/13104127741/cache-smoke.json",
+              "bytes": 20692,
+              "sha256": "51a3672978696343196f1ce9c3be29dac4c45563b6cdfb310b46427c37a3bf10"
+            },
+            {
+              "path": "41357939802/13104127741/cold-start-smoke.diagnostic.txt",
+              "bytes": 899,
+              "sha256": "05637cfbf5068c32dccc114f9c813eb1f2252fbbfe64236a7d648942734f6b73"
+            },
+            {
+              "path": "41357939802/13104127741/cold-start-smoke.json",
+              "bytes": 12850,
+              "sha256": "47fa56ba38f982fe7da13270f35992fca85f55e9ca09f0118ccf56197f6c4d43"
+            },
+            {
+              "path": "41357939802/13104127741/footprint-smoke.attempts.jsonl",
+              "bytes": 436,
+              "sha256": "f38292577e3b2c2cd7361123a97c89d0f93340847d0a3a94146ee2f221d63c44"
+            },
+            {
+              "path": "41357939802/13104127741/footprint-smoke.json",
+              "bytes": 22903,
+              "sha256": "a6eaa90262d6f9d9015273b6cd1aa5d0f73213e006df68b441b1f401061a6b8f"
+            },
+            {
+              "path": "41357939802/13104127741/smoke.attempts.jsonl",
+              "bytes": 60360,
+              "sha256": "0e1527762c64cb774990d104ec0821860eb99d3e0711222659918d432afa1262"
+            },
+            {
+              "path": "41357939802/13104127741/smoke.json",
+              "bytes": 79303,
+              "sha256": "a2701eec19f35e12a76ca2029c9c4c63a7ef7f9f0d87b504e8da42f78200d0fb"
+            }
+          ]
+        },
+        {
+          "id": 13104217159,
+          "archiveSha256": "08efe4559bb190505e1e3c033391eff9eadd9020647ef2bd7100c7dc7170e602",
+          "files": [
+            {
+              "path": "41357939802/13104217159/cache-smoke.attempts.jsonl",
+              "bytes": 14356,
+              "sha256": "904697b717836ddb18a264cead9c3a221a9bba211946fd8a09efd382ece304a2"
+            },
+            {
+              "path": "41357939802/13104217159/cache-smoke.json",
+              "bytes": 20694,
+              "sha256": "3cc700f076860b717194e75f9f4d8cf3c9331e250cc4dee2c4221ff1fd41cba5"
+            },
+            {
+              "path": "41357939802/13104217159/cold-start-smoke.diagnostic.txt",
+              "bytes": 899,
+              "sha256": "05637cfbf5068c32dccc114f9c813eb1f2252fbbfe64236a7d648942734f6b73"
+            },
+            {
+              "path": "41357939802/13104217159/cold-start-smoke.json",
+              "bytes": 12853,
+              "sha256": "c3bdaff7e03821613229c06fe0e57fb8aa596c1f152a7b93c99687236e10f709"
+            },
+            {
+              "path": "41357939802/13104217159/footprint-smoke.attempts.jsonl",
+              "bytes": 436,
+              "sha256": "04c548b6689b2f5edfe183886265285d4c980bd368f40514f2cc2991c40335aa"
+            },
+            {
+              "path": "41357939802/13104217159/footprint-smoke.json",
+              "bytes": 22907,
+              "sha256": "5823dc8832263d9bc1444cb42f230ea18e168820ab129024b57a04c85f5664db"
+            },
+            {
+              "path": "41357939802/13104217159/smoke.attempts.jsonl",
+              "bytes": 59326,
+              "sha256": "11801205df90ca5c221f8c37107d8a93cc1a3e116fa01b0874c0a7dd7820748d"
+            },
+            {
+              "path": "41357939802/13104217159/smoke.json",
+              "bytes": 78122,
+              "sha256": "99ba3a9b435a17ca0f76850b4631db01066d37c5da26e6a5ac343f0de0b54f8b"
+            }
+          ]
+        },
+        {
+          "id": 13106115656,
+          "archiveSha256": "f1f1c6f7578ed1bbaf73ab77cf24f7afd5dbfeafbe56e10426204d0ee80f5015",
+          "files": [
+            {
+              "path": "41357939802/13106115656/cache-smoke.attempts.jsonl",
+              "bytes": 14356,
+              "sha256": "fa61e4cbee179b1930173fbb5dff8b9e84cd62fd013c620dff0533b01a0b6aa8"
+            },
+            {
+              "path": "41357939802/13106115656/cache-smoke.json",
+              "bytes": 20693,
+              "sha256": "82f181196bf99ff998e892a251688db708666c902833eae8f421a77aca709cc1"
+            },
+            {
+              "path": "41357939802/13106115656/cache.attempts.jsonl",
+              "bytes": 14532,
+              "sha256": "8072c3ecc3ab8469ad041d8405861847a8632a9ee43f86ec6b2e223132a2eb78"
+            },
+            {
+              "path": "41357939802/13106115656/cache.json",
+              "bytes": 20905,
+              "sha256": "a02a8283961ef5f622daf9c1144872dea5921180c4cd3808a6c77527197e5a1d"
+            },
+            {
+              "path": "41357939802/13106115656/cold-start-smoke.json",
+              "bytes": 12821,
+              "sha256": "0bc41e61142dd223283263895f80ad3872612117635f077888c36ebc9ef9f296"
+            },
+            {
+              "path": "41357939802/13106115656/cold-start.diagnostic.txt",
+              "bytes": 899,
+              "sha256": "05637cfbf5068c32dccc114f9c813eb1f2252fbbfe64236a7d648942734f6b73"
+            },
+            {
+              "path": "41357939802/13106115656/cold-start.json",
+              "bytes": 28175,
+              "sha256": "1df77989f8cc62b4391958aa38a39bf6fd2fe57d7e6fd703bc59002e2f300617"
+            },
+            {
+              "path": "41357939802/13106115656/density.attempts.jsonl",
+              "bytes": 4456933,
+              "sha256": "14467134c0624cd1fdaaad05cb9a827b743cea256ec3e40a6d051b9802c49cb7"
+            },
+            {
+              "path": "41357939802/13106115656/density.json",
+              "bytes": 5709051,
+              "sha256": "b1c2af3f3aa21ada11f8164faaf6ac0c7ef3dd63192ef01a0e707b3b1227dce8"
+            },
+            {
+              "path": "41357939802/13106115656/footprint-smoke.attempts.jsonl",
+              "bytes": 433,
+              "sha256": "c6c6c81149643d42ff927a34ece851aba966d1d7614ce7415ea031fc9fe736d7"
+            },
+            {
+              "path": "41357939802/13106115656/footprint-smoke.json",
+              "bytes": 22866,
+              "sha256": "bdc904009a763f9ba47b117f915fb8a4f424d9b35ae87fa2a679a8ea626838de"
+            },
+            {
+              "path": "41357939802/13106115656/footprint.attempts.jsonl",
+              "bytes": 26779,
+              "sha256": "bf4e770061ae8a60cacfb1f99a8acee10d11e60f85e81d6e74298fb18d65ac90"
+            },
+            {
+              "path": "41357939802/13106115656/footprint.json",
+              "bytes": 72179,
+              "sha256": "06b9d3d2e2cee7af7c03ee1804919beb32652271162694062a41967d030575d0"
+            },
+            {
+              "path": "41357939802/13106115656/smoke.attempts.jsonl",
+              "bytes": 59015,
+              "sha256": "56abac214d8e7bdb364a2f51283c14b2ec227090f43c496f7443f9b74ae0cc5f"
+            },
+            {
+              "path": "41357939802/13106115656/smoke.json",
+              "bytes": 77939,
+              "sha256": "42af20046e06734916905b7ece13710ea455359c2fd4a4452767dd092314a9ed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 41361629602,
+      "url": "https://github.com/core607/poketto/actions/runs/41361629602",
+      "scope": "Final PR358head native4-collector smoke",
+      "artifacts": [
+        {
+          "id": 13105062638,
+          "archiveSha256": "9e1d90d6326238328007a2441e07f8df7b6ade6d77a00d052d41d1c9565155b3",
+          "files": [
+            {
+              "path": "41361629602/13105062638/cache-smoke.attempts.jsonl",
+              "bytes": 14356,
+              "sha256": "c3572fc8c86f1fbb195b0a5d1cc862c9ae1c63c980b66980870b03c33e3bb5b7"
+            },
+            {
+              "path": "41361629602/13105062638/cache-smoke.json",
+              "bytes": 20696,
+              "sha256": "0d3f3377029a3e7bc74d1aabebfdcf95a389ff4e78d5fe0be3bf48052e4fe773"
+            },
+            {
+              "path": "41361629602/13105062638/cold-start-smoke.json",
+              "bytes": 31447,
+              "sha256": "90b2bca9247ef8394a5a9388dede146d5e4e69d08636faf9cdf1f512fa44f38a"
+            },
+            {
+              "path": "41361629602/13105062638/footprint-smoke.attempts.jsonl",
+              "bytes": 433,
+              "sha256": "b6eeb66fd519acd8dada7096683de696b8ec3c10f32a28f482659a8f4e3b31bd"
+            },
+            {
+              "path": "41361629602/13105062638/footprint-smoke.json",
+              "bytes": 22884,
+              "sha256": "d5d4b43b573c82ec59f1ac65cee46a28b97f0b3dff7cb53e535e0589a3f8bde3"
+            },
+            {
+              "path": "41361629602/13105062638/smoke.attempts.jsonl",
+              "bytes": 59500,
+              "sha256": "9f002b0c50bd9ef30dba3882df89a221b3158af6baedee8be5107f748fcc036e"
+            },
+            {
+              "path": "41361629602/13105062638/smoke.json",
+              "bytes": 78652,
+              "sha256": "d8c18abe9fb58469e707360781a19d669703d027176ddd8a4f8725693bbf5af5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 41362289149,
+      "url": "https://github.com/core607/poketto/actions/runs/41362289149",
+      "scope": "First cloudreadiness3containers; Debianmissing sysctl failure retained",
+      "artifacts": [
+        {
+          "id": 13105783419,
+          "archiveSha256": "a4d765fe322e3e3082422983f80bc60ef01e04832e431e120693c1976cd71854",
+          "files": [
+            {
+              "path": "41362289149/13105783419/readiness-ubuntu22.json",
+              "bytes": 20331,
+              "sha256": "9e74a2e705fef2aee6d77cbd759c8e71e763df5e9359d57f266b02d592d3d023"
+            }
+          ]
+        },
+        {
+          "id": 13105648833,
+          "archiveSha256": "065d1660eae3e3d20a7acb3b0143ee9504bc644ea4e5eb477b3a67529e519c2c",
+          "files": [
+            {
+              "path": "41362289149/13105648833/readiness-debian12.json",
+              "bytes": 16823,
+              "sha256": "85fd73a2dd488aa88f47e8bddebed9cb26cd7c66e140ce1a7d1710a22cdeafd2"
+            }
+          ]
+        },
+        {
+          "id": 13105372946,
+          "archiveSha256": "feda5f063aa451922944a5810d5820a89689ae95d29f11c1c807cdf1f1a572f8",
+          "files": [
+            {
+              "path": "41362289149/13105372946/readiness-ubuntu24.json",
+              "bytes": 20621,
+              "sha256": "530a31fb20fa4bf0f322ee40d937d381fdeddcaee2a33a78f978e81867ecf518"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 41362744544,
+      "url": "https://github.com/core607/poketto/actions/runs/41362744544",
+      "scope": "Secondreadiness3containers+2native; Debianmissing sysctl failure retained",
+      "artifacts": [
+        {
+          "id": 13106330209,
+          "archiveSha256": "5243c953ab2496966389c9d90c6a5c183cea40cb86b0d53d7967db7ca25d79b8",
+          "files": [
+            {
+              "path": "41362744544/13106330209/readiness-native.json",
+              "bytes": 11066,
+              "sha256": "0f7a6816d1d48ea6104702a5a82fae0f589f3552be8eb5002129be14c7155755"
+            }
+          ]
+        },
+        {
+          "id": 13106310369,
+          "archiveSha256": "2a3fcee692751bd9fc99126326f44afd5a0e49c6c6d623ecd521a18a57eba201",
+          "files": [
+            {
+              "path": "41362744544/13106310369/readiness-ubuntu24.json",
+              "bytes": 20620,
+              "sha256": "7cbeb41e8446b5eb9b8f26dbc6363b437b8580187d1421538f5f22b0e8d93019"
+            }
+          ]
+        },
+        {
+          "id": 13106122204,
+          "archiveSha256": "ed8b8cc52440335b70c4083319c487a1e35d555cc5b232c13dccd6b16bd4e96f",
+          "files": [
+            {
+              "path": "41362744544/13106122204/readiness-native.json",
+              "bytes": 10682,
+              "sha256": "7c47884e287adeb19c15ce4efd437f54964b2eb79667aba47ca12518878100c7"
+            }
+          ]
+        },
+        {
+          "id": 13105938527,
+          "archiveSha256": "f21104cbc219a254cae63a8749d80e3044129dbf847c80e63b01841028093651",
+          "files": [
+            {
+              "path": "41362744544/13105938527/readiness-debian12.json",
+              "bytes": 16823,
+              "sha256": "4a566b19f5b3aab3a70a56f474dd92a80d72663159c1b8ce944504d76681f1a9"
+            }
+          ]
+        },
+        {
+          "id": 13105862461,
+          "archiveSha256": "8d928c67b95ae3f62d8a6624780be34c566e8a091950246f3f388deb9cebe35f",
+          "files": [
+            {
+              "path": "41362744544/13105862461/readiness-ubuntu22.json",
+              "bytes": 20332,
+              "sha256": "efe45a26dd5bd97f28c6d31ae928aebfdc6b19447135986f0098f4b7335c5ffd"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 41363094547,
+      "url": "https://github.com/core607/poketto/actions/runs/41363094547",
+      "scope": "Final PR359head readiness3containers+2native;allmeasurement/cleanupPASS,targetfalse",
+      "artifacts": [
+        {
+          "id": 13106590170,
+          "archiveSha256": "d0a6d86b304edb0cacb321029703149bafec1810d7e13a98ea97c9775a76d598",
+          "files": [
+            {
+              "path": "41363094547/13106590170/readiness-ubuntu24.json",
+              "bytes": 20641,
+              "sha256": "73eb2a885e0d1aba78465be9965b0219356c72e99ea212e47214a67c42532b30"
+            }
+          ]
+        },
+        {
+          "id": 13106560328,
+          "archiveSha256": "f39441b41cee56ae20a5f15ec036c98d4f84c0ccc48cfd3fbcc6a230141a3760",
+          "files": [
+            {
+              "path": "41363094547/13106560328/readiness-ubuntu22.json",
+              "bytes": 20413,
+              "sha256": "6013581ba37df6f54d63836e7b63bedae029da37e54d1e1991e8448cf41a7425"
+            }
+          ]
+        },
+        {
+          "id": 13105962575,
+          "archiveSha256": "276e88305a6ca0a6b2c74860c27ccf21889ccaaa2452eab49a963bb80be6865d",
+          "files": [
+            {
+              "path": "41363094547/13105962575/readiness-native.json",
+              "bytes": 11176,
+              "sha256": "275dde98dcd86b4f2e28102e265ca7c9c21f905363ee54911d3d88b5b721611f"
+            }
+          ]
+        },
+        {
+          "id": 13105784901,
+          "archiveSha256": "5e8d56864cd5237c105261c2d0acbad4042888601671fc20a113c0849d650b2e",
+          "files": [
+            {
+              "path": "41363094547/13105784901/readiness-native.json",
+              "bytes": 10798,
+              "sha256": "a417259149626f8301eb15f097af53de698fd782521091155f7e1c703c2c2507"
+            }
+          ]
+        },
+        {
+          "id": 13105528708,
+          "archiveSha256": "cc587c40a39803176b3be7edf07441e679a141f469450cff42901392e81d8962",
+          "files": [
+            {
+              "path": "41363094547/13105528708/readiness-debian12.json",
+              "bytes": 17911,
+              "sha256": "f0aacecc1e62464623c333f0041821ec6d39f7924a2529896f5b271d260f2302"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 41362079392,
+      "url": "https://github.com/core607/poketto/actions/runs/41362079392",
+      "scope": "Final canonical 8/5/4 GB density, footprint, page-cache and startup measurements; all collectors and cleanup completed",
+      "artifacts": [
+        {
+          "id": 13106576319,
+          "archiveSha256": "b0b7aa92a66a372e5856a7ad9ae3a170f2f7aaa6d397d0ca4ed777df6bff7af1",
+          "files": [
+            {
+              "path": "41362079392/13106576319/cache-smoke.attempts.jsonl",
+              "bytes": 14356,
+              "sha256": "3048a480bf60bfd9f3c24e0f8db5d08aa4277366e02cd504a4632ffad4d4f0ba"
+            },
+            {
+              "path": "41362079392/13106576319/cache-smoke.json",
+              "bytes": 20694,
+              "sha256": "182468ea4071b8e4588f632a849f959643f997adf9bec273a1b38d80b2e0c057"
+            },
+            {
+              "path": "41362079392/13106576319/cache.attempts.jsonl",
+              "bytes": 14552,
+              "sha256": "b6d87282a2e640b74294b9d8ef6482d87f150b9177dc224fa529e0c2d998b29a"
+            },
+            {
+              "path": "41362079392/13106576319/cache.json",
+              "bytes": 20925,
+              "sha256": "3eed6af48c78998cb4a22b067c9030197c42050e96f7ecd37cc22197760f3e3d"
+            },
+            {
+              "path": "41362079392/13106576319/cold-start-smoke.json",
+              "bytes": 31445,
+              "sha256": "0ffcf4963ba164e16a32840182eef7a0834f4e15665f5c6f8411596ec09dee27"
+            },
+            {
+              "path": "41362079392/13106576319/cold-start.json",
+              "bytes": 31745,
+              "sha256": "7ea92d7776ae4deb059c9cc019f41e6af13e6e4aed474f839984fdf1f99674f1"
+            },
+            {
+              "path": "41362079392/13106576319/density.attempts.jsonl",
+              "bytes": 1998759,
+              "sha256": "d1394e48ea8932fce191e5841a171eb08ec557d41c3391b7e727343f69786448"
+            },
+            {
+              "path": "41362079392/13106576319/density.json",
+              "bytes": 2581386,
+              "sha256": "240b0fedbf70c4012832990bd24a574d7a47c506aa293de19bd2e680bf2f92a7"
+            },
+            {
+              "path": "41362079392/13106576319/footprint-smoke.attempts.jsonl",
+              "bytes": 436,
+              "sha256": "0e85d4d87aa4fb44842a2c95d66b2a049793e4a4e731e4fee3acaacfdc390cdc"
+            },
+            {
+              "path": "41362079392/13106576319/footprint-smoke.json",
+              "bytes": 22908,
+              "sha256": "6b800588a6d29134623bca365bdd4110eafd65efe96c474f0f857180db61234a"
+            },
+            {
+              "path": "41362079392/13106576319/footprint.attempts.jsonl",
+              "bytes": 26779,
+              "sha256": "9528fadd362033d4d2b9f5ec6210812d581ed7df3f6c72cba7d467d2fd753b23"
+            },
+            {
+              "path": "41362079392/13106576319/footprint.json",
+              "bytes": 72150,
+              "sha256": "2da62acfa4b349835036d7496fa191b1bd203e5e2a2e811453b3027ee5dc0478"
+            },
+            {
+              "path": "41362079392/13106576319/smoke.attempts.jsonl",
+              "bytes": 60340,
+              "sha256": "002e8108a90d234cd5e486b48e4302e14cdd2f0161abbf30b70909c5442a6e11"
+            },
+            {
+              "path": "41362079392/13106576319/smoke.json",
+              "bytes": 79385,
+              "sha256": "7f4f8ff3f8ee9f902a77cf9b54cafb125e0bd4127802f34bbc5cc47cde3f5e2c"
+            }
+          ]
+        },
+        {
+          "id": 13107422313,
+          "archiveSha256": "da7b2752cfb004a672b98133130ef1409a5fce7e8bf14bbd93d0b6309edd5d8a",
+          "files": [
+            {
+              "path": "41362079392/13107422313/cache-smoke.attempts.jsonl",
+              "bytes": 14356,
+              "sha256": "5d9a19073f4ff78cafaaf432f255c2db9d16e955af020e7fdadf5104688307db"
+            },
+            {
+              "path": "41362079392/13107422313/cache-smoke.json",
+              "bytes": 20693,
+              "sha256": "c4eef8f67a4fe53c241ff97b1952b8e787f3600a34103055b698fcde57c2e502"
+            },
+            {
+              "path": "41362079392/13107422313/cache.attempts.jsonl",
+              "bytes": 14552,
+              "sha256": "7ae422ab9c9861397748a79290a2cb83a1fa00c9fa3c07346ad81f7a1a66d269"
+            },
+            {
+              "path": "41362079392/13107422313/cache.json",
+              "bytes": 20923,
+              "sha256": "1b09487a33bb6e61003eb9f52c5a95da2cb3ad8ef308d9bb2e86b2f74154556f"
+            },
+            {
+              "path": "41362079392/13107422313/cold-start-smoke.json",
+              "bytes": 31449,
+              "sha256": "cead2897ecd69c46b68bd577b0d127f41321f509ab748f5c3ebfa8ac68f2036d"
+            },
+            {
+              "path": "41362079392/13107422313/cold-start.json",
+              "bytes": 31747,
+              "sha256": "920d663f94795f8816e56f473de919ee78d08a2268569dd532d1bc3c81033eac"
+            },
+            {
+              "path": "41362079392/13107422313/density.attempts.jsonl",
+              "bytes": 4684805,
+              "sha256": "01eed7990690583e20ddb4960a1f8bbbc8f1c9c966ee9e1960a71a1cd3da703b"
+            },
+            {
+              "path": "41362079392/13107422313/density.json",
+              "bytes": 5936466,
+              "sha256": "48106d190217fdee72877389952ff7f26bf8a6c45113b542ad3cc52f22a36200"
+            },
+            {
+              "path": "41362079392/13107422313/footprint-smoke.attempts.jsonl",
+              "bytes": 436,
+              "sha256": "7fb902a2d3876dee5b078252c9f38aae1ef37b72fc0fcf77be458050a59716e0"
+            },
+            {
+              "path": "41362079392/13107422313/footprint-smoke.json",
+              "bytes": 22915,
+              "sha256": "a2d2a6bd6f0e43645c2136bda61bb13e5a37add229fa3a4e2bbe35a828923644"
+            },
+            {
+              "path": "41362079392/13107422313/footprint.attempts.jsonl",
+              "bytes": 26779,
+              "sha256": "19532f23c741ced55375d1f1c1f9322452711c7687d798df7e24ce70ef15e10b"
+            },
+            {
+              "path": "41362079392/13107422313/footprint.json",
+              "bytes": 72147,
+              "sha256": "6601811cbd5c7837d41e609fc1ee465e23326d84aca9abea1d55f445887071e5"
+            },
+            {
+              "path": "41362079392/13107422313/smoke.attempts.jsonl",
+              "bytes": 58849,
+              "sha256": "0ca2c8e9345546a96493f4d2af8301e14b27172c17a5dd6033f3578df59ce958"
+            },
+            {
+              "path": "41362079392/13107422313/smoke.json",
+              "bytes": 77419,
+              "sha256": "395bd970a1bf4e4283e09095683eb4069efdc91221c19ef0cad1f2f4e7d59301"
+            }
+          ]
+        },
+        {
+          "id": 13108911083,
+          "archiveSha256": "9e6818b83ccedee9189d09a0e693f081968ce5aee77f2ee277364993cdeda68d",
+          "files": [
+            {
+              "path": "41362079392/13108911083/cache-smoke.attempts.jsonl",
+              "bytes": 14355,
+              "sha256": "13d8ce150a4d67e5c80137d769df78706b62bed5937ff7bdcd54b00e76cb3b77"
+            },
+            {
+              "path": "41362079392/13108911083/cache-smoke.json",
+              "bytes": 20693,
+              "sha256": "e7324c01ca5c803996d8958e995ccd131b22d1b3e32e9c3b27d6355ac885eca7"
+            },
+            {
+              "path": "41362079392/13108911083/cache.attempts.jsonl",
+              "bytes": 14531,
+              "sha256": "c8aa03310e9ba0f588612eacc5e457e40f3f35a8dc8aacf74148f1016aa73d17"
+            },
+            {
+              "path": "41362079392/13108911083/cache.json",
+              "bytes": 20905,
+              "sha256": "28ef1c579954997bf2dbbd5eace0aed7c18c616889cbc14d0e5941c0f4e215e3"
+            },
+            {
+              "path": "41362079392/13108911083/cold-start-smoke.json",
+              "bytes": 31445,
+              "sha256": "90d9229d7a8e5a9146e16cafc4cca8047eeed8b6b41b265eb7397bc5ca300cd2"
+            },
+            {
+              "path": "41362079392/13108911083/cold-start.json",
+              "bytes": 31895,
+              "sha256": "157da59953b672cb696ea43640348d7e2a5a36f6d7cf3724257c6177e88f8e2e"
+            },
+            {
+              "path": "41362079392/13108911083/density.attempts.jsonl",
+              "bytes": 10110692,
+              "sha256": "8b913cad0fb6c48a30ff0e83c88c3f185d4396056bd4253ccbff293f80985224"
+            },
+            {
+              "path": "41362079392/13108911083/density.json",
+              "bytes": 12617316,
+              "sha256": "8e16c3b2a6445a24881b2ee80f720ddc86d1c2043179a5b8ed370e3222eec359"
+            },
+            {
+              "path": "41362079392/13108911083/footprint-smoke.attempts.jsonl",
+              "bytes": 436,
+              "sha256": "6e227df44e7ac145398b656452a28bbd4043471d7e90152cb546a28efe399a02"
+            },
+            {
+              "path": "41362079392/13108911083/footprint-smoke.json",
+              "bytes": 22902,
+              "sha256": "699eb4ec78a611ae3236b8d2d766b0c01abc48f59a1b143fb8e403be168dc482"
+            },
+            {
+              "path": "41362079392/13108911083/footprint.attempts.jsonl",
+              "bytes": 26779,
+              "sha256": "7f1f3d173277dfed0a94775709a3037c8954c81394d11ebd1aac9bb6155fc8dd"
+            },
+            {
+              "path": "41362079392/13108911083/footprint.json",
+              "bytes": 72112,
+              "sha256": "a81566553492203cf0024cacf69b5b12df7ded8f562ace0ab395670a8e9d393d"
+            },
+            {
+              "path": "41362079392/13108911083/smoke.attempts.jsonl",
+              "bytes": 60232,
+              "sha256": "b2eebc9c033ef8dd5d186ba39e44ab63b3706a30258883eeebc0ffcf5ba04788"
+            },
+            {
+              "path": "41362079392/13108911083/smoke.json",
+              "bytes": 79266,
+              "sha256": "8b4b7f291a8044d5ddea49012a18b8eb8af8c9da72bb1e5bbd5d6d1a1e0615c6"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 41362078989,
+      "url": "https://github.com/core607/poketto/actions/runs/41362078989",
+      "scope": "PR358 scripted native eval and SDK summaries; complete archive has additional logs and fixture artifacts",
+      "artifacts": [
+        {
+          "id": 13105797895,
+          "archiveSha256": "1919370996424105e0c2ce0f6516a34a19a0dec7cb280797258fa1d4706ff06a",
+          "files": [
+            {
+              "path": "41362078989/13105797895/contexts.json",
+              "bytes": 1503,
+              "sha256": "92270de7307269cdd5e8fee0b92023eb559680fc9763555e7cec56e45c7e4dd7"
+            },
+            {
+              "path": "41362078989/13105797895/fixture.json",
+              "bytes": 3021,
+              "sha256": "0f5051333fd867b6260c9af8be1ed23e31666ae4ef3173ced4a9726d893f5cbe"
+            },
+            {
+              "path": "41362078989/13105797895/sdk.json",
+              "bytes": 11087,
+              "sha256": "8b1839c38938821daf63df4d7a789ed002f2aa1cbe2f654504bfcf18d7445dd8"
+            },
+            {
+              "path": "41362078989/13105797895/summary.json",
+              "bytes": 63628,
+              "sha256": "99f76c0ad1b7cce83dd1ecc6f210b92e56a6fed7044bfdd3d56541c0b984d8d5"
+            }
+          ],
+          "copiedSubset": [
+            "contexts.json",
+            "fixture.json",
+            "sdk.json",
+            "summary.json"
+          ]
+        }
+      ]
+    },
+    {
+      "id": 41363094586,
+      "url": "https://github.com/core607/poketto/actions/runs/41363094586",
+      "scope": "PR359 scripted native eval and SDK summaries; complete archive has additional logs and fixture artifacts",
+      "artifacts": [
+        {
+          "id": 13106696163,
+          "archiveSha256": "f914a37c9c76c2e170975217ac39bce6ea14f8126d360bda2cf72d7809f116f3",
+          "files": [
+            {
+              "path": "41363094586/13106696163/contexts.json",
+              "bytes": 1503,
+              "sha256": "92270de7307269cdd5e8fee0b92023eb559680fc9763555e7cec56e45c7e4dd7"
+            },
+            {
+              "path": "41363094586/13106696163/fixture.json",
+              "bytes": 3020,
+              "sha256": "7b4f42edac3ea11a0e319d15bdeaddcd1ed77509d68f19edadf29cacac111eba"
+            },
+            {
+              "path": "41363094586/13106696163/sdk.json",
+              "bytes": 11087,
+              "sha256": "8cd604d71414a614457a8ad2aef12b980a107d943972933b39121f86082e3450"
+            },
+            {
+              "path": "41363094586/13106696163/summary.json",
+              "bytes": 63632,
+              "sha256": "19cb7ace77a34f0a58a81c72c1ecdda51a043906506fcda4a142c1fdbe59be18"
+            }
+          ],
+          "copiedSubset": [
+            "contexts.json",
+            "fixture.json",
+            "sdk.json",
+            "summary.json"
+          ]
+        }
+      ]
+    }
+  ]
+}
