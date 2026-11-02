@@ -121,8 +121,8 @@ configuration. Install the binary in a protected root-owned directory and use th
 by Sandcrab's installation reference. Create a separate unprivileged game account.
 Adjust the profile's paths, client UID/GID and account for the installation; the
 bundled application defaults to UID/GID 10001. Keep the configuration root-owned
-mode 0600 with protected ancestors. The service's unit prefix must equal its
-supervisor unit name, without `.service`, followed by `-`.
+mode 0600 with protected ancestors. Set `service.cgroup_root` to the service's
+full delegated cgroup path, as described in Sandcrab's installation reference.
 
 Each step uploads the application's entry program, the same rule runtime served
 to browsers, and bounded game input as one tar archive into a fresh session.
