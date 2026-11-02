@@ -45,9 +45,21 @@ The [first CI smoke](ci-first-smoke/smoke.json) also completed with cleanup:
 88 judged attempts passed, while its two untraced session starts took 161.649067
 and 202.289373 ms. Its [kernel trace](ci-first-smoke/cold-start-smoke.json)
 records approximately 20 ms gaps after some mount processes exit. The bounded
-host-helper wait polls without a child-exit descriptor; the proposed performance
-workstream owns the corresponding optimization. These observations do not replace
+host-helper wait polled without a child-exit descriptor; the delegated-cgroup
+decision owns the corresponding optimization. These observations do not replace
 the pending canonical measurements.
+
+The subsequent helper-wait candidate is
+`ad7cbf7218b096ad14429ceda142ddd8d075b18bfd2d44448b14f4f77a6cae9a`:
+4,170,656 static bytes with the same tools and executable inventory. Rust checks,
+176 service tests and [43 native checks](local/native5.json) passed. Its local
+[density smoke](local/density-smoke2.json) passed 88 judged attempts with cleanup,
+with cold starts of 47.198925 and 58.258623 ms. That short run overlapped consumer
+tests elsewhere on the development host and is not a stable before/after estimate.
+The later [trace](local/cold-smoke2.json) has sub-millisecond gaps from mount exits
+to the next step in all three trials; its launcher-placement interval remains
+17–20 ms. The [footprint smoke](local/footprint-smoke2.json) measured 3,338,240 bytes
+median daemon RSS. Both completed with cleanup. The 30 ms target remains unproven.
 
 ## Functional evidence
 
@@ -56,7 +68,7 @@ native isolation/lifecycle checks passed 42 checks, contexts passed 10, and dire
 and delegated-container modes passed 10 each. A separate closed-output test verifies
 timeout, cancellation and successful long-running commands. The later measured
 candidate widens bounded PID-list observations to support the configured task ceiling.
-The final local candidate `d78c28011680253bd1e28b1844774f8940a8e7f5c8036cf8c733fd1150e8061e`
+The root-fix candidate `d78c28011680253bd1e28b1844774f8940a8e7f5c8036cf8c733fd1150e8061e`
 also accepts the real hierarchy root, where the kernel omits `cgroup.type`.
 Its [read-only root check](local/hierarchy-root.json), `executorRustCheck` and
 [43 native checks](local/native4.json) passed, including cleanup. The binary size

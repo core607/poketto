@@ -351,6 +351,96 @@
       "path": "local/readiness-ubuntu24-fixed.json",
       "bytes": 11688,
       "sha256": "691d0c789a0f275f256ee1333fd49101ff271d821d76d8b74f46fc37611033fe"
+    },
+    {
+      "path": "ci-first-evals/contexts.json",
+      "bytes": 1503,
+      "sha256": "a203eb5cd498619a2e8c579d6e98b1a29f29e6a9a9923b90183d46ae365d0e48"
+    },
+    {
+      "path": "ci-first-evals/delegation.json",
+      "bytes": 1597,
+      "sha256": "b3ea9f1b903f3846df7d2419eebd022a76309ea409d44e51b63b5cf3afbde2fd"
+    },
+    {
+      "path": "ci-first-evals/events.json",
+      "bytes": 1500,
+      "sha256": "fc1f0dbef18d934056f0fcbed31a1adce6db34a0b03b73ef1b9f02f612f4821f"
+    },
+    {
+      "path": "ci-first-evals/files.json",
+      "bytes": 3957,
+      "sha256": "0409aa7a165969697f1a46c16f25d3799faa5bc1ace19168b05996ed3f94d0d8"
+    },
+    {
+      "path": "ci-first-evals/fixture.json",
+      "bytes": 3321,
+      "sha256": "45f5dd63f944e9d9b731fb14b376e5db4c95dceb00c2e84cc8d6bf5204d49d16"
+    },
+    {
+      "path": "ci-first-evals/host-calls.json",
+      "bytes": 2823,
+      "sha256": "f13f58e0c49ed7d380895f121107ef0e036aaa86334c5e9c0cea1dcbb40af784"
+    },
+    {
+      "path": "ci-first-evals/native.json",
+      "bytes": 6104,
+      "sha256": "96726b30169e976627eb15dd00b7bdb80c14099bd1f3869d2b1eff41af3a909b"
+    },
+    {
+      "path": "ci-first-evals/resources.json",
+      "bytes": 1111,
+      "sha256": "8d4df2b61e5a1db89e282242b205ed0537c321b6d0ab6f9cb5b54effc62fc989"
+    },
+    {
+      "path": "ci-first-evals/sdk.json",
+      "bytes": 11171,
+      "sha256": "a53c6112448d668eb4cc8bf5490a5f999d9b44eaf87ff42d9bf8b23521861e87"
+    },
+    {
+      "path": "ci-first-evals/summary.json",
+      "bytes": 63617,
+      "sha256": "8402d8481893014ec5d793b828b8338678b120aaad284c8af888293782638799"
+    },
+    {
+      "path": "ci-first-evals/tcp.json",
+      "bytes": 1673,
+      "sha256": "953f4f8b826a58c4ed097958236e681d2d4ff7e1c0df0d9529cf62a70c4fd9df"
+    },
+    {
+      "path": "ci-first-evals/volumes.json",
+      "bytes": 2477,
+      "sha256": "026ef45b9218bab3cd5626c977414750f0838c06bdf5b05809fe855d574d9475"
+    },
+    {
+      "path": "local/density-smoke2.attempts.jsonl",
+      "bytes": 61189,
+      "sha256": "4da7254dbf280fefd458ff5819d78df8879c721819b3a89d832af2680d9e5da2"
+    },
+    {
+      "path": "local/density-smoke2.json",
+      "bytes": 80518,
+      "sha256": "b87f65c17b0be32a87a3a2ff3964a816bc9e3f743c7b1d9b50c71c70d0192ea2"
+    },
+    {
+      "path": "local/native5.json",
+      "bytes": 6105,
+      "sha256": "4d6e0788b99c89ae0ce8f2cad2cd184fc81a74aaa007dc389b6984c0a20f8f23"
+    },
+    {
+      "path": "local/cold-smoke2.json",
+      "bytes": 23608,
+      "sha256": "8b074822357b00b47bce50a0e0e1b3842925befb8e135bcd41ccfcbb9ea314b4"
+    },
+    {
+      "path": "local/footprint-smoke2.attempts.jsonl",
+      "bytes": 439,
+      "sha256": "abbbdcbfbf2ebaac7750460aaac104a3bfbed9ff5f4cf6c9cb2f028e5dd313d0"
+    },
+    {
+      "path": "local/footprint-smoke2.json",
+      "bytes": 22655,
+      "sha256": "f56c6c2198662b2674fabf01803f781508574e8d51fd3e4e26c730e6fabcddee"
     }
   ]
 }
