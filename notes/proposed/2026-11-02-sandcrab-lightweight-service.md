@@ -157,8 +157,9 @@ processes prohibit eviction. Document lost state and move workspaces from tmpfs
 to disk. Propose other measured optimizations here before implementing them.
 
 [Control measurements](../../executor-native/evidence/sandcrab-l2-2026-11-02/local/control-latency1.json)
-expose 10 ms acceptance polling; use listener readiness without changing maintenance
-deadlines, then remeasure.
+and [startup traces](../../executor-native/evidence/sandcrab-l2-2026-11-02/41392761088/13117309206/cold-start-smoke.json)
+expose 10 ms accept/5 ms tool-verification polling. Use socket/process readiness;
+preserve validation, draining and maintenance deadlines, then remeasure.
 
 ### X: extraction by readiness
 
