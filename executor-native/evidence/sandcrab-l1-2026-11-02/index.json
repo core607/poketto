@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "scope": "Uncommitted candidate measured locally before exact-head CI. Source/binary digests in each receipt identify its scope; separate 5 GB canonical and fresh-distro readiness results are pending.",
+  "scope": "L1 local candidate acceptance, implementation-head CI and five fresh-readiness paths, plus the complete canonical 5 GB comparison. The local source was uncommitted; per-receipt digests and revisions identify scope. Capacity remains 50; first-use command/edit targets remain unmet.",
   "candidateBinarySha256": "b1952efe3ede94472a43c18489622148f253d40de5a118ec6c44cd5e90eefc8f",
   "candidateLauncherSha256": "1550d9dc651f527674e50833fb673e028b9d61d113064f55673ace47ebaace96",
   "files": [
@@ -78,5 +78,248 @@
     "javaConsumer": "40 checks PASS plus process-loss expiry; cleanup PASS",
     "games": "PASS and cleanup PASS",
     "repoCheck": "PASS"
-  }
+  },
+  "ciRuns": [
+    {
+      "id": 41371587448,
+      "url": "https://github.com/core607/poketto/actions/runs/41371587448",
+      "workflowHead": "47d58087e9a0ebb03bf0024d9eefa5a5a962dbaa",
+      "scope": "All five readiness environments completed with cleanup; target is still unmet",
+      "artifacts": [
+        {
+          "id": 13109680658,
+          "name": "readiness-debian12-41371587448-1",
+          "archiveSha256": "e500e8e0d7be8ced4fff5bc1fce2f34f15715442ec2eb3fa533502dd30833e84",
+          "files": [
+            {
+              "path": "41371587448/13109680658/readiness-debian12.json",
+              "bytes": 12421,
+              "sha256": "0d5d659d28358cda0ad300d7936ab8777fabf350a9d27359beeca66c185a0aab"
+            }
+          ]
+        },
+        {
+          "id": 13109461938,
+          "name": "readiness-ubuntu24-41371587448-1",
+          "archiveSha256": "189a8183211ffbc5529591381e83a66571b46ceb4023cf93897b0381de7cbf3a",
+          "files": [
+            {
+              "path": "41371587448/13109461938/readiness-ubuntu24.json",
+              "bytes": 12203,
+              "sha256": "c98cbdc0da83bb486d456cc6df48871936c3832b6507548188318a7b0917cda1"
+            }
+          ]
+        },
+        {
+          "id": 13109209404,
+          "name": "readiness-ubuntu22-41371587448-1",
+          "archiveSha256": "46cd897e71fcc956f56cf1aa40df66cb27415b3676f7ee78ce917c0dfa6fd15a",
+          "files": [
+            {
+              "path": "41371587448/13109209404/readiness-ubuntu22.json",
+              "bytes": 12108,
+              "sha256": "ce8a6a480f4f5f29c6b1b02ccb244cf6b9e94be9b8724729b707d54644d86717"
+            }
+          ]
+        },
+        {
+          "id": 13108489805,
+          "name": "readiness-native-ubuntu-24.04-41371587448-1",
+          "archiveSha256": "e6530e03a1f2143a90d756026404f779bd7ad8f5ad106840e00693425230b25e",
+          "files": [
+            {
+              "path": "41371587448/13108489805/readiness-native.json",
+              "bytes": 10665,
+              "sha256": "96eeecc309527a390314f0c949f19305fedfd77ab421f4b4f48bb877c4907158"
+            }
+          ]
+        },
+        {
+          "id": 13108419936,
+          "name": "readiness-native-ubuntu-22.04-41371587448-1",
+          "archiveSha256": "616bd04078ed46d76d700169edeb31926c3d18c523d6b57549009e47988f4905",
+          "files": [
+            {
+              "path": "41371587448/13108419936/readiness-native.json",
+              "bytes": 10295,
+              "sha256": "f9c8534a6c14925c5e62c79052989054fbc4ffda5fc0d516167a49fe297d65a7"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 41371587347,
+      "url": "https://github.com/core607/poketto/actions/runs/41371587347",
+      "workflowHead": "47d58087e9a0ebb03bf0024d9eefa5a5a962dbaa",
+      "scope": "Native smoke only, not a 5 GB capacity measurement despite the artifact matrix label; four collectors and cleanup completed",
+      "artifacts": [
+        {
+          "id": 13110200275,
+          "archiveSha256": "f48cc047e0f70fbc3aaa28c3397c001fd4f66b23a72e03124ee04b38a8b4efc4",
+          "files": [
+            {
+              "path": "41371587347/13110200275/cache-smoke.attempts.jsonl",
+              "bytes": 14355,
+              "sha256": "173c6b5e882cf103566a25e998a8fbdff9e68cf8e190648e199aa130ad34ef19"
+            },
+            {
+              "path": "41371587347/13110200275/cache-smoke.json",
+              "bytes": 20880,
+              "sha256": "706412094dbd6cd95ffd9728db455fe95bf8a6c9b491c858c07669b5e368c89a"
+            },
+            {
+              "path": "41371587347/13110200275/cold-start-smoke.json",
+              "bytes": 29305,
+              "sha256": "9156b29562e28acea322b66db9c4d0b26d534d443bce131dcb648c47ff979d34"
+            },
+            {
+              "path": "41371587347/13110200275/footprint-smoke.attempts.jsonl",
+              "bytes": 433,
+              "sha256": "196172445957a8ec7b5eb43346afdbf4cb27944841f4fe235d02899f54dbc435"
+            },
+            {
+              "path": "41371587347/13110200275/footprint-smoke.json",
+              "bytes": 22724,
+              "sha256": "406bae324338ab68d2f3f9c5d09dc8a2528b1997b23e8b208b70a04b5166041b"
+            },
+            {
+              "path": "41371587347/13110200275/smoke.attempts.jsonl",
+              "bytes": 60500,
+              "sha256": "633e5dea9430119815fcd065c0ea54937362ea24d653b85bd2c5e853f1d0f909"
+            },
+            {
+              "path": "41371587347/13110200275/smoke.json",
+              "bytes": 80092,
+              "sha256": "0d673844051edd905d263bf8d6a8a85f4d38c4c3b2b709dccb5aaf9e15c8d7ed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 41371587379,
+      "url": "https://github.com/core607/poketto/actions/runs/41371587379",
+      "workflowHead": "47d58087e9a0ebb03bf0024d9eefa5a5a962dbaa",
+      "scope": "Full CI PASS: 66 scripted Inspect repetitions, 21 published-SDK checks, 10 contexts checks, 42 native isolation/lifecycle checks and cleanup. Zero model tokens.",
+      "artifacts": [
+        {
+          "id": 13109324439,
+          "archiveSha256": "9ff978209f7b8705f6fb40ed466452c66237eaf21954ad769b33b2b06cf052a6",
+          "copiedSubset": "Structured receipts; complete archive (85 files) retained locally and by the linked CI artifact",
+          "files": [
+            {
+              "path": "41371587379/13109324439/summary.json",
+              "bytes": 63625,
+              "sha256": "4d08e731fd2d1e73a1ecb6ba030967be5ce175201b8bf837100f1b78a9dc309c"
+            },
+            {
+              "path": "41371587379/13109324439/sdk.json",
+              "bytes": 11087,
+              "sha256": "5f14e291b76480b4750f6978d30c03fc03cebcde93fc5b1f96916ab68820f919"
+            },
+            {
+              "path": "41371587379/13109324439/contexts.json",
+              "bytes": 1503,
+              "sha256": "52c9ef7d329e672d993ebc20b5745487ae90aebccc46ac8da723bba558ee68b6"
+            },
+            {
+              "path": "41371587379/13109324439/native.json",
+              "bytes": 5432,
+              "sha256": "c342201ea1c934b9a0c838b21eb8ec567d923000c67a1a377c332daa9d81b464"
+            },
+            {
+              "path": "41371587379/13109324439/fixture.json",
+              "bytes": 3020,
+              "sha256": "c0906975a0ac4570334ddb993b2b8449173f80198da4a6a7c6bf7f5ccb619eea"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 41371500809,
+      "url": "https://github.com/core607/poketto/actions/runs/41371500809",
+      "workflowHead": "47d58087e9a0ebb03bf0024d9eefa5a5a962dbaa",
+      "scope": "Canonical 5 decimal GB, 2 CPUs, zero swap; density, full footprint, cache comparison and three startup traces completed with cleanup",
+      "artifacts": [
+        {
+          "id": 13110363450,
+          "archiveSha256": "43755b67e9e71bdbcbc6cc35f6c6306c224296e92f50b05e690e025ecb242282",
+          "files": [
+            {
+              "path": "41371500809/13110363450/cache-smoke.attempts.jsonl",
+              "bytes": 14286,
+              "sha256": "40b89748e8e6af96a578a91c3404744ba5c5c61caa804a728205b3cce6eb1b1c"
+            },
+            {
+              "path": "41371500809/13110363450/cache-smoke.json",
+              "bytes": 20836,
+              "sha256": "5591f0962d70bb643ad564245eb981fb0fe1d9ee86f61fa81ad39ddf99602bf6"
+            },
+            {
+              "path": "41371500809/13110363450/cache.attempts.jsonl",
+              "bytes": 14531,
+              "sha256": "df298c59f72a88b463cd015a3c3cabe61868388f8cbe0d5df201579450793116"
+            },
+            {
+              "path": "41371500809/13110363450/cache.json",
+              "bytes": 21089,
+              "sha256": "dca4bc4928e9478346d49309e83fc8c33ab9fdcd2e37b4219ab827faa4dcaa23"
+            },
+            {
+              "path": "41371500809/13110363450/cold-start-smoke.json",
+              "bytes": 29167,
+              "sha256": "61b062a0089f4bbf7606fb5d81f0d2f72d219c2866ae7a3a8f2df4d5f6e758fd"
+            },
+            {
+              "path": "41371500809/13110363450/cold-start.json",
+              "bytes": 29568,
+              "sha256": "4d78466c5d1d675f9f5348d6ef00cb13d091bf606d57f96d5212594d63c87c18"
+            },
+            {
+              "path": "41371500809/13110363450/density.attempts.jsonl",
+              "bytes": 4758992,
+              "sha256": "264f6d5ff64594fd04dabbd87677a7400a5ab8b4311c8958f994a59e304815d4"
+            },
+            {
+              "path": "41371500809/13110363450/density.json",
+              "bytes": 6088321,
+              "sha256": "97d4a30e3a2b4afb270ce55828709b0f5b399cf26da7207c4146ef81e0fe6461"
+            },
+            {
+              "path": "41371500809/13110363450/footprint-smoke.attempts.jsonl",
+              "bytes": 433,
+              "sha256": "59ad2f8ca57817e9a6842d4bfcc351954f23689465fc74d9fc91ef80c4b726a5"
+            },
+            {
+              "path": "41371500809/13110363450/footprint-smoke.json",
+              "bytes": 22730,
+              "sha256": "e0a38ca38a986ec2c4c3eb1b3fadf5ace5844cb130564ba1063e19edf3330c5e"
+            },
+            {
+              "path": "41371500809/13110363450/footprint.attempts.jsonl",
+              "bytes": 26779,
+              "sha256": "c1ed07c464ad2df140d1f92be3dccb8284a3ea25cb90dba360224b2fc8e7dc05"
+            },
+            {
+              "path": "41371500809/13110363450/footprint.json",
+              "bytes": 71938,
+              "sha256": "a021bfb5ff867fe88f1ec83d2b374698b66c4650ce89e07116f8e3073b5c208c"
+            },
+            {
+              "path": "41371500809/13110363450/smoke.attempts.jsonl",
+              "bytes": 59012,
+              "sha256": "a9c162f85206609d3b450b41c631d73efb52019844109658d5bafba7506aaf05"
+            },
+            {
+              "path": "41371500809/13110363450/smoke.json",
+              "bytes": 78124,
+              "sha256": "2f0df25452e4557ec6af64c6d8bf1e8fbe0d3c35d5a8c3a93fd2dd3d84102929"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
