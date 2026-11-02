@@ -31,6 +31,7 @@ tasks.register<Exec>("executorRustCheck") {
     inputs.files(executorRustInputs)
     timeout.set(Duration.ofMinutes(10))
     commandLine("docker", "build", "--target", "rust-check",
+        "--output", "type=cacheonly",
         "--file", executorServiceSource.file("Dockerfile.tests").asFile.absolutePath,
         executorServiceSource.asFile.absolutePath)
 }

@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "scope": "Local development attempts on different recorded candidates; authoritative CI, readiness and canonical density remain pending.",
+  "files": [
+    {
+      "path": "local/contexts1.json",
+      "bytes": 604,
+      "sha256": "55447f436f23436b78b5a82f381408fba97210cdcaf68ed8d806750bcbf22eb7"
+    },
+    {
+      "path": "local/contexts2.json",
+      "bytes": 1503,
+      "sha256": "cc762afa489cdcb1f3ab8c7795dfe9a1b04991a89fcc8d08cd27dfeb6638df4a"
+    },
+    {
+      "path": "local/files1.json",
+      "bytes": 3959,
+      "sha256": "5bc18dacb0ac9ce40d0d641ced738f7ea1e81ffa9f1ac3e79f8530bf438a3050"
+    },
+    {
+      "path": "local/local-gates.json",
+      "bytes": 8514,
+      "sha256": "089924174597cfbbfd6d6b6cecfc73e33e59b1400ecda0d71e22c42053d525d5"
+    },
+    {
+      "path": "local/native1.json",
+      "bytes": 8296,
+      "sha256": "f2cb067aa26564c202066639e680c71054df333e9c1cf39132627d8d3d25faeb"
+    },
+    {
+      "path": "local/plain1.json",
+      "bytes": 1222,
+      "sha256": "50eb81062578124f13baa7d88f3c90c8a957a5c8237b0473f03f085dcbbbf51a"
+    },
+    {
+      "path": "local/plain2.json",
+      "bytes": 1752,
+      "sha256": "5239077baabe87744f0b8da02de01cf0976d6c4b7b4550c4d038cb88314a269e"
+    },
+    {
+      "path": "local/plain3.json",
+      "bytes": 2304,
+      "sha256": "2a35acce21a38fb41b7de0a9b9b01ba3298d7f76f6b45461d0c53ac5c1e04f21"
+    },
+    {
+      "path": "local/plain4.json",
+      "bytes": 2552,
+      "sha256": "c94f734f491df228b106236580b3aec5a26ea9c48db0ca9280f8596cda67b895"
+    },
+    {
+      "path": "local/rust-iteration4.json",
+      "bytes": 17652,
+      "sha256": "c2efc80b5dda8b4ee8d52e5e252c5c04afd95857177eb76e9366506f1bca9a5f"
+    },
+    {
+      "path": "local/rust-iteration5.json",
+      "bytes": 17652,
+      "sha256": "35b6535fddef6a0537a3ff1361f6bce0a15d3800c4395bdeb3a92fa4bf7dc6a3"
+    },
+    {
+      "path": "local/sdk1.json",
+      "bytes": 9752,
+      "sha256": "93d6aa599a46ef7525e67c3e4b101afb276e72719ab89f59b46958ea8c280483"
+    },
+    {
+      "path": "local/sdk2.json",
+      "bytes": 11171,
+      "sha256": "49575c092ac622ac807ffa644845e3bb7e71a926e0d90b4c304d331bf76a8173"
+    }
+  ]
+}

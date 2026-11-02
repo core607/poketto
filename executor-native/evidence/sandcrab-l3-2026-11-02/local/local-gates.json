@@ -1,0 +1,185 @@
+{
+  "scope": "Development attempts; retained log hashes are not a replacement for authoritative CI.",
+  "originalBase": "5d390024554084d4712a4d23950c57d3ac74af58",
+  "reconciledBase": "c66683df78a83f0709293b7380bbbaa2d23200e6",
+  "sourceDirty": true,
+  "iterationImage": "sha256:f5808b09c3e454375ed77db0cb24ecf41ec26a547d407883a43f4b7cba0bcae1",
+  "iterationEnvironment": "Read-only root, no network, 2 GiB RAM, two CPUs, no swap, 512 tasks; bounded tmpfs /source, /tmp and /var/lib; target on a separate host disk.",
+  "iterationCommands": [
+    "cargo fmt --all --check",
+    "cargo clippy --offline --locked --all-targets --target x86_64-unknown-linux-musl -- -D warnings",
+    "cargo clippy --offline --locked --all-targets --all-features --target x86_64-unknown-linux-musl -- -D warnings",
+    "cargo test --offline --locked --all-features --target x86_64-unknown-linux-musl",
+    "cargo build --offline --locked --release --target x86_64-unknown-linux-musl --package sandcrab"
+  ],
+  "attempts": [
+    {
+      "attempt": "core1",
+      "result": "FAIL",
+      "command": "./gradlew.bat executorRustCheck buildExecutorRust",
+      "detail": "Compilation required Debug for a test error type; no runtime result.",
+      "logBytes": 17697,
+      "logSha256": "1111e6749dddce97eb5ab3a8a8b4b16474b7a1cc12aea87d54f095304c251a8c"
+    },
+    {
+      "attempt": "core2",
+      "result": "PASS",
+      "command": "./gradlew.bat executorRustCheck buildExecutorRust",
+      "detail": "Formatting, Clippy, locked tests and static build; preliminary plain-storage implementation.",
+      "logBytes": 35921,
+      "logSha256": "f8ac66609fa3c8c67c83b63f4c7691a3ed9f877feae7c4a446701733541d8c5f"
+    },
+    {
+      "attempt": "core3",
+      "result": "PASS",
+      "command": "./gradlew.bat executorRustCheck buildExecutorRust",
+      "detail": "Adds allocated-block, hard-link and bounded-scan filesystem tests.",
+      "logBytes": 36307,
+      "logSha256": "8263f982fcce1bf647a4d7bae32a0e0d7e62b954ac60a2a21b0aef1c3832056b"
+    },
+    {
+      "attempt": "core4",
+      "result": "PASS",
+      "command": "./gradlew.bat executorRustCheck buildExecutorRust",
+      "detail": "Rejects observations whose final syscall returns after cancellation or deadline.",
+      "logBytes": 36258,
+      "logSha256": "fab3f60881fc4fcabfb8c3fcd4bdf16cf6b49c04893029f17c30f8cef9a64f08"
+    },
+    {
+      "attempt": "core5",
+      "result": "PASS",
+      "command": "./gradlew.bat executorRustCheck buildExecutorRust",
+      "detail": "Periodic per-volume accounting implementation; precedes pool and disk-session changes.",
+      "logBytes": 36528,
+      "logSha256": "2384f98e49c3a165d9e5bf0fd9382ef4e00f51db15ee5a35a96871a5d56d6e1a"
+    },
+    {
+      "attempt": "core6",
+      "result": "FAIL",
+      "command": "./gradlew.bat executorRustCheck buildExecutorRust",
+      "detail": "Docker image export returned RPC EOF; host disk exhausted and Engine returned 500. The task failed despite earlier inner check completion.",
+      "logBytes": 34022,
+      "logSha256": "1c3c3c9f36c894caedceb2a9c4c1516a8271ed3ec4ad3de59455e0436ffa3c27"
+    },
+    {
+      "attempt": "core7",
+      "result": "PASS",
+      "command": "./gradlew.bat executorRustCheck buildExecutorRust",
+      "detail": "Restored Docker and scoped unused build-cache cleanup; preliminary pool accounting, before disk sessions.",
+      "logBytes": 29682,
+      "logSha256": "b45475226f649448fc2d835e65088035afd9850fed6fd8548c5dee793b5fedd2"
+    },
+    {
+      "attempt": "core8",
+      "result": "FAIL",
+      "command": "./gradlew.bat executorRustCheck buildExecutorRust",
+      "detail": "A plain-store test returned errno 30 ReadOnlyFilesystem with 35 Sandcrab tests passing and one failing, then Docker RPC EOF. Host disk free reached zero; no new binary.",
+      "logBytes": 26791,
+      "logSha256": "eea6be22e2d4d5a061debcbd30e5e9982af4639c81519cfa10c9354229e11a03"
+    },
+    {
+      "attempt": "iteration1",
+      "result": "FAIL",
+      "command": "Prepared pinned-image iteration; commands in iterationCommands, not the official Gradle tasks",
+      "detail": "Login shell lost Cargo PATH before compilation.",
+      "logBytes": 22,
+      "logSha256": "762672c2941d50fa7defe52c43a97958144cc8c69bec3fe440efa915e5f85721"
+    },
+    {
+      "attempt": "iteration2",
+      "result": "FAIL",
+      "command": "Prepared pinned-image iteration; commands in iterationCommands, not the official Gradle tasks",
+      "detail": "Both Clippy modes pass; six legacy seed tests require writable /var/lib in the read-only fixture.",
+      "logBytes": 13686,
+      "logSha256": "d1bb6aae768bde1d1464b91228fa60a7a5eb8203fe5e81abfcac898ecb9d5b6c"
+    },
+    {
+      "attempt": "iteration3",
+      "result": "FAIL",
+      "command": "Prepared pinned-image iteration; commands in iterationCommands, not the official Gradle tasks",
+      "detail": "Both Clippy modes pass; 37 of 38 Sandcrab tests pass. The unsafe-read-mount test still used the old runtime ancestor; its fixture was corrected.",
+      "logBytes": 11978,
+      "logSha256": "ce2954d425bb2c8365d0daf1c110065f843545b9ccec08b94f20d3fb53eca84d"
+    },
+    {
+      "attempt": "iteration4",
+      "result": "PASS",
+      "command": "Prepared pinned-image iteration; commands in iterationCommands, not the official Gradle tasks",
+      "detail": "Formatting, both Clippy modes, all 141 Rust tests and release binary d462db7c pass.",
+      "logBytes": 18554,
+      "logSha256": "09c05ee27822d3ba0aaccee73e7ba03c77d09c1eace448b271e0ad10dadf8ce5"
+    },
+    {
+      "attempt": "iteration5",
+      "result": "PASS",
+      "command": "Prepared pinned-image iteration; commands in iterationCommands, not the official Gradle tasks",
+      "detail": "Formatting, both Clippy modes, all 141 Rust tests and release binary 62d18e54 pass after the snapshot-staging correction.",
+      "logBytes": 17184,
+      "logSha256": "89eb704914bf5e79b454f43a723e4b5e50275593f2ff9e2104abb4d6dff83d3b"
+    },
+    {
+      "attempt": "repo1",
+      "result": "FAIL",
+      "command": "./gradlew.bat repoCheck",
+      "detail": "Active-note word budget exceeded; later edits preserve the obligations within the existing ceiling.",
+      "logBytes": 764,
+      "logSha256": "8199cccac47b44f53f895c5fd336fc17c7829bf4f673e63de635af9521f81bac"
+    },
+    {
+      "attempt": "repo2",
+      "result": "FAIL",
+      "command": "./gradlew.bat repoCheck",
+      "detail": "Active-note word budget exceeded; later edits preserve the obligations within the existing ceiling.",
+      "logBytes": 764,
+      "logSha256": "e58dec0d42c3fa9910cdf24a10103dd2c05ad6b7e418fd95abedca6ab482a106"
+    },
+    {
+      "attempt": "repo3",
+      "result": "FAIL",
+      "command": "./gradlew.bat repoCheck",
+      "detail": "Active-note word budget exceeded; later edits preserve the obligations within the existing ceiling.",
+      "logBytes": 764,
+      "logSha256": "d1df3f063704234d108f57a50f34551b12189c68178cfbd92e83e0d133c49bec"
+    },
+    {
+      "attempt": "repo4",
+      "result": "FAIL",
+      "command": "./gradlew.bat repoCheck",
+      "detail": "Active-note word budget exceeded; later edits preserve the obligations within the existing ceiling.",
+      "logBytes": 767,
+      "logSha256": "e0f33f5ca323901bf229cce1d9bf144689bc5482bac1a7c73bbfc9dd2f8c93c8"
+    },
+    {
+      "attempt": "repo5",
+      "result": "PASS",
+      "command": "./gradlew.bat repoCheck",
+      "detail": "Markdown references, skill inventory and document budgets pass.",
+      "logBytes": 392,
+      "logSha256": "af89a4885b10934e152d7a6bda11e6c50fb1c1e0512c9565f004d59633c8896d"
+    },
+    {
+      "attempt": "repo6",
+      "result": "PASS",
+      "command": "./gradlew.bat repoCheck",
+      "detail": "Markdown references, skill inventory and document budgets pass.",
+      "logBytes": 392,
+      "logSha256": "17b827abcc1d116608a77811448536fc4eead90bb44abbab2d963ab79c7c0717"
+    },
+    {
+      "attempt": "repo7",
+      "result": "PASS",
+      "command": "./gradlew.bat repoCheck",
+      "detail": "Markdown references, skill inventory and document budgets pass.",
+      "logBytes": 389,
+      "logSha256": "9363d873eea8f778339acae375a8a97ad1a78297c144ca3c95eda5f8ec5d9bbf"
+    },
+    {
+      "attempt": "repo8",
+      "result": "PASS",
+      "command": "./gradlew.bat repoCheck",
+      "detail": "Markdown references, skill inventory and document budgets pass.",
+      "logBytes": 392,
+      "logSha256": "ad5e520e0fb25b40d6cff761b657c0c38baa694a4e55a85b041c1c00f01e0b53"
+    }
+  ]
+}

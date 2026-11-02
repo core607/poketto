@@ -1,0 +1,78 @@
+{
+  "scope": "Ordinary directories with shared metadata/data on a disposable 512 MiB ext4 image; no production data or model",
+  "binarySha256": "6bb5885e22a7c902fbd189988c16f6a9fba7f0d418dd814d1999fe53d46549f0",
+  "probeSha256": "69d4f51fe7a999b4b6b4e3e8d4a28283b338643a5ca232f9e6efd826d15a4aba",
+  "checks": [
+    {
+      "name": "plain-storage-starts-with-shared-metadata-without-enforced-quotas",
+      "result": "PASS"
+    },
+    {
+      "name": "ordinary-copy-preserves-hardlinks-and-symlinks-with-independent-content",
+      "result": "PASS"
+    },
+    {
+      "name": "oversized-plain-clone-is-removed-before-publication-with-source-preserved",
+      "result": "PASS"
+    },
+    {
+      "name": "ordinary-volumes-survive-daemon-restart",
+      "result": "PASS"
+    },
+    {
+      "name": "explicit-require-quota-refuses-the-ordinary-filesystem",
+      "result": "PASS"
+    },
+    {
+      "name": "plain-volumes-delete-and-forget-through-public-api",
+      "result": "PASS"
+    },
+    {
+      "name": "periodic-overage-pauses-background-writers-and-refuses-new-execution",
+      "result": "PASS"
+    },
+    {
+      "name": "overage-retains-read-delete-access-and-resumes-after-measured-recovery",
+      "result": "PASS"
+    },
+    {
+      "name": "aggregate-pool-limit-pauses-under-limit-volumes-and-refuses-new-growth",
+      "result": "PASS"
+    },
+    {
+      "name": "pool-deletion-restores-existing-session-and-new-volume-admission",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "volumeProbeSha256": "68bd8d1af49753bd18dadf6c4198edf3492135f7bbcee4c5b578939a0d0293a8",
+  "plainStorageProbeSha256": "5252f7eb093237b73f20211951bb83238dda587f2522b1bd4a52119a9264a278",
+  "accountingObservation": {
+    "usage": {
+      "mode": "periodic",
+      "state": "exceeded",
+      "observedAtMillis": 1793614661505,
+      "allocatedBytes": 2113536,
+      "inodes": 5,
+      "byteLimit": 2097152,
+      "inodeLimit": 256
+    },
+    "pausedFileSize": 2097152
+  },
+  "poolObservation": {
+    "usage": {
+      "mode": "periodic",
+      "state": "exceeded",
+      "observedAtMillis": 1793614666306,
+      "allocatedBytes": 9412608,
+      "inodes": 12,
+      "byteLimit": 8388608,
+      "inodeLimit": null
+    },
+    "pausedFileSizes": [
+      4784128,
+      4587520
+    ]
+  },
+  "result": "PASS"
+}
