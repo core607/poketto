@@ -1,0 +1,26 @@
+{
+  "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+  "binarySha256": "59047a9ebbe818a1a8724f7d6cb56f147678836ee8cf67cb0e9d75ec49e2ad43",
+  "probeSha256": "69d4f51fe7a999b4b6b4e3e8d4a28283b338643a5ca232f9e6efd826d15a4aba",
+  "checks": [
+    {
+      "name": "finite-timeout-cancellation-and-completion-with-closed-workload-output",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "closedOutputTimeout": {
+    "id": "4cc329a4-928e-4872-9c56-cea7f0aa1d42",
+    "serverId": "7463f1cf-1960-4526-ab59-1a8ed66d3da2",
+    "profile": "python",
+    "state": "timed_out",
+    "result": {
+      "exitCode": 137,
+      "truncated": false,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  "closedOutputCancellationSeconds": 0.019318347000080394,
+  "result": "PASS"
+}

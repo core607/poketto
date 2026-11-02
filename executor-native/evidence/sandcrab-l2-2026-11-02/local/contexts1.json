@@ -1,0 +1,30 @@
+{
+  "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+  "binarySha256": "d67944b74b9162ff95d24c2e4907c5636a51310a01aef037f31c1096ff08f885",
+  "probeSha256": "8f44170b589a75e6ed201d12abda829c995d74505ee4ab2c0b686c7b15c96f5b",
+  "checks": [
+    {
+      "name": "native-inventories-retain-active-and-terminal-identities-without-output",
+      "result": "PASS"
+    },
+    {
+      "name": "http-and-cli-shells-share-the-parent-kernel-budget",
+      "result": "PASS"
+    },
+    {
+      "name": "shell-state-and-temporary-files-are-independent-with-concurrent-shared-files",
+      "result": "PASS"
+    },
+    {
+      "name": "child-identity-inheritance-renewal-and-global-record-bounds",
+      "result": "PASS"
+    },
+    {
+      "name": "child-timeout-preserves-workspace-and-sibling-shell",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "result": "FAIL",
+  "failureType": "AssertionError"
+}
