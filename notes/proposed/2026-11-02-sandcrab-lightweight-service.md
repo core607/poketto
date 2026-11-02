@@ -156,11 +156,6 @@ save cwd and `export -p`, exit, and restore them on the next command. Background
 processes prohibit eviction. Document lost state and move workspaces from tmpfs
 to disk. Propose other measured optimizations here before implementing them.
 
-[L2 traces](../../executor-native/evidence/sandcrab-l2-2026-11-02/ci-first-smoke/cold-start-smoke.json)
-show approximately 20 ms gaps after mount exits; bounded host helpers poll without
-process-exit readiness. Use pidfds in that wait, retaining output/timeout bounds
-and rejection on unavailable observation. Re-measure cold starts before attributing a gain.
-
 ### X: extraction by readiness
 
 Extract when L1-L10 and H1-H4 have landed and CI readiness, conformance and published
