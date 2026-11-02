@@ -126,6 +126,24 @@ host_calls = false
             time.sleep(.05)
         raise AssertionError('Game account still owns descendants')
 
+    def stop_worker(self):
+        stopped = subprocess.run(['systemctl', 'stop', self.supervisor],
+                                 capture_output=True, text=True, timeout=25)
+        # --collect may remove the killed transient unit before stop reaches systemd.
+        if stopped.returncode and run(['systemctl', 'show', self.supervisor,
+                                       '-p', 'LoadState', '--value']) != 'not-found':
+            stopped.check_returncode()
+
+    def validate_job(self, path):
+        assert not path.is_symlink() and not path.parent.is_symlink() and not self.runtime.is_symlink()
+        if path.parent == self.runtime / 'helper-jobs':
+            kind, identity = path.name.split('-', 1)
+            assert kind in ('file', 'copy')
+        else:
+            assert path.parent == self.runtime / 'jobs'
+            identity = path.name
+        assert str(uuid.UUID(identity)) == identity
+
     def control(self, operation):
         if operation == 'game-await-running':
             uid = str(pwd.getpwnam(self.user).pw_uid)
@@ -137,7 +155,7 @@ host_calls = false
             raise AssertionError('The actual game process was not observed')
         if operation == 'game-restart-worker':
             run(['systemctl', 'kill', '--kill-who=main', '--signal=KILL', self.supervisor])
-            run(['systemctl', 'stop', self.supervisor])
+            self.stop_worker()
             self.no_processes()
             subprocess.run(['systemctl', 'reset-failed', self.supervisor], capture_output=True, timeout=10)
             self.start_worker()
@@ -152,23 +170,28 @@ host_calls = false
         self.listener.shutdown()
         self.listener.server_close()
         try:
-            subprocess.run(['systemctl', 'stop', self.supervisor], capture_output=True, timeout=25)
+            self.stop_worker()
             subprocess.run(['systemctl', 'reset-failed', self.supervisor], capture_output=True, timeout=10)
             if self.created_user:
                 self.no_processes()
-                jobs = self.runtime / 'jobs'
+                for procs in (Path('/sys/fs/cgroup') / self.pool.name).rglob('cgroup.procs'):
+                    assert not procs.read_text().strip(), 'Game fixture cgroup still owns processes'
                 mounts = [line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines()
                           if line.split()[4].startswith(str(self.runtime) + '/')]
-                for mounted in sorted(mounts, key=len, reverse=True):
+                for mounted in mounts:
                     path = Path(mounted)
-                    assert path.parent == jobs and not path.is_symlink()
-                    uuid.UUID(path.name)
-                    run(['umount', str(path)])
-                if jobs.exists():
-                    for job in jobs.iterdir():
-                        uuid.UUID(job.name)
-                        assert job.parent == jobs and not job.is_symlink()
-                        shutil.rmtree(job)
+                    assert not path.is_symlink()
+                    self.validate_job(path.parent if path.name == 'tmp' else path)
+                for mounted in sorted(mounts, key=len, reverse=True):
+                    run(['umount', mounted])
+                assert not any(line.split()[4].startswith(str(self.runtime) + '/')
+                               for line in Path('/proc/self/mountinfo').read_text().splitlines())
+                for directory in ('jobs', 'helper-jobs'):
+                    jobs = self.runtime / directory
+                    if jobs.exists():
+                        for job in jobs.iterdir():
+                            self.validate_job(job)
+                            shutil.rmtree(job)
                 run(['userdel', self.user])
         finally:
             self.pool.close()

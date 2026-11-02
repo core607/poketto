@@ -59,6 +59,8 @@ class Fixture(Probe):
             raise RuntimeError('Insufficient host memory outside the requested benchmark slice')
         if free < self.pool_bytes + 2 * 1024**3 or other_loads():
             raise RuntimeError('Insufficient free storage or another load controller is active')
+        if any(Path('/var/lib').glob('poketto-java-native-*')) or any(Path('/var/lib').glob('sandcrab-native-*')):
+            raise RuntimeError('Another native fixture directory is present; reconcile it before measuring')
         if call('systemctl', 'list-units', '--all', '--plain', '--no-legend', 'sandcrab-probe-*.service').stdout.strip():
             raise RuntimeError('Another native fixture is present; reconcile it before measuring')
         for program in ('systemd-run', 'mkfs.xfs', 'findmnt', 'git', 'rg', 'bash', 'python3'):
