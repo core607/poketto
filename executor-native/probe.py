@@ -54,6 +54,7 @@ def main():
                               if path.is_file() and path.name != 'manifest.sha256'}
     sys.path.insert(0, str(worker_source))
     from native_pool import NativePool
+    from native_worker_fixture import stage_worker
     from resource_pool import check_service
     token = uuid.uuid4().hex[:8]
     resource_pool = NativePool(token)
@@ -70,23 +71,17 @@ def main():
     disk_pool = root / 'copy-pool'
     game_fixture = None
     evidence = []
-    for name in ('poketto-supervisor', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'disk_pool.py', 'poketto-launch', 'bwrap', 'bwrap-notices.txt', 'bwrap-source.tar.xz', 'resource_pool.py', 'bridge.py', 'bin/poketto', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
-        (root / name).parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-        shutil.copy2(worker_source / name, root / name)
-        os.chmod(root / name, 0o555 if name.startswith('bin/') or name in ('poketto-supervisor', 'poketto-launch', 'bwrap') else 0o644)
-    (root / 'bin').chmod(0o755)
+    worker_files = stage_worker(worker_source, root)
     if args.source_layout == 'managed':
-        # Exercise the deployment selector through real systemd/SRT mounts and CLI subprocesses.
-        sources = sorted([*root.glob('*.py'), root / 'poketto-supervisor', root / 'poketto-launch',
-                          root / 'bwrap', root / 'bwrap-notices.txt', root / 'bwrap-source.tar.xz'])
-        payload = {p.relative_to(root).as_posix(): digest(p) for p in [*sources, *(root / 'bin').iterdir()]}
+        # Exercise the deployment selector through real service mounts and CLI subprocesses.
+        payload = {p.relative_to(root).as_posix(): digest(p) for p in worker_files}
         release = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         generations = root / 'releases'
         selected = generations / release
         selected.mkdir(mode=0o755, parents=True)
         generations.chmod(0o755)
         selected.chmod(0o755)
-        for source in sources:
+        for source in (p for p in worker_files if p.parent == root):
             source.rename(selected / source.name)
             if source.suffix == '.py' or source.name in ('poketto-supervisor', 'poketto-launch'):
                 source.symlink_to('releases/current/' + source.name)
