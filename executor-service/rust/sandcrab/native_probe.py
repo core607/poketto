@@ -409,6 +409,12 @@ network = "none"
         assert http(self.socket, 'POST', '/v1/sessions/' + session['id'] + '/forget', {}) == (200, {'forgotten': True})
         assert not (self.socket.parent / 'workspaces' / session['id']).exists()
 
+    def daemon_path(self, path):
+        assert path.is_relative_to(self.socket.parent)
+        daemon = call('systemctl', 'show', self.unit, '-p', 'MainPID', '--value').stdout.strip()
+        assert daemon.isdecimal() and int(daemon) > 1
+        return Path(f'/proc/{daemon}/root') / path.relative_to('/')
+
     def session_close(self, session):
         assert http(self.socket, 'POST', '/v1/sessions/' + session['id'] + '/close', {})[0] == 200
         result = self.session_wait(session, terminal=True)
@@ -429,9 +435,7 @@ network = "none"
         self.forget(request)
         request = self.submit(closed + 'open("closed-output", "w").close(); time.sleep(30)')
         marker = self.socket.parent / 'jobs' / request['id'] / 'work/closed-output'
-        daemon = call('systemctl', 'show', self.unit, '-p', 'MainPID', '--value').stdout.strip()
-        assert daemon.isdecimal() and int(daemon) > 1
-        marker = Path(f'/proc/{daemon}/root') / marker.relative_to('/')
+        marker = self.daemon_path(marker)
         deadline = time.monotonic() + 5
         while not marker.exists() and time.monotonic() < deadline:
             time.sleep(.01)

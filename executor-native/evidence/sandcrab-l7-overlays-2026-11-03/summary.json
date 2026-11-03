@@ -9,6 +9,8 @@
   "nativeOverlayChecksPassed": 7,
   "nativeTemplateChecksPassed": 9,
   "nativeFileChecksPassed": 26,
+  "nativePlainStorageChecksPassed": 12,
+  "nativeHostCallChecksPassed": 18,
   "publishedSdkChecksPassed": 21,
   "publishedSdkVersion": "1.1.0",
   "containerStartupAndCommand": "PASS",
@@ -32,8 +34,8 @@
     },
     {
       "kind": "Fault probes observed the old startup and mount boundaries",
-      "attempts": 2,
-      "resolution": "Assert clone3 refusal before readiness and read helper records through the daemon mount namespace; recover the failed fixture, then repeat affected checks"
+      "attempts": 3,
+      "resolution": "Assert clone3 refusal before readiness and inspect helper records, tmpfs devices and host-call faults in the daemon mount namespace; recover the failed fixture, then repeat affected checks"
     },
     {
       "kind": "Debian installer fixture precreated its reserved namespace",
