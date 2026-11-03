@@ -1,0 +1,295 @@
+{
+  "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+  "binarySha256": "57169e02cc2c0d431c7c354f9a670e9254ae1ac09f1d4774e7e5284c58860b36",
+  "probeSha256": "1bcb46d50966de3cc0da6932f8d08ee8a53802af49018b5bd28844a301b6648f",
+  "checks": [
+    {
+      "name": "http-sequential-reuse-body-boundary-and-declared-close",
+      "result": "PASS"
+    },
+    {
+      "name": "http-invalid-framing-closes-without-dispatch",
+      "result": "PASS"
+    },
+    {
+      "name": "http-deadline-does-not-reset-on-progress",
+      "result": "PASS"
+    },
+    {
+      "name": "http-idle-expiry-closes-without-an-unsolicited-response",
+      "result": "PASS"
+    },
+    {
+      "name": "native-inventories-retain-active-and-terminal-identities-without-output",
+      "result": "PASS"
+    },
+    {
+      "name": "independent-cli",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-outcome-survives-forget-failure",
+      "result": "PASS"
+    },
+    {
+      "name": "cli-reuses-connection-and-does-not-replay-incomplete-response",
+      "result": "PASS"
+    },
+    {
+      "name": "profile-identity-workspace-and-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "request-authority-and-profile-bounds",
+      "result": "PASS"
+    },
+    {
+      "name": "host-network-and-unix-socket-denial",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-socket-af-unix-0x1",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-socket-af-unix-0x100000001",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-socket-af-unix-0xffffffff00000001",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-io-uring-setup",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-io-uring-enter",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-io-uring-register",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-inet-creation-allowed",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-unix-socketpair-allowed",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-native-and-negative-one-syscalls-preserved",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-x32-abi-killed",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-i386-abi-killed",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-every-visible-process-filtered-including-init",
+      "result": "PASS"
+    },
+    {
+      "name": "native-seccomp-filter-descriptor-consumed-before-workload",
+      "result": "PASS"
+    },
+    {
+      "name": "exit-timeout-and-output-bounds",
+      "result": "PASS"
+    },
+    {
+      "name": "finite-timeout-cancellation-and-completion-with-closed-workload-output",
+      "result": "PASS"
+    },
+    {
+      "name": "workspace-quota-and-descendant-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "admission-and-cancellation",
+      "result": "PASS"
+    },
+    {
+      "name": "bounded-results-and-release",
+      "result": "PASS"
+    },
+    {
+      "name": "peer-refusal-before-request",
+      "result": "PASS"
+    },
+    {
+      "name": "abrupt-loss-cleanup-and-stale-epoch",
+      "result": "PASS"
+    },
+    {
+      "name": "session-build-repair-state-isolation-and-descendant-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "session-cli-reconnects-and-explicit-lifecycle",
+      "result": "PASS"
+    },
+    {
+      "name": "session-shared-admission-exclusive-command-and-replay",
+      "result": "PASS"
+    },
+    {
+      "name": "session-results-share-the-global-retention-bound",
+      "result": "PASS"
+    },
+    {
+      "name": "session-sigkill-and-exit-137-are-not-memory-evidence",
+      "result": "PASS"
+    },
+    {
+      "name": "session-timeout-output-memory-and-shell-exit-end-the-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-renewal-and-expiry-cancel-an-active-command",
+      "result": "PASS"
+    },
+    {
+      "name": "session-command-cancellation-closes-the-whole-session",
+      "result": "PASS"
+    },
+    {
+      "name": "session-supervisor-loss-cleans-units-and-invalidates-the-epoch",
+      "result": "PASS"
+    },
+    {
+      "name": "session-unconfirmed-cleanup-holds-capacity-until-restart",
+      "result": "PASS"
+    },
+    {
+      "name": "cancellation-before-workload-setup",
+      "result": "PASS"
+    },
+    {
+      "name": "session-close-before-workload-setup",
+      "result": "PASS"
+    },
+    {
+      "name": "failed-exec-exits-127-without-workload-or-leaked-admission",
+      "result": "PASS"
+    },
+    {
+      "name": "denied-clone3-has-no-process-fallback-and-releases-contained-admission",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "slowRequestDeadlineSeconds": 5.004,
+  "idleDisconnectSeconds": 5.017,
+  "seccompProbeSha256": "daceef579f6395497d139d94d82f48242335d66e127e4b8dfeb8a743da8a9527",
+  "nativeSeccomp": {
+    "checks": [
+      "socket-af-unix-0x1",
+      "socket-af-unix-0x100000001",
+      "socket-af-unix-0xffffffff00000001",
+      "io-uring-setup",
+      "io-uring-enter",
+      "io-uring-register",
+      "inet-creation-allowed",
+      "unix-socketpair-allowed",
+      "native-and-negative-one-syscalls-preserved",
+      "x32-abi-killed",
+      "i386-abi-killed",
+      "every-visible-process-filtered-including-init",
+      "filter-descriptor-consumed-before-workload"
+    ],
+    "visiblePids": [
+      1,
+      2
+    ]
+  },
+  "closedOutputTimeout": {
+    "id": "9094b543-075a-4451-bc27-2fae060f15c4",
+    "serverId": "c73d94af-37be-4e77-bae6-ac2cb2193314",
+    "profile": "python",
+    "state": "timed_out",
+    "result": {
+      "exitCode": 137,
+      "truncated": false,
+      "stdout": "",
+      "stderr": ""
+    }
+  },
+  "closedOutputCancellationSeconds": 0.050848798000060924,
+  "startupCancellation": {
+    "boundary": "kernel exec event before trusted setup; placement observed at birth",
+    "initialPopulated": 1,
+    "birthMembership": "0::/sandcrab.slice/sandcrab-probe.slice/sandcrab-probe-04d1328ef8.slice/sandcrab-probe-04d1328ef8.service/sandcrab-2ca79009312a998145f866e9b57bfa73ae2a5fdf3b8e8d8e20bf26026613236c/workloads/run-398d92d5-7881-4cd6-ad27-412d15491d47\n",
+    "execFds": [
+      "0",
+      "1",
+      "2"
+    ],
+    "birthCaughtSignals": "0000000000000000",
+    "ignoredSignals": "0000000000000000",
+    "inheritedFdProbe": true,
+    "ownedLauncherReaped": true,
+    "seconds": 0.11,
+    "state": "cancelled",
+    "limitSeconds": 3
+  },
+  "sessionStartupCancellation": {
+    "boundary": "kernel exec event before trusted setup; placement observed at birth",
+    "initialPopulated": 1,
+    "birthMembership": "0::/sandcrab.slice/sandcrab-probe.slice/sandcrab-probe-04d1328ef8.slice/sandcrab-probe-04d1328ef8.service/sandcrab-2ca79009312a998145f866e9b57bfa73ae2a5fdf3b8e8d8e20bf26026613236c/workloads/session-7a8691fd-f65e-4d33-ab11-d58585ac6f2f/run-7a8691fd-f65e-4d33-ab11-d58585ac6f2f\n",
+    "execFds": [
+      "0",
+      "1",
+      "2"
+    ],
+    "birthCaughtSignals": "0000000000000000",
+    "ignoredSignals": "0000000000000000",
+    "inheritedFdProbe": true,
+    "ownedLauncherReaped": true,
+    "seconds": 0.06,
+    "state": "closed",
+    "limitSeconds": 3
+  },
+  "failedExec": {
+    "observed": {
+      "pid": 4281,
+      "phase": "exec-failure",
+      "exitStatus": 32512,
+      "birthMembership": "0::/sandcrab.slice/sandcrab-probe.slice/sandcrab-probe-04d1328ef8.slice/sandcrab-probe-04d1328ef8.service/sandcrab-2ca79009312a998145f866e9b57bfa73ae2a5fdf3b8e8d8e20bf26026613236c/workloads/run-800f17f4-3b5c-4c03-babd-5040f3fae305\n"
+    },
+    "result": {
+      "id": "800f17f4-3b5c-4c03-babd-5040f3fae305",
+      "serverId": "f96a8b17-2da1-487c-bbae-5c0fafca957d",
+      "profile": "python",
+      "state": "failed",
+      "result": {
+        "exitCode": 127,
+        "truncated": false,
+        "stdout": "",
+        "stderr": ""
+      }
+    },
+    "launcherReaped": true
+  },
+  "deniedClone3": {
+    "id": "604ac2c1-4564-4b66-806d-1882605663b4",
+    "serverId": "138bfa51-d4b4-4b2f-a8db-68b3eadf711e",
+    "profile": "python",
+    "state": "failed",
+    "result": {
+      "code": "RUN_FAILED"
+    }
+  },
+  "result": "PASS",
+  "faultControllerLogs": {
+    "trace-4202.log": "",
+    "trace-4327.log": "",
+    "trace-4304.log": ""
+  }
+}

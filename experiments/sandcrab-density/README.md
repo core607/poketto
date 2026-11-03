@@ -196,8 +196,7 @@ The trace records session cgroup creation, placement in its leaf, trusted launch
 exec, sandbox bwrap exec and bash exec. Placement is observed from the child's
 cgroup at the kernel fork event, or a later cgroup attachment for migration-based
 launches. It follows only the measured session tree, excluding volume validation
-helpers. It distinguishes bwrap's version check from the actual sandbox launch
-by following the verified launcher's PID through its
+helpers. It identifies the actual sandbox launch by following the verified launcher's PID through its
 `exec` replacement, as implemented by
 [`sandcrab-launch`](../../executor-service/rust/sandcrab-launch/src/lib.rs).
 A process exit invalidates that identity. No user argv pointers are read.

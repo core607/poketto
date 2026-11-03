@@ -28,33 +28,35 @@ def launch_command(launcher):
     return ['/usr/bin/python3', '-I', str(launcher)] if launcher.suffix == '.py' else [str(launcher)]
 
 
-def integrity_checks(root, tools, launcher, record, user, verify_tools):
-    copied = root / 'integrity-tools'
-    target = copied / 'extracted/usr/bin/bwrap'
-    target.parent.mkdir(parents=True, mode=0o755, exist_ok=True)
-    shutil.copy2(tools / 'extracted/usr/bin/bwrap', target)
-    verify_tools(copied)
-    invalid_record = root / 'invalid-tools.json'
-    invalid_record.write_text(json.dumps({**json.loads(record.read_text()), 'tools': str(copied)}))
-    invalid_record.chmod(0o444)
+def integrity_checks(root, tools, launcher, record, user, verify_launch):
+    copied = root / 'integrity-release'
+    copied.mkdir(mode=0o755)
+    candidate = copied / launcher.name
+    shutil.copy2(launcher, candidate)
+    shutil.copytree(launcher.parent / 'bin', copied / 'bin')
+    target = copied / 'bwrap'
+    shutil.copy2(launcher.parent / 'bwrap', target)
+    verify_launch(candidate, tools)
     for name, expected in (
             ('writable-bwrap', 'root-owned and not writable'),
             ('non-executable-bwrap', 'not executable'),
-            ('old-bwrap', 'bubblewrap 0.6.1 or newer')):
+            ('checksum-bwrap', 'checksum mismatch')):
         original = target.read_bytes()
         if name == 'writable-bwrap':
             target.chmod(0o777)
         elif name == 'non-executable-bwrap':
             target.chmod(0o644)
         else:
-            target.write_text('#!/bin/sh\nprintf "bubblewrap 0.5.0\\n"\n')
+            changed = bytearray(original)
+            changed[-1] ^= 1
+            target.write_bytes(changed)
         try:
             try:
-                verify_tools(copied)
-                raise AssertionError('Supervisor tool validation accepted ' + name)
+                verify_launch(candidate, tools)
+                raise AssertionError('Supervisor helper validation accepted ' + name)
             except ValueError as error:
                 assert expected in str(error)
-            attempt = subprocess.run(['runuser', '-u', user, '--', *launch_command(launcher), str(invalid_record)],
+            attempt = subprocess.run(['runuser', '-u', user, '--', str(candidate), str(record)],
                                      capture_output=True, text=True, timeout=10)
             assert attempt.returncode != 0 and expected in attempt.stderr, attempt.stderr
             print(json.dumps({'integrity': name, 'supervisorAndLauncher': 'PASS'}), flush=True)
@@ -197,7 +199,7 @@ def main():
         record.write_text(json.dumps({'mode': 'shell', 'root': str(lease),
                                      'tools': str(tools), 'settings': str(settings)}))
         record.chmod(0o444)
-        integrity_checks(root, tools, launcher, record, user, verify_tools)
+        integrity_checks(root, tools, launcher, record, user, verify_launch)
         # Both launchers get identical command bytes, grants, quotas and filesystem contents.
         for iteration in range(args.iterations):
             for label, program in launchers:

@@ -18,7 +18,7 @@ Build the runtime with Java 26:
 `build/executor-native/runtime` contains compiled classes, game resources, resolved JARs and a SHA-256 manifest;
 the probe verifies every manifest entry and rejects unlisted files. Copy that directory, `probe.py`,
 `rejected_peer.py` and `build/executor-service/worker` to isolated host staging. Preserve the latter's
-root-level `poketto-supervisor` and `poketto-launch`, `bin/` directory and executable permissions. Never stage operator settings or credentials.
+root-level executables, bundled `bwrap` with its source/notices, `bin/` directory and executable permissions. Never stage operator settings or credentials.
 
 For `--scenario games`, stage `game_fixture.py` beside `probe.py`. Add `sandcrab`
 and `game-example.mjs` from `./gradlew stageGameWorker` to the worker sources.

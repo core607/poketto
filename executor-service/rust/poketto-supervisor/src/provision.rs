@@ -148,7 +148,7 @@ impl Factory {
         config.launcher = config.launcher.canonicalize()?;
         sandcrab_launch::trusted_executable(&config.launcher).map_err(io::Error::other)?;
         sandcrab_core::fs::protected_directory(&config.tools_root)?;
-        sandcrab_launch::verify_tools(&config.tools_root).map_err(io::Error::other)?;
+        sandcrab_launch::verify_bundled_bwrap(&config.launcher).map_err(io::Error::other)?;
         let programs = config.launcher.parent().ok_or_else(invalid)?.join("bin");
         sandcrab_launch::verify_programs(&programs, &PROGRAMS).map_err(io::Error::other)?;
         sandcrab_core::fs::protected_directory(config.export_root.parent().ok_or_else(invalid)?)?;

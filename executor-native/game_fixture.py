@@ -35,8 +35,12 @@ class GameFixture:
         assert self.user != repository_user and self.pool.name != repository_slice
         self.assets = root / 'game-assets'
         self.assets.mkdir(mode=0o755)
-        shutil.copy2(source / 'sandcrab', root / 'sandcrab')
-        (root / 'sandcrab').chmod(0o755)
+        programs = root / 'game-programs'
+        programs.mkdir(mode=0o755)
+        for name in ('sandcrab', 'bwrap', 'bwrap-notices.txt', 'bwrap-source.tar.xz'):
+            shutil.copy2(source / name, programs / name)
+            (programs / name).chmod(0o755 if name in ('sandcrab', 'bwrap') else 0o644)
+        self.binary = programs / 'sandcrab'
         for name in ('game-example.mjs',):
             shutil.copy2(source / name, self.assets / name)
             (self.assets / name).chmod(0o644)
@@ -90,7 +94,7 @@ host_calls = false
         sentinel.chmod(0o444)
         self.config_path.write_text(self.config)
         self.config_path.chmod(0o600)
-        run([str(self.root / 'sandcrab'), 'check', '--config', str(self.config_path)])
+        run([str(self.binary), 'check', '--config', str(self.config_path)])
         self.start_worker()
         return {'gameSocket': str(self.socket), 'gameHostCredential': str(private),
                 'gameOwnerFile': str(owner / 'owner.lock'),
@@ -103,7 +107,7 @@ host_calls = false
             assert time.monotonic() < deadline, 'previous game fixture unit was not collected'
             time.sleep(.05)
         self.socket.unlink(missing_ok=True)
-        supervisor = str(self.root / 'sandcrab')
+        supervisor = str(self.binary)
         run(['systemd-run', '--quiet', '--collect', '--unit', self.supervisor, '--slice', self.pool.name,
              '-p', 'User=root', '-p', 'UMask=0077', '-p', 'Delegate=yes', '-p', 'MemorySwapMax=0',
              '-p', 'TasksMax=infinity', supervisor, 'serve', '--config', str(self.config_path)])

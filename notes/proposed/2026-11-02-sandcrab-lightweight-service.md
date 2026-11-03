@@ -74,10 +74,10 @@ SDK conformance while changing the implementation.
    Configured XFS quotas are enforced; only `require_quota = true` demands enforcement.
    Otherwise periodic accounting reports usage and refuses growth with a soft bound.
    Pool usage sums complete volume observations; rescans duplicate work and impose aggregate scan limits.
-4. L4: bundled bwrap. Include a pinned static bwrap version at least 0.9 in
-   releases, use it by default and verify its checksum. Publish its source and
-   version and satisfy LGPL obligations. This supplies L7's overlay support on
-   Ubuntu 22.04 instead of depending on its older distribution package.
+4. L4 implemented: the [static helper bundle](../../executor-service/rust/sandcrab-launch/bwrap/README.md)
+   pins bwrap above 0.9, accompanies it with source/version/notices, and checks its
+   checksum by default. Release ownership supplies L7's overlay-capable helper
+   without depending on Ubuntu 22.04's older distribution package.
 5. L5: installation and diagnosis. `sandcrab install` creates the execution
    user, delegated slice/unit, working `default` profile with read-only host `/usr`,
    python3, bash and network none, plus a token file for loopback HTTP. `--dry-run`

@@ -26,9 +26,9 @@ The containment contract is:
 
 ### Tool integrity and delivery
 
-Repository supervisors validate bubblewrap's minimum version before serving; unprivileged launchers repeat validation per execution. Binaries and ancestors must be root-owned, nonsymlink and unwritable by other accounts. Supervisor cleanup precedes validation, including with damaged tools.
+Supervisors and unprivileged launchers verify the [bundled helper's](../../executor-service/rust/sandcrab-launch/bwrap/README.md) checksum before serving and per execution. Binaries and ancestors remain root-owned, nonsymlink and unwritable by other accounts. Cleanup precedes validation, including with damaged tools.
 
-[Coordinated delivery](2026-10-19-coordinated-worker-delivery.md) preserves operator tools/configuration and restores the previous source generation after failed startup. Acceptance requires a post-deployment read-only MCP sandbox command. Tool provisioning/upgrades remain explicit operator work.
+[Coordinated delivery](2026-10-19-coordinated-worker-delivery.md) binds the helper to the launcher's immutable generation, preserving operator workload tools/configuration and restoring the previous generation after failed startup. Acceptance requires a post-deployment read-only MCP sandbox command. Workload-tool upgrades remain explicit operator work.
 
 ### Resource evidence
 

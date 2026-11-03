@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "scope": "Retained L4 local candidates, prototypes, failures and native/consumer acceptance; no final-head CI or canonical capacity claim.",
+  "files": [
+    {
+      "path": "local/candidate1.json",
+      "bytes": 5644,
+      "sha256": "626d49d763006338bf47515756b2c6289c8c50bb72539037e841476b54efe650"
+    },
+    {
+      "path": "local/footprint-smoke1.json",
+      "bytes": 23006,
+      "sha256": "b6e7834561a41b5b73aa124f4c6e5cf4d74ee5ce0e9935f71863fa7f16fe8947"
+    },
+    {
+      "path": "local/helper-comparison.json",
+      "bytes": 775,
+      "sha256": "bbcf1ea27683cc3389f0a7b300cf034d64be986a389d5bab5f26a73f796e4969"
+    },
+    {
+      "path": "local/java-games1.json",
+      "bytes": 512,
+      "sha256": "0828766e15a89102be1c6334677511864710bd95b7b2fa70d2de5c47361ccdaf"
+    },
+    {
+      "path": "local/java-games2.json",
+      "bytes": 3546,
+      "sha256": "482f2af0796185b23694fddfb57c454f8c772830ac4d9670434149726d0ae83c"
+    },
+    {
+      "path": "local/java-games3.json",
+      "bytes": 3549,
+      "sha256": "15e8539d9bf53293c0513838a540cedda2af87f42af7d8082f0ab49c6c686ead"
+    },
+    {
+      "path": "local/launcher1.json",
+      "bytes": 12678,
+      "sha256": "afd5e6fbd69cb41461966101ab366369288b05514250e2c9be128ec2d7e93aef"
+    },
+    {
+      "path": "local/local-gates.json",
+      "bytes": 5394,
+      "sha256": "7f59dd6ee1a55ffc20b8f42afa328ec8af17f93cf7aac8a2d97dbad50eb0a65a"
+    },
+    {
+      "path": "local/native1.json",
+      "bytes": 8732,
+      "sha256": "8b1dc1fd4c1c1f0e10f1813f2c9b13396f3ca6f4d5e27cbc662c80700893568c"
+    },
+    {
+      "path": "local/prototype-native1.json",
+      "bytes": 856,
+      "sha256": "09fe16f1c63ca53e7ec39dc297874bd453e811b3de373bde699fbc3e989ada60"
+    },
+    {
+      "path": "local/prototype-native2.json",
+      "bytes": 8297,
+      "sha256": "509dd666740768bc6e450f2efd21b1baf983e6b1a91841186d9e13d1ad9a7a3c"
+    },
+    {
+      "path": "local/prototype-startup1.json",
+      "bytes": 1055,
+      "sha256": "1c602a5f114b9a91ce317d2404723c15a256c1d18ef017a239759c77c93e2c64"
+    },
+    {
+      "path": "local/sdk1.json",
+      "bytes": 11281,
+      "sha256": "a1d77d9fd5ce8fd2889aa025b8759747e62117c80b12e6aae67aa69fc41bd258"
+    }
+  ]
+}

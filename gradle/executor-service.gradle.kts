@@ -64,6 +64,7 @@ tasks.register<Sync>("stageExecutorWorker") {
     }
     from(executorBinaries.map { it.file("poketto-supervisor") })
     from(executorBinaries.map { it.file("poketto-launch") })
+    from(executorBinaries) { include("bwrap", "bwrap-notices.txt", "bwrap-source.tar.xz") }
     into(executorServiceBuild.map { it.dir("worker") })
 }
 
@@ -72,6 +73,7 @@ tasks.register<Sync>("stageGameWorker") {
     description = "Stage Sandcrab, the game profile and a synthetic example for native acceptance."
     dependsOn(buildExecutorRust)
     from(executorBinaries.map { it.file("sandcrab") })
+    from(executorBinaries) { include("bwrap", "bwrap-notices.txt", "bwrap-source.tar.xz") }
     from(executorServiceSource) {
         include("game-config.example.toml", "sandcrab-games.service", "pokettogames.slice")
     }
@@ -86,11 +88,12 @@ val stageExecutorServiceTests = tasks.register<Sync>("stageExecutorServiceTests"
         exclude("rust/target/**", "**/__pycache__/**")
     }
     from(executorBinaries) {
-        include("sandcrab", "poketto", "poketto-shell", "poketto-syncfs")
+        include("sandcrab", "bwrap", "poketto", "poketto-shell", "poketto-syncfs")
         into("bin")
     }
     from(executorBinaries.map { it.file("poketto-supervisor") })
     from(executorBinaries.map { it.file("poketto-launch") })
+    from(executorBinaries.map { it.file("bwrap") })
     from(executorSupervisorFixture)
     into(executorServiceBuild.map { it.dir("source") })
 }

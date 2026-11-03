@@ -48,7 +48,11 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: density-binary-${{ github.run_id }}-${{ github.run_attempt }}
-          path: build/executor-service/bin/sandcrab
+          path: |
+            build/executor-service/bin/sandcrab
+            build/executor-service/bin/bwrap
+            build/executor-service/bin/bwrap-notices.txt
+            build/executor-service/bin/bwrap-source.tar.xz
           if-no-files-found: error
           retention-days: 14
 

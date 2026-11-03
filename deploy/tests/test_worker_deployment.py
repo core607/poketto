@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from worker_release import (BINARIES, LAUNCHER, PYTHON_LAUNCHER, DeploymentError, PAYLOAD, SOURCES, WorkerRelease,
+from worker_release import (BINARIES, HELPER_SOURCES, LAUNCHER, PYTHON_LAUNCHER, DeploymentError, PAYLOAD, SOURCES, WorkerRelease,
                             read_bundle, sha, validate_config)
 
 
@@ -32,6 +32,8 @@ def bundle(directory, value="new"):
     for name in SOURCES:
         (directory / name).write_text("VALUE = " + repr(value) + "\n")
     program(directory, value)
+    for name in HELPER_SOURCES:
+        (directory / name).write_bytes(value.encode())
     (directory / "revision").write_text(REVISION + "\n")
     checksums(directory)
 
@@ -139,7 +141,7 @@ class WorkerDeploymentTests(unittest.TestCase):
         self.worker.verify(retry)
 
     def test_native_generation_retains_obsolete_helpers_on_rollback(self):
-        old = {name: (self.root / name).read_bytes() for name in SOURCES | BINARIES}
+        old = {name: (self.root / name).read_bytes() for name in SOURCES | BINARIES if name != "bwrap"}
         old["cli.py"] = b"VALUE = 'previous Python CLI'\n"
         old["requirements.txt"] = b"example==1.0\n"
         previous = self.worker._stage(old)
@@ -154,12 +156,15 @@ class WorkerDeploymentTests(unittest.TestCase):
         with self.assertRaisesRegex(DeploymentError, "previous sources restored"):
             self.worker.install(plan)
         self.assertEqual(previous, self.worker._selected())
+        self.assertFalse((self.worker.store / previous / "bwrap").exists())
         self.assertEqual(old["cli.py"], (self.root / "cli.py").read_bytes())
         self.assertTrue((self.worker.store / previous / "poketto-supervisor").is_file())
         self.worker.install(plan)
         self.worker.verify(plan)
         selected = (self.root / "poketto-supervisor").resolve().parent
         self.assertEqual((self.image / "bin/poketto").read_bytes(), (selected / "bin/poketto").read_bytes())
+        for name in HELPER_SOURCES | {"bwrap"}:
+            self.assertEqual((self.image / name).read_bytes(), (selected / name).read_bytes())
         self.assertFalse((selected / "cli.py").exists())
         self.assertEqual(0o555, (selected / "bin/poketto").stat().st_mode & 0o777)
 

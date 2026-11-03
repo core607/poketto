@@ -1,0 +1,161 @@
+{
+  "measurements": [
+    {
+      "path": "direct",
+      "iteration": 0,
+      "startupCpuUsec": 5608,
+      "memoryBytes": 3497984,
+      "idleTasks": 4,
+      "readyMs": 31,
+      "commandMs": 2
+    },
+    {
+      "path": "direct",
+      "iteration": 1,
+      "startupCpuUsec": 6917,
+      "memoryBytes": 1740800,
+      "idleTasks": 4,
+      "readyMs": 8,
+      "commandMs": 0
+    },
+    {
+      "path": "direct",
+      "iteration": 2,
+      "startupCpuUsec": 5035,
+      "memoryBytes": 1753088,
+      "idleTasks": 4,
+      "readyMs": 21,
+      "commandMs": 0
+    }
+  ],
+  "medians": {
+    "direct": {
+      "startupCpuUsec": 5608,
+      "memoryBytes": 1753088,
+      "idleTasks": 4,
+      "readyMs": 21
+    }
+  },
+  "snapshots": {
+    "direct": {
+      "assertions": [
+        "host-read-denied:/etc/passwd",
+        "host-read-denied:/root",
+        "host-read-denied:/home",
+        "host-read-denied:/srv",
+        "host-read-denied:$FIXTURE/host-canary",
+        "host-read-denied:$FIXTURE/sessions",
+        "host-sysfs-hidden",
+        "read-mount-readonly:$TOOLS",
+        "read-grant-not-writable:$TOOLS",
+        "read-mount-readonly:$FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bootstrap",
+        "read-grant-not-writable:$FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bootstrap",
+        "read-mount-readonly:$FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/responses",
+        "read-grant-not-writable:$FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/responses",
+        "read-mount-readonly:/usr",
+        "read-grant-not-writable:/usr",
+        "read-mount-readonly:/",
+        "read-grant-not-writable:/",
+        "write-mount-writable:$FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/work",
+        "write-grant:$FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/work",
+        "write-mount-writable:$FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/home",
+        "write-grant:$FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/home",
+        "write-mount-writable:$FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/requests",
+        "write-grant:$FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/requests",
+        "write-mount-writable:/tmp",
+        "write-grant:/tmp",
+        "unix-socket-blocked",
+        "io-uring-blocked:425",
+        "io-uring-blocked:426",
+        "io-uring-blocked:427",
+        "network-blocked:1.1.1.1",
+        "network-blocked:127.0.0.1",
+        "capabilities-empty",
+        "no-new-privileges",
+        "seccomp-active",
+        "unprivileged-uid",
+        "outer-processes-hidden",
+        "namespace-init-filtered",
+        "pid-one-trace-denied"
+      ],
+      "security": {
+        "CapInh": "0000000000000000",
+        "CapPrm": "0000000000000000",
+        "CapEff": "0000000000000000",
+        "CapBnd": "0000000000000000",
+        "CapAmb": "0000000000000000",
+        "NoNewPrivs": "1",
+        "Seccomp": "2"
+      },
+      "processes": [
+        {
+          "pid": 1,
+          "comm": "bwrap"
+        },
+        {
+          "pid": 2,
+          "comm": "poketto-shell"
+        },
+        {
+          "pid": 3,
+          "comm": "bash"
+        },
+        {
+          "pid": 4,
+          "comm": "python3"
+        }
+      ],
+      "environmentNames": [
+        "GIT_CONFIG_GLOBAL",
+        "GIT_CONFIG_NOSYSTEM",
+        "HOME",
+        "LC_CTYPE",
+        "PATH",
+        "POKETTO_BRIDGE",
+        "POKETTO_EXECUTION_ID",
+        "PWD",
+        "SANDBOX_RUNTIME",
+        "SHLVL",
+        "TMPDIR",
+        "_"
+      ],
+      "temporaryDirectory": "/tmp",
+      "mounts": [
+        "507 386 0:97 /newroot / ro,nosuid,nodev,relatime - tmpfs tmpfs rw,uid=997,gid=997",
+        "525 507 0:92 /usr /usr ro,nosuid,nodev,relatime master:35 - overlay overlay rw,lowerdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1065/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1009/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1005/fs,upperdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/fs,workdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/work",
+        "526 507 0:92 /etc/ld.so.cache /etc/ld.so.cache ro,nosuid,nodev,relatime master:35 - overlay overlay rw,lowerdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1065/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1009/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1005/fs,upperdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/fs,workdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/work",
+        "527 507 0:92 $TOOLS $TOOLS ro,nosuid,nodev,relatime master:60 - overlay overlay rw,lowerdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1065/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1009/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1005/fs,upperdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/fs,workdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/work",
+        "528 507 0:92 $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bootstrap $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bootstrap ro,nosuid,nodev,relatime master:59 - overlay overlay rw,lowerdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1065/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1009/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1005/fs,upperdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/fs,workdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/work",
+        "529 507 0:92 $PROGRAMS $PROGRAMS ro,nosuid,nodev,relatime master:35 - overlay overlay rw,lowerdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1065/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1009/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1005/fs,upperdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/fs,workdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/work",
+        "530 507 0:92 $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/lock $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/lock ro,nosuid,nodev,relatime master:59 - overlay overlay rw,lowerdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1065/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1009/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1005/fs,upperdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/fs,workdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/work",
+        "531 507 0:92 $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/state $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/state ro,nosuid,nodev,relatime master:59 - overlay overlay rw,lowerdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1065/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1009/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1005/fs,upperdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/fs,workdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/work",
+        "532 507 0:92 $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/responses $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/responses ro,nosuid,nodev,relatime master:59 - overlay overlay rw,lowerdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1065/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1009/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1005/fs,upperdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/fs,workdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/work",
+        "533 507 0:92 $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/work $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/work rw,nosuid,nodev,relatime master:59 - overlay overlay rw,lowerdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1065/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1009/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1005/fs,upperdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/fs,workdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/work",
+        "534 507 0:92 $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/home $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/home rw,nosuid,nodev,relatime master:59 - overlay overlay rw,lowerdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1065/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1009/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1005/fs,upperdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/fs,workdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/work",
+        "535 507 0:92 $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/requests $FIXTURE/sessions/0b4c60cd-942e-4215-8c87-f66c2d5291e0/bridge/requests rw,nosuid,nodev,relatime master:59 - overlay overlay rw,lowerdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1065/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1009/fs:/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1005/fs,upperdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/fs,workdir=/var/lib/desktop-containerd/daemon/io.containerd.snapshotter.v1.overlayfs/snapshots/1066/work",
+        "536 507 0:96 / /tmp rw,nosuid,nodev master:56 - tmpfs tmpfs rw,size=8192k,nr_inodes=1024",
+        "537 507 0:98 / /dev rw,nosuid,nodev,relatime - tmpfs tmpfs rw,mode=755,uid=997,gid=997",
+        "538 537 0:102 /null /dev/null rw,nosuid master:37 - tmpfs tmpfs rw,size=65536k,mode=755",
+        "539 537 0:102 /zero /dev/zero rw,nosuid master:37 - tmpfs tmpfs rw,size=65536k,mode=755",
+        "540 537 0:102 /full /dev/full rw,nosuid master:37 - tmpfs tmpfs rw,size=65536k,mode=755",
+        "541 537 0:102 /random /dev/random rw,nosuid master:37 - tmpfs tmpfs rw,size=65536k,mode=755",
+        "542 537 0:102 /urandom /dev/urandom rw,nosuid master:37 - tmpfs tmpfs rw,size=65536k,mode=755",
+        "543 537 0:102 /tty /dev/tty rw,nosuid master:37 - tmpfs tmpfs rw,size=65536k,mode=755",
+        "544 537 0:100 / /dev/pts rw,nosuid,noexec,relatime - devpts devpts rw,mode=620,ptmxmode=666",
+        "545 507 0:108 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw"
+      ]
+    }
+  },
+  "sourceHashes": {
+    "direct": "6c53817b42a5cd3330cc85eeedf171bb577975f46a4e5d3351ceb36bac5770bf"
+  },
+  "programHashes": {
+    "poketto": "ea855486448055f9909bf1d16d56d9c80b811553a9f6b2e323c4810db4f434b9",
+    "poketto-shell": "63e0e7651173e133d2838f4ea9e5acb0e40d1382c5ab6180f755b6c928eb17fb",
+    "poketto-syncfs": "64702e60ece57610d994ef4501ee48b3ca0d3b5a7d64d68d1fdcf385b3708233"
+  },
+  "referenceDriverSha256": null,
+  "probeSha256": "344ea9d416361703ec62da210f2873590c0ae0e7ed39fb7b2b8f53d8d0da685b",
+  "snapshotSha256": "141b5d99c3e80479ccf722ac9efc97cbb805ee40fc8bac7240aebdb95549892e",
+  "scope": "Serial fresh shell true and idle cgroup charges; 50 percent CPU quota; not HTTP capacity."
+}

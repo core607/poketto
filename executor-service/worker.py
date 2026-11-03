@@ -1315,7 +1315,7 @@ class SystemdBackend:
                 '-p', 'KillMode=control-group', '-p', 'TimeoutStopSec=1', '-p', 'SendSIGKILL=yes',
                 '-p', 'NoNewPrivileges=yes', '-p', 'UMask=0077',
                 '-p', f"TemporaryFileSystem=/tmp:rw,size={self.c['temporaryBytes']},nr_inodes={self.c['temporaryInodes']},mode=1777,nosuid,nodev",
-                '-p', 'BindReadOnlyPaths=' + self.c['toolsRoot'] + ' ' + self.c['launcher'] + ' ' + str(record) + ' ' + str(settings),
+                '-p', 'BindReadOnlyPaths=' + self.c['toolsRoot'] + ' ' + str(Path(self.c['launcher']).resolve().parent) + ' ' + str(record) + ' ' + str(settings),
                 '-p', 'BindPaths=' + str(target)]
         if self.c.get('supervisorUnit'):
             args += ['-p', 'BindsTo=' + self.c['supervisorUnit'], '-p', 'After=' + self.c['supervisorUnit']]

@@ -70,14 +70,15 @@ def main():
     disk_pool = root / 'copy-pool'
     game_fixture = None
     evidence = []
-    for name in ('poketto-supervisor', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'disk_pool.py', 'poketto-launch', 'resource_pool.py', 'bridge.py', 'bin/poketto', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
+    for name in ('poketto-supervisor', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'disk_pool.py', 'poketto-launch', 'bwrap', 'bwrap-notices.txt', 'bwrap-source.tar.xz', 'resource_pool.py', 'bridge.py', 'bin/poketto', 'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py'):
         (root / name).parent.mkdir(mode=0o755, parents=True, exist_ok=True)
         shutil.copy2(worker_source / name, root / name)
-        os.chmod(root / name, 0o555 if name.startswith('bin/') or name in ('poketto-supervisor', 'poketto-launch') else 0o644)
+        os.chmod(root / name, 0o555 if name.startswith('bin/') or name in ('poketto-supervisor', 'poketto-launch', 'bwrap') else 0o644)
     (root / 'bin').chmod(0o755)
     if args.source_layout == 'managed':
         # Exercise the deployment selector through real systemd/SRT mounts and CLI subprocesses.
-        sources = sorted([*root.glob('*.py'), root / 'poketto-supervisor', root / 'poketto-launch'])
+        sources = sorted([*root.glob('*.py'), root / 'poketto-supervisor', root / 'poketto-launch',
+                          root / 'bwrap', root / 'bwrap-notices.txt', root / 'bwrap-source.tar.xz'])
         payload = {p.relative_to(root).as_posix(): digest(p) for p in [*sources, *(root / 'bin').iterdir()]}
         release = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         generations = root / 'releases'
@@ -87,7 +88,8 @@ def main():
         selected.chmod(0o755)
         for source in sources:
             source.rename(selected / source.name)
-            source.symlink_to('releases/current/' + source.name)
+            if source.suffix == '.py' or source.name in ('poketto-supervisor', 'poketto-launch'):
+                source.symlink_to('releases/current/' + source.name)
         (root / 'bin').rename(selected / 'bin')
         (root / 'bin').symlink_to('releases/current/bin', target_is_directory=True)
         (generations / 'current').symlink_to(release, target_is_directory=True)
@@ -362,12 +364,14 @@ with socket.socket(socket.AF_UNIX) as connection:
             'resourcePoolSha256': digest(root / 'resource_pool.py'),
             'nativePoolSha256': digest(worker_source / 'native_pool.py'),
             'supervisorKind': 'rust', 'workerSha256': digest(root / 'poketto-supervisor'),
-            'launcherSha256': digest(root / 'poketto-launch'), 'shellLoopSha256': digest(root / 'bin/poketto-shell'),
+            'launcherSha256': digest(root / 'poketto-launch'),
+            'bwrapSha256': digest((root / 'poketto-launch').resolve().with_name('bwrap')),
+            'shellLoopSha256': digest(root / 'bin/poketto-shell'),
             'syncProgramSha256': digest(root / 'bin/poketto-syncfs'),
             'cliSha256': digest(root / 'bin/poketto'),
             'nativeScriptSha256': digest(Path(__file__)), 'peerObserverSha256': digest(fake_source),
             'games': None if game_fixture is None else {
-                'supervisorSha256': digest(root / 'sandcrab'),
+                'supervisorSha256': digest(game_fixture.binary),
                 'runtimeSha256': digest(runtime / 'classes/io/github/core607/poketto/executor/game-runtime.mjs'),
                 'entrySha256': digest(runtime / 'classes/io/github/core607/poketto/executor/game-entry.mjs'),
                 'exampleSha256': digest(game_fixture.assets / 'game-example.mjs'),
