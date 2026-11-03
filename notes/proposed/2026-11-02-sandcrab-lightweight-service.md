@@ -98,8 +98,9 @@ SDK conformance while changing the implementation.
    Shared bwrap overlays give each parent a disposable writable layer; contexts
    share one mount to avoid concurrent writers on independently mounted uppers.
    Startup requires Linux 5.11+ and verifies the helper and backing filesystem;
-   unsupported storage refuses without a copy fallback. Optional template rootfs
-   and upper tar export preserving whiteouts remain to implement.
+   unsupported storage refuses without a copy fallback. Template rootfs protects
+   mount anchors so guest renames cannot redirect privileged file helpers.
+   Upper tar export preserving whiteouts remains to implement.
 8. L8: egress. Support `network = "none"` or `network = { allow = ["pypi.org", ...] }`. Implement a
    daemon-side HTTP CONNECT/SOCKS proxy, bridged into the sandbox network namespace
    before seccomp, and set proxy environment variables. No direct egress; DNS goes
