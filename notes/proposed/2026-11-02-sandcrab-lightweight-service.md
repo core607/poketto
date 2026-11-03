@@ -85,9 +85,10 @@ SDK conformance while changing the implementation.
 6. L6: general API. Keep runs, sessions with named contexts, files, command
    events, profiles, the OpenSandbox adapter, CLI and token-authenticated loopback
    HTTP. [Terminal result retention](../../executor-service/rust/sandcrab/README.md#result-retention)
-   expires unpinned run, session and upload records; explicit forget remains. Add streaming
-   `PUT /v1/sessions/{id}/files?path=` for ordinary uploads. Retain staged uploads
-   only with a documented general use for recoverable large transfers. Keep plain
+   expires unpinned run, session and upload records; explicit forget remains.
+   [Streaming PUT](../../executor-service/rust/sandcrab/README.md#files) handles ordinary
+   uploads. Optional staged transfers retain operation receipts for large artifact
+   publication across lost replies or restart; they do not resume partial bytes. Keep plain
    tar downloads; remove freeze flags and checksummed snapshot manifests unless
    a general use is documented. Poketto can capture consistently inside one command.
    Keep opaque host calls optional per profile with a non-Poketto example. Update
