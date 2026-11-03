@@ -1,0 +1,262 @@
+{
+  "scope": "Published OpenSandbox SDK clients through actual native TCP and sandbox units; no model or production cutover",
+  "binarySha256": "62d18e54f4cf84175e1569f780492e87a98ca597731c04de21f1d43fbbfce00e",
+  "probeSha256": "1bcb46d50966de3cc0da6932f8d08ee8a53802af49018b5bd28844a301b6648f",
+  "checks": [
+    {
+      "name": "python-selected-resource-caps-reach-the-actual-kernel-cgroup",
+      "result": "PASS"
+    },
+    {
+      "name": "python-published-sdk-flow-and-native-record-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "kotlin-selected-resource-caps-reach-the-actual-kernel-cgroup",
+      "result": "PASS"
+    },
+    {
+      "name": "kotlin-published-sdk-flow-and-native-record-cleanup",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-authentication-precedes-body-and-distinguishes-native-bearer",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-unsupported-options-and-resource-escalation-refuse-before-creation",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-endpoint-credentials-are-sandbox-scoped-and-revoked-on-delete",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-stale-credentials-and-delete-do-not-follow-a-reused-native-id",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-disconnect-releases-observation-and-terminal-native-records",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-command-timeout-and-cancellation-contain-the-child-and-preserve-the-sandbox",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-upload-prepublication-refusals-preserve-the-whole-batch-and-allow-explicit-recovery",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-upload-helper-record-loss-after-publication-remains-unknown",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-file-limits-disconnect-framing-traversal-and-ownership-refusals-preserve-existing-content",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-filesystem-preflight-batches-metadata-bounds-and-link-safe-recursive-removal",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-partial-download-headers-long-lines-sparse-files-and-selection-limits",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-contexts-scope-credentials-admit-independent-work-and-delete-active-shells",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-context-generation-prevents-execution-or-deletion-of-a-reused-native-id",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-parent-deletion-contains-active-contexts-and-preserves-other-sandboxes",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-expiry-contains-contexts-and-reclaims-native-history",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-context-initialization-failure-and-source-bounds-release-owned-shells",
+      "result": "PASS"
+    },
+    {
+      "name": "sdk-uncertain-context-cleanup-retains-storage-capacity-and-identity-until-restart",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "jvmArtifactsSha256": {
+    "annotations-13.0.jar": "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478",
+    "jackson-annotations-2.21.jar": "53ca085f4a150f703f49e1aabd935bd03b43e1ea3d55d135438292af22cef56b",
+    "jackson-core-3.1.5.jar": "9431b7fa2673bbb618c11d865fe15e13222fd182a214ff998cb7e56afd8f35d2",
+    "jackson-databind-3.1.5.jar": "3a2338d996fd3056791df8d335fa9ba8a62a706ed4245ecf81b3e583df37d08a",
+    "kotlin-stdlib-2.2.21.jar": "6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd",
+    "kotlin-stdlib-jdk7-1.9.10.jar": "ac6361bf9ad1ed382c2103d9712c47cdec166232b4903ed596e8876b0681c9b7",
+    "kotlin-stdlib-jdk8-1.9.10.jar": "a4c74d94d64ce1abe53760fe0389dd941f6fc558d0dab35e47c085a11ec80f28",
+    "logging-interceptor-4.12.0.jar": "f3e8d5f0903c250c2b55d2f47fcfe008e80634385da8385161c7a63aaed0c74c",
+    "okhttp-4.12.0.jar": "b1050081b14bb7a3a7e55a4d3ef01b5dcfabc453b4573a4fc019767191d5f4e0",
+    "okio-jvm-3.6.0.jar": "67543f0736fc422ae927ed0e504b98bc5e269fda0d3500579337cb713da28412",
+    "opentelemetry-api-1.51.0.jar": "ed88c2876e5a525ccbb56eb918d7955797b9a245f113d50b9798d1634a90951d",
+    "opentelemetry-context-1.51.0.jar": "df4e308883ef2a2f28415140c5629901f72223f9ec713063f93395cff11bf4a1",
+    "sandbox-1.1.0.jar": "cb96348a273124a899586e23abe9b5aeafcc98b1d6055532a62ecc8a2a22a392",
+    "sandbox-api-1.1.0.jar": "4cc5236a3c69d4328a8e80754fe0ccf47bddea10a0eaecd5dd01ba299bb87e45",
+    "sandcrab-sdk-conformance.jar": "3ccd542349dcf34d005c274763d188ddb264ec3d04427e195ddfacc6abf8a5d5",
+    "slf4j-api-2.0.9.jar": "0818930dc8d7debb403204611691da58e49d42c50b6ffcfdce02dadb7c3c2b6c"
+  },
+  "specification": {
+    "repository": "https://github.com/opensandbox-group/OpenSandbox",
+    "commit": "b1a29cf93a823a95913f7943010febb3f29de05c",
+    "files": [
+      "specs/sandbox-lifecycle.yml",
+      "specs/execd-api.yaml"
+    ]
+  },
+  "opensandboxProbeSha256": "1c17034f9b86d7a38f40989da052225dbfc5da96a6177c125106088118955af0",
+  "contractProbeSha256": "d35650fae0641df4f41ed201fd6f6e2862bdcf003285ab6abed7ae286146ddd0",
+  "contextsProbeSha256": "3d7126f68f39b27902bbbc1b28caca580771e2ee8e819e04519c879d922b48ce",
+  "pythonClientSha256": "03c20ed990fe1fef08754fba67d0aa637cfd2fcf665b015f72f0a1c02363e107",
+  "python": {
+    "result": "PASS",
+    "client": "python",
+    "sdkVersion": "1.1.0",
+    "checks": [
+      "create-discover-filter-and-scope-endpoint-credentials",
+      "foreground-argv-environment-output-and-retained-status",
+      "split-unicode-invalid-bytes-literal-arguments-and-failed-exit",
+      "independent-commands-and-bounded-native-result-reclamation",
+      "unsupported-execution-option-refuses-without-side-effects",
+      "named-shell-state-working-directory-and-delete-preserve-shared-files",
+      "named-and-independent-command-timeouts-preserve-the-sandbox",
+      "chunked-multipart-binary-text-empty-stream-and-replacement-mode",
+      "missing-upload-parent-refuses-without-publishing-and-explicit-creation-recovers",
+      "streamed-literal-replacement-counts-binary-preservation-and-mode",
+      "recursive-basename-globs-unicode-alternatives-and-link-boundaries",
+      "byte-range-prefix-suffix-streams-and-normalized-line-selection",
+      "directory-creation-metadata-depth-links-mode-move-and-recursive-deletion",
+      "renew-and-explicit-delete"
+    ],
+    "sandboxIds": [
+      "f3d78cd4-3d31-4ffc-a502-f51145a8bf93"
+    ],
+    "commandIds": [
+      "4d3f245e-0553-430e-ac94-75c590ed84a1",
+      "e59cd4a7-af1f-4e5c-9258-2f9390098868",
+      "8e7f33e3-2465-499e-893a-92d5f4d72b92",
+      "85b9ba0a-3510-4f8b-a7c8-68f1e405de73",
+      "94274e56-4207-4759-98da-34d201fc7ca7",
+      "323638d7-0710-4fbc-b724-f8d9bdd2f65c",
+      "aa616696-7290-4a5e-8e3a-c3fca4f7b8ac",
+      "d9a39903-d6a8-4f55-b015-9efc00aef94f",
+      "e6adca50-4fbf-435f-9bae-e4ea0678381a",
+      "97850bb5-f4c9-4e7f-b8ca-e913c758bf6d",
+      "09a9a077-715b-4dce-a489-697768ca3182",
+      "0a920bb8-915d-4b93-ae7a-b1930c7cd965",
+      "2f9dcf3b-5ae7-45c7-adc5-91e3e869c4c5",
+      "d158c88f-46a6-4711-a032-2b1310486e77",
+      "0c05a9a4-263b-467f-9204-79b4942d351d",
+      "4b0f5013-c1a0-4ebb-9e7f-57fbbc1c73ce",
+      "f0c09a33-c9e6-40fa-b79f-4232aac4ac75",
+      "d84fc3be-e23e-41c1-a6fa-fcd1e03d79eb",
+      "df4fbcd8-f5f1-4541-a9cd-436dec9d490a",
+      "8021d0f7-34b4-4749-bc1a-44090a272316",
+      "02a61310-a12c-4119-864f-81d18b768a3b",
+      "871ae141-3f62-4ec1-bc5c-b6118b153ffe",
+      "dbf5634e-8122-4774-a2e9-ea544a450ff5",
+      "853babd0-52ec-4629-a80e-ab2b20054dba",
+      "572dfdf6-f672-4138-9079-a16f394624bf",
+      "7ee284aa-d16d-44ae-9707-de3c639d6a71",
+      "a2891474-619e-4c62-8659-709400725d1a",
+      "6ea5cdc7-0ea4-42f3-a508-c621490732a3",
+      "33794845-4d3b-4560-898c-70f7485bfce8",
+      "480ce76e-040a-429d-9a7d-2ab48374347e",
+      "2685826a-2552-43db-96ab-159d77854385",
+      "1a943a95-8d5b-4adb-8a67-2446b38fcaae",
+      "ed689177-785d-417e-b712-e7210e54d089",
+      "4b0dc009-c84e-40ea-91c8-73d8d72aeb0b",
+      "b216bbcb-ee47-4d3c-9e85-db08dc765441"
+    ],
+    "contextIds": [
+      "09d395a4-e7e9-41af-b99e-afabbf5a2c5b",
+      "bc757254-5b9b-4de4-a91e-23811e3579c3",
+      "d3074d1a-b5b6-4505-90dd-a2cc9bb8a6dd"
+    ],
+    "knownLimitations": [
+      "OpenSandbox 1.1.0 create_session reports status 200 for a parsed HTTP 400 error"
+    ],
+    "packages": {
+      "opensandbox": "1.1.0",
+      "httpx": "0.28.1",
+      "pydantic": "2.14.2"
+    }
+  },
+  "kotlin": {
+    "result": "PASS",
+    "client": "kotlin-sdk-java-caller",
+    "sdkVersion": "1.1.0",
+    "sdkArtifactSha256": "cb96348a273124a899586e23abe9b5aeafcc98b1d6055532a62ecc8a2a22a392",
+    "checks": [
+      "create-discover-filter-and-scope-endpoint-credentials",
+      "foreground-argv-environment-output-and-retained-status",
+      "split-unicode-invalid-bytes-and-failed-exit",
+      "bounded-native-result-reclamation",
+      "named-shell-state-working-directory-and-delete-preserve-shared-files",
+      "named-and-independent-command-timeouts-preserve-the-sandbox",
+      "fixed-and-chunked-multipart-binary-text-empty-stream-and-replacement-mode",
+      "streamed-literal-replacement-counts-binary-preservation-and-mode",
+      "recursive-basename-globs-unicode-alternatives-and-link-boundaries",
+      "byte-range-prefix-suffix-and-normalized-line-selection",
+      "directory-creation-metadata-depth-links-mode-move-and-recursive-deletion",
+      "renew-and-explicit-delete"
+    ],
+    "sandboxIds": [
+      "097a3725-1e2a-4121-8568-24657b42a7e6"
+    ],
+    "commandIds": [
+      "6b6d0cab-c37d-4f9a-a588-26e130ba4332",
+      "404eb857-691c-4af4-bbf1-670fac2a3e9a",
+      "9bbd56d3-39e0-4ac1-8d97-2b813ffadf92",
+      "31e88bdf-afb2-46c3-9625-bd889153e285",
+      "fb5053b1-8b5c-46aa-b755-318e9f97971f",
+      "6ef73d85-2a0d-47df-a23b-b190d3657773",
+      "baeb603b-db2a-4587-96c6-4f3536a62e64",
+      "f54700ad-6959-44f6-b4a2-5c60e2ea9fe2",
+      "c662508e-6fd6-4baf-a683-882be685791c",
+      "64aed191-d115-4e1b-8280-df46cd44b7c7",
+      "da090924-8b49-41dc-af06-aa5153abd524",
+      "1ad34d7e-b016-411a-9c49-5d247eb1981b",
+      "f2da7fa4-a5c7-47f5-957e-f373de1bd6da",
+      "ac139e9c-c4cf-4b04-9b1b-c7916381f963",
+      "e4c218eb-d276-4e42-989a-1146ca95b072",
+      "01eb0648-1ba3-4e35-86c0-8356f4c07120",
+      "d56a425b-0b65-42cf-9e35-3cef70da6e6b",
+      "94191bca-09ba-4f2d-b1c7-e78e25175c6f",
+      "c1514c06-4ad7-4921-8572-0dacb511e842",
+      "f4b38257-e08b-4567-b6b0-bf3f2e33eb04",
+      "155ac32e-fae6-42a4-a58a-037622bf34d3",
+      "3cd886b1-8d17-45ad-ada8-e853c3186a5f",
+      "863b7695-2961-4db8-b196-08dbf9b56e24",
+      "052fb246-d2e6-4f3c-aa37-0989c6f2784b",
+      "61d113d0-6b1b-459d-95a3-878f8e5207d3",
+      "cd35e10d-2c61-4707-853d-8017bf754e7c",
+      "f5ad5873-46ee-492a-bdf0-a296c768e9f8",
+      "5aa68c9d-20ab-438a-be09-36b362c74d94",
+      "3668d534-bbee-4f2e-aa98-b00833d30824",
+      "3177bed5-64c6-4583-9d08-f1544f1f5afa",
+      "66e5d2fa-063e-4100-b74b-0c159b9bd4f0"
+    ],
+    "contextIds": [
+      "dd7cd119-39a4-40e7-a4be-583259bfbb93",
+      "3ababf4f-de8f-4259-8519-8157789e284f",
+      "754c9649-8e98-421f-952a-2238bb400ec7"
+    ]
+  },
+  "result": "PASS",
+  "faultControllerLogs": {
+    "trace-7680.log": "",
+    "trace-11267.log": ""
+  }
+}

@@ -6,7 +6,7 @@ Date: 2026-11-02
 
 The [native service](../../executor-service/rust/sandcrab/README.md) has an independent
 API, but installation requires manually prepared tools, accounts, resource delegation
-and profiles; durable volumes require XFS. The
+and profiles. The
 [native seccomp filter](../implemented/2026-11-02-native-seccomp-filter.md) implements L1,
 removing the helper's Node.js/npm/SRT provisioning.
 [Delegated cgroups](../implemented/2026-11-02-delegated-sandbox-cgroups.md)
@@ -69,11 +69,11 @@ SDK conformance while changing the implementation.
 1. L1 is implemented by the [native filter decision](../implemented/2026-11-02-native-seccomp-filter.md).
 2. L2 uses [delegated cgroups](../implemented/2026-11-02-delegated-sandbox-cgroups.md)
    for native launches and confirmed containment. Target cold-start p50 at most 30 ms.
-3. L3: ordinary filesystems. Default volumes and session workspaces to plain
-   directories. Reflink where supported, copy otherwise. Enforce XFS project quotas
-   when configured. Without quotas, report usage and refuse growth through periodic
-   accounting, explicitly documenting that this is not a hard storage bound.
-   Only explicit `require_quota = true` refuses startup without enforcement.
+3. L3 uses [ordinary directories](../../executor-service/rust/sandcrab/README.md#storage-accounting)
+   for volumes and session workspaces, reflinking where supported and copying otherwise.
+   Configured XFS quotas are enforced; only `require_quota = true` demands enforcement.
+   Otherwise periodic accounting reports usage and refuses growth with a soft bound.
+   Pool usage sums complete volume observations; rescans duplicate work and impose aggregate scan limits.
 4. L4: bundled bwrap. Include a pinned static bwrap version at least 0.9 in
    releases, use it by default and verify its checksum. Publish its source and
    version and satisfy LGPL obligations. This supplies L7's overlay support on

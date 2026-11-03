@@ -1,0 +1,18 @@
+{
+  "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+  "binarySha256": "d462db7c771903683be07f99396b4e2c5c699ea4cd104054fdc50a85af68dd3e",
+  "probeSha256": "9f07ae8462581ddf91f2387b57ddc206bd1397ae012c58c7003832801d198d4f",
+  "checks": [
+    {
+      "name": "native-inventories-retain-active-and-terminal-identities-without-output",
+      "result": "PASS"
+    },
+    {
+      "name": "http-and-cli-shells-share-the-parent-kernel-budget",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "result": "FAIL",
+  "failureType": "AssertionError"
+}

@@ -1,0 +1,91 @@
+{
+  "kind": "agent-load-suite",
+  "label": "native-fixture",
+  "sourceCommit": "",
+  "started": "2026-11-02T14:26:37Z",
+  "settings": {
+    "seconds": 90,
+    "warmup": 30.0,
+    "think": [
+      1.0,
+      3.0
+    ],
+    "thinkDistribution": "uniform",
+    "warmUpRun": [
+      10,
+      0
+    ]
+  },
+  "preflight": {
+    "noOtherLoad": {
+      "ok": true,
+      "detail": "0 other load processes"
+    },
+    "tools": {
+      "ok": true,
+      "detail": "repo_exec and repo_discard listed"
+    }
+  },
+  "stages": [
+    {
+      "agents": 8,
+      "verdict": "PASS",
+      "reasons": [],
+      "requirement": [
+        0.99,
+        1.0
+      ],
+      "afterWarmup": {
+        "calls": 230,
+        "p50": 0.031,
+        "p95": 0.055,
+        "p99": 0.06,
+        "okRate": 1.0,
+        "callsPerSecond": 3.83,
+        "outcomes": {
+          "OK": 230
+        }
+      },
+      "all": {
+        "calls": 341,
+        "p50": 0.034,
+        "p95": 0.06,
+        "p99": 2.21,
+        "okRate": 1.0,
+        "callsPerSecond": 3.79,
+        "outcomes": {
+          "OK": 341
+        }
+      },
+      "timeline": [
+        {
+          "from": 0,
+          "calls": 111,
+          "ok": 111,
+          "p95": 2.186
+        },
+        {
+          "from": 30,
+          "calls": 115,
+          "ok": 115,
+          "p95": 0.058
+        },
+        {
+          "from": 60,
+          "calls": 115,
+          "ok": 115,
+          "p95": 0.053
+        }
+      ],
+      "copies": 8,
+      "baseline": null
+    }
+  ],
+  "cleanup": {
+    "discarded": {
+      "DISCARDED": 8
+    }
+  },
+  "finished": "2026-11-02T14:28:10Z",
+  "result": "PASS"
+}

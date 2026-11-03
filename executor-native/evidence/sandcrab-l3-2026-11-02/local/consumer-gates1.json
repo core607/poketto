@@ -1,0 +1,26 @@
+{
+  "scope": "Native Java consumer and delegated-container acceptance using CI runtime binary; no production or model calls",
+  "baseCommit": "d7a5aa4556ef9697c4d4130e3095daefe87c5d20",
+  "sourceDirty": true,
+  "binarySha256": "57169e02cc2c0d431c7c354f9a670e9254ae1ac09f1d4774e7e5284c58860b36",
+  "runtimeManifestSha256": "eb2c589b7a63737c8e80931aeb3ec003cbe691bc3d4f206e84f2a46006fe96ed",
+  "attempts": [
+    {
+      "attempt": "consumer-stage1",
+      "command": "stageExecutorNativeTest stageExecutorWorker stageGameWorker",
+      "result": "PASS",
+      "logBytes": 9562,
+      "logSha256": "6c71bc58419befc599946ec4ff9684b441a63269c2f097bbbb1247ca7e2ca897"
+    },
+    {
+      "attempt": "java-recovery-controller2",
+      "command": "python3 executor-native/test_sandcrab_recovery_java_probe.py",
+      "result": "PASS",
+      "logBytes": 108,
+      "logSha256": "f7dc1c65d9bf1c31f1cb9a0be1fc0c0840290cbe7f978a8864c6557dbd2fbb5e"
+    }
+  ],
+  "recoveryFailure": "Attempt 1 watched obsolete per-job systemd units and failed before fault injection; cleanup passed. Attempt 2 checks the actual delegated job cgroups and confirms their removal on all four recoveries.",
+  "delegatedArchiveSha256": "7127884b231d2ba24ff19c10fc7c4f5c273193e8cdb2fbbc82f39bdf2ccb3e14",
+  "delegatedContainerRemovedAfterEvidence": true
+}

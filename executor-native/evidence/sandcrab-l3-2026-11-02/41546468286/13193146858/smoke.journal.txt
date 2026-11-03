@@ -1,0 +1,4 @@
+Nov 03 00:26:21 runnervm48cm3 systemd[1]: Started sandcrab-probe-565aff6f77.service - /var/lib/sandcrab-native-1hvc4koy/sandcrab serve --config /var/lib/sandcrab-native-1hvc4koy/config.toml.
+Nov 03 00:26:21 runnervm48cm3 sandcrab[2718]: sandcrab: Refusing to initialize a nonempty unowned volume store
+Nov 03 00:26:21 runnervm48cm3 systemd[1]: sandcrab-probe-565aff6f77.service: Main process exited, code=exited, status=1/FAILURE
+Nov 03 00:26:21 runnervm48cm3 systemd[1]: sandcrab-probe-565aff6f77.service: Failed with result 'exit-code'.

@@ -1,0 +1,49 @@
+{
+  "scope": "Standalone binary, real systemd/bubblewrap/cgroup isolation; no model or Poketto application",
+  "binarySha256": "57169e02cc2c0d431c7c354f9a670e9254ae1ac09f1d4774e7e5284c58860b36",
+  "probeSha256": "9f07ae8462581ddf91f2387b57ddc206bd1397ae012c58c7003832801d198d4f",
+  "checks": [
+    {
+      "name": "native-inventories-retain-active-and-terminal-identities-without-output",
+      "result": "PASS"
+    },
+    {
+      "name": "http-and-cli-shells-share-the-parent-kernel-budget",
+      "result": "PASS"
+    },
+    {
+      "name": "shell-state-and-temporary-files-are-independent-with-concurrent-shared-files",
+      "result": "PASS"
+    },
+    {
+      "name": "child-identity-inheritance-renewal-and-global-record-bounds",
+      "result": "PASS"
+    },
+    {
+      "name": "child-timeout-preserves-workspace-and-sibling-shell",
+      "result": "PASS"
+    },
+    {
+      "name": "child-oom-does-not-poison-sibling-command-results",
+      "result": "PASS"
+    },
+    {
+      "name": "child-cancel-and-close-contain-descendants-without-releasing-parent-storage",
+      "result": "PASS"
+    },
+    {
+      "name": "parent-expiry-contains-active-child-before-workspace-release",
+      "result": "PASS"
+    },
+    {
+      "name": "parent-close-during-child-startup-releases-every-owned-root",
+      "result": "PASS"
+    },
+    {
+      "name": "uncertain-child-cleanup-fences-parent-storage-and-admission-until-restart",
+      "result": "PASS"
+    }
+  ],
+  "cleanup": "PASS",
+  "result": "PASS"
+}
