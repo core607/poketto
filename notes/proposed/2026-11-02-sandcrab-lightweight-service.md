@@ -5,8 +5,8 @@ Date: 2026-11-02
 ## Problem
 
 The [native service](../../executor-service/rust/sandcrab/README.md) has an independent
-API, but installation requires manually prepared tools, accounts, resource delegation
-and profiles. The
+API. Its [manual baseline](../../experiments/sandcrab-density/READINESS.md) required
+operators to prepare tools, accounts, resource delegation and profiles. The
 [native seccomp filter](../implemented/2026-11-02-native-seccomp-filter.md) implements L1,
 removing the helper's Node.js/npm/SRT provisioning.
 [Delegated cgroups](../implemented/2026-11-02-delegated-sandbox-cgroups.md)
@@ -80,13 +80,10 @@ SDK conformance while changing the implementation.
    pins bwrap above 0.9, accompanies it with source/version/notices, and checks its
    checksum by default. Release ownership supplies L7's overlay-capable helper
    without depending on Ubuntu 22.04's older distribution package.
-5. L5: installation and diagnosis. `sandcrab install` creates the execution
-   user, delegated slice/unit, working `default` profile with read-only host `/usr`,
-   python3, bash and network none, plus a token file for loopback HTTP. `--dry-run`
-   prints every intended change without writing. `sandcrab doctor` checks the kernel,
-   cgroup delegation, user namespaces, bwrap checksum, storage and a real test run,
-   with a fix for each failure. Publish a container image running `sandcrab serve`
-   and document the exact Docker flags needed for delegation.
+5. L5 supplies the [installer and doctor](../../executor-service/rust/sandcrab/install/README.md):
+   one protected default profile, a delegated systemd service, authenticated loopback
+   HTTP, installation preview and a real diagnostic run. The same service can
+   start as PID 1 in a bounded private container delegation.
 6. L6: general API. Keep runs, sessions with named contexts, files, command
    events, profiles, the OpenSandbox adapter, CLI and token-authenticated loopback
    HTTP. Terminal run, session and upload records expire after a TTL unless
