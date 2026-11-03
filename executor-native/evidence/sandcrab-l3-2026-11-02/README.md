@@ -1,19 +1,19 @@
 # Sandcrab L3 storage evidence
 
-These local development receipts cover ordinary storage, disk session directories
-and periodic accounting. They do not establish canonical density, installation
-readiness or final-head acceptance. [The index](index.json) hashes the committed
+These receipts cover ordinary storage, disk session directories, periodic
+accounting and native consumers. The canonical XFS result is below; ordinary
+storage density remains pending. [The index](index.json) hashes the committed
 receipt bytes; [local gates](local/local-gates.json) retain each build attempt,
 including failures. Original logs and source snapshots remain with the operator.
 
-The current candidate is `62d18e54f4cf84175e1569f780492e87a98ca597731c04de21f1d43fbbfce00e`
+The local development candidate is `62d18e54f4cf84175e1569f780492e87a98ca597731c04de21f1d43fbbfce00e`
 (4,244,384 bytes), built from development source over `c66683df`.
 [Iteration 5](local/rust-iteration5.json) passes formatting, both Clippy modes and
 141 locked Rust tests in the prepared pinned image. This bounded iteration uses
 a separate build directory and is not `executorRustCheck` or `buildExecutorRust`.
-The last local invocation of those tasks failed after the Docker data disk filled:
+An earlier combined local invocation failed after the Docker data disk filled:
 a filesystem test returned `ReadOnlyFilesystem`, followed by an RPC EOF.
-Authoritative CI on a fresh Linux runner remains required.
+The authoritative CI results are recorded below.
 
 | Receipt | Candidate | Result |
 |---|---|---|
@@ -73,7 +73,52 @@ human editing; distribution containers share the runner kernel.
 
 [Measurement component checks](local/measurement-tests1.json) pass 33 Linux tests,
 including observation placement outside the command window. The plain-storage
-variant and canonical 5 GB runs still require native measurement.
+variant still requires native measurement.
+
+[Plain attempt 1](41546468286/13193146858/smoke.json) stops before the daemon
+becomes ready: the fixture mounts ext4's `lost+found` inside the owned data root,
+which correctly refuses a nonempty, unowned directory. Its
+[journal](41546468286/13193146858/smoke.journal.txt) and
+[diagnostic](41546468286/13193146858/smoke.diagnostic.txt) retain the failure;
+host cleanup passes. The corrected fixture mounts ext4 at the storage parent
+and creates an empty data directory. Its [local smoke](local/density-plain2-smoke.json)
+passes 102 judged commands with no refusals or OOM and successful API/host cleanup.
+This two-agent check does not measure canonical plain-storage capacity.
+
+## Canonical XFS measurement
+
+[Run 41546372313](https://github.com/core607/poketto/actions/runs/41546372313)
+measures clean head `d7a5aa45` with binary `57169e02`. The
+[density receipt](41546372313/13192971448/density.json) retains the unchanged W0
+protocol: daemon and sandboxes share 5 GB, two CPUs and zero swap. All collectors
+and API/host cleanup complete. All three 25- and 50-agent repetitions pass;
+capacity remains 50.
+
+| 50-agent repetition | Cold-start p50 | Judged p95 | OK rate | OOM kills |
+|---|---:|---:|---:|---:|
+| 0 | 32.598359 ms | 561.415632 ms | 1.0 | 0 |
+| 1 | 33.857563 ms | 617.818678 ms | 1.0 | 0 |
+| 2 | 33.041895 ms | 641.026968 ms | 1.0 | 0 |
+
+Cold-start percentiles use nearest rank. This run misses the 30 ms target.
+At the first 100-agent repetition, 1,284 `SESSION_NOT_READY` refusals reduce the
+OK rate to 0.2968236583, with zero OOM. Its 168.181324 ms p95 includes fast refusals
+and establishes no speed gain. The failed OK-rate criterion stops the search.
+
+| Measurement | L2 canonical | L3 XFS |
+|---|---:|---:|
+| Static binary bytes | 4,174,752 | 4,240,288 |
+| Median daemon idle RSS bytes | 3,215,360 | 3,280,896 |
+| Pool delta bytes per idle session at count 50 | 1,562,869.76 | 1,528,053.76 |
+| Pool delta bytes per finite run at count 50 | 1,122,631.68 | 1,099,612.16 |
+
+The [footprint receipt](41546372313/13192971448/footprint.json) supplies the L3
+values; [L2](../sandcrab-l2-2026-11-02/README.md) owns its baseline. Different
+runner instances do not establish a causal speed or memory improvement.
+The executable inventory is nine with optional project quotas, six without;
+the prepared tools occupy 9,255,073 bytes. The [cache](41546372313/13192971448/cache.json)
+and [startup trace](41546372313/13192971448/cold-start.json) retain their separate
+measurement scopes and do not replace the missed canonical cold-start target.
 
 ## Additional consumers
 

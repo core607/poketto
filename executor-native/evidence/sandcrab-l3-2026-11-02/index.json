@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "scope": "Retained local candidates and first CI head 28eb726c; canonical density and plain-accounting scale measurements remain pending.",
+  "scope": "Retained local, CI and canonical XFS receipts; the first plain benchmark failed fixture startup, and its corrected local smoke passes. Canonical plain density remains pending.",
   "files": [
     {
       "path": "41461303539/13150636174/native-load.json",
@@ -133,6 +133,91 @@
       "sha256": "9fb670787df33c9996fcf3ae8697600b2b4eb3abb0ef99d6adea50be7df0a6c7"
     },
     {
+      "path": "41546372313/13192971448/cache-smoke.attempts.jsonl",
+      "bytes": 14317,
+      "sha256": "a4d4333dc00195d3b5fbeb5c4640a61f0b3cebcd686dd22a889e8064ec8b48e9"
+    },
+    {
+      "path": "41546372313/13192971448/cache-smoke.json",
+      "bytes": 21024,
+      "sha256": "37600542672ce63be97f90eb9a1b695033cc17f07ab669fd0bb98bd9d0d07ddf"
+    },
+    {
+      "path": "41546372313/13192971448/cache.attempts.jsonl",
+      "bytes": 14552,
+      "sha256": "ba621d4dbcb06804e7fbf60edac5fcf86ba1c5879eedaaef28f60f4649669342"
+    },
+    {
+      "path": "41546372313/13192971448/cache.json",
+      "bytes": 21283,
+      "sha256": "eb953641b40d9eb0614159da73c95d2bf304ea0f3e06fb35a67a44c5aff2b31f"
+    },
+    {
+      "path": "41546372313/13192971448/cold-start-smoke.json",
+      "bytes": 27533,
+      "sha256": "de6cb766a1ef424a20009ad406a69226f8520b1cddbc9ef2c96660601e3523f8"
+    },
+    {
+      "path": "41546372313/13192971448/cold-start.json",
+      "bytes": 27775,
+      "sha256": "08ecfec8e2fc319929e276301a1a8152b600280f034319dd18f43b093dc38633"
+    },
+    {
+      "path": "41546372313/13192971448/density.attempts.jsonl",
+      "bytes": 4760185,
+      "sha256": "e0d781927b00b1bb6cb8530aaa56c89c54b8577d3721e4b7cd38c78ee87a25ba"
+    },
+    {
+      "path": "41546372313/13192971448/density.json",
+      "bytes": 5989782,
+      "sha256": "9b23fcb0ae123356abfcfa826ccc8641f4ec479b2b9f0aa2ed2a651fb2e6749a"
+    },
+    {
+      "path": "41546372313/13192971448/footprint-smoke.attempts.jsonl",
+      "bytes": 433,
+      "sha256": "7ec64e06bfd16865d1908293d9db73e393310ea28b790ca8295a9481db159f3e"
+    },
+    {
+      "path": "41546372313/13192971448/footprint-smoke.json",
+      "bytes": 22660,
+      "sha256": "dcd900ec461dd0576343aeb018f37cf63b27445d487deece9996156bd1024179"
+    },
+    {
+      "path": "41546372313/13192971448/footprint.attempts.jsonl",
+      "bytes": 26779,
+      "sha256": "fa3aa727490ece2113079438b089d5d093dbe045cb0db19292cd1a850b95b770"
+    },
+    {
+      "path": "41546372313/13192971448/footprint.json",
+      "bytes": 71868,
+      "sha256": "399a68a3dcf8cfcddcbe5a118465c54d1a7c3eda514339495f29657aded6954e"
+    },
+    {
+      "path": "41546372313/13192971448/smoke.attempts.jsonl",
+      "bytes": 66541,
+      "sha256": "a4e4fad59c47bd46875ce912777e24da461b39103e8942bca9b5665b682f5bdd"
+    },
+    {
+      "path": "41546372313/13192971448/smoke.json",
+      "bytes": 87737,
+      "sha256": "9451752b58c370e564d735b66322a36a0e3a5db4cd174f06285a7ec8204abf0c"
+    },
+    {
+      "path": "41546468286/13193146858/smoke.diagnostic.txt",
+      "bytes": 645,
+      "sha256": "c22d30c6d49bf619c08972b87dfe2b6fdd5534e2e5c1113e3d91aa6cf64e332c"
+    },
+    {
+      "path": "41546468286/13193146858/smoke.journal.txt",
+      "bytes": 539,
+      "sha256": "8ab92c8487be1dc6d26ee9272b4771f9f6d31b10342c4ba38bb13d18bda9acca"
+    },
+    {
+      "path": "41546468286/13193146858/smoke.json",
+      "bytes": 5944,
+      "sha256": "a7da1f8ac0b8608aaaeb88d08a286159e0a5b4b86625c03b9c04f2e80e35d8d9"
+    },
+    {
       "path": "local/consumer-gates1.json",
       "bytes": 1318,
       "sha256": "bbcaf0b4e3053413b0c12a925e04b4fc71519ac3c1281127d7cfb447ca16f765"
@@ -151,6 +236,11 @@
       "path": "local/delegated1.json",
       "bytes": 1600,
       "sha256": "0310d4a2bbbcf22202303b96846022f96b6acbc44cf99a2646db67556f7f6e19"
+    },
+    {
+      "path": "local/density-plain2-smoke.json",
+      "bytes": 92936,
+      "sha256": "644aeae807bcf1667a1e64dee44794b3437636d101c7fe789c32babf799299ad"
     },
     {
       "path": "local/files1.json",

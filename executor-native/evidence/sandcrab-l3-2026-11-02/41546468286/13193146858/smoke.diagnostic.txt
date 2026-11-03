@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/runner/work/poketto/poketto/experiments/sandcrab-density/density.py", line 263, in main
+    fixture.setup()
+  File "/home/runner/work/poketto/poketto/experiments/sandcrab-density/host.py", line 192, in setup
+    self.start()
+  File "/home/runner/work/poketto/poketto/experiments/sandcrab-density/host.py", line 220, in start
+    self.wait_ready()
+  File "/home/runner/work/poketto/poketto/executor-service/rust/sandcrab/native_probe.py", line 150, in wait_ready
+    raise AssertionError('native service stopped before becoming ready')
+AssertionError: native service stopped before becoming ready

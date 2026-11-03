@@ -94,6 +94,7 @@ class Fixture(Probe):
         native_probe.CLIENT = (0, 0)
         self.storage = self.root / 'storage'
         self.data = self.storage / 'data'
+        self.storage_mount = self.data if self.storage_mode == 'xfs' else self.storage
         self.data.mkdir(parents=True)
         self.storage.chmod(0o755)
         self.data.chmod(0o755)
@@ -160,7 +161,11 @@ network = "none"
             call('mkfs.ext4', '-F', '-q', '-m', '0', '-i', '4096',
                  '-E', 'lazy_itable_init=0,lazy_journal_init=0', str(self.image))
             options = 'loop,nosuid,nodev'
-        call('mount', '-o', options, str(self.image), str(self.data))
+        call('mount', '-o', options, str(self.image), str(self.storage_mount))
+        if self.storage_mode == 'plain':
+            # Keep ext4's lost+found outside the daemon-owned data directory.
+            self.storage.chmod(0o755)
+            self.data.mkdir(mode=0o755)
         self.slice_file.write_text('[Unit]\nDescription=Disposable Sandcrab density benchmark\n[Slice]\n'
                                    f'MemoryMax={self.budget}\nMemorySwapMax=0\nTasksMax=8192\nCPUQuota=200%\n')
         call('systemctl', 'daemon-reload')
@@ -220,7 +225,7 @@ network = "none"
         self.wait_ready()
 
     def unmount_fixture(self, mount):
-        if mount == self.data:
+        if mount == self.storage_mount:
             call('umount', str(mount))
         elif mount.name == 'work' and mount.parent.parent == self.socket.parent / 'jobs':
             import uuid
