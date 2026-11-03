@@ -15,7 +15,7 @@
     "failed": 0
   },
   "linuxCollectorTestsPassed": 41,
-  "evalUnitTestsPassed": 49,
+  "evalUnitTestsPassed": 52,
   "nativeChecksPassed": {
     "queue": 11,
     "isolation": 48,
@@ -55,6 +55,15 @@
       "resolution": "Compact both model tool serializers and measure that same encoding in the real discovery probe; retain the 20000-character limit",
       "cleanup": "PASS",
       "ciRun": 41685866089
+    },
+    {
+      "kind": "Independent grading command met a transient periodic-storage refusal",
+      "attempts": 1,
+      "sourceRevision": "caf7d9119953bebf21ce29c4e970553a40f6fbc0",
+      "passedSamples": 65,
+      "samples": 66,
+      "resolution": "The grader observes storage readiness before its first mutation; agent-visible refusals and no-replay behavior remain intact",
+      "cleanup": "PASS"
     }
   ],
   "schemaBudget": "Sessions view allows 19000 bytes for queue fields and lifecycle constraints; other capability views remain below 18000 bytes.",
