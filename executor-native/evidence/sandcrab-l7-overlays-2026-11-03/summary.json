@@ -12,6 +12,7 @@
   "publishedSdkChecksPassed": 21,
   "publishedSdkVersion": "1.1.0",
   "containerStartupAndCommand": "PASS",
+  "freshDebianInstaller": "PASS",
   "nativeCleanup": "PASS",
   "earlierFailures": [
     {
@@ -33,6 +34,11 @@
       "kind": "Fault probes observed the old startup and mount boundaries",
       "attempts": 2,
       "resolution": "Assert clone3 refusal before readiness and read helper records through the daemon mount namespace; recover the failed fixture, then repeat affected checks"
+    },
+    {
+      "kind": "Debian installer fixture precreated its reserved namespace",
+      "attempts": 1,
+      "resolution": "Mount the fresh distribution data volume at its parent, preserving the occupied-namespace refusal"
     }
   ],
   "ciArtifacts": "https://github.com/core607/poketto/actions/workflows/ci.yml?query=branch%3Acodex%2Fsandcrab-overlay-l7",
