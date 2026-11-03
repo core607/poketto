@@ -15,7 +15,7 @@
     "failed": 0
   },
   "linuxCollectorTestsPassed": 41,
-  "evalUnitTestsPassed": 48,
+  "evalUnitTestsPassed": 49,
   "nativeChecksPassed": {
     "queue": 11,
     "isolation": 48,
@@ -48,6 +48,13 @@
       "attempts": 1,
       "resolution": "Observe the admitted stream through QUEUE_TIMEOUT, verify no workspace effect and retain independent-context/deletion checks",
       "cleanup": "PASS"
+    },
+    {
+      "kind": "CI discovery envelope exceeded the 20000-character model tool limit with formatting spaces",
+      "attempts": 1,
+      "resolution": "Compact both model tool serializers and measure that same encoding in the real discovery probe; retain the 20000-character limit",
+      "cleanup": "PASS",
+      "ciRun": 41685866089
     }
   ],
   "schemaBudget": "Sessions view allows 19000 bytes for queue fields and lifecycle constraints; other capability views remain below 18000 bytes.",

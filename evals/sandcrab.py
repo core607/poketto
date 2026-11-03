@@ -91,7 +91,7 @@ def native_api(endpoint: str, run_id: str):
             store().get('native_observations').append({'method': method, 'path': path, 'status': status, 'response': result})
             if not (wait_for_terminal and method == 'GET' and path == '/v1/runs/' + run_id
                     and status == 200 and result.get('state') in {'queued', 'running'} and time.monotonic() < deadline):
-                return json.dumps({'status': status, 'body': result})
+                return json.dumps({'status': status, 'body': result}, separators=(',', ':'))
             await asyncio.sleep(.05)
     return execute
 
