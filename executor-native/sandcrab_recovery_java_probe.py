@@ -62,33 +62,22 @@ os.execv('/usr/bin/umount', ['umount', *sys.argv[1:]])
     return flag
 
 
-def old_unit(probe, run):
-    unit = probe.name + '-' + run['id'] + '.service'
-    assert unit.startswith(probe.name + '-')
-    group = call('systemctl', 'show', unit, '-p', 'ControlGroup', '--value', check=False).stdout.strip()
-    if group:
-        assert group.startswith('/') and '..' not in Path(group).parts
-        assert probe.slice in Path(group).parts
-    return unit, group
-
-
-def crash_and_restart(probe, run, unit, group):
+def crash_and_restart(probe, run, group):
     old_epoch = probe.info['serverId']
     old_pid = int(call('systemctl', 'show', probe.unit, '-p', 'MainPID', '--value').stdout.strip())
     assert old_pid > 0
     call('systemctl', 'kill', '--kill-whom=main', '--signal=KILL', probe.unit)
     call('systemctl', 'stop', probe.unit, check=False)
+    assert call('systemctl', 'show', probe.unit, '-p', 'ActiveState', '--value', check=False).stdout.strip() in ('', 'inactive', 'failed')
     call('systemctl', 'reset-failed', probe.unit, check=False)
     probe.start()
     assert probe.info['serverId'] != old_epoch
-    assert call('systemctl', 'show', unit, '-p', 'ActiveState', '--value', check=False).stdout.strip() in ('', 'inactive', 'failed')
-    if group:
-        root = Path('/sys/fs/cgroup') / group.lstrip('/')
-        assert not any(path.read_text().strip() for path in root.rglob('cgroup.procs'))
+    assert not group.exists(), 'Replacement daemon retained the old job cgroup'
     assert not list((probe.socket.parent / 'jobs').iterdir()), 'Replacement daemon retained old fixture mounts'
     assert http(probe.socket, 'GET', '/v1/runs/' + run['id'])[0] == 404
     return {'oldEpoch': old_epoch, 'newEpoch': probe.info['serverId'], 'oldDaemonPid': old_pid,
-            'oldUnitInactive': True, 'oldCgroupEmpty': True, 'oldRuntimeDirectoriesAbsent': True}
+            'oldDaemonStoppedBeforeRestart': True, 'oldCgroup': str(group),
+            'oldCgroupAbsent': True, 'oldRuntimeDirectoriesAbsent': True}
 
 
 def handle(probe, consumer, flag, sequence, action):
@@ -98,11 +87,10 @@ def handle(probe, consumer, flag, sequence, action):
     assert status == 200 and current['serverId'] == run['serverId']
     expected = 'closing' if action == 'recover-cleanup' else 'running'
     assert current['state'] == expected, 'Fault did not intercept the required live lifecycle state'
-    unit, group = old_unit(probe, run)
+    group = probe.workloads_group / ('run-' + run['id'])
     if expected == 'running':
-        assert group, 'The observed running job has no owned control group'
-        current_group = Path('/sys/fs/cgroup') / group.lstrip('/')
-        assert any(path.read_text().strip() for path in current_group.rglob('cgroup.procs')), \
+        assert group.is_dir() and not group.is_symlink(), 'The running job has no owned cgroup'
+        assert any(path.read_text().strip() for path in group.rglob('cgroup.procs')), \
             'The command stopped before the controller injected its fault'
     observation = {'action': action, 'runId': run['id'], 'before': expected}
     if action == 'enable-cleanup-fault':
@@ -116,7 +104,7 @@ def handle(probe, consumer, flag, sequence, action):
             assert (status, refusal['error']['code']) == (409, 'RUN_ACTIVE')
             observation['forgetRefusal'] = 'RUN_ACTIVE'
             flag.unlink()
-        observation.update(crash_and_restart(probe, run, unit, group))
+        observation.update(crash_and_restart(probe, run, group))
         confirmed = True
     probe.receipt['faults'].append(observation)
     probe.save()

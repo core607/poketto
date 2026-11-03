@@ -53,8 +53,8 @@ sudo python3 executor-native/sandcrab_recovery_java_probe.py \
 Use the same staged runtime and repository layout. This fixture uses the native
 controller's 384 MiB slice and a 192 MiB Java cap, without a volume image. A temporary
 helper refuses cleanup for one owned job; its flag is removed before recovery and
-final cleanup. The controller verifies old cgroups, units and runtime directories
-after each restart. Stream failure itself never supplies that proof. All four Java
+final cleanup. The controller verifies daemon containment, old job cgroups and
+runtime directories after each restart. Stream failure itself never supplies that proof. All four Java
 recoveries and final `cleanup: PASS` are required; every attempt uses a new report
 path. Java publishes its structured result in an exclusive control file; the
 controller retains it as `.java.json` before parsing. Standard output and error

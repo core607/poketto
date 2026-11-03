@@ -133,6 +133,11 @@
       "sha256": "9fb670787df33c9996fcf3ae8697600b2b4eb3abb0ef99d6adea50be7df0a6c7"
     },
     {
+      "path": "local/consumer-gates1.json",
+      "bytes": 1318,
+      "sha256": "bbcaf0b4e3053413b0c12a925e04b4fc71519ac3c1281127d7cfb447ca16f765"
+    },
+    {
       "path": "local/contexts1.json",
       "bytes": 604,
       "sha256": "55447f436f23436b78b5a82f381408fba97210cdcaf68ed8d806750bcbf22eb7"
@@ -143,9 +148,34 @@
       "sha256": "cc762afa489cdcb1f3ab8c7795dfe9a1b04991a89fcc8d08cd27dfeb6638df4a"
     },
     {
+      "path": "local/delegated1.json",
+      "bytes": 1600,
+      "sha256": "0310d4a2bbbcf22202303b96846022f96b6acbc44cf99a2646db67556f7f6e19"
+    },
+    {
       "path": "local/files1.json",
       "bytes": 3959,
       "sha256": "5bc18dacb0ac9ce40d0d641ced738f7ea1e81ffa9f1ac3e79f8530bf438a3050"
+    },
+    {
+      "path": "local/java-games1.json",
+      "bytes": 3535,
+      "sha256": "93f6f09309cdca2ac3108cbeeb62238732b2fa50082bb731b1f067d657e8f998"
+    },
+    {
+      "path": "local/java-recovery1.json",
+      "bytes": 620,
+      "sha256": "ccc9362fb70b76590e87de69a5458b6e095c2ff7416a74e21ccabfb549e2e292"
+    },
+    {
+      "path": "local/java-recovery2.json",
+      "bytes": 6320,
+      "sha256": "f9e73cdd89e8c381b8a15959696a213ec9e975b1fa2e439d70398c1da7e9a298"
+    },
+    {
+      "path": "local/java-volume1.json",
+      "bytes": 1824,
+      "sha256": "3556402627e365f88650a2b3c96597565e1801ffdb505361f1c4039ff56bc3f5"
     },
     {
       "path": "local/local-gates.json",

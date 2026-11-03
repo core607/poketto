@@ -74,3 +74,16 @@ human editing; distribution containers share the runner kernel.
 [Measurement component checks](local/measurement-tests1.json) pass 33 Linux tests,
 including observation placement outside the command window. The plain-storage
 variant and canonical 5 GB runs still require native measurement.
+
+## Additional consumers
+
+The same CI binary passes [Java volume/snapshot acceptance](local/java-volume1.json)
+(eight Java checks), [live observer recovery](local/java-recovery2.json) (five checks
+and four recoveries), [the game consumer](local/java-games1.json), and
+[delegated-container acceptance](local/delegated1.json) (ten checks). All confirm cleanup.
+[The gate record](local/consumer-gates1.json) identifies the staged Java runtime.
+
+[Recovery attempt 1](local/java-recovery1.json) fails before fault injection because
+its controller searches for obsolete per-job systemd units. Attempt 2 observes
+the actual delegated job cgroups and requires their removal before acknowledging
+recovery. The failed attempt also confirms cleanup; it is not runtime failure evidence.
