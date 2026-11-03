@@ -59,7 +59,6 @@ final class GameSandboxJob {
                 input.length,
                 SandcrabProtocol.sha256(input),
                 false,
-                true,
                 0700);
         client.register(session, transfer);
         if (!client.send(transfer, input).succeeded()) {

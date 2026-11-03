@@ -151,7 +151,6 @@ public final class SandcrabNativeProbe {
                 data.length,
                 SandcrabProtocol.sha256(data),
                 false,
-                true,
                 0640);
     }
 

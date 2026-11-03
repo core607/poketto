@@ -267,7 +267,6 @@ final class SandcrabProtocol {
             long bytes,
             String sha256,
             boolean replace,
-            boolean freeze,
             int mode) {
         UploadPlan {
             id = ProtocolValues.uuid(id, "upload ID");

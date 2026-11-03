@@ -20,7 +20,7 @@ final class SandcrabFiles {
         this.http = http;
     }
 
-    record Plan(String path, String format, boolean freeze) {
+    record Plan(String path, String format) {
         Plan {
             ProtocolValues.require(
                     "raw".equals(format) || "tar".equals(format), "snapshot format", "must be raw or tar");
@@ -58,7 +58,7 @@ final class SandcrabFiles {
     Content read(SandcrabProtocol.Session session, String path, int maxBytes, Runnable authorize) {
         ProtocolValues.inRange(maxBytes, 0, 8 * 1024 * 1024, "in-memory snapshot bound");
         var output = new ByteArrayOutputStream();
-        Snapshot snapshot = capture(session, new Plan(path, "raw", true), maxBytes, authorize, output);
+        Snapshot snapshot = capture(session, new Plan(path, "raw"), maxBytes, authorize, output);
         return new Content(output.toByteArray(), snapshot.sha256());
     }
 

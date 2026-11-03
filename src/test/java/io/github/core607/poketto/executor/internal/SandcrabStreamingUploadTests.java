@@ -161,7 +161,6 @@ class SandcrabStreamingUploadTests {
                 bytes,
                 HexFormat.of().formatHex(digest.digest()),
                 false,
-                true,
                 0600);
     }
 

@@ -164,7 +164,6 @@ final class GameNativeProbe {
                 0,
                 SandcrabProtocol.sha256(new byte[0]),
                 false,
-                true,
                 0600);
         client.register(session, upload);
         var command =

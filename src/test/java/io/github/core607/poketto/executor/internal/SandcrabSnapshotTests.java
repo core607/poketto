@@ -62,8 +62,8 @@ class SandcrabSnapshotTests {
                 reply(channel, type, bytes.length, digest(bytes), bytes);
             })) {
                 var client = new SandcrabClient(peer.client(channel -> {}));
-                SandcrabFiles.Snapshot result = client.snapshot(
-                        SESSION, new SandcrabFiles.Plan(path, format, true), bytes.length, target, () -> {});
+                SandcrabFiles.Snapshot result =
+                        client.snapshot(SESSION, new SandcrabFiles.Plan(path, format), bytes.length, target, () -> {});
                 assertThat(result.bytes()).isEqualTo(bytes.length);
                 assertThat(result.sha256()).isEqualTo(digest(bytes));
                 assertThat(Files.readAllBytes(target)).containsExactly(bytes);
@@ -89,11 +89,9 @@ class SandcrabSnapshotTests {
                 "a".repeat(256),
                 "中".repeat(86),
                 "a/".repeat(64) + "a")) {
-            assertThatThrownBy(() -> new SandcrabFiles.Plan(path, "raw", true))
-                    .isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(() -> new SandcrabFiles.Plan(path, "raw")).isInstanceOf(IllegalArgumentException.class);
         }
-        assertThatThrownBy(() -> new SandcrabFiles.Plan("file", "zip", true))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new SandcrabFiles.Plan("file", "zip")).isInstanceOf(IllegalArgumentException.class);
         try (var peer = new SandboxPeer(channel -> {
             throw new AssertionError("Invalid bounds must not dispatch a snapshot");
         })) {
@@ -105,7 +103,7 @@ class SandcrabSnapshotTests {
             for (long bound : new long[] {-1, 1_073_741_825L}) {
                 assertThatThrownBy(() -> client.snapshot(
                                 SESSION,
-                                new SandcrabFiles.Plan("file", "raw", true),
+                                new SandcrabFiles.Plan("file", "raw"),
                                 bound,
                                 temporary.resolve("invalid-bound"),
                                 () -> {}))
@@ -133,7 +131,7 @@ class SandcrabSnapshotTests {
                 var client = new SandcrabClient(peer.client(channel -> {}));
                 assertThatThrownBy(() -> client.snapshot(
                                 SESSION,
-                                new SandcrabFiles.Plan("file", "raw", true),
+                                new SandcrabFiles.Plan("file", "raw"),
                                 fault.equals("bound") ? 2 : 4,
                                 target,
                                 () -> {}))
@@ -190,7 +188,7 @@ class SandcrabSnapshotTests {
             })) {
                 var client = new SandcrabClient(peer.client(channel -> {}));
                 assertThatThrownBy(() -> client.snapshot(
-                                SESSION, new SandcrabFiles.Plan("file", "raw", true), bytes.length, target, () -> {}))
+                                SESSION, new SandcrabFiles.Plan("file", "raw"), bytes.length, target, () -> {}))
                         .isInstanceOf(WorkerUnavailableException.class);
                 assertThat(target).doesNotExist();
                 assertNoStagingFiles();
@@ -274,7 +272,7 @@ class SandcrabSnapshotTests {
                     }
                 };
                 assertThatThrownBy(() -> client.snapshot(
-                                SESSION, new SandcrabFiles.Plan("file", "raw", true), bytes.length, target, authorize))
+                                SESSION, new SandcrabFiles.Plan("file", "raw"), bytes.length, target, authorize))
                         .isInstanceOf(SecurityException.class);
                 assertThat(observedRevocation).isTrue();
                 assertThat(target).doesNotExist();
@@ -297,8 +295,8 @@ class SandcrabSnapshotTests {
                 reply(channel, "application/octet-stream", 0, digest(new byte[0]), new byte[0]);
             })) {
                 var client = new SandcrabClient(peer.client(channel -> {}));
-                assertThatThrownBy(() -> client.snapshot(
-                                SESSION, new SandcrabFiles.Plan("file", "raw", true), 0, target, () -> {}))
+                assertThatThrownBy(() ->
+                                client.snapshot(SESSION, new SandcrabFiles.Plan("file", "raw"), 0, target, () -> {}))
                         .isInstanceOf(WorkerUnavailableException.class);
                 assertThat(Files.readString(target)).isEqualTo("retained work");
                 assertNoStagingFiles();
@@ -345,7 +343,7 @@ class SandcrabSnapshotTests {
         SandboxPeer.Request request = SandboxPeer.request(channel);
         assertThat(request.head()).startsWith("POST /v1/sessions/" + ID + "/snapshot HTTP/1.1\r\n");
         SandcrabFiles.Plan plan = SandcrabProtocol.read(request.body(), SandcrabFiles.Plan.class);
-        assertThat(plan).isEqualTo(new SandcrabFiles.Plan(path, format, true));
+        assertThat(plan).isEqualTo(new SandcrabFiles.Plan(path, format));
     }
 
     private static String digest(byte[] bytes) {
