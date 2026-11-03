@@ -1,8 +1,0 @@
-{
-  "result": "FAIL",
-  "cleanup": "PASS",
-  "reason": "Fixture copied supervisor and launcher into its temporary root but omitted their new sibling bwrap; supervisor journal reports ENOENT before readiness. Original staged source and log retained.",
-  "nativeBinarySha256": "6d524d2581ab04c95641cec9111f418d66a8a200a00acf38a0defedeccded44a",
-  "bwrapSha256": "661da77e268a68e1f83e28fd1365459b1fb196d70ec1fc17d516b9881650357d",
-  "logSha256": "2dfe4c38418b4b6140b5bbb88b32f32f5f4fd1389aa6b7a29a46c936745d5cee"
-}

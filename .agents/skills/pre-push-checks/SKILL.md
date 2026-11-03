@@ -5,7 +5,7 @@ description: Use when preparing a push or pull request, or assessing delivery re
 
 # Pre-Push Checks
 
-CI runs the whole matrix on every non-documentation change, so local checks exist to fail fast, not to gate. Run what covers the change, actually run it before saying it passed, and report which commands ran.
+Run the checks affected by the change. Report which commands ran and what they verified; a CI job that was skipped supplies no evidence.
 
 ## Inspect the outgoing change
 
