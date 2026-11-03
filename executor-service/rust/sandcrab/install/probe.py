@@ -25,6 +25,10 @@ def systemd(bundle, passed):
     paths = tuple(map(Path, ('/etc/sandcrab', '/var/lib/sandcrab',
                              '/etc/systemd/system/sandcrab.slice', '/etc/systemd/system/sandcrab.service',
                              '/etc/apparmor.d/sandcrab-service')))
+    def prefix_state():
+        return {str(p): (p.stat().st_uid,p.stat().st_gid,p.stat().st_mode)
+                for p in map(Path, ('/opt','/usr/local/bin')) if p.exists()}
+    prefixes = prefix_state()
     def fresh():
         if any(p.exists() or p.is_symlink() for p in paths):
             raise RuntimeError('The install namespace is occupied')
@@ -76,8 +80,10 @@ def systemd(bundle, passed):
         cfg.write_bytes(customized)
         again = run([exe, 'install'])
         assert token.read_bytes() == secret and cfg.read_bytes() == customized
+        assert prefix_state() == prefixes, 'Installer changed an operator-owned search path'
         assert secret.decode() not in again.stdout + again.stderr
         passed('reinstall retains private token and operator configuration')
+        passed('operator-owned search paths retain their ownership and permissions')
         from urllib.error import HTTPError
         from urllib.request import urlopen
         try:
