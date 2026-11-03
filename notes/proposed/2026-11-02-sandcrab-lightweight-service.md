@@ -102,10 +102,12 @@ SDK conformance while changing the implementation.
    mount anchors so guest renames cannot redirect privileged file helpers.
    Upper tar export translates whiteouts for portable deletion semantics; callers
    coordinate writers and apply the changeset to its base before reimporting.
-8. L8: egress. Support `network = "none"` or `network = { allow = ["pypi.org", ...] }`. Implement a
-   daemon-side HTTP CONNECT/SOCKS proxy, bridged into the sandbox network namespace
-   before seccomp, and set proxy environment variables. No direct egress; DNS goes
-   only through the proxy. Log every policy decision.
+8. L8: [egress allowlists](../../executor-service/rust/sandcrab/README.md#network-egress).
+   Trusted launchers export private-network listeners before UID drop/seccomp,
+   avoiding veth/firewall state and resident bridges. Proxy variables select
+   daemon-side CONNECT/SOCKS5 and DNS; direct egress stays unavailable. Connections
+   are bounded, decisions logged, and cleanup precedes admission release.
+   [Native probes](../../executor-service/rust/sandcrab/egress_probe.py) pin isolation and lifecycle.
 9. L9: admission queue. Use a bounded FIFO for commands, with `max_queued`
    defaulting to 256 and `queue_timeout_millis` to 2,000, instead of immediate
    BUSY/CAPACITY. Timeout returns refusal without execution. Preserve no replay.
@@ -124,8 +126,8 @@ H1 through H4 before extraction, observing L4's bwrap dependency. Each change
 tests its affected isolation boundary and adds no runtime dependency or resident
 process. Use the checkpoint measurements for footprint comparisons.
 
-- H1: namespaces. Use `--unshare-all` and `--disable-userns`; keep the network
-  unshared. Probe real sandboxes: nested `unshare -U` fails, SysV shared memory is
+- H1: namespaces. Use `--unshare-all` and `--disable-userns`; preserve L8's private
+  network. Probe real sandboxes: nested `unshare -U` fails, SysV shared memory is
   invisible across sessions using the same execution user, hostnames are private,
   and `/proc/self/cgroup` does not reveal host unit names.
 - H2: seccomp. Extend L1's Rust filter using Docker's default profile as the
