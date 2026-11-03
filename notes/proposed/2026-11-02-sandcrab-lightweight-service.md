@@ -100,7 +100,8 @@ SDK conformance while changing the implementation.
    Startup requires Linux 5.11+ and verifies the helper and backing filesystem;
    unsupported storage refuses without a copy fallback. Template rootfs protects
    mount anchors so guest renames cannot redirect privileged file helpers.
-   Upper tar export preserving whiteouts remains to implement.
+   Upper tar export translates whiteouts for portable deletion semantics; callers
+   coordinate writers and apply the changeset to its base before reimporting.
 8. L8: egress. Support `network = "none"` or `network = { allow = ["pypi.org", ...] }`. Implement a
    daemon-side HTTP CONNECT/SOCKS proxy, bridged into the sandbox network namespace
    before seccomp, and set proxy environment variables. No direct egress; DNS goes
