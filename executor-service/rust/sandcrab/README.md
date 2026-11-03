@@ -21,13 +21,13 @@ sudo install -d -m 755 /var/lib/sandcrab-release
 sudo install -m 755 sandcrab bwrap /var/lib/sandcrab-release/
 sudo install -m 644 bwrap-notices.txt bwrap-source.tar.xz /var/lib/sandcrab-release/
 sudo /var/lib/sandcrab-release/sandcrab install
-sudo sandcrab doctor
+sudo /var/lib/sandcrab-release/sandcrab doctor
 ```
 
 `doctor` submits a real command under the `default` profile. To run your own:
 
 ```sh
-sudo sandcrab run --socket /var/lib/sandcrab/runtime/control.sock --profile default -- python3 -c 'print(6 * 7)'
+sudo /var/lib/sandcrab-release/sandcrab run --socket /var/lib/sandcrab/runtime/control.sock --profile default -- python3 -c 'print(6 * 7)'
 ```
 
 See the [installation reference](install/README.md) for the dry run, token,

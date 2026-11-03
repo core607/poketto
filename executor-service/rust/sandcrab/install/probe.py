@@ -22,7 +22,7 @@ def systemd(bundle, passed):
         raise RuntimeError('The installer probe needs a disposable root systemd machine')
     # GitHub-hosted images let the runner write /opt; use a protected package parent.
     release = Path('/var/lib/sandcrab-release')
-    paths = tuple(map(Path, ('/etc/sandcrab', '/var/lib/sandcrab', '/usr/local/bin/sandcrab',
+    paths = tuple(map(Path, ('/etc/sandcrab', '/var/lib/sandcrab',
                              '/etc/systemd/system/sandcrab.slice', '/etc/systemd/system/sandcrab.service',
                              '/etc/apparmor.d/sandcrab-service')))
     def fresh():
@@ -95,7 +95,7 @@ def systemd(bundle, passed):
             helper.chmod(0o755)
         passed('doctor reports an actionable damaged-helper failure')
     finally:
-        if paths[4].is_file():
+        if Path('/etc/systemd/system/sandcrab.service').is_file():
             run(['systemctl', 'stop', 'sandcrab.service', 'sandcrab.slice'])
             assert run(['systemctl','is-active','sandcrab.service'],check=False).returncode != 0
             passed('installed service stopped on the disposable machine')

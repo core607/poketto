@@ -4,14 +4,13 @@ use sandcrab_core::fs::{normal, protected_directory, protected_file};
 use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
-    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt, symlink},
-    path::{Path, PathBuf},
+    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
+    path::Path,
     process::Command,
 };
 
 pub const CONFIG: &str = "/etc/sandcrab/config.toml";
 const USER: &str = "sandcrab-exec";
-const ALIAS: &str = "/usr/local/bin/sandcrab";
 const TOKEN: &str = "/etc/sandcrab/token";
 const SYSTEMD_GROUP: &str = "/sys/fs/cgroup/sandcrab.slice/sandcrab.service";
 const APPARMOR: &str = "/etc/apparmor.d/sandcrab-service";
@@ -30,7 +29,6 @@ enum Action {
     Text(&'static str, u32, String),
     Token,
     Account,
-    Alias(PathBuf),
     Command(&'static str, Vec<&'static str>),
     WaitForService,
 }
@@ -188,20 +186,6 @@ impl Action {
                     return Err(invalid("Cannot look up the execution account"));
                 }
             }
-            Self::Alias(exe) => {
-                let path = Path::new(ALIAS);
-                checked_parent(path)?;
-                if let Some(info) = metadata(path)? {
-                    if !(path == exe || (info.is_symlink() && fs::read_link(path)? == *exe)) {
-                        return Err(invalid(format!("{ALIAS} already names another program")));
-                    }
-                } else {
-                    show(format!("link {ALIAS} to {}", exe.display()));
-                    if write {
-                        symlink(exe, path)?;
-                    }
-                }
-            }
             Self::Command(program, args) => {
                 show(format!("{program} {}", args.join(" ")));
                 if write {
@@ -275,11 +259,9 @@ pub fn install(dry_run: bool, container: bool) -> io::Result<()> {
         Directory("/var/lib/sandcrab/tools", 0o755),
         Directory("/var/lib/sandcrab/storage", 0o755),
         Directory("/var/lib/sandcrab/storage/data", 0o711),
-        Directory("/usr/local/bin", 0o755),
         Account,
         Token,
         Text(CONFIG, 0o600, config),
-        Alias(exe.clone()),
     ];
     if !container {
         let restricted =

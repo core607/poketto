@@ -2,13 +2,13 @@
 
 Follow [Get started](../README.md#get-started) with a release directory owned by
 root and not writable by other users. Keep that directory installed: the service
-unit and the `/usr/local/bin/sandcrab` link use its executable.
+unit uses its executable. The installer does not change shell search paths.
 
 `sandcrab install --dry-run` prints directory modes, the account, configuration,
 units and activation commands without changing the machine or generating a
 credential. Run `sudo sandcrab install` to apply them. Installation preserves an
 existing protected configuration and token and refuses to replace conflicting
-units, accounts or CLI paths.
+units or accounts.
 
 The service listens on a root-only Unix client interface and on `127.0.0.1:9011`
 with a private token in `/etc/sandcrab/token`. The `default` profile runs as
