@@ -28,7 +28,16 @@ final class SandcrabProtocol {
             .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
             .build();
     private static final Set<String> RUN_STATES = Set.of(
-            "running", "closing", "succeeded", "failed", "cancelled", "timed_out", "output_limit", "resource_limit");
+            "queued",
+            "running",
+            "closing",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "timed_out",
+            "output_limit",
+            "resource_limit",
+            "refused");
     private static final Set<String> SESSION_STATES =
             Set.of("starting", "ready", "busy", "stopping", "closed", "expired", "failed", "closing");
     private static final Set<String> UPLOAD_STATES =
@@ -348,7 +357,13 @@ final class SandcrabProtocol {
             if (sessionId != null) {
                 sessionId = ProtocolValues.uuid(sessionId, "command session ID");
             }
-            require("running".equals(state) == (result == null), "run result", "must match its lifecycle state");
+            require(
+                    (state.equals("queued") || state.equals("running")) == (result == null),
+                    "run result",
+                    "must match its lifecycle state");
+            if (state.equals("refused")) {
+                require(Boolean.FALSE.equals(result.executed()), "refused run", "must confirm no execution");
+            }
             if ("succeeded".equals(state)) {
                 require(result.success(), "successful run", "must have complete output and exit zero");
             }
@@ -359,19 +374,21 @@ final class SandcrabProtocol {
         }
 
         boolean terminal() {
-            return !state.equals("running") && !state.equals("closing");
+            return !state.equals("queued") && !state.equals("running") && !state.equals("closing");
         }
     }
 
-    record Result(Integer exitCode, String stdout, String stderr, Boolean truncated, String code) {
+    record Result(Integer exitCode, String stdout, String stderr, Boolean truncated, String code, Boolean executed) {
         Result {
             if (code == null) {
+                require(executed == null, "run output", "must not also claim a refusal");
                 Objects.requireNonNull(exitCode, "run exit code must be present");
                 Objects.requireNonNull(truncated, "run truncation flag must be present");
                 output(stdout, "stdout");
                 output(stderr, "stderr");
             } else {
                 code = SandcrabProtocol.code(code);
+                require(executed == null || !executed, "run refusal", "must not claim execution");
                 require(
                         exitCode == null && stdout == null && stderr == null && truncated == null,
                         "failed run result",

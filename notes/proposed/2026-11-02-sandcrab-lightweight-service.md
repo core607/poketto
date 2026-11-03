@@ -108,9 +108,11 @@ SDK conformance while changing the implementation.
    daemon-side CONNECT/SOCKS5 and DNS; direct egress stays unavailable. Connections
    are bounded, decisions logged, and cleanup precedes admission release.
    [Native probes](../../executor-service/rust/sandcrab/egress_probe.py) pin isolation and lifecycle.
-9. L9: admission queue. Use a bounded FIFO for commands, with `max_queued`
-   defaulting to 256 and `queue_timeout_millis` to 2,000, instead of immediate
-   BUSY/CAPACITY. Timeout returns refusal without execution. Preserve no replay.
+9. L9: [bounded admission](../../executor-service/rust/sandcrab/README.md#command-queue).
+   Independent finite-run and shell FIFOs prevent capacity waits blocking existing shells.
+   Locked cancellation removes payloads before forgetting, preventing stale execution
+   after ID reuse. [Probes](../../executor-service/rust/sandcrab/queue_probe.py) cover
+   ordering, no-execution refusals and SDKs.
 10. L10: contributor entrance. Document quickstarts for all three distributions
     and the container. Provide CLI/curl and Python/Kotlin OpenSandbox examples, a
     build/test agent and a batch code runner. Consolidate `*_probe.py` into one

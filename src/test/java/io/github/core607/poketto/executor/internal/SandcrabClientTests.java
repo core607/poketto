@@ -44,6 +44,32 @@ class SandcrabClientTests {
     }
 
     @Test
+    void queuedAdmissionKeepsItsIdentityAndRefusalRequiresNoExecution() throws Exception {
+        String queued = RUNNING.replace("\"running\"", "\"queued\"");
+        try (var peer = new SandboxPeer(channel -> {
+            SandboxPeer.request(channel);
+            SandboxPeer.reply(channel, 202, queued);
+        })) {
+            SandcrabProtocol.Run run = new SandcrabClient(peer.client(channel -> {})).start(plan());
+            assertThat(run.reference()).isEqualTo(plan().reference());
+            assertThat(run.terminal()).isFalse();
+            assertThat(peer.requests()).isEqualTo(1);
+        }
+        String refused = RUNNING.replace("\"running\"", "\"refused\"")
+                .replace("null", "{\"code\":\"QUEUE_TIMEOUT\",\"executed\":false}");
+        SandcrabProtocol.Run run =
+                SandcrabProtocol.read(refused.getBytes(StandardCharsets.UTF_8), SandcrabProtocol.Run.class);
+        assertThat(run.terminal()).isTrue();
+        assertThat(run.result().success()).isFalse();
+        assertThat(run.result().executed()).isFalse();
+        for (String invalid : List.of(refused.replace(",\"executed\":false", ""), refused.replace("false", "true"))) {
+            assertThatThrownBy(() ->
+                            SandcrabProtocol.read(invalid.getBytes(StandardCharsets.UTF_8), SandcrabProtocol.Run.class))
+                    .isInstanceOf(WorkerUnavailableException.class);
+        }
+    }
+
+    @Test
     void lostAdmissionResponseDoesNotDispatchTheMutationAgain() throws Exception {
         try (var peer = new SandboxPeer(SandboxPeer::request)) {
             var client = new SandcrabClient(peer.client(channel -> {}));

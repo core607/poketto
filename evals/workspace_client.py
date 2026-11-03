@@ -153,7 +153,7 @@ class Workspace:
         identity = str(uuid.uuid4())
         self.create('runs', identity, f'/v1/sessions/{session}/commands', {
             'id': identity, 'serverId': self.epoch, 'command': command, 'timeoutMillis': 10000, 'outputLimitBytes': 4096}, (202,))
-        result = self.poll('runs', identity, {'running'})
+        result = self.poll('runs', identity, {'queued', 'running'})
         if result['state'] == 'closing':
             raise RuntimeError('Command containment was not confirmed')
         self.finished('runs', identity)
@@ -368,7 +368,7 @@ class Workspace:
         with self.exclusive('cleanup'):
             for identity in self.state['sessions'][:]:
                 self.close_session(identity)
-            for collection, active in [('runs', {'running'}), ('uploads', {'waiting', 'receiving', 'publishing', 'published'})]:
+            for collection, active in [('runs', {'queued', 'running'}), ('uploads', {'waiting', 'receiving', 'publishing', 'published'})]:
                 for identity in self.state[collection][:]:
                     status, result = self.api('GET', f'/v1/{collection}/{identity}')
                     if status == 404:

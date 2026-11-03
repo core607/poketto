@@ -58,6 +58,32 @@ class SandcrabEventsTests {
     }
 
     @Test
+    void queuedStreamEndsWithDefinitiveRefusalWithoutOutputOrResubmission() throws Exception {
+        String queued = RUNNING.replace("\"running\"", "\"queued\"");
+        String refused = RUNNING.replace("\"running\"", "\"refused\"")
+                .replace("null", "{\"code\":\"QUEUE_TIMEOUT\",\"executed\":false}");
+        refused = refused.substring(0, refused.length() - 1)
+                + ",\"queueWaitMillis\":2001,\"stdoutBytes\":0,\"stderrBytes\":0}";
+        String frames = frame(INCARNATION + ":0:0", "state", queued) + frame(INCARNATION + ":0:0", "result", refused);
+        try (var peer = new SandboxPeer(channel -> {
+            SandboxPeer.request(channel);
+            events(channel, frames, 13, false);
+        })) {
+            var output = new ArrayList<SandcrabEvents.Output>();
+            SandcrabEventProtocol.Run result = client(peer).observe(REFERENCE, null, TIMEOUT, output::add);
+            assertThat(result.state()).isEqualTo("refused");
+            assertThat(result.result().executed()).isFalse();
+            assertThat(output).isEmpty();
+            assertThat(peer.requests()).isEqualTo(1);
+        }
+        for (String invalid : List.of(refused.replace(",\"executed\":false", ""), refused.replace("false", "true"))) {
+            assertThatThrownBy(() -> SandcrabProtocol.read(
+                            invalid.getBytes(StandardCharsets.UTF_8), SandcrabEventProtocol.Run.class))
+                    .isInstanceOf(WorkerUnavailableException.class);
+        }
+    }
+
+    @Test
     void opaqueMaximumCallUsesOneObserverAndRepliesOnlyToItsDaemonHandle() throws Exception {
         byte[] payload = new byte[65_536];
         for (int index = 0; index < payload.length; index++) {
