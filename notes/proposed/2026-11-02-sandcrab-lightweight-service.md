@@ -71,11 +71,9 @@ SDK conformance while changing the implementation.
 1. L1 is implemented by the [native filter decision](../implemented/2026-11-02-native-seccomp-filter.md).
 2. L2 uses [delegated cgroups](../implemented/2026-11-02-delegated-sandbox-cgroups.md)
    for native launches and confirmed containment. Target cold-start p50 at most 30 ms.
-3. L3 uses [ordinary directories](../../executor-service/rust/sandcrab/README.md#storage-accounting)
-   for volumes and session workspaces, reflinking where supported and copying otherwise.
-   Configured XFS quotas are enforced; only `require_quota = true` demands enforcement.
-   Otherwise periodic accounting reports usage and refuses growth with a soft bound.
-   Pool usage sums complete volume observations; rescans duplicate work and impose aggregate scan limits.
+3. L3 uses [ordinary directory storage](../../executor-service/rust/sandcrab/README.md#storage-accounting)
+   with optional XFS enforcement. Periodic accounting keeps non-XFS hosts usable,
+   with weaker bounds and scan overhead.
 4. L4 implemented: the [static helper bundle](../../executor-service/rust/sandcrab-launch/bwrap/README.md)
    pins bwrap above 0.9, accompanies it with source/version/notices, and checks its
    checksum by default. Release ownership supplies L7's overlay-capable helper
@@ -86,8 +84,8 @@ SDK conformance while changing the implementation.
    start as PID 1 in a bounded private container delegation.
 6. L6: general API. Keep runs, sessions with named contexts, files, command
    events, profiles, the OpenSandbox adapter, CLI and token-authenticated loopback
-   HTTP. Terminal run, session and upload records expire after a TTL unless
-   `keep_result`; explicit forget remains. Add streaming
+   HTTP. [Terminal result retention](../../executor-service/rust/sandcrab/README.md#result-retention)
+   expires unpinned run, session and upload records; explicit forget remains. Add streaming
    `PUT /v1/sessions/{id}/files?path=` for ordinary uploads. Retain staged uploads
    only with a documented general use for recoverable large transfers. Keep plain
    tar downloads; remove freeze flags and checksummed snapshot manifests unless
@@ -177,6 +175,10 @@ and unsaved changes as the upper layer. Existing volumes remain until disposal o
 expiry. Update the owning [account-copy](../implemented/2026-09-14-account-working-copies.md)
 and [authoring](../implemented/2026-09-09-codeact-workspaces.md) decisions with their
 implementation. Preserve data and current authorization during transition.
+Consumers that need a terminal receipt for deferred cleanup must request
+`keepResult` before adopting TTL-enabled native binaries. In particular,
+[game cleanup](../../src/main/java/io/github/core607/poketto/executor/internal/GameSandboxJob.java)
+requires an observed terminal session before releasing application admission.
 Before deployment/import/cutover, back up legacy data and record the previous image
 pin for manual recovery; pause writes during import, verify it and retain the result
 in delivery evidence. The service proposal's preregistered 50-agent comparison is
