@@ -1,10 +1,13 @@
 import copy
+import contextlib
 import io
 import json
 import os
 from pathlib import Path
+import runpy
 import subprocess
 import tempfile
+import textwrap
 import time
 import unittest
 from unittest.mock import patch
@@ -595,14 +598,32 @@ class ReviewTests(unittest.TestCase):
         needs = verify.split("needs: [", 1)[1].split("]", 1)[0]
         lanes = [lane.strip() for lane in needs.split(",")]
         self.assertIn("changes", lanes)
-        decision = verify.split("run: |", 1)[1]
-        for lane in lanes:
-            if lane == "changes":
-                continue
-            self.assertIn(lane + "=$", decision, lane + " is awaited but never required")
-        # A lane that reports anything other than success, including a skip, fails the check.
-        self.assertIn("success) ;;", decision)
-        self.assertIn("exit 1", decision)
+        decision = textwrap.dedent(verify.split("run: |", 1)[1].split("\n\n", 1)[0])
+        select = runpy.run_path(str(root / ".github/ci/lanes.py"))["select"]
+        required = select("push", []) | select("pull_request", ["README.md"])
+        self.assertEqual(set(lanes), required | {"changes"})
+        self.assertIn("LANES: ${{ needs.changes.outputs.lanes }}", verify)
+        self.assertIn("RESULTS: ${{ toJSON(needs) }}", verify)
+        # Exercise the actual verdict. An unrelated skip is allowed, while a skipped,
+        # cancelled or failed selected lane (or classifier) can never grant the review.
+        def verdict(selected, results):
+            env = {"LANES": json.dumps(selected), "RESULTS": json.dumps(results)}
+            with patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()):
+                exec(decision, {})
+        for lane in required:
+            self.assertIn(f"if: contains(fromJSON(needs.changes.outputs.lanes), '{lane}')", ci)
+            results = {name: {"result": "skipped"} for name in lanes}
+            results["changes"] = {"result": "success"}
+            results[lane] = {"result": "success"}
+            verdict([lane], results)
+            for status in ("skipped", "cancelled", "failure"):
+                results[lane]["result"] = status
+                with self.subTest(lane=lane, status=status), self.assertRaises(SystemExit):
+                    verdict([lane], results)
+        with self.assertRaises(SystemExit):
+            verdict([], {"changes": {"result": "success"}})
+        with self.assertRaises(SystemExit):
+            verdict(["docs"], {"docs": {"result": "success"}, "changes": {"result": "failure"}})
         # Every task the check lifecycle runs still belongs to a lane.
         for task in ("test", "spotlessCheck", "checkstyleMain", "checkstyleTest",
                      "checkstyleIntegrationTest", "repoCheck", "integrationTest", "frontendCheck",
