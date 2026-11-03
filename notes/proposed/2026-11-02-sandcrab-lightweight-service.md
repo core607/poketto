@@ -78,22 +78,20 @@ SDK conformance while changing the implementation.
    pins bwrap above 0.9, accompanies it with source/version/notices, and checks its
    checksum by default. Release ownership supplies L7's overlay-capable helper
    without depending on Ubuntu 22.04's older distribution package.
-5. L5 supplies the [installer and doctor](../../executor-service/rust/sandcrab/install/README.md):
-   one protected default profile, a delegated systemd service, authenticated loopback
-   HTTP, installation preview and a real diagnostic run. The same service can
-   start as PID 1 in a bounded private container delegation.
-6. L6: general API. Keep runs, sessions with named contexts, files, command
+5. L5 provides [installation, diagnostics and bounded delegated containers](../../executor-service/rust/sandcrab/install/README.md).
+6. L6 exposes runs, sessions with named contexts, files, command
    events, profiles, the OpenSandbox adapter, CLI and token-authenticated loopback
    HTTP. [Terminal result retention](../../executor-service/rust/sandcrab/README.md#result-retention)
    expires unpinned run, session and upload records; explicit forget remains.
    [Streaming PUT](../../executor-service/rust/sandcrab/README.md#files) handles ordinary
    uploads. Optional staged transfers retain operation receipts for large artifact
-   publication across lost replies or restart; they do not resume partial bytes. Keep plain
-   tar downloads; remove freeze flags and checksummed snapshot manifests unless
-   a general use is documented. Poketto can capture consistently inside one command.
-   Keep opaque host calls optional per profile with a non-Poketto example. Update
-   [OpenAPI](../../executor-service/rust/sandcrab/openapi.json), the README and
-   [SDK mapping](../../executor-service/rust/sandcrab/opensandbox.md) together.
+   publication across lost replies or restart; they do not resume partial bytes.
+   Native transfers operate on live workspaces with raw/plain-tar downloads;
+   callers coordinate consistency inside their commands. SDK file operations retain
+   their documented internal capture policy. Runtime metadata follows the 0.x rebuild rule.
+   Optional profile host calls include an [independent signing example](../../examples/sandcrab-host-calls.py).
+   [OpenAPI](../../executor-service/rust/sandcrab/openapi.json) and the
+   [SDK mapping](../../executor-service/rust/sandcrab/opensandbox.md) own their contracts.
 7. L7: templates. Store an immutable tree once, addressed by SHA-256, imported
    from tar or an unpacked OCI image. A session uses
    `--overlay-src TEMPLATE --overlay UPPER WORK /workspace`, optionally using the

@@ -88,7 +88,7 @@ public final class SandcrabVolumeNativeProbe {
         try {
             SandcrabFiles.Snapshot snapshot = client.snapshot(
                     session,
-                    new SandcrabFiles.Plan("repository/payload.bin", "raw", true),
+                    new SandcrabFiles.Plan("repository/payload.bin", "raw"),
                     3L * 1024 * 1024,
                     target,
                     authorizations::incrementAndGet);
@@ -201,7 +201,6 @@ public final class SandcrabVolumeNativeProbe {
                 Files.size(bundle),
                 HexFormat.of().formatHex(digest.digest()),
                 false,
-                true,
                 0600);
         require(client.register(session, plan).state().equals("waiting"), "Bundle registration was not admitted");
         SandcrabProtocol.Upload uploaded = client.send(plan, bundle);

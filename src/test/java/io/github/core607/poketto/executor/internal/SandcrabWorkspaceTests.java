@@ -29,7 +29,7 @@ class SandcrabWorkspaceTests {
 
     private static SandcrabProtocol.UploadPlan plan(byte[] data) {
         return new SandcrabProtocol.UploadPlan(
-                FILE, EPOCH, ROOT, "input.bin", "raw", data.length, SandcrabProtocol.sha256(data), false, true, 0640);
+                FILE, EPOCH, ROOT, "input.bin", "raw", data.length, SandcrabProtocol.sha256(data), false, 0640);
     }
 
     private static String upload(SandcrabProtocol.UploadPlan plan, String state, String publication) {
