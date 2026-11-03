@@ -1,0 +1,23 @@
+{
+  "milestone": "L5",
+  "runtimeRevision": "503ca9bc2e0bcc1f8bfce40da1e1062086a7829d",
+  "scope": "Functional installer and container checks on a local Linux kernel under Docker Desktop",
+  "rustTestsPassed": 139,
+  "systemd": {
+    "dryRunWithoutChanges": true,
+    "occupiedPortFailsWithoutDisclosingToken": true,
+    "defaultBashAndPythonRun": true,
+    "configurationAndTokenPreservedOnReinstall": true,
+    "unauthenticatedHttpRefused": true,
+    "damagedHelperDiagnosed": true,
+    "cleanup": "pass"
+  },
+  "standaloneContainer": {
+    "privateCgroupNamespace": true,
+    "hostCgroupBind": false,
+    "workloadRanAsNonRoot": true,
+    "cleanup": "pass"
+  },
+  "ciArtifacts": "https://github.com/core607/poketto/actions/workflows/sandcrab-readiness.yml?query=branch%3Acodex%2Fsandcrab-install-doctor-l5",
+  "capacityMeasured": false
+}

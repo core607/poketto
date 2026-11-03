@@ -19,7 +19,9 @@ Poketto targets a self-hosted single machine. Its delivery path needs only to tu
 
 After a `main` push of the canonical repository passes the required `verify` job, the `publish` job builds the application image with Buildx and pushes it to `ghcr.io/core607/poketto` tagged `sha-<commit>` and `main`. The moving tag aids discovery only; deployment selects an image by its registry digest or by the per-commit tag carried in a transferred archive, and always verifies the `org.opencontainers.image.revision` label against the commit being deployed. Provenance attestations are disabled so the published digest names one `linux/amd64` manifest.
 
-The publish job alone holds `contents: read` and `packages: write`. Verification, pull-request, and deployment jobs hold no package-write authority. Every third-party action is pinned to a full commit SHA. The workflow summary records the source commit, the application and frontend digests, and the database pin.
+The separate [Sandcrab installer workflow](../../.github/workflows/sandcrab-readiness.yml) can publish the image archive from its container check on an explicit main dispatch. It requires the successful main CI verdict for the same revision and tags that revision. Publishing the package does not switch the application executor.
+
+Only the image publication jobs hold `packages: write`. Verification, pull-request, and deployment jobs hold no package-write authority. Every third-party action is pinned to a full commit SHA. The workflow summary records the source commit, the application and frontend digests, and the database pin.
 
 The [Dockerfile](../../Dockerfile) builds the boot jar on the pinned Temurin 26 JDK image, extracts Spring Boot layers, and runs them on the pinned Temurin 26 JRE image as the non-root user `poketto` (uid 10001) with `curl` for the health check. The image contains no `.env`, credential, content repository, database volume, or data directory.
 
