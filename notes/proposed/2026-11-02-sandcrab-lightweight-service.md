@@ -95,10 +95,11 @@ SDK conformance while changing the implementation.
 7. L7: [immutable template imports](../../executor-service/rust/sandcrab/README.md#templates)
    use SHA-256 identities including normalized execution UID/GID. This preserves
    profile permissions without world-writable bases or per-session chown.
-   Shared bwrap overlays, optional template rootfs and upper tar export preserving
-   whiteouts remain to implement. Require kernel 5.11+ and overlay-capable bwrap
-   at startup; refuse unsupported backing filesystems with no copy fallback.
-   Templates share page cache/disk and supply reusable environments.
+   Shared bwrap overlays give each parent a disposable writable layer; contexts
+   share one mount to avoid concurrent writers on independently mounted uppers.
+   Startup requires Linux 5.11+ and verifies the helper and backing filesystem;
+   unsupported storage refuses without a copy fallback. Optional template rootfs
+   and upper tar export preserving whiteouts remain to implement.
 8. L8: egress. Support `network = "none"` or `network = { allow = ["pypi.org", ...] }`. Implement a
    daemon-side HTTP CONNECT/SOCKS proxy, bridged into the sandbox network namespace
    before seccomp, and set proxy environment variables. No direct egress; DNS goes
