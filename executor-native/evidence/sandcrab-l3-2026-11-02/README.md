@@ -1,8 +1,8 @@
 # Sandcrab L3 storage evidence
 
 These receipts cover ordinary storage, disk session directories, periodic
-accounting and native consumers. The canonical XFS result is below; ordinary
-storage density remains pending. [The index](index.json) hashes the committed
+accounting and native consumers. Canonical XFS and ordinary-storage results are
+below. [The index](index.json) hashes the committed
 receipt bytes; [local gates](local/local-gates.json) retain each build attempt,
 including failures. Original logs and source snapshots remain with the operator.
 
@@ -31,7 +31,8 @@ Plain-storage observations use disposable ext4 images and force ordinary-copy
 fallback. They include volume and aggregate pool overage, read/delete recovery,
 shared disk sessions and ownership-checked restart cleanup. The pool observation
 exceeds its 8 MiB limit before writers freeze; periodic accounting is a soft bound.
-Representative accounting cost at 50 sessions of 20,000 files remains unmeasured.
+The canonical ordinary-storage measurement below retains its cost at 20,000 files
+per workspace, including the failed 50-agent stage.
 
 [Contexts attempt 1](local/contexts1.json) exposed the old snapshot staging path
 after session workspaces moved to disk. The corrected staging path passes in
@@ -72,8 +73,7 @@ The clock excludes compilation, preparation of the controller and images, and
 human editing; distribution containers share the runner kernel.
 
 [Measurement component checks](local/measurement-tests1.json) pass 33 Linux tests,
-including observation placement outside the command window. The plain-storage
-variant still requires native measurement.
+including observation placement outside the command window.
 
 [Plain attempt 1](41546468286/13193146858/smoke.json) stops before the daemon
 becomes ready: the fixture mounts ext4's `lost+found` inside the owned data root,
@@ -119,6 +119,38 @@ The executable inventory is nine with optional project quotas, six without;
 the prepared tools occupy 9,255,073 bytes. The [cache](41546372313/13192971448/cache.json)
 and [startup trace](41546372313/13192971448/cold-start.json) retain their separate
 measurement scopes and do not replace the missed canonical cold-start target.
+
+## Canonical ordinary-storage measurement
+
+[Run 41554499701](https://github.com/core607/poketto/actions/runs/41554499701)
+measures clean head `ebf3022d` with the same `57169e02` binary and W0 protocol.
+The [density receipt](41554499701/13194239485/density.json) verifies ext4,
+`quotaEnforced = false`, 5 GB, two CPUs and zero swap. All collectors and
+API/host cleanup complete. Capacity is 25; the first 50-agent repetition fails.
+
+| 25-agent repetition | Cold-start p50 | Judged p95 | OK rate | OOM kills |
+|---|---:|---:|---:|---:|
+| 0 | 19.005981 ms | 242.347786 ms | 1.0 | 0 |
+| 1 | 19.537474 ms | 234.782458 ms | 1.0 | 0 |
+| 2 | 20.145433 ms | 236.964911 ms | 1.0 | 0 |
+
+At 50 agents, 783 `SESSION_NOT_READY` refusals reduce the judged OK rate to
+0.1357615894, with zero OOM. The 38.961074 ms p95 includes fast refusals and
+establishes no speed gain. Cold-start p50 is 23.055662 ms. Warmup commands time
+out before the judged window; the receipt preserves those attempts too.
+
+Across the three 25-agent command windows, daemon CPU consumes
+172.467091–173.354668 seconds over 179.474989–179.494933 seconds of sampled wall
+time, approximately 0.96 CPU cores. At 50 it consumes 198.107331 CPU seconds over
+179.450435 seconds. These are whole-daemon observations, not a scanner-only CPU
+profile. Peak pool memory approaches 5 GB in every stage. Ordinary storage at
+this corpus size has a measured density cost; no capacity improvement is claimed.
+
+Per-session accounting remains complete and refreshes during the command window.
+Pool observation time is the oldest constituent sample, including the inactive
+base volume; it is not a new simultaneous measurement of every volume. The
+companion footprint, cache and trace receipts use their unchanged XFS fixtures,
+so they do not establish ordinary-storage fixed costs or trace timings.
 
 ## Additional consumers
 

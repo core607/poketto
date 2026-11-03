@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "scope": "Retained local, CI and canonical XFS receipts; the first plain benchmark failed fixture startup, and its corrected local smoke passes. Canonical plain density remains pending.",
+  "scope": "All retained local and CI attempts, canonical XFS capacity50 and ordinary-storage capacity25. Cold-start and density failures remain recorded; no performance gain is claimed.",
   "files": [
     {
       "path": "41461303539/13150636174/native-load.json",
@@ -216,6 +216,76 @@
       "path": "41546468286/13193146858/smoke.json",
       "bytes": 5944,
       "sha256": "a7da1f8ac0b8608aaaeb88d08a286159e0a5b4b86625c03b9c04f2e80e35d8d9"
+    },
+    {
+      "path": "41554499701/13194239485/cache-smoke.attempts.jsonl",
+      "bytes": 14286,
+      "sha256": "2c9326e03153a11508ba5249dc1cd5a7498f97e0086771b33a98d5491f13e9e7"
+    },
+    {
+      "path": "41554499701/13194239485/cache-smoke.json",
+      "bytes": 21001,
+      "sha256": "8cf5902b80cf1849c644f66f3dfc6126437b336086933b76e6230b0c91d7ba3e"
+    },
+    {
+      "path": "41554499701/13194239485/cache.attempts.jsonl",
+      "bytes": 14532,
+      "sha256": "18f77575ff0456e31e1df5f0910dd59856bde870752c06ea37f95c9342b4bbfe"
+    },
+    {
+      "path": "41554499701/13194239485/cache.json",
+      "bytes": 21256,
+      "sha256": "6e42a78641ee661f39cfc4e9bf8d90e86262fcb2c6be20a760d9386ac322a1ba"
+    },
+    {
+      "path": "41554499701/13194239485/cold-start-smoke.json",
+      "bytes": 27532,
+      "sha256": "799f1919bae22a85a418cdb714713fd5f40f367c423c6e919c29fefdc03cd457"
+    },
+    {
+      "path": "41554499701/13194239485/cold-start.json",
+      "bytes": 27774,
+      "sha256": "157a371789ffa51a1f4d920d67bd4ac8ec520645b9afbdfce816f48ca7874c8e"
+    },
+    {
+      "path": "41554499701/13194239485/density.attempts.jsonl",
+      "bytes": 1936396,
+      "sha256": "1cab5d216764d21458f4f4caf9bd42f483e4c82dd33970bc2790561cd27bc264"
+    },
+    {
+      "path": "41554499701/13194239485/density.json",
+      "bytes": 2543040,
+      "sha256": "1b59cb9b170acce6a9654f233637a267b0ff634a33ce9f56cc8873c4c1dcb95f"
+    },
+    {
+      "path": "41554499701/13194239485/footprint-smoke.attempts.jsonl",
+      "bytes": 433,
+      "sha256": "7f437f4edb13fc1fce7ae4e6d8532c9e105c12800ad6211be8b7d4d5194b3645"
+    },
+    {
+      "path": "41554499701/13194239485/footprint-smoke.json",
+      "bytes": 22659,
+      "sha256": "b7947da3c075c0a835bb7cb8e05865a54874f11911fb6df1b76f9cac4bee5f2c"
+    },
+    {
+      "path": "41554499701/13194239485/footprint.attempts.jsonl",
+      "bytes": 26779,
+      "sha256": "2b68aee897b61599bf306b6c13916fc413f11463aa186cb532fc4da20b87eb5d"
+    },
+    {
+      "path": "41554499701/13194239485/footprint.json",
+      "bytes": 71789,
+      "sha256": "7111d9e4747eba02c2f0c261791c311faaf0c7fc408da2aaa0f1357d67c16faf"
+    },
+    {
+      "path": "41554499701/13194239485/smoke.attempts.jsonl",
+      "bytes": 67546,
+      "sha256": "1a9cf0308b056a24ba46a2b58228016c7476858e196c7726d8729d01f720c90b"
+    },
+    {
+      "path": "41554499701/13194239485/smoke.json",
+      "bytes": 91355,
+      "sha256": "ef9b2d43979f41762bb09661a42cb86af1c2e1780c9283794db314927bb72c44"
     },
     {
       "path": "local/consumer-gates1.json",
