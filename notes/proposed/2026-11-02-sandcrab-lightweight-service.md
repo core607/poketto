@@ -92,13 +92,13 @@ SDK conformance while changing the implementation.
    Optional profile host calls include an [independent signing example](../../examples/sandcrab-host-calls.py).
    [OpenAPI](../../executor-service/rust/sandcrab/openapi.json) and the
    [SDK mapping](../../executor-service/rust/sandcrab/opensandbox.md) own their contracts.
-7. L7: templates. Store an immutable tree once, addressed by SHA-256, imported
-   from tar or an unpacked OCI image. A session uses
-   `--overlay-src TEMPLATE --overlay UPPER WORK /workspace`, optionally using the
-   template as its root filesystem. Export UPPER as tar, preserving whiteout deletion
-   semantics. Refuse unsupported kernels below 5.11 or bwrap without overlay support
-   at startup, with no copy fallback. This shares page cache/disk and supplies
-   reusable custom environments.
+7. L7: [immutable template imports](../../executor-service/rust/sandcrab/README.md#templates)
+   use SHA-256 identities including normalized execution UID/GID. This preserves
+   profile permissions without world-writable bases or per-session chown.
+   Shared bwrap overlays, optional template rootfs and upper tar export preserving
+   whiteouts remain to implement. Require kernel 5.11+ and overlay-capable bwrap
+   at startup; refuse unsupported backing filesystems with no copy fallback.
+   Templates share page cache/disk and supply reusable environments.
 8. L8: egress. Support `network = "none"` or `network = { allow = ["pypi.org", ...] }`. Implement a
    daemon-side HTTP CONNECT/SOCKS proxy, bridged into the sandbox network namespace
    before seccomp, and set proxy environment variables. No direct egress; DNS goes
