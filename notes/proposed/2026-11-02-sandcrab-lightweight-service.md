@@ -146,12 +146,15 @@ process. Use the checkpoint measurements for footprint comparisons.
 
 ### P: measured performance work
 
-Rerun W0 after L2, L7 and L9, comparing footprint and density. P1 requires idle
-sessions to hold at least 40% of sandbox memory at measured capacity; otherwise
-record the numbers and skip it. After `idle_evict_millis`, evict only a lone shell:
-save cwd and `export -p`, exit, and restore them on the next command. Background
-processes prohibit eviction. Document lost state and move workspaces from tmpfs
-to disk. Propose other measured optimizations here before implementing them.
+Rerun W0 footprint/density at L2/L7/L9. Record measurements and skip P1 unless idle
+sessions hold at least 40% of sandbox memory at measured capacity. After
+`idle_evict_millis`, evict only a lone shell: save cwd and `export -p`, exit,
+then restore both on the next command. Background processes block eviction. Document lost state;
+move workspaces from tmpfs to disk. Propose other optimizations here from measurements
+before implementation.
+
+The [L7 estimates](../../executor-native/evidence/sandcrab-l7-2026-11-03/summary.json)
+skip P1; reassess at L9.
 
 ### X: extraction by readiness
 
