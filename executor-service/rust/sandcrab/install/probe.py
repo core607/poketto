@@ -20,7 +20,8 @@ def systemd(bundle, passed):
     import pwd
     if os.geteuid() != 0 or os.environ.get('SANDCRAB_INSTALL_DISPOSABLE') != '1':
         raise RuntimeError('The installer probe needs a disposable root systemd machine')
-    release = Path('/opt/sandcrab')
+    # GitHub-hosted images let the runner write /opt; use a protected package parent.
+    release = Path('/var/lib/sandcrab-release')
     paths = tuple(map(Path, ('/etc/sandcrab', '/var/lib/sandcrab', '/usr/local/bin/sandcrab',
                              '/etc/systemd/system/sandcrab.slice', '/etc/systemd/system/sandcrab.service',
                              '/etc/apparmor.d/sandcrab-service')))

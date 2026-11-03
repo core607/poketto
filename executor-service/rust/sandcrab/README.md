@@ -17,10 +17,10 @@ and test the default service:
 
 ```sh
 cd build/executor-service/bin
-sudo install -d -m 755 /opt/sandcrab
-sudo install -m 755 sandcrab bwrap /opt/sandcrab/
-sudo install -m 644 bwrap-notices.txt bwrap-source.tar.xz /opt/sandcrab/
-sudo /opt/sandcrab/sandcrab install
+sudo install -d -m 755 /var/lib/sandcrab-release
+sudo install -m 755 sandcrab bwrap /var/lib/sandcrab-release/
+sudo install -m 644 bwrap-notices.txt bwrap-source.tar.xz /var/lib/sandcrab-release/
+sudo /var/lib/sandcrab-release/sandcrab install
 sudo sandcrab doctor
 ```
 
