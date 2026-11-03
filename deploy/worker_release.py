@@ -24,8 +24,9 @@ SUPERVISOR = "poketto-supervisor"
 LAUNCHER = "poketto-launch"
 # Generations before the Rust launcher ran this one; they remain valid previous and rollback releases.
 PYTHON_LAUNCHER = "launcher.py"
-BINARIES = frozenset(("bin/poketto", "bin/poketto-shell", "bin/poketto-syncfs", SUPERVISOR, LAUNCHER))
-PAYLOAD = SOURCES | BINARIES
+BINARIES = frozenset(("bin/poketto", "bin/poketto-shell", "bin/poketto-syncfs", SUPERVISOR, LAUNCHER, "bwrap"))
+HELPER_SOURCES = frozenset(("bwrap-notices.txt", "bwrap-source.tar.xz"))
+PAYLOAD = SOURCES | BINARIES | HELPER_SOURCES
 
 
 def sha(data):
@@ -92,7 +93,7 @@ def read_bundle(path, revision):
         raise DeploymentError("worker image bundle revision differs from the application")
     hashes = {}
     for line in data["SHA256SUMS"].decode("ascii").splitlines():
-        match = re.fullmatch(r"([0-9a-f]{64})  ([a-z_/-]+(?:\.(?:py|txt))?)", line)
+        match = re.fullmatch(r"([0-9a-f]{64})  ([a-z_./-]+)", line)
         if not match or match[2] in hashes:
             raise DeploymentError("worker bundle checksums are invalid")
         hashes[match[2]] = match[1]
@@ -180,7 +181,7 @@ class WorkerRelease:
         # a later release. None of those old files enters the new image's fixed payload.
         if path == self.root:
             # First adoption takes the regular files an earlier manual install actually has.
-            names = {name for name in SOURCES | BINARIES | {PYTHON_LAUNCHER} if (path / name).exists()}
+            names = {name for name in PAYLOAD | {PYTHON_LAUNCHER} if (path / name).exists()}
         else:
             names = set()
             for file in path.iterdir():
@@ -193,7 +194,7 @@ class WorkerRelease:
                         if name not in BINARIES:
                             raise DeploymentError("stored worker release contains an unexpected program")
                         names.add(name)
-                elif re.fullmatch(r"[a-z_]+\.py", file.name) or file.name in ("requirements.txt", SUPERVISOR, LAUNCHER):
+                elif re.fullmatch(r"[a-z_]+\.py", file.name) or file.name in BINARIES | HELPER_SOURCES | {"requirements.txt"}:
                     names.add(file.name)
                 else:
                     raise DeploymentError("stored worker release contains an unexpected file")

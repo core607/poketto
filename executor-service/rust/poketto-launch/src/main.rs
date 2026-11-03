@@ -4,7 +4,7 @@
 //! record's mode and replaces itself with bubblewrap. `--verify` checks the tools and the
 //! sandbox program directory without launching.
 use sandcrab_launch::{
-    Error, Seccomp, enter_bootstrap, exec, sandbox_arguments, verify_programs, verify_tools,
+    Error, Seccomp, enter_bootstrap, exec, sandbox_arguments, verify_bundled_bwrap, verify_programs,
 };
 use serde_json::Value;
 use std::{
@@ -46,6 +46,12 @@ fn read_json(path: &Path) -> Result<Value, Error> {
 
 /// Bubblewrap arguments and the complete environment of the replaced process.
 type Launch = (Vec<String>, Vec<(String, String)>, Seccomp);
+fn verify_tools(tools: &Path) -> Result<PathBuf, Error> {
+    sandcrab_core::fs::protected_directory(tools).map_err(|error| Error(format!(
+        "Sandbox tools and their parents must be root-owned and not writable by other accounts: {error}"
+    )))?;
+    verify_bundled_bwrap(&std::env::current_exe()?)
+}
 /// The launch for one record.
 fn plan(record: &Value) -> Result<Launch, Error> {
     let root = PathBuf::from(text(record, "root")?);

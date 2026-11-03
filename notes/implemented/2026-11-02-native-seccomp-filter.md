@@ -35,6 +35,10 @@ its own filter installation. Every visible peer inherits these rules. The immuta
 descriptor stays owned until exec and is consumed before the workload.
 Installation failure refuses execution.
 
+The [bundled helper's patch](../../executor-service/rust/sandcrab-launch/bwrap/loopback-index.patch)
+keeps musl's loopback lookup compatible with inherited AF_UNIX denial. Helper
+compatibility cannot weaken or defer filter installation.
+
 This partially supersedes the direct-launch note's helper and tool-provisioning
 choice. Its filesystem, environment, containment and upgrade obligations remain.
 The [in-repository split](2026-10-27-sandcrab-in-repository-split.md) still owns crate
@@ -50,9 +54,8 @@ helper's x32 guard. Explicit guards preserve the existing behavior.
 
 ## Consequences
 
-Sandcrab needs no Node.js, npm or SRT. Poketto separately provisions Node for
-commands and games. The static launcher's release owns the filter; bubblewrap
-remains protected and version-checked.
+The release owns the filter and checksummed bubblewrap. Sandcrab needs no Node.js,
+npm or SRT; Poketto separately provisions Node for commands and games.
 
 `executorRustCheck` compares generated actions with the pinned helper and verifies
 descriptor seals. The native probe checks rule equivalence, visible peers and FD

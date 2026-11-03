@@ -19,15 +19,13 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Markdown never reaches a compiler, a container or a deployment script, so a change confined to
-  # it runs the repository document checks alone. Anything else, and every push to main, runs the
-  # full matrix. Classification is conservative: one unrecognised path makes the whole change code.
+  # The same path selection schedules jobs and verifies their results.
   changes:
     name: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      docs_only: ${{ steps.detect.outputs.docs_only }}
+      lanes: ${{ steps.detect.outputs.lanes }}
       experiment_only: ${{ steps.experiment.outputs.only }}
     steps:
       - name: Check out repository
@@ -41,28 +39,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [ "$EVENT" != pull_request ]; then
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-            echo "not a pull request; running the full matrix"
-            exit 0
-          fi
-          files="$(git diff --name-only "$BASE_SHA"...HEAD)"
-          if [ -z "$files" ]; then
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-            echo "no changed paths resolved; running the full matrix"
-            exit 0
-          fi
-          docs_only=true
-          while IFS= read -r file; do
-            [ -n "$file" ] || continue
-            case "$file" in
-              *.md | LICENSE) ;;
-              *) docs_only=false ;;
-            esac
-          done <<< "$files"
-          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
-          echo "docs_only=$docs_only over:"
-          echo "$files"
+          python3 -m unittest discover -s .github/ci
+          python3 .github/ci/lanes.py >> "$GITHUB_OUTPUT"
 
       - name: Identify an independent experiment push
         id: experiment
@@ -89,7 +67,7 @@ jobs:
   retrieval-lab:
     name: retrieval-lab
     needs: changes
-    if: needs.changes.outputs.docs_only == 'false'
+    if: contains(fromJSON(needs.changes.outputs.lanes), 'retrieval-lab')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -115,7 +93,7 @@ jobs:
   docs:
     name: docs
     needs: changes
-    if: needs.changes.outputs.docs_only == 'true'
+    if: contains(fromJSON(needs.changes.outputs.lanes), 'docs')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -142,7 +120,7 @@ jobs:
   java:
     name: java
     needs: changes
-    if: needs.changes.outputs.docs_only == 'false'
+    if: contains(fromJSON(needs.changes.outputs.lanes), 'java')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -175,7 +153,7 @@ jobs:
   database:
     name: database
     needs: changes
-    if: needs.changes.outputs.docs_only == 'false'
+    if: contains(fromJSON(needs.changes.outputs.lanes), 'database')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -206,7 +184,7 @@ jobs:
   web:
     name: web
     needs: changes
-    if: needs.changes.outputs.docs_only == 'false'
+    if: contains(fromJSON(needs.changes.outputs.lanes), 'web')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -243,7 +221,7 @@ jobs:
   image:
     name: image
     needs: changes
-    if: needs.changes.outputs.docs_only == 'false'
+    if: contains(fromJSON(needs.changes.outputs.lanes), 'image')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -278,7 +256,7 @@ jobs:
   stack:
     name: stack
     needs: changes
-    if: needs.changes.outputs.docs_only == 'false'
+    if: contains(fromJSON(needs.changes.outputs.lanes), 'stack')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -310,12 +288,12 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # A judged small agent load through real login, PostgreSQL, HTTP MCP, the root worker and SRT
+  # A judged small agent load through real login, PostgreSQL, HTTP MCP, the root worker and native
   # sandboxes on this runner. It gates on calls after the warm-up, as the production stages do.
   load:
     name: load
     needs: changes
-    if: needs.changes.outputs.docs_only == 'false'
+    if: contains(fromJSON(needs.changes.outputs.lanes), 'load')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -368,61 +346,48 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # Branch protection requires the "verify" context and keeps expecting it from the newest run, so
-  # this job always reports and never renames. Reporting success without verifying would be worse
-  # than a slow run: a title edit would then hand a green required check to a commit whose
-  # verification failed, which is why an edit verifies again instead of reusing an earlier result.
-  # A lane the change cannot affect is skipped, never assumed to have passed, so this job names the
-  # lanes each classification requires rather than tolerating any skipped lane.
+  collectors:
+    needs: changes
+    if: contains(fromJSON(needs.changes.outputs.lanes), 'collectors')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Test density collectors without measuring capacity
+        run: |
+          command -v rg || { sudo apt-get update && sudo apt-get install -y ripgrep; }
+          python3 -m unittest discover -s experiments/sandcrab-density -p 'test_*.py' -v
+
   evals:
     needs: changes
-    if: needs.changes.outputs.docs_only == 'false'
+    if: contains(fromJSON(needs.changes.outputs.lanes), 'evals')
     uses: ./.github/workflows/evals.yml
 
   verify:
     name: verify
-    needs: [changes, docs, java, database, web, image, stack, load, retrieval-lab, evals]
+    needs: [changes, docs, java, database, web, image, stack, load, retrieval-lab, evals, collectors]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require every lane the change needs
         env:
-          CLASSIFICATION: ${{ needs.changes.result }}
-          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
-          DOCS: ${{ needs.docs.result }}
-          JAVA: ${{ needs.java.result }}
-          DATABASE: ${{ needs.database.result }}
-          WEB: ${{ needs.web.result }}
-          IMAGE: ${{ needs.image.result }}
-          STACK: ${{ needs.stack.result }}
-          LOAD: ${{ needs.load.result }}
-          RETRIEVAL_LAB: ${{ needs.retrieval-lab.result }}
-          EVALS: ${{ needs.evals.result }}
+          LANES: ${{ needs.changes.outputs.lanes }}
+          RESULTS: ${{ toJSON(needs) }}
+        shell: python
         run: |
-          if [ "$CLASSIFICATION" != success ]; then
-            echo "change classification reported $CLASSIFICATION"
-            exit 1
-          fi
-          if [ "$DOCS_ONLY" = true ]; then
-            required="docs=$DOCS"
-          else
-            required="java=$JAVA database=$DATABASE web=$WEB image=$IMAGE stack=$STACK load=$LOAD retrieval-lab=$RETRIEVAL_LAB evals=$EVALS"
-          fi
-          failed=0
-          for lane in $required; do
-            case "${lane#*=}" in
-              success) ;;
-              *)
-                echo "required lane $lane"
-                failed=1
-                ;;
-            esac
-          done
-          if [ "$failed" != 0 ]; then
-            exit 1
-          fi
-          echo "verified: $required"
+          import json, os, sys
+          results = json.loads(os.environ['RESULTS'])
+          if results['changes']['result'] != 'success':
+              sys.exit('Change classification did not succeed')
+          required = json.loads(os.environ['LANES'])
+          if not isinstance(required, list) or not required:
+              sys.exit('No required lanes')
+          for lane in required:
+              result = results[lane]['result']
+              print(f'{lane}: {result}')
+              if result != 'success':
+                  sys.exit(f'Required lane {lane}: {result}')
 
   # Only a verified main commit of the canonical repository becomes an image. This is the only
   # job with package-write authority.

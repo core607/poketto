@@ -29,8 +29,8 @@ evidence, so a sibling's failure cannot contaminate later results. Trusted file
 helpers retain mount, capability and network isolation, not arbitrary root execution.
 
 Helpers poll pidfd/output readiness to avoid EOF-before-exit delay, draining within
-timeout. Failed observation kills the helper and reports failure. Tool-version
-checks retain output, status and deadline bounds. Listener readiness removes the
+timeout. Failed observation kills the helper and reports failure. Bundled-helper
+verification bounds file reads without executing unverified bytes. Listener readiness removes the
 measured accept delay; a 10 ms bound preserves idle maintenance and shutdown.
 
 This partially supersedes [direct launch](2026-10-18-direct-sandbox-launch.md)

@@ -13,7 +13,7 @@ The [Rust workspace](../../executor-service/rust/Cargo.toml) separates generic c
 - `sandcrab-core`: strict JSON, identifiers, protected paths, installation checks, systemd units and cgroups, finite process execution, the shell channel, the host-call mailbox, captures, installs and artifacts. Poketto's bridge operations and its `work/repository` tree, with `.git` reserved, are parameters.
 - `sandcrab-shell`: the persistent bash driver; consumers select the command-correlation variable.
 - `sandcrab-spawn`: private [cgroup spawn/exec syscalls](2026-11-02-delegated-sandbox-cgroups.md).
-- `sandcrab-launch`: tool verification (root-owned, unwritable binaries and ancestors without symlinks; bubblewrap 0.6.1 or newer), policy translation, the [compiled seccomp filter](2026-11-02-native-seccomp-filter.md) and the exec into bubblewrap.
+- `sandcrab-launch`: bundled-helper checksum and protected-path verification, policy translation, the [compiled seccomp filter](2026-11-02-native-seccomp-filter.md) and exec into bubblewrap.
 - `sandcrab-daemon`: signed requests and replay, leases, execution, host calls, captures, installs, artifacts, admission and the socket server. Product operations arrive through an `Extension`; the runtime holds mounted storage through a `Volume` and an extension's staged transfer through `Staged`.
 - `poketto-supervisor`: provisioning from bundle exports or seeds, Git baselines, discards and moves. `poketto-launch` maps a record's mode to its fixed command; the baseline installer stays a Python program run inside the sandbox.
 

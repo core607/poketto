@@ -50,13 +50,15 @@ The following targets remain acceptance criteria for the remaining work.
 | Readiness | Fresh Ubuntu 22.04, Ubuntu 24.04 and Debian 12: download to first `sandcrab run` in at most three commands, no manual configuration edits, under five minutes; record all three quantities |
 | Density | Largest tested agent count with ok rate at least 0.99, judged p95 at most 1.0 s and zero OOM kills |
 
-W0 and the final comparison use every protocol budget; intermediate changes may
-use 5 GB alone. That budget approximates memory beside the default
+W0 is the baseline. Run the full protocol only at L2, L7 and L9; other pull
+requests run the tests their changes affect. Use the checkpoint results for
+the final comparison. The 5 GB budget approximates memory beside the default
 [application containers](../../deploy/compose.yaml), not production capacity.
-The suite fixes the synthetic corpus, command mix, think intervals, stages,
-repetitions, scoring boundaries and shared cgroup limits before measurement.
-Keep all failures, observations and cleanup receipts under `executor-native/evidence/`;
-missing capabilities or smaller admitted cohorts cannot count as passing evidence.
+Commit only a compact `summary.json` with the revision, outcomes and CI links.
+Keep all raw observations, failed attempts and cleanup receipts in CI artifacts.
+Record a missed performance target in one follow-up issue and continue the feature
+work without retuning or repeating the measurement in that pull request. Missing
+capabilities and smaller admitted cohorts never count as passing evidence.
 Production runs retain low-traffic [load-suite preflight](../../acceptance/load-suite.py),
 bounded resources and ownership-aware cleanup. Public evidence contains no private
 configuration, credentials or content.
@@ -74,10 +76,10 @@ SDK conformance while changing the implementation.
    Configured XFS quotas are enforced; only `require_quota = true` demands enforcement.
    Otherwise periodic accounting reports usage and refuses growth with a soft bound.
    Pool usage sums complete volume observations; rescans duplicate work and impose aggregate scan limits.
-4. L4: bundled bwrap. Include a pinned static bwrap version at least 0.9 in
-   releases, use it by default and verify its checksum. Publish its source and
-   version and satisfy LGPL obligations. This supplies L7's overlay support on
-   Ubuntu 22.04 instead of depending on its older distribution package.
+4. L4 implemented: the [static helper bundle](../../executor-service/rust/sandcrab-launch/bwrap/README.md)
+   pins bwrap above 0.9, accompanies it with source/version/notices, and checks its
+   checksum by default. Release ownership supplies L7's overlay-capable helper
+   without depending on Ubuntu 22.04's older distribution package.
 5. L5: installation and diagnosis. `sandcrab install` creates the execution
    user, delegated slice/unit, working `default` profile with read-only host `/usr`,
    python3, bash and network none, plus a token file for loopback HTTP. `--dry-run`
@@ -121,8 +123,9 @@ SDK conformance while changing the implementation.
 ### H: same-host hardening
 
 After L1 and L2, verify each gap in the owning code before changing it; complete
-H1 through H4 before extraction, observing L4's bwrap dependency. Every H change
-records footprint before and after and adds no runtime dependency or resident process.
+H1 through H4 before extraction, observing L4's bwrap dependency. Each change
+tests its affected isolation boundary and adds no runtime dependency or resident
+process. Use the checkpoint measurements for footprint comparisons.
 
 - H1: namespaces. Use `--unshare-all` and `--disable-userns`; keep the network
   unshared. Probe real sandboxes: nested `unshare -U` fails, SysV shared memory is
@@ -212,15 +215,12 @@ These are deliberate costs of a smaller operator dependency set and independent 
 
 ## Verification
 
-Each delivery names the priority it serves and supplies relevant footprint, readiness
-or density before/after measurements. W0 first establishes baselines; this proposal
-alone claims no runtime improvement. Run `executorRustCheck`, native lanes, Sandcrab
-evals and SDK gates; select other checks through
-[pre-push-checks](../../.agents/skills/pre-push-checks/SKILL.md). Keep scripted conformance
+On each pull request select the Rust, native, readiness, eval or SDK checks
+affected by the change using [pre-push-checks](../../.agents/skills/pre-push-checks/SKILL.md).
+Only the measurement checkpoints above establish capacity. Keep scripted conformance
 separate from repeated real-agent usability evidence through [Inspect](../../evals/README.md).
 Paid batches record the estimate, upper bound, actual usage/cost and every attempt.
 An unavailable required check is reported, never replaced by an invented equivalent.
 
-Retain every run, including failures, without changing the scored metric or selecting
-only successful reruns. The [note lifecycle](../../AGENTS.md#decision-records-notes)
+Report the original score, including failures. The [note lifecycle](../../AGENTS.md#decision-records-notes)
 governs updates and the eventual implemented record.

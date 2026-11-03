@@ -7,7 +7,7 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 tools=$(realpath -e -- "${1:?Usage: install-sandbox-tools.sh EXISTING_TOOLS_DIRECTORY}")
-test -x "$tools/extracted/usr/bin/bwrap"
+test -x "$tools/extracted/usr/bin/rg"
 for directory in "$tools" "$tools/extracted" "$tools/extracted/usr" "$tools/extracted/usr/bin"; do
     test ! -L "$directory"
     if [[ -e $directory ]]; then

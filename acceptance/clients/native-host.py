@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Hold disposable Spring/PostgreSQL/SRT services for real MCP clients on a Linux host."""
+"""Hold disposable Spring, PostgreSQL and native sandbox services for real MCP clients."""
 import argparse
 import hashlib
 import json
@@ -20,8 +20,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, PrivateFormat, NoEncryption
 
 POSTGRES = 'postgres:17.11-bookworm@sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0'
-MODULES = ('poketto-supervisor', 'disk_pool.py', 'worker.py', 'command_channel.py', 'bin/poketto-shell', 'bin/poketto-syncfs', 'poketto-launch', 'resource_pool.py', 'bridge.py', 'bin/poketto',
-           'session_files.py', 'binary_capture.py', 'materialize.py', 'artifacts.py')
 
 
 def run(args, **kwargs):
@@ -64,6 +62,7 @@ def main():
         port_check.bind(('127.0.0.1', args.port))
     sys.path.insert(0, str(source))
     from native_pool import NativePool
+    from native_worker_fixture import stage_worker
     token = uuid.uuid4().hex[:8]
     # An idle sandbox charges about 45 MB and 22 tasks, and the copy pool's page cache shares the slice.
     pool = NativePool(token, f'{max(512, 128 * args.agents)}M', max(256, 48 * args.agents))
@@ -90,11 +89,7 @@ def main():
         for path in (exports, disk_pool / 'metadata', root / 'content', root / 'home'):
             path.mkdir(mode=0o700)
             os.chown(path, app_account.pw_uid, app_account.pw_gid)
-        for name in MODULES:
-            (root / name).parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-            shutil.copyfile(source / name, root / name)
-            (root / name).chmod(0o555 if name.startswith('bin/') or name in ('poketto-supervisor', 'poketto-launch') else 0o644)
-        (root / 'bin').chmod(0o755)
+        worker_files = stage_worker(source, root)
         key = Ed25519PrivateKey.generate()
         private = root / 'private.pem'
         private.write_bytes(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
@@ -202,7 +197,7 @@ def main():
         print(json.dumps({'ready': True, 'root': str(root), 'endpoint': endpoint,
                           'accountDiskCopies': True, 'supervisorKind': 'rust', 'controllerSha256': sha(Path(__file__)),
                           'runtimeManifestSha256': sha(runtime / 'manifest.sha256'),
-                          'workerSources': {name: sha(root / name) for name in MODULES}}), flush=True)
+                          'workerSources': {p.relative_to(root).as_posix(): sha(p) for p in worker_files}}), flush=True)
         deadline = time.monotonic() + args.lifetime_seconds
         while not (root / 'stop').exists() and time.monotonic() < deadline:
             assert run(['systemctl', 'is-active', app_unit]) == 'active'
