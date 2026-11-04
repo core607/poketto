@@ -22,6 +22,26 @@ The [offline importer](native-migration.md) prepares existing signed working cop
 for the native backend. Record the current image identities and a recoverable backup
 of the legacy data before the write pause and import.
 
+## New Compose installations
+
+Install the pinned Sandcrab release as a root service with cgroup delegation in a
+dedicated, bounded slice. Set its Unix socket group to the application GID. Install
+Poketto's [resource-pool checker](resource_pool.py) at
+`/usr/local/lib/poketto/resource_pool.py` with root ownership and mode 0644.
+The deployment account needs permission to connect to the socket, for example
+through the application group. The checker verifies the peer's root UID, main
+PID, cgroup and slice limits before any container replacement.
+
+Create separate mode 0700 directories for exports, account metadata and transfers
+on a bounded XFS filesystem, owned by the application UID. In the
+[deployment settings](../deploy/.env.example), set their host paths, the service
+and socket directory, and the byte and inode limits for each copy. Enabling
+`POKETTO_EXECUTOR_ENABLED` selects this service in the Compose overlay. Existing
+signed installations must first follow the [offline import](native-migration.md).
+After verifying the import, remove `POKETTO_EXECUTOR_SIGNING_KEY_HOST`,
+`POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS` and `POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS`
+from the deployment configuration. The entrance rejects these retired keys.
+
 ## Existing-installation delivery
 
 For `POKETTO_EXECUTOR_BACKEND=native`, reserve a repository copy for the [read-only MCP probe](../deploy/README.md#worker-source-updates). Add a

@@ -226,6 +226,7 @@ receipt = response.json()
 ## 部署
 
 每个通过验证的 `main` 提交都会分别发布 Spring 和前端镜像，两者来自同一源码提交。把 `deploy/` 中的文件和填好的 `.env.example`（命名为 `.env`）放入主机部署目录，提供域名、仓库与数据库凭证、独立数据目录和四个固定镜像。运行 `deploy.sh --app-image <应用镜像> --app-revision <提交> --frontend-image <前端镜像>`；后续不带参数运行会重新部署已记录版本。两个应用镜像的 revision 标签必须匹配，PostgreSQL 与 Caddy 必须使用 registry digest。随后用 `./deploy.sh --initialize-admin` 创建首个管理员。
+新安装启用 `repo_exec` 前，先配置[原生仓库服务和账户目录](../executor-service/native-repository.md#new-compose-installations)。
 
 对于自行维护 Compose 配置的实例，[现有安装交付](../notes/implemented/2026-09-08-existing-installation-delivery.md)更新应用与前端镜像、显式身份配置，并在启用执行功能时更新匹配的 [worker 源码](../executor-service/README.md#automatic-source-updates)。安装当前版本的受保护更新入口，并设置 `POKETTO_DEPLOY_LAYOUT=existing`。`POKETTO_DEPLOY_MODE` 可选 `pull`（主机使用部署任务的包读取令牌，从规范镜像仓库拉取两个摘要）或 `transfer`（通过 SSH 传输带校验和的归档，供访问不到镜像仓库的主机使用）。
 

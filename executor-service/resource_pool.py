@@ -2,6 +2,8 @@
 import argparse
 from pathlib import Path
 import re
+import socket
+import struct
 import subprocess
 
 
@@ -19,7 +21,7 @@ def slice_name(value):
 
 def properties(unit):
     result = subprocess.run(
-        ['systemctl', 'show', unit, '--no-pager', '--property=ActiveState,Slice,ControlGroup,MainPID,User'],
+        ['systemctl', 'show', unit, '--no-pager', '--property=ActiveState,Slice,ControlGroup,MainPID,User,Delegate'],
         capture_output=True, text=True, timeout=5)
     if result.returncode or len(result.stdout) > 8192:
         raise PoolUnavailable('Cannot inspect the installed resource pool')
@@ -28,7 +30,7 @@ def properties(unit):
 
 def group_path(value):
     if (not isinstance(value, str) or not value.startswith('/') or value == '/'
-            or not re.fullmatch(r'/[A-Za-z0-9_./-]+', value)
+            or not re.fullmatch(r'/[A-Za-z0-9_./@-]+', value)
             or any(part in ('', '.', '..') for part in value.split('/')[1:])):
         raise PoolUnavailable('Invalid resource pool cgroup')
     return value
@@ -80,27 +82,46 @@ class ResourcePool:
         return limits(self.directory)
 
 
-def check_service(unit):
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,239}\.service', unit):
+def check_service(unit, *, native_socket=None):
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.@-]{0,239}\.service', unit):
         raise PoolUnavailable('Invalid executor service name')
     service = properties(unit)
-    if service.get('ActiveState') != 'active' or service.get('User') != 'root':
+    # A native system service may rely on systemd's default root user.
+    users = ('root', '') if native_socket is not None else ('root',)
+    if service.get('ActiveState') != 'active' or service.get('User') not in users:
         raise PoolUnavailable('The installed root executor service must be active')
     pid = service.get('MainPID', '')
     if not pid.isdigit() or int(pid) <= 0 or (Path('/proc') / pid).stat().st_uid != 0:
         raise PoolUnavailable('The executor main process must belong to root')
     current = process_group(pid)
-    if current != group_path(service.get('ControlGroup')):
+    group = group_path(service.get('ControlGroup'))
+    if native_socket is not None and service.get('Delegate') != 'yes':
+        raise PoolUnavailable('The native repository service requires cgroup delegation')
+    if current != group and not (native_socket is not None and current.startswith(group + '/')):
         raise PoolUnavailable('The executor process does not match its service cgroup')
     ResourcePool(service.get('Slice')).verify(current)
+    if native_socket is not None:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+            peer.settimeout(5)
+            try:
+                peer.connect(str(native_socket))
+            except PermissionError as error:
+                raise PoolUnavailable(
+                    'Deployment account cannot connect to the native socket. Check application-group access.') from error
+            server_pid, uid, _ = struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        if (server_pid, uid) != (int(pid), 0):
+            raise PoolUnavailable('The native socket peer differs from the selected root service')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--service', required=True)
+    parser.add_argument('--native-socket', type=Path, help='verify the delegated service owns this Unix socket')
     args = parser.parse_args()
     try:
-        check_service(args.service)
-    except (OSError, ValueError, subprocess.SubprocessError, PoolUnavailable):
+        check_service(args.service, native_socket=args.native_socket)
+    except PoolUnavailable as error:
+        parser.exit(1, str(error) + '\n')
+    except (OSError, ValueError, subprocess.SubprocessError):
         parser.exit(1, 'Executor resource pool is unavailable or lacks finite limits\n')
     print('Executor resource pool verified')
