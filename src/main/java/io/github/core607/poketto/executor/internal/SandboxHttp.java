@@ -60,8 +60,13 @@ final class SandboxHttp {
 
     /** Streams a caller-owned local source once; the caller closes it, including after an uncertain write. */
     <T> T upload(String path, InputStream body, long length, Duration timeout, Reader<T> reader) {
+        return stream("PUT", path, body, length, timeout, reader);
+    }
+
+    <T> T stream(String method, String path, InputStream body, long length, Duration timeout, Reader<T> reader) {
+        require(method.equals("PUT") || method.equals("POST"));
         require(length >= 0 && length <= MAX_UPLOAD_BYTES);
-        var request = new StreamRequest(requestHead("PUT", path, "application/octet-stream", length), body, length);
+        var request = new StreamRequest(requestHead(method, path, "application/octet-stream", length), body, length);
         return exchange(request, timeout, Duration.ZERO, reader);
     }
 
