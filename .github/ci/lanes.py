@@ -18,6 +18,8 @@ def select(event, paths):
             continue
         if path.startswith('experiments/sandcrab-density/') or path == '.github/workflows/sandcrab-density.yml':
             lanes.add('collectors')
+        elif path.startswith('experiments/retrieval-lab/') or path == '.github/workflows/retrieval-corpus.yml':
+            lanes.add('retrieval-lab')
         elif path.startswith('evals/') or path == '.github/workflows/evals.yml':
             lanes.add('evals')
         elif path.startswith('executor-service/rust/sandcrab/'):
