@@ -137,9 +137,10 @@ its isolation boundary and measures footprint without adding runtime dependencie
   supplies the reference for administrative calls and clone fallback. Sandcrab allows
   ordinary threads and personality queries. [Kernel probes](../../executor-service/rust/sandcrab/sandcrab_conformance/seccomp_cases.py)
   exercise the additional denials, including VSOCK and namespace creation.
-- H3: process authority. Test the daemon's replacement process setup: the
-  profile's execution user, no capabilities, no_new_privs, no writable cgroup
-  controls and no ability to raise resource limits from inside a sandbox.
+- H3 [checks](../../executor-service/rust/sandcrab/sandcrab_conformance/resources.py)
+  observe profile credentials, empty capability sets and no_new_privs in a finite run
+  and a shell. Guest attempts to open cgroup controls for writing and raise a hard
+  limit fail. The controller checks the effective session caps across those attempts.
 - H4: threat model. Add `executor-service/rust/sandcrab/THREAT-MODEL.md` and
   link it from the README. Document trusted/semi-trusted code, the same-kernel
   boundary and excluded protections, profiles/network/host-call guarantees and
