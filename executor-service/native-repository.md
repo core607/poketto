@@ -21,6 +21,28 @@ The [offline importer](native-migration.md) prepares existing signed working cop
 for the native backend. Record the current image identities and a recoverable backup
 of the legacy data before the write pause and import.
 
+## Existing-installation delivery
+
+For `POKETTO_EXECUTOR_BACKEND=native`, reserve a repository copy for the [read-only MCP probe](../deploy/README.md#worker-source-updates). Add a
+`nativeExecutor` object to `deployment.json` with the same `service`, `healthUrl`,
+`probeTokenFile` and `probeCopyId` fields as the signed worker. Set `service` to
+the Sandcrab unit. Supply the absolute paths `binary`, `configFile` and `socket`,
+and the SHA-256 of the installed configuration in `configSha256`.
+
+The unit must run `binary serve --config configFile`. The updater checks the running
+executable against the release pin in the candidate application image. Before and
+after replacing containers it verifies the systemd process, socket peer and mount,
+and queries the selected offline profile through the application container. The
+operator owns Sandcrab installation and restarts. An interrupted deployment needs
+the same release, configuration and probe settings.
+
+For an [offline import](native-migration.md), create
+`.deployment/maintenance` under the installation lock before stopping writers.
+Both preflight and delivery refuse work while that file exists. Use the same lock
+to remove it once the imported journals, native Compose bindings and running app
+are ready for normal deployment verification. After native adoption, the updater
+refuses to re-enable signed repository writes.
+
 ## Working copies
 
 A new full copy starts at its authorized commit. A public copy starts at a separate

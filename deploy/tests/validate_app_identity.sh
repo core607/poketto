@@ -42,6 +42,8 @@ client=(run --rm --network none --read-only --cap-drop ALL --security-opt no-new
 MSYS_NO_PATHCONV=1 "$DOCKER" "${client[@]}" --entrypoint sh "$image" -c \
     'cd /opt/poketto-worker && test "$(cat revision)" = "$1" && sha256sum --check --status SHA256SUMS && test "$(find . -type f | wc -l)" -eq 11 && test ! -e worker.py && test ! -e requirements.txt && test ! -e poketto-supervisor-fixture && test ! -e cli.py && test ! -e shell_loop.py && test ! -e launcher.py && for binary in poketto-supervisor poketto-launch bwrap bin/poketto bin/poketto-shell bin/poketto-syncfs; do test "$(stat -c %u "$binary")" = 0 && test "$(stat -c %a "$binary")" = 755 || exit 1; done && ./bwrap --version >/dev/null && bin/poketto --help >/dev/null && bin/poketto-syncfs /opt/poketto-worker' \
     sh "$revision" || { echo 'image worker bundle is missing or does not match its revision/checksums' >&2; exit 1; }
+pin="$(MSYS_NO_PATHCONV=1 "$DOCKER" "${client[@]}" --entrypoint cat "$image" /opt/poketto/sandcrab-release.properties)"
+[ "$pin" = "$(cat "$HERE/../../executor-service/sandcrab-release.properties")" ] || { echo 'application image has the wrong Sandcrab release pin' >&2; exit 1; }
 identity="$(MSYS_NO_PATHCONV=1 "$DOCKER" "${client[@]}" --entrypoint id "$image")"
 if ! peer="$(MSYS_NO_PATHCONV=1 "$DOCKER" "${client[@]}" --entrypoint curl "$image" \
     --silent --show-error --fail --noproxy '*' --max-time 5 --unix-socket /run/poketto-executor/control.sock http://localhost/)"; then

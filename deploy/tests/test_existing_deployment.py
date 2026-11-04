@@ -471,6 +471,63 @@ class ExistingDeploymentTests(unittest.TestCase):
         return {"release": "1" * 64, "previousRelease": "2" * 64,
                 "configuration": "3" * 64, "installation": "4" * 64}
 
+    def native_environment(self, backend):
+        env = self.docker.configuration["services"]["app"]["environment"]
+        env.update(POKETTO_EXECUTOR_ENABLED="true", POKETTO_EXECUTOR_BACKEND=backend)
+        self.docker.running["app"]["Config"]["Env"] = [k + "=" + v for k, v in env.items()]
+        self.config["nativeExecutor"] = {"healthUrl": "http://127.0.0.1:8080/actuator/health/executor"}
+
+    def test_maintenance_refuses_updates_and_preflights_before_any_docker_operation(self):
+        (self.installation.state_dir / "maintenance").touch()
+        for check_only in (True, False):
+            with self.assertRaisesRegex(updater.DeploymentError, "paused"):
+                self.installation.update(REVISION, "new-app", "new-frontend", check_only)
+        self.assertEqual(self.docker.calls, [])
+        self.assertFalse(self.installation.state_file.exists())
+
+    def test_native_failure_before_replacement_never_stages_the_signed_worker(self):
+        self.native_environment("native")
+        del self.config["nativeExecutor"]
+        with self.assertRaisesRegex(updater.DeploymentError, "nativeExecutor"):
+            self.installation.update(REVISION, "new-app", "new-frontend")
+        self.native_environment("native")
+        with patch.object(updater, "NativeRepository") as native, patch.object(updater, "WorkerRelease") as signed:
+            native.return_value.inspect.side_effect = updater.DeploymentError("checksum pin")
+            with self.assertRaisesRegex(updater.DeploymentError, "checksum pin"):
+                self.installation.update(REVISION, "new-app", "new-frontend")
+            signed.assert_not_called()
+        self.assertEqual(self.docker.running["app"]["Id"], "app-original")
+        self.assertFalse(self.installation.state_file.exists())
+
+    def test_native_reconciliation_requires_the_pinned_dependency_health_and_dedicated_copy(self):
+        self.native_environment("native")
+        receipt = {"release": "v0.1.0", "configSha256": "3" * 64}
+        with patch.object(updater, "NativeRepository") as native, patch.object(updater, "WorkerRelease") as signed, \
+                patch.object(updater.urllib.request, "build_opener") as opener:
+            service = native.return_value
+            service.inspect.return_value = receipt
+            self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend", True)["status"], "validated")
+            response = opener.return_value.open.return_value.__enter__.return_value
+            response.status = 200
+            response.read.return_value = b'{"status":"DOWN"}'
+            with self.assertRaisesRegex(updater.DeploymentError, "readiness"):
+                self.installation.update(REVISION, "new-app", "new-frontend")
+            pending = json.loads(self.installation.state_file.read_text())
+            self.assertEqual((pending["status"], pending["nativeDependency"]), ("pending", receipt))
+            service.probe.assert_not_called()
+            response.read.return_value = b'{"status":"UP"}'
+            service.inspect.return_value = {**receipt, "configSha256": "4" * 64}
+            with self.assertRaisesRegex(updater.DeploymentError, "same native"):
+                self.installation.update(REVISION, "new-app", "new-frontend")
+            service.inspect.return_value = receipt
+            result = self.installation.update(REVISION, "new-app", "new-frontend")
+            self.assertEqual((result["status"], result["nativeRelease"]), ("healthy", "v0.1.0"))
+            service.probe.assert_called_once()
+            self.native_environment("signed")
+            with self.assertRaisesRegex(updater.DeploymentError, "cannot resume signed"):
+                self.installation.update(REVISION, "new-app", "new-frontend")
+            signed.assert_not_called()
+
     def test_enabled_executor_requires_a_deployment_configuration(self):
         self.enable_executor()
         del self.config["executor"]
