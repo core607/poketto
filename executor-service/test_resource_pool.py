@@ -1,4 +1,5 @@
 from pathlib import Path
+import struct
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -91,6 +92,39 @@ class ResourcePoolTests(unittest.TestCase):
         stat.return_value.st_uid = 1000
         with self.assertRaises(PoolUnavailable):
             check_service('worker.service')
+
+    @patch('resource_pool.socket.socket')
+    @patch('resource_pool.ResourcePool')
+    @patch('resource_pool.process_group')
+    @patch('resource_pool.properties')
+    @patch('resource_pool.Path.stat')
+    def test_native_socket_peer_must_belong_to_its_delegated_service(self, stat, properties, process, pool, socket):
+        unit = 'sandcrab@repo.service'
+        root = '/sandcrab.slice/' + unit
+        stat.return_value.st_uid = 0
+        properties.return_value = {'ActiveState': 'active', 'User': '', 'MainPID': '42', 'Slice': 'sandcrab.slice',
+                                   'ControlGroup': root, 'Delegate': 'yes'}
+        process.return_value = root + '/owned/daemon'
+        client = socket.return_value.__enter__.return_value
+        client.getsockopt.return_value = struct.pack('3i', 42, 0, 0)
+        endpoint = Path('/run/sandcrab/control.sock')
+        check_service(unit, native_socket=endpoint)
+        client.connect.assert_called_once_with(str(endpoint))
+        pool.return_value.verify.assert_called_once_with(process.return_value)
+        for pid, uid in [(43, 0), (42, 10001)]:
+            client.getsockopt.return_value = struct.pack('3i', pid, uid, 0)
+            with self.subTest(pid=pid, uid=uid), self.assertRaisesRegex(PoolUnavailable, 'socket peer'):
+                check_service(unit, native_socket=endpoint)
+        properties.return_value['User'] = 'root'
+        with self.assertRaises(PoolUnavailable):
+            check_service(unit)
+        process.return_value = root + '-sibling/daemon'
+        with self.assertRaisesRegex(PoolUnavailable, 'service cgroup'):
+            check_service(unit, native_socket=endpoint)
+        process.return_value = root
+        properties.return_value['Delegate'] = 'no'
+        with self.assertRaisesRegex(PoolUnavailable, 'delegation'):
+            check_service(unit, native_socket=endpoint)
 
     @patch('worker.ResourcePool', side_effect=PoolUnavailable('missing'))
     @patch('worker.SystemdBackend')

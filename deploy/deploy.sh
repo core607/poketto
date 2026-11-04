@@ -57,9 +57,11 @@ CONFIG_KEYS=(
     POKETTO_NETWORK_SUBNET POKETTO_NETWORK_DYNAMIC_RANGE POKETTO_GATEWAY_INTERNAL_IP
     POKETTO_FRONTEND_MEMORY POKETTO_GATEWAY_MEMORY POKETTO_APP_CPUS POKETTO_DB_CPUS POKETTO_FRONTEND_CPUS POKETTO_GATEWAY_CPUS
     POKETTO_ASSETS_CACHE_MAX_BYTES POKETTO_ASSETS_MAX_GRANTS
-    POKETTO_EXECUTOR_ENABLED POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST POKETTO_EXECUTOR_SIGNING_KEY_HOST
-    POKETTO_EXECUTOR_METADATA_DIR_HOST
-    POKETTO_EXECUTOR_MAX_SESSIONS POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS
+    POKETTO_EXECUTOR_ENABLED POKETTO_EXECUTOR_SERVICE POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST
+    POKETTO_EXECUTOR_METADATA_DIR_HOST POKETTO_EXECUTOR_TRANSFERS_DIR_HOST POKETTO_EXECUTOR_TRANSFERS_MAX_BYTES
+    POKETTO_EXECUTOR_PROFILE POKETTO_EXECUTOR_TEMPLATE_PROFILE POKETTO_EXECUTOR_COPIES_BYTES
+    POKETTO_EXECUTOR_COPIES_INODES POKETTO_EXECUTOR_COPIES_POOL_BYTES
+    POKETTO_EXECUTOR_MAX_SESSIONS
     POKETTO_EXECUTOR_MAX_OPERATIONS POKETTO_EXECUTOR_ACCOUNT_OPERATIONS_VIEWER
     POKETTO_EXECUTOR_ACCOUNT_OPERATIONS_COMMUNITY POKETTO_EXECUTOR_ACCOUNT_OPERATIONS_CREATOR
     POKETTO_EXECUTOR_ACCOUNT_COPIES_VIEWER POKETTO_EXECUTOR_ACCOUNT_COPIES_COMMUNITY
@@ -580,36 +582,53 @@ check_journal() {
 
 check_executor() {
     [ "${POKETTO_EXECUTOR_ENABLED:-false}" = true ] || return 0
-    local key runtime staging metadata signing mode
-    for key in POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST POKETTO_EXECUTOR_METADATA_DIR_HOST POKETTO_EXECUTOR_SIGNING_KEY_HOST; do
+    local key runtime staging metadata transfers service mode
+    for key in POKETTO_EXECUTOR_RUNTIME_DIR_HOST POKETTO_EXECUTOR_STAGING_DIR_HOST POKETTO_EXECUTOR_METADATA_DIR_HOST POKETTO_EXECUTOR_TRANSFERS_DIR_HOST; do
         [[ "${!key:-}" = /* ]] || fail "$key must be an absolute path to an installed host executor prerequisite"
     done
-    systemctl is-active --quiet poketto-executor.service \
-        || fail "the installed poketto-executor.service must be active before enabling execution"
-    python3 /opt/poketto-executor/resource_pool.py --service poketto-executor.service \
-        || fail "the installed executor requires a verified finite aggregate resource pool"
+    service="${POKETTO_EXECUTOR_SERVICE:-sandcrab-repository.service}"
+    [[ "$service" =~ ^[A-Za-z0-9][A-Za-z0-9_.@-]{0,120}\.service$ ]] \
+        || fail "POKETTO_EXECUTOR_SERVICE must name an installed native systemd service"
+    systemctl is-active --quiet "$service" \
+        || fail "the installed native repository service must be active before enabling execution"
+    python3 /usr/local/lib/poketto/resource_pool.py --service "$service" --native-socket "$POKETTO_EXECUTOR_RUNTIME_DIR_HOST/control.sock" \
+        || fail "the native socket must belong to the selected service in a verified finite aggregate resource pool"
     runtime="$POKETTO_EXECUTOR_RUNTIME_DIR_HOST"
     staging="$POKETTO_EXECUTOR_STAGING_DIR_HOST"
     metadata="$POKETTO_EXECUTOR_METADATA_DIR_HOST"
-    signing="$POKETTO_EXECUTOR_SIGNING_KEY_HOST"
+    transfers="$POKETTO_EXECUTOR_TRANSFERS_DIR_HOST"
     [ -f "$ROOT/compose.executor.yaml" ] || fail "missing executor Compose overlay"
     [ -d "$runtime" ] && [ ! -L "$runtime" ] && [ "$(owner_uid "$runtime")" = 0 ] \
         || fail "executor runtime directory must already exist and be owned by root"
     mode="$(stat -c %a "$runtime")"
     [ "$mode" = 751 ] || fail "executor runtime directory must have mode 0751"
     [ -S "$runtime/control.sock" ] && [ ! -L "$runtime/control.sock" ] \
-        || fail "host executor control.sock is unavailable; install/start the isolated worker first"
+        || fail "host executor control.sock is unavailable; install/start the native repository service first"
     [ "$(owner_uid "$runtime/control.sock")" = 0 ] && [ "$(stat -c %a "$runtime/control.sock")" = 660 ] && [ "$(stat -c %g "$runtime/control.sock")" = "$APP_UID" ] \
         || fail "executor socket must be root-owned mode 0660 with the application's group"
-    [ -d "$staging" ] && [ ! -L "$staging" ] && [ "$(owner_uid "$staging")" = "$APP_UID" ] \
-        || fail "executor staging directory must already exist and be owned by the application uid"
-    [ -d "$metadata" ] && [ ! -L "$metadata" ] && [ "$(owner_uid "$metadata")" = "$APP_UID" ] \
-        || fail "executor metadata directory must already exist and be owned by the application uid"
+    local directory previous
+    local private_dirs=()
+    for directory in "$staging" "$metadata" "$transfers"; do
+        [ -d "$directory" ] && [ "$(canonical_path "$directory")" = "$directory" ] \
+            && [ "$(owner_uid "$directory")" = "$APP_UID" ] && [ "$(stat -c %a "$directory")" = 700 ] \
+            || fail "executor exports, metadata and transfers each need a private mode 0700 directory owned by the application uid"
+        for previous in "${private_dirs[@]}"; do
+            if [ "$previous" -ef "$directory" ] || path_within "$previous" "$directory" || path_within "$directory" "$previous"; then
+                fail "executor exports, metadata and transfers must use separate directories"
+            fi
+        done
+        private_dirs+=("$directory")
+    done
+    local filesystem block_size blocks pool_bytes="${POKETTO_EXECUTOR_COPIES_POOL_BYTES:-34359738368}"
+    read -r filesystem block_size blocks < <(stat -f -c '%T %S %b' "$metadata") \
+        || fail "cannot inspect the executor account filesystem"
+    [[ "$pool_bytes" =~ ^[1-9][0-9]{0,12}$ ]] && [ "$pool_bytes" -le 1099511627776 ] \
+        || fail "POKETTO_EXECUTOR_COPIES_POOL_BYTES must be a positive byte count up to 1 TiB"
+    [ "$filesystem" = xfs ] && [ "$block_size" -gt 0 ] && [ "$blocks" -le "$((pool_bytes / block_size))" ] \
+        || fail "executor account storage requires an XFS filesystem within its configured byte limit"
     [ "$(stat -c %d "$metadata")" = "$(stat -c %d "$staging")" ] \
-        || fail "executor metadata and exports must share the bounded copy pool"
-    [ -f "$signing" ] && [ ! -L "$signing" ] && [ "$(owner_uid "$signing")" = "$APP_UID" ] \
-        || fail "executor signing key must already exist and be owned by the application uid"
-    [ "$(stat -c %a "$signing")" = 600 ] || fail "executor signing key must have mode 0600"
+        && [ "$(stat -c %d "$metadata")" = "$(stat -c %d "$transfers")" ] \
+        || fail "executor metadata, exports and transfers must share the bounded copy pool"
     check_free_space "$staging"
 }
 
