@@ -174,6 +174,10 @@ before allocating them or recovering active project volumes. Deliver retrieval-l
 migration, the native consumer plus importer, and legacy removal separately. Adapt callers of removed freeze,
 snapshot and staged-upload interfaces; do not restore them solely for Poketto.
 
+The [retrieval laboratory](../../experiments/retrieval-lab/README.md#connect-the-independent-sandcrab-service)
+uses a fresh volume and a verified Git bundle for each question. A single streaming upload
+keeps the prepared corpus in the consumer and independent of the service's template import deadline.
+
 New account copies and public projections use the commit snapshot as a template
 and unsaved changes as the upper layer. Existing volumes remain until disposal or
 expiry. Update the owning [account-copy](../implemented/2026-09-14-account-working-copies.md)

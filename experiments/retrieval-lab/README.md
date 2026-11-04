@@ -23,13 +23,13 @@ The source SQLite file is opened with `mode=ro` and `query_only`. The pinned scr
 
 Corpus-only TF-IDF and MiniBatchKMeans produce 32 topic folders. Each folder lists pages of at most 100 documents, with topic keywords and extractive previews. Original document text is byte-preserved; filenames retain original IDs. Topic membership is heuristic and can be uneven. Agents can search all folders rather than relying on a category assignment. The Git bundle contains originals and navigation only, without query vectors, evaluation questions, relevance labels, baseline rankings or service configuration. The manifest maps paths to IDs outside the sandbox and records preparation time, sizes, parameters and bundle hash. Labels are available only to the host evaluator after evidence selection.
 
-## Install the independent worker
+## Connect the independent Sandcrab service
 
-Agentic runs need a dedicated instance of [executor-service](../../executor-service/README.md) on Linux. Install matching worker sources from Git with LF endings, the pinned sandbox toolchain, root-owned code/configuration, a separate unprivileged execution account and an application account. Follow the existing worker's cgroup, socket, signing-key and XFS project-quota requirements. No host-shell or Docker execution fallback exists.
+Run a dedicated [Sandcrab service](../../executor-service/rust/sandcrab/README.md) on a Linux host. Reserve the socket and durable volume pool for this experiment. Set `LAB_WORKER_SOCKET` and `LAB_WORKER_PROFILE`. The application's Unix UID must match the service's configured client UID. Give guest commands a separate execution account.
 
-Use a separate bounded pool; its export directory belongs to the application account. For this corpus allow at least 60,000 files plus Git metadata per copy; the tested inode budget is 150,000, bundle bound 256 MiB, copy bound 2 GiB and pool bound 8 GiB. The worker unit prefix must match `poketto-exec-[a-z0-9]+-`. Configure initialization for 120 seconds, commands for 30 seconds, one active session, command memory 512 MiB and an aggregate bounded slice. Validate these sizes on the actual host; the service never reduces the corpus to fit. The measured corpus bundle and file counts are in the preparation manifest.
+The complete FiQA corpus requires enforced project quotas, a 2 GiB volume and 150,000 inodes per question. The acceptance fixture uses an 8 GiB XFS project-quota pool, a 256 MiB transfer limit, 512 MiB of guest memory, a 1 MiB output limit, a 120-second maximum command duration and a renewable 60-second session. Disable networking and host calls. The guest needs bash, Git, Python 3 and ripgrep.
 
-The application signs leases using its private Ed25519 key; only the worker gets the public key. The adapter verifies the root-owned local socket and protocol, renews the lease, contains cancellation, closes and discards copies, and keeps unfinished cleanup receipts in its private state. Cleanup must finish before another agentic run starts. A fresh copy per question prevents mutations from contaminating later questions. Selected evidence always comes from original SQLite text, never a modified sandbox file.
+For each question the client creates a volume and session, uploads the prepared Git bundle with a single streaming PUT, checks the returned byte count and SHA-256, then checks out the manifest commit inside the sandbox. A lost write acknowledgement ends that attempt and triggers cleanup. Run, session and volume identities are persisted in the experiment's SQLite state. Cleanup must confirm disposal before another question starts. Restore the original socket and store when recovering a pending operation. Finish any old signed-worker cleanup before switching. The answer grader reads original SQLite text outside the sandbox.
 
 ## Run the service
 
@@ -50,7 +50,7 @@ Query compatibility makes three development-query embedding calls and compares 4
 The defaults in [config.ts](src/config.ts) are part of each run's fingerprint. Prices are recorded separately: changing rates preserves compatibility and completed development samples. Formal estimates reprice recorded usage at the current configured rates without rewriting historical charges:
 
 - RAG: 100 lexical and 100 float32 cosine candidates, RRF constant 60, neural reranking of 50 candidates, ten selected documents. Upstream BM25 options are FTS column weights, not tunable BM25 b/k1. The experiment uses the upstream defaults.
-- Agentic: shell/search/Python, captured-output reads, and ranked ID submission; twelve tools, thirty seconds per command and five minutes for investigation. Multiple calls in one model response execute sequentially in a persistent shell; working directory and environment changes survive between calls. Each executed call consumes the tool budget. The final slot is reserved for evidence submission through a named tool choice. Excess search calls receive tool errors without executing and mark the run as limited; using the final submission slot alone does not. Cancellation and evidence submission stop remaining calls. Only submitted IDs become retrieved evidence.
+- Agentic: shell/search/Python, captured-output reads, and ranked ID submission; twelve tools, thirty seconds per command and five minutes for investigation. Shell source is bounded to 16 KiB. Multiple calls in one model response execute sequentially in a persistent shell; working directory and environment changes survive between normal calls. Output previews and pages are at most 16 KiB; offsets address the native API's UTF-8 text, with its replacement characters for invalid input, rather than original binary bytes. Each executed call consumes the tool budget. The final slot is reserved for evidence submission through a named tool choice. Excess search calls receive tool errors without executing and mark the run as limited; using the final submission slot alone does not. Cancellation and evidence submission stop remaining calls. Only submitted IDs become retrieved evidence.
 - Both: `deepseek-flash`, thinking disabled, temperature zero, 4,096 output tokens, one shared answer prompt and a 160,000-byte evidence bound. Reranker pairs have a conservative 30,000-byte input bound. Bounds reject instead of silently shortening documents. Returned model identity and reported usage are recorded. Hidden model reasoning is not persisted or exposed.
 
 Use the twenty-question fixed development sample to check behavior and estimate the formal cost. The formal button requires twenty completed, priced development pairs under the same configuration; it explicitly starts a 100-question fixed test subset. Repeating batch launch skips completed pairs and explicitly retries stopped pairs under new run IDs. Completed routes in a retried pair are retained; preceding attempts and their charges remain available. Changing configuration creates another fingerprint, not a silent continuation. The fixed-seed twenty-question human-review subset is included in `splits.json`.
@@ -61,12 +61,20 @@ HTTP endpoints: `GET /api/status`, `GET/POST /api/runs`, `GET /api/runs/:id`, `G
 
 ## Verification
 
+Run `npm run check` for TypeScript, transport, cleanup and Python corpus checks. The protocol tests drive a synthetic peer through local HTTP.
+
+On a dedicated Linux test service with empty run, session and volume inventories, run the complete corpus check as the authorized application account. Use a fresh output directory and the executable installed on that service.
+
 ```sh
-npm run check
-LAB_ENV_FILE=/path/to/private/lab.env node dist/src/native-acceptance.js
+npm run build
+python3 python/native_fixture.py --binary /var/lib/sandcrab-release/sandcrab \
+  --socket /run/retrieval-lab-sandcrab/control.sock --profile corpus \
+  --node "$(command -v node)" --data /absolute/path/to/prepared-data --output /absolute/path/to/new-results
 ```
 
-The first command covers Python mapping/metric checks and TypeScript lifecycle, HTTP origin, provider error and citation tests. The second requires the prepared corpus and real independent worker; it verifies full document coverage, navigation, no labels/database in the sandbox, host/network denial, output artifacts, fresh copies, timeout recovery and cleanup after application SIGKILL. It makes no model API calls.
+The fixture checks the pinned database and Git bundle, gives the client only the bundle and manifest, and exercises all 57,600 documents, navigation, host and network isolation, paged output, mutation isolation and timeout handling. It kills an application process with a live sandbox command and verifies that recovery leaves the three inventories empty. The output retains stdout, stderr, the private test database and `summary.json`. The test makes no model requests.
+
+The [complete-corpus workflow](../../.github/workflows/retrieval-corpus.yml) provisions a bounded service on a fresh runner. It runs on sandbox consumer changes or manual dispatch and retains the raw acceptance artifacts with the workflow run.
 
 For isolated browser acceptance, set `LAB_DATA` to the prepared corpus and run `node dist/test/browser-fixture.js`, then open `http://127.0.0.1:38471` in Chrome. This fixture uses separate temporary run state and synthetic model/worker replies. Exercise clarification, refresh/history recovery, a reply, paired evidence rendering and cancellation. Its marked results do not establish real-provider compatibility or retrieval quality.
 
