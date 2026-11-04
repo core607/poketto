@@ -111,6 +111,10 @@ class ResourcePoolTests(unittest.TestCase):
         check_service(unit, native_socket=endpoint)
         client.connect.assert_called_once_with(str(endpoint))
         pool.return_value.verify.assert_called_once_with(process.return_value)
+        client.connect.side_effect = PermissionError()
+        with self.assertRaisesRegex(PoolUnavailable, 'Deployment account cannot connect'):
+            check_service(unit, native_socket=endpoint)
+        client.connect.side_effect = None
         for pid, uid in [(43, 0), (42, 10001)]:
             client.getsockopt.return_value = struct.pack('3i', pid, uid, 0)
             with self.subTest(pid=pid, uid=uid), self.assertRaisesRegex(PoolUnavailable, 'socket peer'):

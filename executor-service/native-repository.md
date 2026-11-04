@@ -38,6 +38,9 @@ on a bounded XFS filesystem, owned by the application UID. In the
 and socket directory, and the byte and inode limits for each copy. Enabling
 `POKETTO_EXECUTOR_ENABLED` selects this service in the Compose overlay. Existing
 signed installations must first follow the [offline import](native-migration.md).
+After verifying the import, remove `POKETTO_EXECUTOR_SIGNING_KEY_HOST`,
+`POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS` and `POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS`
+from the deployment configuration. The entrance rejects these retired keys.
 
 ## Existing-installation delivery
 

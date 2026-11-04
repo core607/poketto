@@ -179,7 +179,9 @@ keeps the corpus independent of the template import deadline.
 The [native repository backend](../../executor-service/native-repository.md) shares an
 authorized commit template and journals each copy's unsaved upper. The
 [offline importer](../../executor-service/native-migration.md) preserves old volumes
-through disposal or expiry. The signed worker remains the default until cutover.
+through disposal or expiry. Existing signed installations need this import before
+adopting the native consumer; the [deployment contract](../../executor-service/native-repository.md)
+owns the current backend selection.
 Deferred cleanup that needs a terminal receipt must request `keepResult`. The
 [game cleanup](../../src/main/java/io/github/core607/poketto/executor/internal/GameSandboxJob.java)
 requires an observed terminal session before releasing application admission.

@@ -103,7 +103,11 @@ def check_service(unit, *, native_socket=None):
     if native_socket is not None:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
             peer.settimeout(5)
-            peer.connect(str(native_socket))
+            try:
+                peer.connect(str(native_socket))
+            except PermissionError as error:
+                raise PoolUnavailable(
+                    'Deployment account cannot connect to the native socket. Check application-group access.') from error
             server_pid, uid, _ = struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
         if (server_pid, uid) != (int(pid), 0):
             raise PoolUnavailable('The native socket peer differs from the selected root service')
@@ -116,6 +120,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     try:
         check_service(args.service, native_socket=args.native_socket)
-    except (OSError, ValueError, subprocess.SubprocessError, PoolUnavailable):
+    except PoolUnavailable as error:
+        parser.exit(1, str(error) + '\n')
+    except (OSError, ValueError, subprocess.SubprocessError):
         parser.exit(1, 'Executor resource pool is unavailable or lacks finite limits\n')
     print('Executor resource pool verified')

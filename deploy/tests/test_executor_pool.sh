@@ -68,6 +68,17 @@ assert_contains "$ERR" 'must name an installed native systemd service'
 [ ! -e "$FAKE_STATE/pool-check.log" ]
 [ "$(up_count)" = 0 ]
 
+# Retired keys require the documented offline adoption before this entrance runs.
+for retired in POKETTO_EXECUTOR_SIGNING_KEY_HOST POKETTO_EXECUTOR_OPEN_TIMEOUT_SECONDS POKETTO_EXECUTOR_CLOSE_TIMEOUT_SECONDS; do
+    setup_root
+    printf '%s\n' "$retired=legacy" >> "$ROOT/.env"
+    run_deploy
+    assert_status 1
+    assert_contains "$ERR" 'unsupported configuration key'
+    [ ! -e "$FAKE_STATE/pool-check.log" ]
+    [ "$(up_count)" = 0 ]
+done
+
 # The executor-disabled profile has no systemd prerequisite.
 setup_root
 have_image "$DIGEST_IMAGE"
