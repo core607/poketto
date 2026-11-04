@@ -143,7 +143,7 @@ its isolation boundary and measures footprint without adding runtime dependencie
   limit fail. The controller checks the effective session caps across those attempts.
 - The [threat model](../../executor-service/rust/sandcrab/THREAT-MODEL.md)
   defines the shared-kernel trust boundary, operator and caller authority, limits
-  and remaining risks. It ships with the standalone release.
+  and remaining risks. Include it in the standalone release.
 
 ### P: measured performance work
 
