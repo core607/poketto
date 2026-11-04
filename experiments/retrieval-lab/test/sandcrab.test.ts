@@ -224,6 +224,16 @@ test("wrong command epochs are rejected even when the result claims success", as
 test("an undersized or unsafe profile never allocates a reduced corpus", async () => {
   const f = await sandboxFixture();
   try {
+    f.info.storage.quotaEnforced = false;
+    await assert.rejects(
+      f.worker.open(new AbortController().signal),
+      /requires enforced quotas/,
+    );
+    assert.equal(
+      f.calls.some((c) => c.method === "POST"),
+      false,
+    );
+    f.info.storage.quotaEnforced = true;
     f.info.profiles.corpus.transferBytes = 1024;
     await assert.rejects(
       f.worker.open(new AbortController().signal),

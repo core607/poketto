@@ -52,6 +52,7 @@ export async function sandboxFixture() {
       },
       storage: {
         available: true,
+        quotaEnforced: true,
         maxVolumeBytes: 2_147_483_648,
         maxVolumeInodes: 150_000,
       },

@@ -311,9 +311,10 @@ export class Worker {
       );
       ensure(
         info.storage?.available === true &&
+          info.storage.quotaEnforced === true &&
           info.storage.maxVolumeBytes >= volumeBytes &&
           info.storage.maxVolumeInodes >= volumeInodes,
-        "Sandcrab corpus storage is unavailable or undersized",
+        "Sandcrab corpus storage requires enforced quotas and sufficient capacity",
       );
       ensure(
         /^[a-f0-9]{40}$/.test(this.manifest.commit) &&
