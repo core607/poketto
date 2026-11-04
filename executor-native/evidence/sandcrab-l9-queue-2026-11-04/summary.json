@@ -67,5 +67,18 @@
     }
   ],
   "schemaBudget": "Sessions view allows 19000 bytes for queue fields and lifecycle constraints; other capability views remain below 18000 bytes.",
-  "ciArtifacts": "https://github.com/core607/poketto/actions/workflows/ci.yml?query=branch%3Acodex%2Fsandcrab-queue-l9"
+  "ciArtifacts": "https://github.com/core607/poketto/actions/workflows/ci.yml?query=branch%3Acodex%2Fsandcrab-queue-l9",
+  "scriptedEvaluation": {
+    "sourceRevision": "cfd41f3548ab669731b81c31e94998ab2caca36b",
+    "model": "mockllm/model",
+    "cases": 22,
+    "epochs": 3,
+    "samplesPassed": 66,
+    "cleanupPassed": 66,
+    "modelTokens": 0,
+    "workspaceClients": [
+      "native",
+      "sdk"
+    ]
+  }
 }
