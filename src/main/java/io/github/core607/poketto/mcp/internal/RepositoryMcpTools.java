@@ -154,7 +154,7 @@ final class RepositoryMcpTools {
     private McpStatelessServerFeatures.SyncToolSpecification getArtifactTool() {
         return tool(
                 "get_artifact",
-                "Read an unexpired artifact owned by your account's repository copy. Every page requires current reading scope and publication; another valid grant of the same account may read it. Handles expire after five minutes, copy disposal or expiry, or application restart. Auto format renders validated images in full (up to 16 MiB), or pages text. Other files and format=bytes return exact binary pages. Byte offset and limit apply to pages; continue with nextOffset. Handles do not publish, save, or grant access to another account or scope.",
+                "Read an unexpired artifact for your account, workspace and reading scope. Changes to grants, publication or the execution lease can invalidate a handle. Recreate it from the authorized copy. Auto format renders validated images up to 16 MiB or pages text. Other files and format=bytes return exact binary pages. Continue with nextOffset.",
                 object(
                         Map.of(
                                 "artifactId",
@@ -175,7 +175,7 @@ final class RepositoryMcpTools {
     private McpStatelessServerFeatures.SyncToolSpecification executeTool() {
         return tool(
                 "repo_exec",
-                "Run shell, Python and Git in your account's isolated copy of this space's repository. Read the root AGENTS.md and poketto --help first. Edits stay local until poketto save; media import/link propose an indexEntry to add explicitly to .poketto/assets.json before saving. Working directory, environment, /tmp and background processes can persist between calls; freshSandbox=true means runtime state was reset. Files persist until seven days idle (retention.expiresAt) or repo_discard, unsaved edits included. SESSION_REPLACED and EXECUTION_REFUSED mean this command did not run. EXECUTION_UNCONFIRMED means it may have run: inspect the same copy and never replay an uncertain write. Public-only grants see current publication; changed copies are refused with PUBLICATION_CHANGED and kept. Use new for a current projection within your copy quota. poketto status reads local acknowledgements; --remote also checks remote main. Long output and poketto artifact create return handles for get_artifact.",
+                "Run shell, Python and Git in your account's isolated copy of this repository. Read the root AGENTS.md and poketto --help first. Edits stay local until poketto save. After media import or link, inspect .poketto/assets.json and apply any returned indexEntry before saving. freshSandbox=true marks a fresh shell. Copy files, including unsaved edits, persist until seven days idle (retention.expiresAt) or repo_discard. SESSION_REPLACED and EXECUTION_REFUSED mean the command did not run. For EXECUTION_UNCONFIRMED, inspect the same copy before another write. Public grants see current publication. PUBLICATION_CHANGED retains the old copy. Use new for a current projection within your quota. poketto status reports the host baseline. Long output and poketto artifact create return handles for get_artifact.",
                 object(
                         Map.of(
                                 "expectedCopyId",
@@ -187,13 +187,15 @@ final class RepositoryMcpTools {
                                                 36,
                                                 "pattern",
                                                 "^(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"),
-                                        "new opens a current copy no other agent is working in: your account's free default copy, or another copy within quota. A stale public copy is retained and still counts toward quota. Afterwards pass the returned copyId; a later new may open a different copy. new is never a retry after an uncertain result."),
+                                        "new selects an available current copy or creates another within your quota. Retained copies count toward the quota. Afterwards pass the returned copyId. Inspect the same copy after an uncertain write."),
                                 "command",
-                                described(text(16384), "Shell command, evaluated by the copy's persistent bash."),
+                                described(
+                                        text(16384),
+                                        "Shell command evaluated by bash. A fresh shell starts at the repository root."),
                                 "commit",
                                 described(
                                         nullableCommit(),
-                                        "Usually omitted. A new copy opens at this exact commit; an existing copy requires its acknowledged host baseline. sync prepares candidates; edit files and accept explicit hashes to advance that baseline."),
+                                        "Usually omitted. A new copy opens at this exact commit. An existing copy requires its acknowledged baseline. See poketto sync --help to reconcile remote changes."),
                                 "timeoutSeconds",
                                 described(
                                         Map.of("type", "integer", "minimum", 1, "maximum", 60),
