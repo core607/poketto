@@ -163,9 +163,10 @@ Preserve history when splitting the generic crates, docs, OpenAPI, examples, eva
 and benchmark. Prepare a release workflow for static x86_64 musl Sandcrab plus bundled
 bwrap, SHA-256 checksums, the container image and H4's threat model.
 
-The owner selects repository name, owner, visibility and first version before the
-repository is created and the release published. Poketto then pins that release by
-checksum and removes its in-repository Sandcrab sources.
+The independent release has shipped. Poketto's [game-service staging](../../docs/games.md)
+verifies the release archive and executable against the [consumer pin](../../executor-service/sandcrab-release.properties).
+The signed worker build still uses shared Rust crates. Remove the remaining
+embedded sources as their consumers move to the independent distribution.
 
 ### C: consumer adaptation
 

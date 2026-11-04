@@ -113,8 +113,11 @@ checks these constraints and the native inventory endpoints at startup. Its peer
 UID must match `client_uid`; it needs access to the root-owned socket, not a signing
 key, root privileges or a Docker socket.
 
-`./gradlew stageGameWorker` stages the static `sandcrab` binary and example host
-configuration. Install the binary in a protected root-owned directory and use the
+Download the installer ZIP for the [pinned release](../executor-service/sandcrab-release.properties)
+with an authorized account. Run `./gradlew stageGameWorker -PsandcrabBundle=/path/to/sandcrab-linux-x86_64.zip`
+to verify the archive and executable and stage the game service. For repeated builds,
+place the ZIP at `sandcrab/sandcrab-linux-x86_64.zip` under the Gradle user home.
+Install the staged binaries in a protected root-owned directory and use the
 [profile](../executor-service/game-config.example.toml),
 [service](../executor-service/sandcrab-games.service) and
 [slice](../executor-service/pokettogames.slice) with the pinned toolchain described
