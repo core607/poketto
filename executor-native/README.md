@@ -21,7 +21,7 @@ the probe verifies every manifest entry and rejects unlisted files. Copy that di
 root-level executables, bundled `bwrap` with its source/notices, `bin/` directory and executable permissions. Never stage operator settings or credentials.
 
 For `--scenario games`, stage `game_fixture.py` beside `probe.py`. Add `sandcrab`
-and `game-example.mjs` from `./gradlew stageGameWorker` to the worker sources.
+and `game-example.mjs` from [the verified game bundle](../docs/games.md) to the worker sources.
 Poketto supplies its game runtime.
 
 The host needs cgroup v2, systemd, root access, Git, Python with the worker's pinned dependencies and
