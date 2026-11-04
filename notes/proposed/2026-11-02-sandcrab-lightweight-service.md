@@ -107,19 +107,18 @@ SDK conformance while changing the implementation.
    avoiding veth/firewall state and resident bridges. Proxy variables select
    daemon-side CONNECT/SOCKS5 and DNS; direct egress stays unavailable. Connections
    are bounded, decisions logged, and cleanup precedes admission release.
-   [Native probes](../../executor-service/rust/sandcrab/egress_probe.py) pin isolation and lifecycle.
+   [Native probes](../../executor-service/rust/sandcrab/sandcrab_conformance/egress.py) pin isolation and lifecycle.
 9. L9: [bounded admission](../../executor-service/rust/sandcrab/README.md#command-queue).
    Independent finite-run and shell FIFOs prevent capacity waits blocking existing shells.
    Locked cancellation removes payloads before forgetting, preventing stale execution
-   after ID reuse. [Probes](../../executor-service/rust/sandcrab/queue_probe.py) cover
+   after ID reuse. [Probes](../../executor-service/rust/sandcrab/sandcrab_conformance/queue.py) cover
    ordering, no-execution refusals and SDKs.
-10. L10: contributor entrance. Document quickstarts for all three distributions
-    and the container. Provide CLI/curl and Python/Kotlin OpenSandbox examples, a
-    build/test agent and a batch code runner. Consolidate `*_probe.py` into one
-    locally runnable conformance runner. Fresh GitHub-hosted Ubuntu 22.04/24.04
-    runners and a Debian 12 VM or systemd container download the built artifact,
-    follow the README verbatim and run conformance. CI fails when the readiness
-    target is missed.
+10. [Conformance](../../executor-service/rust/sandcrab/README.md#verification) runs selected
+    native and published SDK suites with isolated fixtures and cleanup receipts.
+    Document host and container quickstarts, CLI/curl, Python/Kotlin SDKs, a build/test agent
+    and a batch runner. Fresh Ubuntu 22.04/24.04 runners and a Debian 12 VM or systemd
+    container must download the artifact, execute the README verbatim, run conformance
+    and fail CI when first use misses the readiness target.
 
 ### H: same-host hardening
 
