@@ -148,15 +148,13 @@ its isolation boundary and measures footprint without adding runtime dependencie
 
 ### P: measured performance work
 
-Rerun W0 footprint/density at L2/L7/L9. Record measurements and skip P1 unless idle
-sessions hold at least 40% of sandbox memory at measured capacity. After
-`idle_evict_millis`, evict only a lone shell: save cwd and `export -p`, exit,
-then restore both on the next command. Background processes block eviction. Document lost state;
-move workspaces from tmpfs to disk. Propose other optimizations here from measurements
-before implementation.
-
-The [L7 estimates](../../executor-native/evidence/sandcrab-l7-2026-11-03/summary.json)
-skip P1; reassess at L9.
+The [L7](../../executor-native/evidence/sandcrab-l7-2026-11-03/summary.json) and
+[L9](../../executor-native/evidence/sandcrab-l9-2026-11-04/summary.json) checkpoints
+put the conservative estimated idle-session share below the 40% trigger in every
+budget. Skip idle shell eviction. Reconsider only when measured idle cost reaches
+that threshold. An eviction proposal must protect background processes, restore cwd
+and exports, describe lost shell state and keep workspaces on disk. Other optimizations
+require a measured bottleneck and a proposal before implementation.
 
 ### X: extraction by readiness
 
