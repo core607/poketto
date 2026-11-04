@@ -9,6 +9,7 @@ on:
       - src/main/java/io/github/core607/poketto/content/internal/JGitRepositorySnapshotExports.java
       - src/main/resources/io/github/core607/poketto/executor/**
       - src/test/java/io/github/core607/poketto/executor/internal/NativeOverlayCopyProbe.java
+      - src/test/java/io/github/core607/poketto/executor/internal/NativeSaveProbe.java
       - src/test/java/io/github/core607/poketto/executor/internal/NativeMigration*.java
       - executor-service/*migration*.py
       - executor-service/migrate_native_repository.py

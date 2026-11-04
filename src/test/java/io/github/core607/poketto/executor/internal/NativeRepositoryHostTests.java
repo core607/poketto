@@ -65,6 +65,7 @@ class NativeRepositoryHostTests {
 
     private NativeRepositoryHost host(PublicExecutionNativeFixture fixture, NativeRepositoryHost.SnapshotReader files) {
         return new NativeRepositoryHost(
+                mock(NativeGitBaseline.class),
                 new SelectedFileSaves(auth, fixture.reader(auth), fixture.patches(auth), fixture.moves(auth)),
                 files,
                 mock(NativeArtifactCommands.class),

@@ -116,6 +116,7 @@ class NativeMediaCommandsTests {
                         new AccountCopyRecord.Original("a".repeat(64), 64, 0)));
         var saves = new SelectedFileSaves(auth, fixture.reader(auth), fixture.patches(auth), fixture.moves(auth));
         host = new NativeRepositoryHost(
+                mock(NativeGitBaseline.class),
                 saves,
                 files,
                 new NativeArtifactCommands(files, artifacts),

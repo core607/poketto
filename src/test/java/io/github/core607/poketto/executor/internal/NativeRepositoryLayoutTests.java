@@ -20,12 +20,15 @@ class NativeRepositoryLayoutTests extends NativeRepositoryTestFixture {
     @Test
     void freshAndReattachedShellsUseTheSamePersistentHomeAndRepository() {
         try (var executor = executor((run, timeout, handler) -> {})) {
+            String attach = "/bin/rm -f -- /workspace/.poketto-git-baseline.bundle"
+                    + " && export HOME=/workspace/home && cd /workspace/work/repository";
             String copy = execute(executor, "new").copyId();
-            assertThat(commands).contains(NativeRepositoryLayout.attach());
+            assertThat(commands).contains(attach);
             assertThat(commands).noneMatch(command -> command.contains("git clone"));
             sessions.values().forEach(session -> client.close(session.reference()));
+            commands.clear();
             execute(executor, copy);
-            assertThat(commands).contains("export HOME=/workspace/home && cd /workspace/work/repository");
+            assertThat(commands).contains(attach);
         }
     }
 

@@ -130,6 +130,7 @@ abstract class NativePlanFixture {
         storagePeers();
         commands = new NativePlanCommands(files, saves);
         host = new NativeRepositoryHost(
+                mock(NativeGitBaseline.class),
                 saves,
                 files,
                 mock(NativeArtifactCommands.class),

@@ -36,6 +36,10 @@ record AccountCopyRecord(
         if (!owner.fullRead()) {
             ProtocolValues.require(original == null, "public baseline", "must not contain a private archive");
             ProtocolValues.require(
+                    writer.storage() == null || writer.storage().gitCommit() == null,
+                    "public copy",
+                    "must use its sanitized export as the Git baseline");
+            ProtocolValues.require(
                     state.nativePlan() == null, "public copy", "must not retain a private preparation plan");
         } else if (phase != Phase.INITIALIZING && phase != Phase.DISCARDING) {
             Objects.requireNonNull(original, "a ready full copy requires its immutable original baseline");
@@ -98,17 +102,15 @@ record AccountCopyRecord(
             if (equals(other)) {
                 return true;
             }
-            return storage != null
-                    && storage.templateId() != null
-                    && other != null
-                    && other.storage() != null
-                    && new Writer(
-                                    principalId,
-                                    workerBootId,
-                                    appBootId,
-                                    leaseId,
-                                    storage.withUpper(other.storage().upper()))
-                            .equals(other);
+            return other != null && binding().equals(other.binding());
+        }
+
+        private Writer binding() {
+            return storage == null ? this : checkpoint(null, null);
+        }
+
+        Writer checkpoint(Upper upper, String gitCommit) {
+            return new Writer(principalId, workerBootId, appBootId, leaseId, storage.checkpoint(upper, gitCommit));
         }
 
         Writer {
@@ -121,7 +123,17 @@ record AccountCopyRecord(
 
     /** The application binds an account copy to ordinary Sandcrab storage; labels grant no authority. */
     record NativeStorage(
-            UUID volumeId, String profile, long byteLimit, long inodeLimit, String templateId, Upper upper) {
+            UUID volumeId,
+            String profile,
+            long byteLimit,
+            long inodeLimit,
+            String templateId,
+            Upper upper,
+            String gitCommit) {
+        NativeStorage(UUID volumeId, String profile, long byteLimit, long inodeLimit, String templateId, Upper upper) {
+            this(volumeId, profile, byteLimit, inodeLimit, templateId, upper, null);
+        }
+
         NativeStorage(UUID volumeId, String profile, long byteLimit, long inodeLimit) {
             this(volumeId, profile, byteLimit, inodeLimit, null, null);
         }
@@ -130,6 +142,7 @@ record AccountCopyRecord(
             ProtocolValues.require(
                     (volumeId == null) != (templateId == null), "native storage", "requires one volume or template");
             templateId = templateId == null ? null : ProtocolValues.hex(templateId, 64, "copy template");
+            gitCommit = gitCommit == null ? null : ProtocolValues.hex(gitCommit, 40, "installed Git baseline");
             ProtocolValues.require(
                     upper == null || (templateId != null && upper.bytes() <= byteLimit),
                     "overlay checkpoint",
@@ -144,8 +157,8 @@ record AccountCopyRecord(
             ProtocolValues.inRange(inodeLimit, 32, 1_000_000, "native volume inode limit");
         }
 
-        NativeStorage withUpper(Upper change) {
-            return new NativeStorage(volumeId, profile, byteLimit, inodeLimit, templateId, change);
+        NativeStorage checkpoint(Upper change, String commit) {
+            return new NativeStorage(volumeId, profile, byteLimit, inodeLimit, templateId, change, commit);
         }
 
         void requireVolume(SandcrabVolume volume) {

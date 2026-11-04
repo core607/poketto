@@ -154,7 +154,7 @@ val stageLinuxStorageTest = tasks.register<Sync>("stageLinuxStorageTest") {
     into(linuxStorageRuntime)
     from(sourceSets.main.get().output.classesDirs) { into("classes") }
     from(checkNotNull(sourceSets.main.get().output.resourcesDir)) {
-        include("io/github/core607/poketto/executor/*.mjs", "io/github/core607/poketto/executor/restore-upper.py")
+        include("io/github/core607/poketto/executor/*.mjs", "io/github/core607/poketto/executor/*.py")
         into("classes")
     }
     from(sourceSets.test.get().output.classesDirs) { into("classes") }

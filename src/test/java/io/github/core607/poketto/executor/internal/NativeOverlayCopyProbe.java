@@ -41,7 +41,9 @@ public final class NativeOverlayCopyProbe {
 
     public static void main(String[] args) throws Exception {
         Path socket = Path.of(args[0]);
-        Path root = Path.of(args[1]);
+        Path area = Path.of(args[1]);
+        boolean fallback = args[3].equals("fallback");
+        Path root = fallback ? area.resolve("small-authority") : area;
         boolean full = !args[2].equals("public");
         UUID account = args[2].equals("other") ? UUID.fromString("0f453746-a87f-4d2a-af03-062c2c63c7db") : ACCOUNT;
         boolean write = args[3].equals("write");
@@ -68,7 +70,12 @@ public final class NativeOverlayCopyProbe {
         var accounts = AccountCopyTestData.disk(root.resolve("metadata"));
         boolean first = write && args[2].equals("full");
         try (var fixture = PublicExecutionNativeFixture.withExportLimit(
-                        root.resolve("authority"), root.resolve("exports"), auth, WORKSPACE, !first, 16L << 20);
+                        root.resolve("authority"),
+                        root.resolve("exports"),
+                        auth,
+                        WORKSPACE,
+                        !first && !fallback,
+                        16L << 20);
                 var executor = new ExecutorConfiguration()
                         .nativeRepositoryExecutor(
                                 accounts,
@@ -93,34 +100,30 @@ public final class NativeOverlayCopyProbe {
                 fixture.seedFile("private/large-template.bin", contents);
             }
             var cancellation = mock(ExecutionCancellation.class);
-            if (args[3].equals("save")) {
-                String file = "private/selected.md";
-                var result = executor.execute(
+            if (args[3].equals("save") || fallback) {
+                var probe = new NativeSaveProbe((id, source) -> executor.execute(
                         actor,
                         WORKSPACE,
-                        new RepositoryExecutor.CopyRequest(RepositoryExecutor.NEW_COPY),
+                        new RepositoryExecutor.CopyRequest(id),
                         Optional.empty(),
-                        "set -eu; printf 'selected change' > private/selected.md; poketto save private/selected.md",
-                        Duration.ofSeconds(15),
-                        cancellation);
-                assertThat(result.exitCode())
-                        .as(result.stderr() + result.stdout())
-                        .isZero();
-                assertThat(JSON.readTree(result.stdout()).path("ok").booleanValue())
-                        .isTrue();
-                assertThat(fixture.pushes()).isEqualTo(1);
-                assertThat(fixture.reader(auth)
-                                .getFile(actor, WORKSPACE, Optional.empty(), file)
-                                .source())
-                        .contains("selected change");
-                assertThat(executor.discard(
-                                        actor,
-                                        WORKSPACE,
-                                        new RepositoryExecutor.DiscardRequest(result.copyId()),
-                                        cancellation)
+                        source,
+                        Duration.ofSeconds(20),
+                        cancellation));
+                String copy;
+                if (fallback) {
+                    copy = probe.missingGitPrerequisite(fixture::pushes);
+                } else {
+                    copy = probe.saveAndRecover(fixture::pushes);
+                    assertThat(fixture.reader(auth)
+                                    .getFile(actor, WORKSPACE, Optional.empty(), "private/second.md")
+                                    .source())
+                            .contains("second");
+                }
+                assertThat(executor.discard(actor, WORKSPACE, new RepositoryExecutor.DiscardRequest(copy), cancellation)
                                 .status())
                         .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
-                System.out.println("SAVED " + JSON.writeValueAsString(Map.of("pushes", fixture.pushes())));
+                System.out.println((fallback ? "FALLBACK " : "SAVED ")
+                        + JSON.writeValueAsString(Map.of("pushes", fixture.pushes())));
                 return;
             }
 

@@ -29,6 +29,7 @@ final class NativeRepositoryRuntime {
         var files = new NativeRepositoryFiles(client, storage);
         var artifacts = new NativeArtifacts(storage, Clock.systemUTC());
         var host = new NativeRepositoryHost(
+                new NativeGitBaseline(exports, client),
                 saves,
                 files,
                 new NativeArtifactCommands(files, artifacts),
