@@ -118,12 +118,18 @@ class NativeRepository(RepositoryProbe):
                                        "--silent", "--fail", "--max-time", "10", "--max-filesize", "1048576",
                                        "--unix-socket", path, "http://localhost/v1/info"))
         profile = environment.get("POKETTO_EXECUTOR_PROFILE", "repository")
+        builder = environment.get("POKETTO_EXECUTOR_TEMPLATE_PROFILE", profile)
         selected = live["profiles"].get(profile, {})
         if (live.get("apiVersion") != 1 or str(uuid.UUID(live["serverId"])) != live["serverId"]
                 or not {"sessions", "templates", "files", "uploads", "calls"} <= set(live["capabilities"])
                 or selected.get("hostCalls") is not True or selected.get("network") != "none"):
             raise DeploymentError("the native API does not offer the selected offline repository profile")
+        if live["profiles"].get(builder, {}).get("network") != "none":
+            raise DeploymentError("the native API does not offer the selected offline template preparation profile")
         if self.process(binary, inode) != process:
             raise DeploymentError("native service restarted during verification")
-        return {"release": pin["version"], "binarySha256": pin["sandcrabSha256"], "profile": profile,
-                "configSha256": self.config["configSha256"], "installation": sha(json.dumps(self.config, sort_keys=True).encode())}
+        receipt = {"release": pin["version"], "binarySha256": pin["sandcrabSha256"], "profile": profile,
+                   "configSha256": self.config["configSha256"], "installation": sha(json.dumps(self.config, sort_keys=True).encode())}
+        if builder != profile:
+            receipt["templateProfile"] = builder
+        return receipt

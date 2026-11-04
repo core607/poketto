@@ -23,7 +23,7 @@ final class NativeRepositoryWorkspace {
     private final SelectedFileSaves saves;
     private final AccountCopyStore accounts;
     private final NativeRepositoryOverlays overlays;
-    private final String profile;
+    private final NativeRepositoryProfiles profiles;
     private final long bytes;
     private final long inodes;
     private final UUID application = UUID.randomUUID();
@@ -35,7 +35,7 @@ final class NativeRepositoryWorkspace {
             SelectedFileSaves saves,
             AccountCopyStore accounts,
             NativeRepositoryOverlays overlays,
-            String profile,
+            NativeRepositoryProfiles profiles,
             long bytes,
             long inodes) {
         this.client = client;
@@ -44,17 +44,19 @@ final class NativeRepositoryWorkspace {
         this.saves = saves;
         this.accounts = accounts;
         this.overlays = overlays;
-        this.profile = SandcrabProtocol.profile(profile);
+        this.profiles = profiles;
         this.bytes = bytes;
         this.inodes = inodes;
     }
 
     SandcrabProtocol.Info info() {
         SandcrabProtocol.Info info = client.info();
+        profiles.offlinePreparation(info);
+        SandcrabProtocol.Profile execution = info.profiles().get(profiles.execution());
         if (!info.capabilities().containsAll(Set.of("sessions", "templates", "files", "uploads", "calls"))
-                || !info.profiles().containsKey(profile)
-                || !info.profiles().get(profile).networkDisabled()
-                || !info.profiles().get(profile).hostCalls()) {
+                || execution == null
+                || !execution.networkDisabled()
+                || !execution.hostCalls()) {
             throw new WorkerUnavailableException();
         }
         return info;
@@ -169,7 +171,7 @@ final class NativeRepositoryWorkspace {
                 }
             };
             var source = new AccountTemplateCatalog.Source(
-                    workspace.value(), held.owner().fullRead(), export.commit(), profile);
+                    workspace.value(), held.owner().fullRead(), export.commit(), profiles.execution());
             overlays.bind(
                     source,
                     info,
@@ -177,7 +179,8 @@ final class NativeRepositoryWorkspace {
                     verify,
                     with -> exports.withBundle(principal, workspace, export, with),
                     template -> {
-                        var storage = new AccountCopyRecord.NativeStorage(null, profile, bytes, inodes, template, null);
+                        var storage = new AccountCopyRecord.NativeStorage(
+                                null, profiles.execution(), bytes, inodes, template, null);
                         var lease = lease(principal, held, storage, info, cancellation, claim);
                         admitted.accept(lease);
                         held.initialize(

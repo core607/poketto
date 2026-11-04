@@ -45,7 +45,7 @@ def control(socket, args, area, scope, action):
     command = [str(args.java), '-Xmx192m', '-XX:MaxMetaspaceSize=160m', '-Duser.home=' + str(area),
                '-javaagent:' + str(agent), '-cp', str(args.runtime / 'classes') + ':' + str(args.runtime / 'jars/*'),
                'io.github.core607.poketto.executor.internal.NativeOverlayCopyProbe',
-               str(socket), str(area), scope, action, 'repository']
+               str(socket), str(area), scope, action, 'repository', 'builder']
     with target.open('xb') as log:
         process = subprocess.Popen(command, cwd=area, user=args.uid, group=args.gid, extra_groups=[], stdout=log,
                                    stderr=subprocess.STDOUT, env={'HOME': str(area), 'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'})
@@ -93,6 +93,9 @@ def exercise(socket, args, area, receipt):
         assert copies[scope]['upper']['bytes'] > 1024
     assert copies['full']['copy'] != copies['other']['copy'] and copies['full']['template'] == copies['other']['template']
     assert len(list((area / 'metadata').glob('*.account'))) == 2
+    status, template = api(socket, args, 'GET', 'templates/' + copies['full']['template'])
+    assert status == 200 and template['bytes'] > 1024**2
+    check('offline-preparation-served-a-template-larger-than-the-user-workspace-budget')
     check('two-killed-application-processes-left-independent-uppers-on-one-template')
     for scope in ('full', 'other'):
         assert control(socket, args, area, scope, 'read')['copy'] == copies[scope]['copy']
@@ -131,7 +134,7 @@ def mount_pool(image, mount):
 
 
 @contextmanager
-def native_service(args, receipt, volumes=False):
+def native_service(args, receipt, volumes=False, split_profiles=False):
     if os.geteuid() != 0 or os.environ.get('SANDCRAB_INSTALL_DISPOSABLE') != '1' or min(args.uid, args.gid) <= 0:
         raise ValueError('Use a disposable root systemd host and a distinct unprivileged application account')
     args.runtime = args.runtime.resolve(strict=True)
@@ -167,7 +170,7 @@ def native_service(args, receipt, volumes=False):
         os.chown(area, args.uid, args.gid)
         socket = mount / 'runtime/control.sock'
         cfg = root / 'config.toml'
-        cfg.write_text(f'''[service]
+        service_config = f'''[service]
 runtime_root = "{socket.parent}"
 socket = "{socket}"
 client_uid = {args.uid}
@@ -180,22 +183,29 @@ max_records = 64
 max_output_bytes = 4194304
 max_templates = 8
 template_pool_bytes = 33554432
-[profiles.repository]
+'''
+        def profile(name, workspace_bytes, transfer_bytes, host_calls):
+            return f'''[profiles.{name}]
 exec_user = "nobody"
 tools = "{root / 'tools'}"
 read_only = ["/usr", "/bin", "/lib", "/lib64", "/etc/ld.so.cache"]
 memory_bytes = 100663296
-temporary_bytes = 16777216
+temporary_bytes = {workspace_bytes}
 temporary_inodes = 2048
 tasks_max = 64
 cpu_quota_percent = 75
 timeout_millis = 60000
 session_ttl_millis = 120000
 output_limit_bytes = 65536
-transfer_bytes = 4194304
-host_calls = true
+transfer_bytes = {transfer_bytes}
+host_calls = {str(host_calls).lower()}
 network = "none"
-''')
+'''
+        if split_profiles:
+            profiles = profile('repository', 1024**2, 8*1024**2, True) + profile('builder', 32*1024**2, 8*1024**2, False)
+        else:
+            profiles = profile('repository', 16*1024**2, 4*1024**2, True)
+        cfg.write_text(service_config + profiles)
         if volumes:
             data = storage / 'data'
             data.mkdir(parents=True)
@@ -262,7 +272,7 @@ def main():
     args = argument_parser(__doc__).parse_args()
     receipt = {'result': 'FAIL', 'cleanup': 'NOT_STARTED', 'checks': [],
                'scope': 'Real repository adapter, Sandcrab Unix API and XFS journal with synthetic Git data and grants.'}
-    with native_service(args, receipt) as (socket, area, _):
+    with native_service(args, receipt, split_profiles=True) as (socket, area, _):
         exercise(socket, args, area, receipt)
 
 

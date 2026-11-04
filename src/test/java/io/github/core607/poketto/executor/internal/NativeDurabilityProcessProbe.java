@@ -141,7 +141,7 @@ public final class NativeDurabilityProcessProbe {
                 ExecutionLimits.sessions(2),
                 config.transfers().resolve(scenario),
                 1024 * 1024,
-                "repository",
+                new NativeRepositoryProfiles("repository", "repository"),
                 8 * 1024 * 1024,
                 256);
     }

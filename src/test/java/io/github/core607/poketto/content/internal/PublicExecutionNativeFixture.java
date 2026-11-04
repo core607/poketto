@@ -63,17 +63,29 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
 
     public PublicExecutionNativeFixture(
             Path root, Path staging, AuthService auth, WorkspaceId workspace, boolean loseFirstReply) throws Exception {
-        this(root, staging, auth, workspace, loseFirstReply, false);
+        this(root, staging, auth, workspace, loseFirstReply, false, 1024 * 1024);
     }
 
     /** Reopens an existing synthetic authority after process loss without creating another commit. */
     public static PublicExecutionNativeFixture reopen(Path root, Path staging, AuthService auth, WorkspaceId workspace)
             throws Exception {
-        return new PublicExecutionNativeFixture(root, staging, auth, workspace, false, true);
+        return new PublicExecutionNativeFixture(root, staging, auth, workspace, false, true, 1024 * 1024);
+    }
+
+    public static PublicExecutionNativeFixture withExportLimit(
+            Path root, Path staging, AuthService auth, WorkspaceId workspace, boolean existing, long exportBytes)
+            throws Exception {
+        return new PublicExecutionNativeFixture(root, staging, auth, workspace, false, existing, exportBytes);
     }
 
     private PublicExecutionNativeFixture(
-            Path root, Path staging, AuthService auth, WorkspaceId workspace, boolean loseFirstReply, boolean existing)
+            Path root,
+            Path staging,
+            AuthService auth,
+            WorkspaceId workspace,
+            boolean loseFirstReply,
+            boolean existing,
+            long exportBytes)
             throws Exception {
         this.workspace = workspace;
         this.fixtureRoot = root;
@@ -105,7 +117,7 @@ public final class PublicExecutionNativeFixture implements AutoCloseable {
         snapshots = new JGitPublicContentSnapshots(repository.authority(), Clock.systemUTC(), Duration.ofHours(1));
         snapshots.refresh(workspace);
         exports = new JGitRepositorySnapshotExports(
-                repository.authority(), auth, staging, 1024 * 1024, Duration.ofSeconds(10), snapshots);
+                repository.authority(), auth, staging, exportBytes, Duration.ofSeconds(10), snapshots);
     }
 
     private String existingHead() throws Exception {

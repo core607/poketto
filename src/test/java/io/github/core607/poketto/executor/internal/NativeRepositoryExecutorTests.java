@@ -28,6 +28,30 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
     @Test
+    void templatePreparationUsesTheNamedOfflineProfileWithoutGrantingItHostCalls() {
+        var profiles = new NativeRepositoryProfiles("repository", "builder");
+        var build = new SandcrabProtocol.Profile(60_000, 65536, "none", 120_000, 8_388_608, false);
+        var proxied = new SandcrabProtocol.Profile(60_000, 65536, "proxy", 120_000, 8_388_608, false);
+        SandcrabProtocol.Info original = client.info();
+        SandcrabProtocol.Profile execution = original.profiles().get("repository");
+        var prepared = new SandcrabProtocol.Info(
+                1,
+                epoch,
+                original.capabilities(),
+                Map.of("repository", execution, "builder", build),
+                original.storage());
+        var unsafe = new SandcrabProtocol.Info(
+                1,
+                epoch,
+                original.capabilities(),
+                Map.of("repository", execution, "builder", proxied),
+                original.storage());
+        assertThat(profiles.offlinePreparation(prepared)).isEqualTo(build);
+        assertThatThrownBy(() -> profiles.offlinePreparation(original)).isInstanceOf(WorkerUnavailableException.class);
+        assertThatThrownBy(() -> profiles.offlinePreparation(unsafe)).isInstanceOf(WorkerUnavailableException.class);
+    }
+
+    @Test
     void nativeApplicationPathJournalsBeforeCommandAndRetainsTheReadyRuntime() {
         try (var executor = executor((run, timeout, handler) -> {
             AccountCopyRecord running = journal.record(owner).orElseThrow();

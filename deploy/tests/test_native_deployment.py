@@ -87,6 +87,19 @@ class NativeDeploymentTests(unittest.TestCase):
             with self.assertRaisesRegex(DeploymentError, "invalid Sandcrab"):
                 release_pin(malformed)
 
+    def test_separate_template_profile_requires_offline_git_without_host_calls(self):
+        with patch.object(self.service, "process", return_value=(os.getpid(), "start")):
+            self.assertNotIn("templateProfile", self.inspect())
+            self.environment["POKETTO_EXECUTOR_TEMPLATE_PROFILE"] = "builder"
+            with self.assertRaisesRegex(DeploymentError, "template preparation profile"):
+                self.inspect()
+            self.info["profiles"]["builder"] = {"network": "proxy", "hostCalls": False}
+            with self.assertRaisesRegex(DeploymentError, "template preparation profile"):
+                self.inspect()
+            self.info["profiles"]["builder"]["network"] = "none"
+            receipt = self.inspect()
+            self.assertEqual((receipt["profile"], receipt["templateProfile"]), ("repository", "builder"))
+
     def test_consumer_requires_the_directory_bind_writable_state_and_no_legacy_key(self):
         def verify():
             return consumer_socket(self.container, self.environment, self.endpoint)

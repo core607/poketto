@@ -10,6 +10,7 @@ uses the signed worker until its operator selects the native backend.
 |---|---|
 | `POKETTO_EXECUTOR_SOCKET` | Root-owned native Unix socket reachable by the application UID. Mount its protected parent directory read-only so a restarted daemon can replace the socket. |
 | `POKETTO_EXECUTOR_PROFILE` | A repository profile with network disabled, host calls enabled, Git, bash and Python. The default name is `repository`. |
+| `POKETTO_EXECUTOR_TEMPLATE_PROFILE` | Offline profile for the disposable Git checkout that prepares an immutable template. Defaults to the repository profile. Allow disk space for the exported bundle, Git objects and checkout to coexist. This profile can disable host calls. |
 | `POKETTO_EXECUTOR_STAGING_DIRECTORY` | Private application directory for authorized Git exports. |
 | `POKETTO_EXECUTOR_TRANSFERS_DIRECTORY` | Private application directory for bounded file transfers. `POKETTO_EXECUTOR_TRANSFERS_MAX_BYTES` defaults to 1 GiB. |
 | `POKETTO_EXECUTOR_COPIES_METADATA_ROOT` | Application-owned account journals and acknowledged changes on a bounded XFS filesystem. |

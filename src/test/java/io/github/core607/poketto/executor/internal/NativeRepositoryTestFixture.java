@@ -253,7 +253,15 @@ abstract class NativeRepositoryTestFixture {
 
     NativeRepositoryWorkspace workspaces() {
         return new NativeRepositoryWorkspace(
-                client, auth, exports, saves, journal.store(), overlays, "repository", 8_388_608, 256);
+                client,
+                auth,
+                exports,
+                saves,
+                journal.store(),
+                overlays,
+                new NativeRepositoryProfiles("repository", "repository"),
+                8_388_608,
+                256);
     }
 
     SandcrabProtocol.Session admitSession(SandcrabProtocol.SessionPlan plan) {
