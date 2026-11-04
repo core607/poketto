@@ -42,6 +42,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends xfsprogs
+          if [[ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" == 1 ]]; then
+            sudo apparmor_parser -r executor-service/rust/sandcrab/install/sandcrab.apparmor
+          fi
           fixture=$(sudo mktemp -d /var/lib/repo-workspace-ci.XXXXXXXX)
           sudo chmod 0755 "$fixture"
           sudo cp -RL "$JAVA_HOME" "$fixture/jdk"

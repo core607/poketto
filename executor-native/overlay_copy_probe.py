@@ -214,9 +214,11 @@ max_records = 12
 ''')
         cfg.chmod(0o600)
         started = True
+        restricted = Path('/proc/sys/kernel/apparmor_restrict_unprivileged_userns')
+        security = ['-p', 'AppArmorProfile=sandcrab-service'] if restricted.exists() and restricted.read_text().strip() == '1' else []
         run('systemd-run', '--unit', unit, '--collect', '--quiet', '--slice=system.slice',
             '-p', 'Delegate=yes', '-p', 'MemoryMax=512M', '-p', 'MemorySwapMax=0', '-p', 'CPUQuota=100%',
-            '-p', 'TasksMax=256', '-p', 'KillMode=control-group', root / 'bin/sandcrab', 'serve', '--config', cfg)
+            '-p', 'TasksMax=256', '-p', 'KillMode=control-group', *security, root / 'bin/sandcrab', 'serve', '--config', cfg)
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             try:
