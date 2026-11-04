@@ -8,9 +8,15 @@ if [[ ${GITHUB_ACTIONS:-} != true && ${SANDCRAB_INSTALL_DISPOSABLE:-} != 1 ]]; t
   echo 'Run on a disposable Linux systemd host with SANDCRAB_INSTALL_DISPOSABLE=1.' >&2
   exit 2
 fi
-bundle=$(realpath -- "$SANDCRAB_BUNDLE")
-evidence=$(realpath -- "$SANDCRAB_EVIDENCE")
-test -f "$bundle" && test -d "$evidence" && test -z "$(find "$evidence" -mindepth 1 -print -quit)"
+if ! bundle=$(realpath -e -- "$SANDCRAB_BUNDLE") || [[ ! -f "$bundle" || ! -r "$bundle" ]]; then
+  echo 'SANDCRAB_BUNDLE must name a readable release ZIP.' >&2
+  exit 2
+fi
+if ! evidence=$(realpath -e -- "$SANDCRAB_EVIDENCE") || [[ ! -d "$evidence" || ! -w "$evidence" || ! -x "$evidence" ]] \
+    || ! first=$(find "$evidence" -mindepth 1 -maxdepth 1 -print -quit) || [[ -n "$first" ]]; then
+  echo 'Create a new, empty, writable directory for SANDCRAB_EVIDENCE on every attempt.' >&2
+  exit 2
+fi
 cd "$(git rev-parse --show-toplevel)"
 as_root() {
   if (( EUID == 0 )); then "$@"; else sudo -- "$@"; fi
@@ -45,6 +51,7 @@ if [[ ${GITHUB_ACTIONS:-} == true || "$jdk" == "$stage/jdk" ]]; then gradle_args
 command -v mkfs.xfs >/dev/null || { as_root apt-get update -qq && as_root apt-get install -y --no-install-recommends xfsprogs; }
 if [[ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || true)" == 1 ]]; then
   as_root apparmor_parser -r executor-service/rust/sandcrab/install/sandcrab.apparmor
+  echo 'Loaded the sandcrab-service AppArmor profile for restricted user namespaces.'
 fi
 if [[ "$jdk" != "$stage/jdk" ]]; then as_root cp -RL "$jdk" "$stage/jdk"; fi
 as_root cp -R build/executor-native/runtime "$stage/runtime"

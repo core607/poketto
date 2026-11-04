@@ -57,6 +57,8 @@ On a systemd host with delegated cgroup v2, `native-host.py` starts Spring, Post
 
 Run the controller as root. Its ready receipt identifies the native service, binary, configuration and runtime. Only root can read the generated password in `client.json`. Obtain keys through normal HTTP administration. Forward the loopback application port for remote clients. Create `stop` in the reported fixture directory when finished. The controller also enforces a bounded lifetime. Require its `cleanup: PASS` receipt for the services, database, accounts, mounts and secrets.
 
+When `/proc/sys/kernel/apparmor_restrict_unprivileged_userns` reads `1`, load the repository and game fixtures' profile on the disposable host before starting either service. From the checkout, run `sudo apparmor_parser -r executor-service/rust/sandcrab/install/sandcrab.apparmor`. The release check loads it automatically.
+
 `native-load.py` takes the same paths and `--evidence FILE`. It issues a key through login, runs an eight-agent [load suite](../README.md) stage through MCP and requires successful cleanup. The CI `load` lane judges calls after the first 30 seconds against 99% success and one-second p95. With `--verify-clients` the same fixture then runs the authenticated games and account clients and retains their logs alongside the load receipt.
 
 For `load`, review the first-party branch. From a trusted checkout, set `SANDCRAB_VERIFIER_REPOSITORY` and run `python3 acceptance/clients/release-gate.py dispatch --pr NUMBER`. The verifier retains raw output. Public CI checks the digest and `SANDCRAB_STATUS_ISSUER` (default repository owner). A squash with identical contents reuses the receipt. For a new integration tree, dispatch with `--branch main`.
