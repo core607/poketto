@@ -1,0 +1,105 @@
+{
+  "scope": "Two production Poketto repository backends at 50 simulated clients using authenticated read-only MCP commands. The two application revisions ran at separate times on the same host. This is a consumer cutover comparison.",
+  "settings": {
+    "clients": 50,
+    "stageSeconds": 240,
+    "excludedInitialSeconds": 60,
+    "judgedSeconds": 180,
+    "thinkTimeSeconds": [
+      3,
+      10
+    ],
+    "thinkDistribution": "uniform",
+    "requestTimeoutSeconds": 75,
+    "modelRequests": 0,
+    "workload": "acceptance/load-suite.py and acceptance/agent-load.py",
+    "limits": {
+      "appMemoryMax": 1610612736,
+      "appCpuMax": "150000 100000",
+      "sandboxMemoryMax": 3221225472,
+      "sandboxCpuMax": "150000 100000"
+    }
+  },
+  "metricDefinitions": {
+    "latency": "All judged calls including refusals and timeouts.",
+    "successfulCallsPerSecond": "Confirmed OK calls divided by the 180-second judged window.",
+    "cpuSeconds": "Application, supervisor and sandbox cgroups across the entire workload through the last in-flight call, before cleanup."
+  },
+  "target": {
+    "minimumSuccessRate": 0.99,
+    "maximumAllOutcomesP95Seconds": 1,
+    "maximumOomKills": 0
+  },
+  "signed": {
+    "sourceCommit": "4fdd2dcd229ac0854689fb12b7f26060e86d1362",
+    "judgedCalls": 998,
+    "outcomes": {
+      "EXECUTION_REFUSED:BUSY": 212,
+      "OK": 716,
+      "EXECUTION_REFUSED:CAPACITY": 70
+    },
+    "successRate": 0.7174,
+    "allOutcomesP95Seconds": 5.811,
+    "allOutcomesP99Seconds": 12.768,
+    "callsPerSecond": 5.54,
+    "successfulCallsPerSecond": 3.978,
+    "cpuSeconds": {
+      "app": 150.1937,
+      "supervisor": 39.1541,
+      "sandboxes": 69.6136
+    },
+    "peakAppBytes": 1369591808,
+    "peakSandboxSliceBytes": 2695864320,
+    "appOomKills": 0,
+    "sandboxSliceOomKills": 0
+  },
+  "native": {
+    "sourceCommit": "73f0291ad0c190e7113a1251f9a59fc52b170a2d",
+    "judgedCalls": 1099,
+    "outcomes": {
+      "EXECUTION_REFUSED:CAPACITY": 920,
+      "OK": 166,
+      "TimeoutError": 13
+    },
+    "successRate": 0.151,
+    "allOutcomesP95Seconds": 0.915,
+    "allOutcomesP99Seconds": 75.075,
+    "callsPerSecond": 6.11,
+    "successfulCallsPerSecond": 0.922,
+    "cpuSeconds": {
+      "app": 227.1619,
+      "supervisor": 10.8522,
+      "sandboxes": 28.3892
+    },
+    "peakAppBytes": 1610612736,
+    "peakSandboxSliceBytes": 1152335872,
+    "appOomKills": 0,
+    "sandboxSliceOomKills": 0,
+    "release": "v0.1.1",
+    "appOomEvents": 0,
+    "sandboxSliceOomEvents": 0
+  },
+  "capacityResult": "FAIL",
+  "collection": "MEASURED",
+  "issue": "https://github.com/core607/poketto/issues/397",
+  "deployment": "https://github.com/core607/poketto/actions/runs/41893833281",
+  "acceptance": {
+    "originalWorkAndHomeEntriesVerifiedDuringImport": 715,
+    "originalRegularFileBytesVerifiedDuringImport": 178132538,
+    "migratedGitHeadMatched": true,
+    "newCopyUsedAuthorizedCommitTemplate": true,
+    "writeAndDeletionObservedAcrossFreshCommands": true,
+    "previousVersionTemplateOpenedAfterUpgrade": true
+  },
+  "cleanup": {
+    "nativeReturnedForksDiscarded": 18,
+    "nativeUnreturnedForksDiscarded": 24,
+    "allUnreturnedForkUppersWereEmptyTar": true,
+    "originalCopyAndVolumeReady": true,
+    "remainingJournals": 1,
+    "remainingVolumes": 1,
+    "remainingTemplates": 0,
+    "activeRuns": 0,
+    "sourceAndImportedWorkAndHomeUnchanged": true
+  }
+}
