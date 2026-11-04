@@ -166,6 +166,23 @@ final class AccountCommand implements AutoCloseable {
         write(current.state(), writer, AccountCopyRecord.Phase.ATTACHING, null, interrupted, current.expiresAt());
     }
 
+    /** The former writer was fenced before attach. A definite refusal leaves it contained, even after idle expiry. */
+    void attachmentRefused(AccountCopyRecord.Writer fenced) {
+        var current = record();
+        ProtocolValues.require(
+                current.phase() == AccountCopyRecord.Phase.ATTACHING
+                        && current.writer().storage().equals(fenced.storage()),
+                "refused native attachment",
+                "must preserve the fenced copy's storage");
+        write(
+                current.state(),
+                fenced,
+                AccountCopyRecord.Phase.READY,
+                null,
+                current.lastInterruptedCommand(),
+                current.expiresAt());
+    }
+
     /** Called only after the previous lease is confirmed contained. */
     void bind(AccountCopyRecord.Writer writer) {
         requireLive();

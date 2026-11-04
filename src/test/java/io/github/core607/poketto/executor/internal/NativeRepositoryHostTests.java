@@ -158,6 +158,13 @@ class NativeRepositoryHostTests {
                     {"operation":"save","arguments":{"writes":{},"deletes":["private/secret.md"]}}
                     """);
             assertThat(deleted.path("ok").booleanValue()).isTrue();
+            var present = host(fixture, (session, path, maximum) -> {
+                throw new WorkerUnavailableException(new SandcrabFiles.SizeLimit());
+            });
+            JsonNode rejected = reply(present, """
+                    {"operation":"save","arguments":{"writes":{},"deletes":["AGENTS.md"]}}
+                    """);
+            assertThat(rejected.path("code").stringValue()).isEqualTo("INVALID_SELECTION");
             var unavailable = host(fixture, (session, path, maximum) -> {
                 throw new WorkerUnavailableException();
             });

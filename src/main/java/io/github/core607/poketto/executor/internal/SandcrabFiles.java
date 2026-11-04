@@ -20,6 +20,13 @@ final class SandcrabFiles {
         this.http = http;
     }
 
+    /** A valid snapshot header bound to the requested session already identifies a present file. */
+    static final class SizeLimit extends IOException {
+        SizeLimit() {
+            super("Native snapshot exceeds the consumer's byte bound");
+        }
+    }
+
     record Plan(String path, String format) {
         Plan {
             ProtocolValues.require(
@@ -164,13 +171,16 @@ final class SandcrabFiles {
                     if (!session.serverId().equals(head.serverId())) {
                         throw new IOException("Native snapshot server epoch differs from its session");
                     }
-                    if (head.length() > maxBytes || head.length() < 0) {
-                        throw new IOException("Native snapshot exceeds the consumer's byte bound");
-                    }
                     if (!source.type().equals(head.contentType())
                             || head.etag() == null
                             || !head.etag().matches("\"[0-9a-f]{64}\"")) {
                         throw new IOException("Native snapshot lacks its format or SHA-256 identity");
+                    }
+                    if (head.length() < 0) {
+                        throw new IOException("Native snapshot lacks its declared length");
+                    }
+                    if (head.length() > maxBytes) {
+                        throw new SizeLimit();
                     }
                     String expected = head.etag().substring(1, 65);
                     copy(input, output, head.length(), expected, authorize);

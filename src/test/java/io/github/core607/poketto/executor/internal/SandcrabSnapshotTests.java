@@ -224,13 +224,16 @@ class SandcrabSnapshotTests {
                         bytes);
             })) {
                 var client = new SandcrabClient(peer.client(channel -> {}));
-                assertThatThrownBy(() -> client.snapshot(
+                var rejection = assertThatThrownBy(() -> client.snapshot(
                                 SESSION,
                                 new SandcrabFiles.Plan("file", "raw"),
                                 fault.equals("bound") ? 2 : 4,
                                 target,
                                 () -> {}))
                         .isInstanceOf(WorkerUnavailableException.class);
+                if (fault.equals("bound")) {
+                    rejection.hasCauseInstanceOf(SandcrabFiles.SizeLimit.class);
+                }
                 assertThat(target).doesNotExist();
                 assertNoStagingFiles();
                 assertThat(peer.requests()).isEqualTo(1);

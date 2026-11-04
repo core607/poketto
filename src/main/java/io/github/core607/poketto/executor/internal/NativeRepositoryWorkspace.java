@@ -115,20 +115,26 @@ final class NativeRepositoryWorkspace {
         admitted.accept(lease);
         if (claim.fresh()) {
             held.attach(lease.writer());
-            forgetFenced(retained.writer(), info);
-        } else {
-            held.bind(lease.writer());
-        }
-        if (claim.fresh()) {
-            openRegistered(lease, held, claim);
+            try {
+                forgetFenced(retained.writer(), info);
+                openRegistered(lease, held, claim);
+            } catch (RuntimeException failure) {
+                if (!lease.mayHaveExecuted()) {
+                    held.attachmentRefused(retained.writer());
+                }
+                throw failure;
+            }
             if (lease.overlay()) {
                 overlays.restore(held, lease);
             } else {
                 lease.setup(NativeRepositoryLayout.attach());
             }
             held.bind(lease.writer());
-        } else if (!lease.resume(claim.session())) {
-            throw new NativeRepositoryLease.Ended();
+        } else {
+            held.bind(lease.writer());
+            if (!lease.resume(claim.session())) {
+                throw new NativeRepositoryLease.Ended();
+            }
         }
         return lease;
     }

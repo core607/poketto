@@ -191,6 +191,10 @@ final class NativeRepositoryHost {
                 return;
             }
             throw missing;
+        } catch (WorkerUnavailableException failure) {
+            if (!(failure.getCause() instanceof SandcrabFiles.SizeLimit)) {
+                throw failure;
+            }
         }
         throw new IllegalArgumentException("A selected deletion must already be absent from the copy");
     }

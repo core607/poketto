@@ -56,3 +56,8 @@ background writer changes a selected file before capture, the command returns
 `COPY_CHANGED` and commits none of the selection. Check the current files before
 submitting a new save. Remote Git grants and the per-path revision checks still
 apply to each save.
+
+An artifact belongs to its account, workspace, copy and reading scope. Its bytes
+use the application transfer pool. A replacement shell can read the same handle
+until removal, expiry, copy disposal or application restart. Each page rechecks
+the caller's grant and the current public projection.

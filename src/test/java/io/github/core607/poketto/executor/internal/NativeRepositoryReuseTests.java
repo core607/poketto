@@ -18,6 +18,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class NativeRepositoryReuseTests extends NativeRepositoryTestFixture {
     @Test
@@ -123,6 +125,39 @@ class NativeRepositoryReuseTests extends NativeRepositoryTestFixture {
             verify(client, times(2)).open(any());
             verify(exports).create(any(), any(), any());
             assertThat(commands.stream().filter("printf user-command"::equals)).hasSize(2);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void aRefusedReattachmentPreservesTheCopyForReconnectOrDirectDisposal(boolean capacity) {
+        String copy;
+        try (var first = executor((run, timeout, handler) -> {})) {
+            copy = execute(first, "new").copyId();
+        }
+        var before = journal.record(owner).orElseThrow();
+        RuntimeException refusal = capacity
+                ? new SandcrabClient.Rejected(429, "SESSION_CAPACITY")
+                : new WorkerUnavailableException(new java.io.IOException("connection refused before send"), false);
+        org.mockito.Mockito.doThrow(refusal)
+                .doAnswer(call -> admitSession(call.getArgument(0)))
+                .when(client)
+                .open(any());
+        try (var resumed = executor((run, timeout, handler) -> {})) {
+            assertThatThrownBy(() -> execute(resumed, copy)).isInstanceOf(ExecutionAdmissionException.class);
+            var retained = journal.record(owner).orElseThrow();
+            assertThat(retained.phase()).isEqualTo(AccountCopyRecord.Phase.READY);
+            assertThat(retained.writer()).isEqualTo(before.writer());
+            assertThat(retained.original()).isEqualTo(before.original());
+            assertThat(retained.state()).isEqualTo(before.state());
+            assertThat(commands.stream().filter("printf user-command"::equals)).hasSize(1);
+            if (capacity) {
+                assertThat(execute(resumed, copy).copyId()).isEqualTo(copy);
+            }
+            assertThat(resumed.discard(principal, workspace, new RepositoryExecutor.DiscardRequest(copy), cancellation)
+                            .status())
+                    .isEqualTo(RepositoryExecutor.DiscardStatus.DISCARDED);
+            assertThat(journal.record(owner)).isEmpty();
         }
     }
 

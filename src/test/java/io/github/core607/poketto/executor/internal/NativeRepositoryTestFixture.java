@@ -139,23 +139,7 @@ abstract class NativeRepositoryTestFixture {
         doAnswer(call -> client.volume((SandcrabVolume) call.getArgument(0)))
                 .when(client)
                 .volume(any(SandcrabVolume.class), any());
-        when(client.open(any())).thenAnswer(call -> {
-            SandcrabProtocol.SessionPlan plan = call.getArgument(0);
-            var session = new SandcrabProtocol.Session(
-                    plan.id(),
-                    plan.serverId(),
-                    plan.profile(),
-                    "ready",
-                    System.currentTimeMillis() + plan.ttlMillis(),
-                    null,
-                    plan.volumeId(),
-                    null,
-                    null,
-                    plan.templateId(),
-                    false);
-            sessions.put(session.id(), session);
-            return session;
-        });
+        when(client.open(any())).thenAnswer(call -> admitSession(call.getArgument(0)));
         when(client.openChild(any(), any())).thenAnswer(call -> {
             SandcrabProtocol.Session parent = call.getArgument(0);
             SandcrabProtocol.Reference child = call.getArgument(1);
@@ -270,6 +254,23 @@ abstract class NativeRepositoryTestFixture {
     NativeRepositoryWorkspace workspaces() {
         return new NativeRepositoryWorkspace(
                 client, auth, exports, saves, journal.store(), overlays, "repository", 8_388_608, 256);
+    }
+
+    SandcrabProtocol.Session admitSession(SandcrabProtocol.SessionPlan plan) {
+        var session = new SandcrabProtocol.Session(
+                plan.id(),
+                plan.serverId(),
+                plan.profile(),
+                "ready",
+                System.currentTimeMillis() + plan.ttlMillis(),
+                null,
+                plan.volumeId(),
+                null,
+                null,
+                plan.templateId(),
+                false);
+        sessions.put(session.id(), session);
+        return session;
     }
 
     NativeRepositoryExecutor executor(NativeRepositoryExecutor.CommandObserver observer) {
