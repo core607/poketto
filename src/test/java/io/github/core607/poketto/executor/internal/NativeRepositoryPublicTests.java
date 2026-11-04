@@ -271,6 +271,7 @@ class NativeRepositoryPublicTests extends NativeRepositoryTestFixture {
     @Override
     NativeRepositoryHost repositoryHost() {
         return new NativeRepositoryHost(
+                mock(NativeGitBaseline.class),
                 saves,
                 (lease, path, limit) -> new byte[0],
                 mock(NativeArtifactCommands.class),

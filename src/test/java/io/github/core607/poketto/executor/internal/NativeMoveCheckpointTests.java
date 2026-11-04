@@ -110,6 +110,7 @@ class NativeMoveCheckpointTests extends NativePlanFixture {
         });
         saves = new SelectedFileSaves(auth, reader, repository.patches(auth), repository.moves(auth));
         host = new NativeRepositoryHost(
+                mock(NativeGitBaseline.class),
                 saves,
                 files,
                 mock(NativeArtifactCommands.class),

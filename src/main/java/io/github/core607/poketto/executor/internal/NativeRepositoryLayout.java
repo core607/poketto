@@ -17,7 +17,7 @@ final class NativeRepositoryLayout {
     }
 
     static String attach() {
-        return "export HOME=" + MOUNT + HOME + " && cd " + MOUNT + REPOSITORY;
+        return NativeGitBaseline.CLEAN + " && export HOME=" + MOUNT + HOME + " && cd " + MOUNT + REPOSITORY;
     }
 
     static String commitTemplate(String commit) {

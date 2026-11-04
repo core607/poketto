@@ -40,6 +40,7 @@ class NativeExportHostTests extends NativePlanFixture {
         when(record.writer()).thenReturn(writer);
         when(record.executionId()).thenReturn(UUID.randomUUID());
         host = new NativeRepositoryHost(
+                mock(NativeGitBaseline.class),
                 saves,
                 files,
                 mock(NativeArtifactCommands.class),

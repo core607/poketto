@@ -25,13 +25,13 @@ final class AccountCopyTransitions {
             if (prior != null && !prior.equals(target)) {
                 ProtocolValues.require(
                         target != null
-                                && prior.templateId() != null
-                                && target.upper() != null
+                                && (target.volumeId() != null || target.upper() != null)
+                                && (prior.gitCommit() == null || target.gitCommit() != null)
                                 && current.phase() == AccountCopyRecord.Phase.RUNNING
                                 && next.phase() == AccountCopyRecord.Phase.READY
                                 && current.writer().sameBinding(next.writer()),
                         "native storage",
-                        "only a completed command may replace its own upper checkpoint");
+                        "only a completed command may checkpoint the same volume or template with its retained Git baseline");
             }
             ProtocolValues.require(
                     current.phase() != AccountCopyRecord.Phase.DISCARDING

@@ -37,6 +37,37 @@ class AccountCommandTests {
     }
 
     @Test
+    void interruptedVolumeCommandsRetainThePreviouslyInstalledGitCommit() {
+        String original = "a".repeat(40);
+        String target = "b".repeat(40);
+        var storage = new AccountCopyRecord.NativeStorage(UUID.randomUUID(), "repository", 8L << 20, 256);
+        var volume = new AccountCopyRecord.Writer(
+                writer.principalId(), writer.workerBootId(), writer.appBootId(), writer.leaseId(), storage);
+        try (AccountCommand held = command()) {
+            held.bind(volume);
+            held.begin(UUID.randomUUID());
+            SelectedFileSaves.State acknowledged = held.state();
+            acknowledged.baseCommit = target;
+            held.retain(acknowledged.snapshot());
+            assertThat(held.gitCommit()).isEqualTo(original);
+            held.installedGitCommit(target);
+            assertThat(held.gitCommit()).isEqualTo(target);
+            assertThat(held.record().writer().storage().gitCommit()).isNull();
+        }
+        try (AccountCommand recovered = command()) {
+            assertThat(recovered.gitCommit()).isEqualTo(original);
+            recovered.bind(volume);
+            recovered.begin(UUID.randomUUID());
+            recovered.installedGitCommit(target);
+            recovered.complete(recovered.record().state());
+        }
+        try (AccountCommand next = command()) {
+            assertThat(next.gitCommit()).isEqualTo(target);
+            assertThat(next.record().writer().sameBinding(volume)).isTrue();
+        }
+    }
+
+    @Test
     void bindingTheSameReadyWriterKeepsTheAcknowledgedJournal() {
         AccountCopyRecord before = ready();
         try (AccountCommand held = command()) {

@@ -32,6 +32,7 @@ class NativeRepositoryStatusTests {
     private final NativeRepositoryLease lease = mock(NativeRepositoryLease.class);
     private final SelectedFileSaves saves = mock(SelectedFileSaves.class);
     private final NativeRepositoryHost host = new NativeRepositoryHost(
+            mock(NativeGitBaseline.class),
             saves,
             mock(NativeRepositoryHost.SnapshotReader.class),
             mock(NativeArtifactCommands.class),
@@ -44,6 +45,7 @@ class NativeRepositoryStatusTests {
         var owner = new AccountCopyRecord.Owner(UUID.randomUUID(), workspace.value(), true);
         when(held.owner()).thenReturn(owner);
         when(held.record()).thenReturn(record);
+        when(held.gitCommit()).thenReturn(BASE);
         when(record.owner()).thenReturn(owner);
         when(record.copyId()).thenReturn(UUID.randomUUID());
         when(record.state()).thenReturn(new SelectedFileSaves.State(BASE).snapshot());
@@ -54,7 +56,8 @@ class NativeRepositoryStatusTests {
         JsonNode result = reply("{}").path("result");
         assertThat(result.path("initialCommit").stringValue()).isEqualTo(BASE);
         assertThat(result.path("baseCommit").stringValue()).isEqualTo(BASE);
-        assertThat(result.has("gitCommit")).isFalse();
+        assertThat(result.path("gitCommit").stringValue()).isEqualTo(BASE);
+        assertThat(result.path("localBaselinePending").booleanValue()).isFalse();
         assertThat(result.has("remote")).isFalse();
         verifyNoInteractions(saves);
     }

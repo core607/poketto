@@ -17,6 +17,7 @@ final class AccountCommand implements AutoCloseable {
     private final AccountCopyStore.Lease lease;
     private final AccountCopyRecord.Owner owner;
     private boolean resumed;
+    private String installedGitCommit;
 
     AccountCommand(AccountCopyStore store, AccountCopyRecord.Owner owner, ExecutionCancellation cancellation) {
         this(store, owner, acquire(store, owner, cancellation));
@@ -257,6 +258,23 @@ final class AccountCommand implements AutoCloseable {
                 current.expiresAt());
     }
 
+    String gitCommit() {
+        if (installedGitCommit != null) {
+            return installedGitCommit;
+        }
+        var current = record();
+        var storage = current.writer().storage();
+        return storage == null || storage.gitCommit() == null ? current.state().originalCommit() : storage.gitCommit();
+    }
+
+    void installedGitCommit(String commit) {
+        ProtocolValues.require(
+                owner.fullRead() && record().state().baseCommit().equals(commit),
+                "installed Git baseline",
+                "must match the full copy's acknowledged revision");
+        installedGitCommit = commit;
+    }
+
     void complete(RetainedSaveState state) {
         complete(state, record().writer());
     }
@@ -265,12 +283,7 @@ final class AccountCommand implements AutoCloseable {
         var current = record();
         var prior = current.writer();
         var upper = new AccountCopyRecord.Upper(archive.size(), archive.sha256());
-        var writer = new AccountCopyRecord.Writer(
-                prior.principalId(),
-                prior.workerBootId(),
-                prior.appBootId(),
-                prior.leaseId(),
-                prior.storage().withUpper(upper));
+        var writer = prior.checkpoint(upper, prior.storage().gitCommit());
         lease.publishUpper(upper, archive, authorize);
         authorize.run();
         complete(current.state(), writer);
@@ -282,6 +295,10 @@ final class AccountCommand implements AutoCloseable {
 
     private void complete(RetainedSaveState state, AccountCopyRecord.Writer writer) {
         var current = record();
+        // A template's installed commit becomes durable with the same journal write as its upper.
+        if (installedGitCommit != null) {
+            writer = writer.checkpoint(writer.storage().upper(), installedGitCommit);
+        }
         write(
                 state,
                 writer,

@@ -23,6 +23,7 @@ import tools.jackson.databind.JsonNode;
 /** Opaque calls terminate here: only the application interprets repository identities and save preconditions. */
 final class NativeRepositoryHost {
     private static final Logger log = LoggerFactory.getLogger(NativeRepositoryHost.class);
+    private final NativeGitBaseline baselines;
     private final SelectedFileSaves saves;
     private final SnapshotReader files;
     private final NativeArtifactCommands artifacts;
@@ -31,12 +32,14 @@ final class NativeRepositoryHost {
     private final NativeExportCommands exports;
 
     NativeRepositoryHost(
+            NativeGitBaseline baselines,
             SelectedFileSaves saves,
             SnapshotReader files,
             NativeArtifactCommands artifacts,
             NativeMediaCommands media,
             NativePlanCommands plans,
             NativeExportCommands exports) {
+        this.baselines = baselines;
         this.saves = saves;
         this.files = files;
         this.artifacts = artifacts;
@@ -50,36 +53,12 @@ final class NativeRepositoryHost {
         Request request = SandcrabProtocol.read(bytes, Request.class);
         BridgeReplies.Reply reply;
         try {
-            var workspace = new WorkspaceId(held.owner().workspaceId());
-            SelectedFileSaves.State state = held.state();
-            reply = switch (request.operation()) {
-                case "status" -> status(principal, workspace, request, held);
-                case "receipt" ->
-                    NativeRepositoryReceipts.page(held.record().state(), BridgeArguments.receipt(request.arguments()));
-                case "sync_prepare",
-                        "sync_accept",
-                        "move_prepare",
-                        "move_accept",
-                        "move_recover",
-                        "plan_show",
-                        "plan_file",
-                        "plan_release" ->
-                    plans.command(
-                            principal,
-                            held,
-                            lease,
-                            request.operation(),
-                            request.arguments(),
-                            () -> lease.outOfTime(Duration.ofSeconds(5)));
-                case "save" -> save(principal, workspace, held, lease, state, request.arguments());
-                case "export" -> exports.command(principal, held, lease, request.arguments());
-                case "recover" -> recover(principal, workspace, held, lease, state, request.arguments());
-                case "artifact_create", "artifact_remove" ->
-                    artifacts.command(held, lease, request.operation(), request.arguments());
-                case "media_list", "media_fetch", "media_import", "media_link" ->
-                    media.command(principal, held, lease, request.operation(), request.arguments());
-                default -> BridgeReplies.failed("OPERATION_UNAVAILABLE");
-            };
+            reply = handle(principal, held, lease, request);
+        } catch (NativeGitBaseline.Pending pending) {
+            log.warn("Acknowledged remote update awaits native Git installation", pending);
+            reply = BridgeReplies.failed(
+                    "LOCAL_BASELINE_PENDING",
+                    "The remote receipt is retained. Run poketto recover to finish the local Git update.");
         } catch (NativeTransferStore.Capacity capacity) {
             reply = BridgeReplies.failed(
                     request.operation().startsWith("artifact_") ? "ARTIFACT_CAPACITY" : "MATERIALIZE_CAPACITY");
@@ -102,6 +81,64 @@ final class NativeRepositoryHost {
         return encode(reply);
     }
 
+    private BridgeReplies.Reply handle(
+            AuthPrincipal principal, AccountCommand held, NativeRepositoryLease lease, Request request) {
+        var workspace = new WorkspaceId(held.owner().workspaceId());
+        SelectedFileSaves.State state = held.state();
+        boolean writing =
+                switch (request.operation()) {
+                    case "save", "move_accept", "sync_accept", "media_import", "media_link" -> true;
+                    default -> false;
+                };
+        if (writing && !state.uncertain) {
+            baselines.reconcile(principal, held, lease);
+        }
+        BridgeReplies.Reply reply = dispatch(principal, workspace, held, lease, state, request);
+        boolean recovering =
+                request.operation().equals("recover") || request.operation().equals("move_recover");
+        if ((writing || recovering) && (reply.ok() || "MERGE_CONFLICT".equals(reply.code()))) {
+            baselines.reconcile(principal, held, lease);
+        }
+        return reply;
+    }
+
+    private BridgeReplies.Reply dispatch(
+            AuthPrincipal principal,
+            WorkspaceId workspace,
+            AccountCommand held,
+            NativeRepositoryLease lease,
+            SelectedFileSaves.State state,
+            Request request) {
+        return switch (request.operation()) {
+            case "status" -> status(principal, workspace, request, held);
+            case "receipt" ->
+                NativeRepositoryReceipts.page(held.record().state(), BridgeArguments.receipt(request.arguments()));
+            case "sync_prepare",
+                    "sync_accept",
+                    "move_prepare",
+                    "move_accept",
+                    "move_recover",
+                    "plan_show",
+                    "plan_file",
+                    "plan_release" ->
+                plans.command(
+                        principal,
+                        held,
+                        lease,
+                        request.operation(),
+                        request.arguments(),
+                        () -> lease.outOfTime(Duration.ofSeconds(5)));
+            case "save" -> save(principal, workspace, held, lease, state, request.arguments());
+            case "export" -> exports.command(principal, held, lease, request.arguments());
+            case "recover" -> recover(principal, workspace, held, lease, state, request.arguments());
+            case "artifact_create", "artifact_remove" ->
+                artifacts.command(held, lease, request.operation(), request.arguments());
+            case "media_list", "media_fetch", "media_import", "media_link" ->
+                media.command(principal, held, lease, request.operation(), request.arguments());
+            default -> BridgeReplies.failed("OPERATION_UNAVAILABLE");
+        };
+    }
+
     private static byte[] encode(BridgeReplies.Reply reply) {
         byte[] response = SandcrabProtocol.write(reply);
         if (response.length > SandcrabEventProtocol.CALL_BYTES) {
@@ -120,6 +157,8 @@ final class NativeRepositoryHost {
                 record.owner().fullRead() ? "full" : "public",
                 record.state().baseCommit(),
                 record.state().originalCommit(),
+                held.gitCommit(),
+                record.owner().fullRead() && !record.state().baseCommit().equals(held.gitCommit()),
                 query.remote() ? remoteStatus(principal, workspace, record) : null,
                 record.state().uncertain()
                         || (record.state().nativePlan() != null
@@ -257,6 +296,8 @@ final class NativeRepositoryHost {
             String scope,
             String baseCommit,
             String initialCommit,
+            String gitCommit,
+            boolean localBaselinePending,
             BridgeReplies.RemoteStatus remote,
             boolean writeOutcomeUnknown,
             NativePlanReplies.Summary plan,

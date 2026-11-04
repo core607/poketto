@@ -297,6 +297,7 @@ abstract class NativeRepositoryTestFixture {
 
     NativeRepositoryHost repositoryHost() {
         return new NativeRepositoryHost(
+                mock(NativeGitBaseline.class),
                 saves,
                 (lease, path, limit) -> new byte[0],
                 mock(NativeArtifactCommands.class),

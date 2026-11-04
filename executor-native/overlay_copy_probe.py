@@ -39,7 +39,7 @@ def api(socket, args, method, route, body=None):
 
 
 def control(socket, args, area, scope, action):
-    marker = {'write': 'ACKNOWLEDGED ', 'read': 'RESTORED ', 'save': 'SAVED '}[action]
+    marker = {'write': 'ACKNOWLEDGED ', 'read': 'RESTORED ', 'save': 'SAVED ', 'fallback': 'FALLBACK '}[action]
     target = args.output / f'{scope}-{action}.log'
     agent, = (args.runtime / 'jars').glob('byte-buddy-agent-*.jar')
     command = [str(args.java), '-Xmx192m', '-XX:MaxMetaspaceSize=160m', '-Duser.home=' + str(area),
@@ -106,9 +106,11 @@ def exercise(socket, args, area, receipt):
     assert control(socket, args, area, 'public', 'read')['copy'] == copies['public']['copy']
     assert api(socket, args, 'GET', 'templates/' + copies['public']['template'])[0] == 404
     check('public-projection-survived-process-loss-and-disposal')
-    assert control(socket, args, area, 'full', 'save')['pushes'] == 1
-    check('guest-cli-and-host-verified-selected-bytes-before-one-real-git-push')
-    assert not list((area / 'metadata').glob('*.upper-*')) and not list((area / 'metadata').glob('*.account'))
+    assert control(socket, args, area, 'full', 'save')['pushes'] == 2
+    check('two-selected-saves-advanced-git-and-local-recovery-preserved-edits-without-another-push')
+    assert control(socket, args, area, 'full', 'fallback')['pushes'] == 1
+    check('missing-local-prerequisite-recovered-with-a-full-bundle-and-one-save')
+    assert not list(area.rglob('*.upper-*')) and not list(area.rglob('*.account'))
     for collection in ('runs', 'sessions'):
         assert api(socket, args, 'GET', collection)[1]['ids'] == []
     assert [entry['id'] for entry in api(socket, args, 'GET', 'templates')[1]['templates']] == [foreign['id']]

@@ -22,7 +22,7 @@ final class NativeRepositoryResults {
                 };
         return new ExecutionResult(
                 held.record().copyId().toString(),
-                held.record().state().originalCommit(),
+                held.gitCommit(),
                 value.exitCode() == null ? -1 : value.exitCode(),
                 output.stdout(),
                 output.stderr(),
