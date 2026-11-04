@@ -4,7 +4,7 @@ import java.time.Duration;
 import java.util.UUID;
 
 /** A sibling shell can serve a blocked host call. The user command keeps its own shell and deadline. */
-final class NativeBaselineShell implements AutoCloseable {
+final class NativeMaintenanceShell implements AutoCloseable {
     private static final Duration CLEANUP = Duration.ofSeconds(5);
     private final SandcrabClient client;
     private final NativeRepositoryLease lease;
@@ -12,9 +12,9 @@ final class NativeBaselineShell implements AutoCloseable {
     private SandcrabProtocol.Session session;
     private SandcrabProtocol.Reference outstanding;
     private boolean submitted;
-    private boolean staging;
+    private String cleanupCommand;
 
-    NativeBaselineShell(SandcrabClient client, NativeRepositoryLease lease) {
+    NativeMaintenanceShell(SandcrabClient client, NativeRepositoryLease lease) {
         this.client = client;
         this.lease = lease;
         reference = new SandcrabProtocol.Reference(
@@ -43,11 +43,11 @@ final class NativeBaselineShell implements AutoCloseable {
         }
     }
 
-    void prepareBundle() {
-        if (execute(NativeGitBaseline.CLEAN, lease.remaining()) != 0) {
-            throw new NativeGitBaseline.Pending("Cannot prepare the reserved Git transfer");
+    void reserveScratch(String cleanup) {
+        if (execute(cleanup, lease.remaining()) != 0) {
+            throw new WorkerUnavailableException(new IllegalStateException("Cannot clear the reserved transfer path"));
         }
-        staging = true;
+        cleanupCommand = cleanup;
     }
 
     int execute(String source, Duration budget) {
@@ -86,7 +86,7 @@ final class NativeBaselineShell implements AutoCloseable {
         try {
             try {
                 settleCommand();
-                if (staging && execute(NativeGitBaseline.CLEAN, CLEANUP) != 0) {
+                if (cleanupCommand != null && execute(cleanupCommand, CLEANUP) != 0) {
                     throw new WorkerUnavailableException();
                 }
             } finally {

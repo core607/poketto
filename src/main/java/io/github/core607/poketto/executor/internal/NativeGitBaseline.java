@@ -69,9 +69,9 @@ final class NativeGitBaseline {
             if (lease.outOfTime(Duration.ofMillis(250))) {
                 throw new Pending("Local Git installation has no remaining command budget");
             }
-            try (var shell = new NativeBaselineShell(client, lease)) {
+            try (var shell = new NativeMaintenanceShell(client, lease)) {
                 shell.open();
-                shell.prepareBundle();
+                shell.reserveScratch(CLEAN);
                 exports.withBundle(
                         actor,
                         workspace,

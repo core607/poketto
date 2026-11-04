@@ -140,6 +140,9 @@ final class NativeMovePreparation {
                 NativePlanFile candidate = candidate(held, lease, state.nativePlan, definition, replacements, path);
                 state.retainPlan(state.nativePlan.withCandidate(path, candidate));
             }
+            if (!advanced) {
+                files.prepareDirectories(lease, state.nativePlan.id());
+            }
             files.stage(held, lease, state.nativePlan, path);
             state.retainPlan(state.nativePlan.staged(path));
             advanced = true;

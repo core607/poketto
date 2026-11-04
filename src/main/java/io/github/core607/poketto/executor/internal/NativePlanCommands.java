@@ -33,7 +33,7 @@ final class NativePlanCommands {
             return BridgeReplies.failedWith(
                     "LOCAL_PATH_TYPE",
                     new Unsupported(unsupported.path()),
-                    "The selected path is not a regular file or confirmed absence. Preserve or relocate the conflicting local entry, then retry; no working files were replaced.");
+                    "A path in the working copy has an incompatible type. Preserve or relocate the conflicting entry and retry.");
         } catch (RetainedCopyException capacity) {
             if (capacity.reason() != RetainedCopyException.Reason.LIMIT) {
                 throw capacity;

@@ -19,6 +19,21 @@ import tools.jackson.databind.JsonNode;
 
 class NativeSynchronizationTests extends NativePlanFixture {
     @Test
+    void aBlockedStagingDirectoryRetainsTheSamePlanForPreparationAfterRepair() {
+        changeRemote("private/secret.md", "remote candidate");
+        when(lease.runMaintenance(any())).thenReturn(20, 0);
+        JsonNode refused = call("sync_prepare", new BridgeArguments.Sync());
+        var saved = state.get().nativePlan();
+        assertThat(refused.path("code").stringValue()).isEqualTo("LOCAL_PATH_TYPE");
+        assertThat(refused.path("result").path("path").stringValue()).isEqualTo(".poketto/plans/" + saved.id());
+        assertThat(saved.staged()).isEmpty();
+        assertThat(call("sync_prepare", new BridgeArguments.Sync()).path("ok").booleanValue())
+                .isTrue();
+        assertThat(state.get().nativePlan().id()).isEqualTo(saved.id());
+        assertThat(state.get().nativePlan().prepared()).isTrue();
+    }
+
+    @Test
     void aConflictingLocalDirectoryIsNeverTreatedAsConfirmedAbsence() {
         changeRemote("private/secret.md", "remote candidate");
         byte[] before = local.get("private/secret.md");
