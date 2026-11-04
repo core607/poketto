@@ -7,11 +7,15 @@ import static io.github.core607.poketto.executor.internal.ProtocolValues.uuid;
 import io.github.core607.poketto.assets.ManagedAsset;
 import io.github.core607.poketto.assets.ManagedAssetReference;
 import io.github.core607.poketto.content.RepositoryPatch;
+import io.github.core607.poketto.content.RepositoryPaths;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
@@ -29,6 +33,111 @@ import tools.jackson.databind.JsonNode;
 final class BridgeArguments {
 
     private BridgeArguments() {}
+
+    static Status status(JsonNode arguments) {
+        if (object(arguments, "status").isEmpty()) {
+            return new Status(false);
+        }
+        return new Status(bool(exactly(arguments, Status.class), "remote"));
+    }
+
+    record Status(boolean remote) {}
+
+    static PlanAccept planAccept(JsonNode arguments) {
+        JsonNode fields = exactly(arguments, PlanAccept.class);
+        JsonNode entries = fields.path("files");
+        require(
+                entries.isArray() && entries.size() <= 64,
+                "accepted files",
+                "must be an array of at most 64 expectations");
+        var files = new ArrayList<PlanExpected>();
+        for (JsonNode entry : entries) {
+            JsonNode expected = exactly(entry, PlanExpected.class);
+            files.add(new PlanExpected(string(expected, "path"), string(expected, "sha256")));
+        }
+        return new PlanAccept(string(fields, "planId"), files);
+    }
+
+    static PlanPage planPage(JsonNode arguments) {
+        JsonNode fields = exactly(arguments, PlanPage.class);
+        return new PlanPage(string(fields, "planId"), integer(fields, "offset"), integer(fields, "limit"));
+    }
+
+    static PlanIdentity planIdentity(JsonNode arguments) {
+        return new PlanIdentity(string(exactly(arguments, PlanIdentity.class), "planId"));
+    }
+
+    static PlanFile planFile(JsonNode arguments) {
+        JsonNode fields = exactly(arguments, PlanFile.class);
+        return new PlanFile(
+                string(fields, "planId"), string(fields, "path"), string(fields, "version"), string(fields, "output"));
+    }
+
+    record PlanExpected(String path, String sha256) {
+        PlanExpected {
+            path = RepositoryPaths.validate(path);
+            sha256 = NativeRepositoryPlan.identity(sha256);
+        }
+    }
+
+    record PlanAccept(String planId, List<PlanExpected> files) {
+        PlanAccept {
+            planId = uuid(planId, "plan identity");
+            files = List.copyOf(files);
+            require(
+                    files.size() <= 64
+                            && files.stream().map(PlanExpected::path).distinct().count() == files.size(),
+                    "accepted files",
+                    "must contain at most 64 distinct paths");
+        }
+    }
+
+    record PlanPage(String planId, int offset, int limit) {
+        PlanPage {
+            planId = uuid(planId, "plan identity");
+            ProtocolValues.inRange(offset, 0, WorkspaceSyncInputs.MAX_PATHS, "plan page offset");
+            ProtocolValues.inRange(limit, 1, 64, "plan page limit");
+        }
+    }
+
+    record PlanIdentity(String planId) {
+        PlanIdentity {
+            planId = uuid(planId, "plan identity");
+        }
+    }
+
+    record PlanFile(String planId, String path, String version, String output) {
+        PlanFile {
+            planId = uuid(planId, "plan identity");
+            path = RepositoryPaths.validate(path);
+            output = RepositoryPaths.validate(output);
+            require(
+                    Set.of("original", "candidate").contains(version),
+                    "plan file version",
+                    "must be original or candidate");
+        }
+    }
+
+    static Receipt receipt(JsonNode arguments) {
+        JsonNode fields = exactly(arguments, Receipt.class);
+        return new Receipt(
+                string(fields, "kind"),
+                integer(fields, "offset"),
+                integer(fields, "limit"),
+                nullableString(fields, "sha256"));
+    }
+
+    record Receipt(String kind, int offset, int limit, String sha256) {
+        Receipt {
+            require(Set.of("save", "import").contains(kind), "receipt kind", "must be save or import");
+            ProtocolValues.inRange(offset, 0, 65536, "receipt offset");
+            ProtocolValues.inRange(limit, 1, 16384, "receipt page limit");
+            if (sha256 != null) {
+                sha256 = ProtocolValues.hex(sha256, 64, "receipt digest");
+            }
+            require(offset == 0 || sha256 != null, "receipt digest", "must identify every continuation");
+        }
+    }
 
     static ArtifactCreate artifactCreate(JsonNode arguments) {
         var fields = exactly(arguments, ArtifactCreate.class);
@@ -81,6 +190,37 @@ final class BridgeArguments {
     static Save save(JsonNode arguments) {
         var fields = exactly(arguments, Save.class);
         return new Save(selected(fields, "writes"), selected(fields, "deletes"));
+    }
+
+    static NativeSave nativeSave(JsonNode arguments) {
+        var fields = exactly(arguments, NativeSave.class);
+        JsonNode writes = fields.path("writes");
+        require(
+                writes.isObject() && writes.size() <= RepositoryPatch.MAX_CHANGES,
+                "native save",
+                "requires bounded selected digests");
+        var digests = new LinkedHashMap<String, String>();
+        for (var entry : writes.properties()) {
+            digests.put(
+                    entry.getKey(),
+                    ProtocolValues.hex(
+                            entry.getValue().isString() ? entry.getValue().stringValue() : null,
+                            64,
+                            "selected file digest"));
+        }
+        return new NativeSave(digests, selected(fields, "deletes"));
+    }
+
+    record NativeSave(Map<String, String> writes, List<String> deletes) {
+        NativeSave {
+            var selection = new Save(List.copyOf(writes.keySet()), deletes);
+            require(
+                    Collections.disjoint(selection.writes(), selection.deletes()),
+                    "native save",
+                    "requires distinct writes and deletes");
+            writes = Collections.unmodifiableMap(new LinkedHashMap<>(writes));
+            deletes = selection.deletes();
+        }
     }
 
     static MediaFetch mediaFetch(JsonNode arguments) {
@@ -219,6 +359,12 @@ final class BridgeArguments {
         JsonNode value = fields.path(field);
         require(value.isBoolean(), field, "must be a boolean");
         return value.booleanValue();
+    }
+
+    private static int integer(JsonNode fields, String field) {
+        JsonNode value = fields.path(field);
+        require(value.isIntegralNumber() && value.canConvertToInt(), field, "must be an integer");
+        return value.intValue();
     }
 
     private static List<String> selected(JsonNode fields, String field) {

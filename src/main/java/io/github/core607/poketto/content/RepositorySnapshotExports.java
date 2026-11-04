@@ -2,9 +2,11 @@ package io.github.core607.poketto.content;
 
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.workspace.WorkspaceId;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /** Private, disposable Git bundles for a configured worker staging directory; caller paths are never accepted. */
 public interface RepositorySnapshotExports {
@@ -28,6 +30,9 @@ public interface RepositorySnapshotExports {
      * hold and that snapshot's fingerprint differs from the export. Any other failure still throws.
      */
     boolean publicProjectionChanged(AuthPrincipal actor, WorkspaceId workspace, PublicExport exported);
+
+    /** Uses a live, caller-owned export while streaming it to an isolated execution service. */
+    void withBundle(AuthPrincipal actor, WorkspaceId workspace, Export exported, Consumer<Path> consumer);
 
     void release(UUID exportId);
 

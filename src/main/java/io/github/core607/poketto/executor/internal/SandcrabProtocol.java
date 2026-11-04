@@ -3,6 +3,7 @@ package io.github.core607.poketto.executor.internal;
 import static io.github.core607.poketto.executor.internal.ProtocolValues.require;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -15,6 +16,7 @@ import java.util.Set;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.MapperFeature;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -145,7 +147,12 @@ final class SandcrabProtocol {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record Info(int apiVersion, String serverId, Set<String> capabilities, Map<String, Profile> profiles) {
+    record Info(
+            int apiVersion, String serverId, Set<String> capabilities, Map<String, Profile> profiles, Storage storage) {
+        Info(int apiVersion, String serverId, Set<String> capabilities, Map<String, Profile> profiles) {
+            this(apiVersion, serverId, capabilities, profiles, null);
+        }
+
         Info {
             require(apiVersion == 1, "native API version", "must be 1");
             serverId = ProtocolValues.uuid(serverId, "native server epoch");
@@ -158,17 +165,43 @@ final class SandcrabProtocol {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
+    record Storage(Boolean quotaEnforced) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record Profile(
             long timeoutMillis,
             int outputLimitBytes,
-            String network,
+            JsonNode network,
             long sessionTtlMillis,
             long transferBytes,
             boolean hostCalls) {
+        Profile(
+                long timeoutMillis,
+                int outputLimitBytes,
+                String network,
+                long sessionTtlMillis,
+                long transferBytes,
+                boolean hostCalls) {
+            this(
+                    timeoutMillis,
+                    outputLimitBytes,
+                    JSON.valueToTree(network),
+                    sessionTtlMillis,
+                    transferBytes,
+                    hostCalls);
+        }
+
+        boolean networkDisabled() {
+            return network.isString() && "none".equals(network.stringValue());
+        }
+
         Profile {
             ProtocolValues.inRange(timeoutMillis, 1, 300_000, "profile timeout");
             ProtocolValues.inRange(outputLimitBytes, 1, 1_048_576, "profile output bound");
-            require("none".equals(network), "profile network", "must be none");
+            require(
+                    network != null && (network.isString() || network.isObject()),
+                    "profile network",
+                    "must describe its network policy");
             ProtocolValues.inRange(sessionTtlMillis, 100, 86_400_000, "profile session lifetime");
             ProtocolValues.inRange(transferBytes, 1024, 1_073_741_824, "profile transfer bound");
         }
@@ -204,17 +237,75 @@ final class SandcrabProtocol {
         }
     }
 
-    record SessionPlan(String id, String serverId, String profile, long ttlMillis, String volumeId) {
+    record SessionPlan(
+            String id,
+            String serverId,
+            String profile,
+            long ttlMillis,
+            String volumeId,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String templateId) {
+        SessionPlan(String id, String serverId, String profile, long ttlMillis, String volumeId) {
+            this(id, serverId, profile, ttlMillis, volumeId, null);
+        }
+
         SessionPlan {
             id = ProtocolValues.uuid(id, "session ID");
             serverId = ProtocolValues.uuid(serverId, "session epoch");
             profile = SandcrabProtocol.profile(profile);
             ProtocolValues.inRange(ttlMillis, 100, 86_400_000, "session lifetime");
             volumeId = optionalUuid(volumeId, "session volume ID");
+            templateId = templateId == null ? null : ProtocolValues.hex(templateId, 64, "workspace template");
+            require(templateId == null || volumeId == null, "native workspace", "must select one base");
         }
 
         Reference reference() {
             return new Reference(id, serverId);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record Template(String id, long bytes, int entries) {
+        Template {
+            id = ProtocolValues.hex(id, 64, "workspace template");
+            ProtocolValues.inRange(bytes, 0, 1_073_741_824, "template bytes");
+            ProtocolValues.inRange(entries, 0, 100_000, "template entries");
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record FilePut(String path, long bytes, String sha256) {
+        FilePut {
+            path = relativePath(path);
+            ProtocolValues.inRange(bytes, 0, 1_073_741_824, "file bytes");
+            sha256 = ProtocolValues.hex(sha256, 64, "file digest");
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record TemplatePage(
+            List<Template> templates,
+            @JsonProperty(required = true) String nextAfter) {
+        TemplatePage {
+            templates = List.copyOf(templates);
+            require(templates.size() <= 64, "template page", "exceeds the native limit");
+            if (nextAfter != null) {
+                require(
+                        templates.size() == 64 && templates.getLast().id().equals(nextAfter),
+                        "template cursor",
+                        "must name the final template");
+            }
+        }
+    }
+
+    record Deleted(boolean deleted) {
+        Deleted {
+            require(deleted, "template deletion", "must be acknowledged");
+        }
+    }
+
+    record Renewal(long ttlMillis) {
+        Renewal {
+            ProtocolValues.inRange(ttlMillis, 100, 86_400_000, "session renewal lifetime");
         }
     }
 
@@ -228,7 +319,33 @@ final class SandcrabProtocol {
             @JsonProperty(required = true) String activeRunId,
             @JsonProperty(required = true) String volumeId,
             @JsonProperty(required = true) String code,
-            @JsonProperty(required = true) String parentSessionId) {
+            @JsonProperty(required = true) String parentSessionId,
+            String templateId,
+            Boolean rootfs) {
+        Session(
+                String id,
+                String serverId,
+                String profile,
+                String state,
+                long expiresAtMillis,
+                String activeRunId,
+                String volumeId,
+                String code,
+                String parentSessionId) {
+            this(
+                    id,
+                    serverId,
+                    profile,
+                    state,
+                    expiresAtMillis,
+                    activeRunId,
+                    volumeId,
+                    code,
+                    parentSessionId,
+                    null,
+                    null);
+        }
+
         Session {
             id = ProtocolValues.uuid(id, "session ID");
             serverId = ProtocolValues.uuid(serverId, "session epoch");
@@ -242,6 +359,11 @@ final class SandcrabProtocol {
             volumeId = optionalUuid(volumeId, "session volume ID");
             code = code == null ? null : SandcrabProtocol.code(code);
             parentSessionId = optionalUuid(parentSessionId, "parent session ID");
+            templateId = templateId == null ? null : ProtocolValues.hex(templateId, 64, "workspace template");
+            require(
+                    !(templateId != null && volumeId != null) && !Boolean.TRUE.equals(rootfs),
+                    "native workspace",
+                    "must use a workspace mount with its declared base");
         }
 
         Reference reference() {
@@ -276,8 +398,23 @@ final class SandcrabProtocol {
             long bytes,
             String sha256,
             boolean replace,
-            int mode) {
+            int mode,
+            @JsonInclude(JsonInclude.Include.NON_NULL) Boolean keepResult) {
+        UploadPlan(
+                String id,
+                String serverId,
+                String sessionId,
+                String path,
+                String format,
+                long bytes,
+                String sha256,
+                boolean replace,
+                int mode) {
+            this(id, serverId, sessionId, path, format, bytes, sha256, replace, mode, null);
+        }
+
         UploadPlan {
+            keepResult = Boolean.TRUE.equals(keepResult) ? Boolean.TRUE : null;
             id = ProtocolValues.uuid(id, "upload ID");
             serverId = ProtocolValues.uuid(serverId, "upload epoch");
             sessionId = ProtocolValues.uuid(sessionId, "upload session ID");
@@ -307,7 +444,8 @@ final class SandcrabProtocol {
             String planDigest,
             String state,
             @JsonProperty(required = true) String code,
-            String publication) {
+            String publication,
+            Boolean keepResult) {
         Upload {
             id = ProtocolValues.uuid(id, "upload ID");
             serverId = ProtocolValues.uuid(serverId, "upload epoch");

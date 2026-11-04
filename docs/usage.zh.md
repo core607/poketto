@@ -172,13 +172,15 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 `/mcp` 通过 Streamable HTTP 提供 MCP，以工作空间 Bearer 凭据（API key 或 OAuth 访问令牌）认证，独立于浏览器会话。工具目录始终包含 `get_asset` 和 `put_asset`；启用执行器后还包含 `repo_exec`、`repo_discard` 和 `get_artifact`。没有独立的文件工具：通过 `repo_exec` 查看目录、搜索、读取和编辑文件，用 `poketto` CLI 持久化修改，并按需逐层读取仓库的 `AGENTS.md`。详见 [CodeAct 入口记录](../notes/implemented/2026-09-10-codeact-mcp-entrance.md)。
 
-`repo_exec` 要求显式分配 `EXECUTE_REPOSITORY`，并设置 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 应用上配置 `POKETTO_EXECUTOR_SOCKET`、`POKETTO_EXECUTOR_SIGNING_KEY` 与 `POKETTO_EXECUTOR_STAGING_DIRECTORY`，再按 [worker 参考文档](../executor-service/README.md)安装并验证 root supervisor 和低权限执行账号。应用默认接纳四个会话、四条并发命令、最多 128 MiB bundle，不超过 worker 的限制；按站点分组的每账号命令上限见 [.env.example](../deploy/.env.example)。worker 缺失或隔离能力不受支持时，不会降级为普通子进程。
+`repo_exec` 需要 `EXECUTE_REPOSITORY` 权限和 `POKETTO_EXECUTOR_ENABLED=true`。在 Linux 上安装并验证[签名 worker](../executor-service/README.md)，或配置[原生后端](../executor-service/native-repository.md)。[部署配置](../deploy/.env.example)控制会话、并发命令、导出和账号限额。隔离服务不可用时拒绝执行。
 
 请求体上限为 128 KiB（超出时在工具执行前返回 413），命令上限 16,384 字符，编码后的桥接帧上限 512 KiB。拒绝结果包含 `code` 和 `reason`。详见 [MCP 请求准入移除](../notes/implemented/2026-09-15-mcp-request-admission-removal.md)。
 
 `repo_exec` 必须携带 `expectedCopyId`：使用 `"new"` 打开账号的默认副本，仅在不存在时创建；后续调用传回成功或拒绝响应中的 `copyId`。默认副本正在运行命令或刚被使用过时，`"new"` 会在账号的副本配额内另开一份副本。重连自动接回副本，关闭连接会保留副本。每次成功操作把闲置期限延长为七天（`retention.expiresAt`）；到期或丢弃会删除本地工作。`SESSION_REPLACED` 和 `EXECUTION_REFUSED` 表示命令未执行；`EXECUTION_UNCONFIRMED` 表示命令可能已部分完成，包括远端写入：不要重复执行，先用只读命令、`retention.lastInterruptedCommand` 和 `poketto status` 检查同一副本，远端保存待确认时再使用 `poketto recover`。详见[副本身份契约](../executor-service/README.md#working-copy-identity)。
 
-同一运行租约中的命令共享工作目录、环境变量、shell 函数、别名、私有 `/tmp` 和后台进程。超时、输出超限、shell 退出、空闲清理或租约替换会清除这些运行状态，但保留副本文件和已完成的部分工作；下一条命令会报告 `freshSandbox: true`。空闲清理由 worker 的 `idleUnitSeconds` 决定（1 到 86400，示例配置为 1800）。后台进程随沙箱停止，命令结束后不能再执行 `poketto` 操作。
+下文介绍默认的签名后端。使用 Sandcrab 的部署请参阅[原生后端命令与副本生命周期](../executor-service/native-repository.md)。
+
+同一签名租约中的命令共享工作目录、环境、shell 函数、别名、私有 `/tmp` 和后台进程。超时、输出超限、shell 退出、空闲清理或租约替换会清除这些状态，保留副本文件和部分工作。下一条命令报告 `freshSandbox: true`。worker 的 `idleUnitSeconds` 控制空闲清理。后台进程随沙箱停止，命令结束时失去 `poketto` 访问权。
 
 完整读取的会话包含授权范围内的当前文件和 Git 历史。仅公开读取的会话获得当前公开投影，不含历史或私密元数据，返回 `PUBLIC_PROJECTION` 和合成提交 ID，且不能保存。发布内容变化后，没有本地修改的公开副本会在下一条命令前以同一 `copyId` 重建，该命令报告 `refreshed: true` 和新的提交；有本地修改（包括 `$HOME` 中或仓库旁的任何文件）的副本保持不变，请求以 `PUBLICATION_CHANGED` 拒绝，直到用 `repo_discard` 删除该副本。
 

@@ -20,6 +20,13 @@ final class SandcrabFiles {
         this.http = http;
     }
 
+    /** A valid snapshot header bound to the requested session already identifies a present file. */
+    static final class SizeLimit extends IOException {
+        SizeLimit() {
+            super("Native snapshot exceeds the consumer's byte bound");
+        }
+    }
+
     record Plan(String path, String format) {
         Plan {
             ProtocolValues.require(
@@ -55,67 +62,125 @@ final class SandcrabFiles {
 
     record Snapshot(long bytes, String sha256) {}
 
+    private record Source(String method, String path, byte[] body, String type) {
+        static Source snapshot(SandcrabProtocol.Session session, Plan plan) {
+            return new Source(
+                    "POST",
+                    "/v1/sessions/" + session.id() + "/snapshot",
+                    SandcrabProtocol.write(plan),
+                    plan.format().equals("raw") ? "application/octet-stream" : "application/x-tar");
+        }
+    }
+
     Content read(SandcrabProtocol.Session session, String path, int maxBytes, Runnable authorize) {
         ProtocolValues.inRange(maxBytes, 0, 8 * 1024 * 1024, "in-memory snapshot bound");
         var output = new ByteArrayOutputStream();
-        Snapshot snapshot = capture(session, new Plan(path, "raw"), maxBytes, authorize, output);
+        Snapshot snapshot = capture(
+                session,
+                Source.snapshot(session, new Plan(path, "raw")),
+                maxBytes,
+                Duration.ofSeconds(90),
+                authorize,
+                output);
         return new Content(output.toByteArray(), snapshot.sha256());
     }
 
     /** The destination must be absent in a caller-owned directory; a failed transfer retains existing files. */
     Snapshot download(SandcrabProtocol.Session session, Plan plan, long maxBytes, Path target, Runnable authorize) {
-        Path temporary = null;
-        try {
-            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-                throw new IOException("Snapshot destination already exists");
-            }
-            temporary = Files.createTempFile(target.toAbsolutePath().getParent(), ".sandcrab-", ".snapshot");
+        return download(session, plan, maxBytes, target, Duration.ofSeconds(90), authorize);
+    }
+
+    Snapshot download(
+            SandcrabProtocol.Session session,
+            Plan plan,
+            long maxBytes,
+            Path target,
+            Duration timeout,
+            Runnable authorize) {
+        return download(session, Source.snapshot(session, plan), maxBytes, target, timeout, authorize);
+    }
+
+    Snapshot diff(SandcrabProtocol.Session parent, long maximum, Path target, Runnable authorize) {
+        var source = new Source("GET", "/v1/sessions/" + parent.id() + "/diff", null, "application/x-tar");
+        return download(parent, source, maximum, target, Duration.ofSeconds(90), authorize);
+    }
+
+    private Snapshot download(
+            SandcrabProtocol.Session session,
+            Source source,
+            long maxBytes,
+            Path target,
+            Duration timeout,
+            Runnable authorize) {
+        try (var pending = new PendingSnapshot(target)) {
             Snapshot snapshot;
-            try (OutputStream output = Files.newOutputStream(temporary)) {
-                snapshot = capture(session, plan, maxBytes, authorize, output);
+            try (OutputStream output = Files.newOutputStream(pending.path)) {
+                snapshot = capture(session, source, maxBytes, timeout, authorize, output);
             }
             authorize.run();
-            Files.move(temporary, target);
-            temporary = null;
+            pending.install(target);
             return snapshot;
         } catch (IOException failure) {
             throw new WorkerUnavailableException(failure);
-        } finally {
-            if (temporary != null) {
-                try {
-                    Files.deleteIfExists(temporary);
-                } catch (IOException failure) {
-                    throw new WorkerUnavailableException(failure);
-                }
+        }
+    }
+
+    /** Resource cleanup preserves the original refusal or transfer failure and suppresses a failed deletion. */
+    private static final class PendingSnapshot implements AutoCloseable {
+        private final Path path;
+        private boolean installed;
+
+        PendingSnapshot(Path target) throws IOException {
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("Snapshot destination already exists");
+            }
+            path = Files.createTempFile(target.toAbsolutePath().getParent(), ".sandcrab-", ".snapshot");
+        }
+
+        void install(Path target) throws IOException {
+            Files.move(path, target);
+            installed = true;
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (!installed) {
+                Files.deleteIfExists(path);
             }
         }
     }
 
     private Snapshot capture(
-            SandcrabProtocol.Session session, Plan plan, long maxBytes, Runnable authorize, OutputStream output) {
+            SandcrabProtocol.Session session,
+            Source source,
+            long maxBytes,
+            Duration timeout,
+            Runnable authorize,
+            OutputStream output) {
         ProtocolValues.inRange(maxBytes, 0, MAX_BYTES, "snapshot byte bound");
         authorize.run();
         return http.exchange(
-                "POST",
-                "/v1/sessions/" + session.id() + "/snapshot",
+                source.method(),
+                source.path(),
                 "application/json",
-                SandcrabProtocol.write(plan),
-                Duration.ofSeconds(90),
+                source.body(),
+                timeout,
                 Duration.ZERO,
                 (head, input) -> {
                     requireSuccess(head, input);
                     if (!session.serverId().equals(head.serverId())) {
                         throw new IOException("Native snapshot server epoch differs from its session");
                     }
-                    if (head.length() > maxBytes || head.length() < 0) {
-                        throw new IOException("Native snapshot exceeds the consumer's byte bound");
-                    }
-                    String expectedType =
-                            plan.format().equals("raw") ? "application/octet-stream" : "application/x-tar";
-                    if (!expectedType.equals(head.contentType())
+                    if (!source.type().equals(head.contentType())
                             || head.etag() == null
                             || !head.etag().matches("\"[0-9a-f]{64}\"")) {
                         throw new IOException("Native snapshot lacks its format or SHA-256 identity");
+                    }
+                    if (head.length() < 0) {
+                        throw new IOException("Native snapshot lacks its declared length");
+                    }
+                    if (head.length() > maxBytes) {
+                        throw new SizeLimit();
                     }
                     String expected = head.etag().substring(1, 65);
                     copy(input, output, head.length(), expected, authorize);

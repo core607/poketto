@@ -61,7 +61,7 @@ final class SessionArtifacts {
                     }
                 }
             } catch (RuntimeException failure) {
-                throw IsolatedRepositoryExecutor.admissionFailure(failure, null);
+                throw AccountCopyFailures.admission(failure, null);
             }
         }
         for (var owner : busy) {
@@ -71,7 +71,7 @@ final class SessionArtifacts {
                     return page;
                 }
             } catch (RuntimeException failure) {
-                throw IsolatedRepositoryExecutor.admissionFailure(failure, null);
+                throw AccountCopyFailures.admission(failure, null);
             }
         }
         return Optional.empty();

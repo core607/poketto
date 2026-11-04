@@ -5,6 +5,7 @@ import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.RepositoryExecutor.CopyRetention;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
@@ -66,6 +67,16 @@ final class AccountCommand implements AutoCloseable {
 
     AccountCopyRecord record() {
         return lease.record().orElse(null);
+    }
+
+    void publishPlanFile(UUID plan, NativePlanFile file, NativeTransferStore.Source source, Runnable authorize) {
+        requireLive();
+        lease.publishPlanFile(plan, file, source, authorize);
+    }
+
+    void copyPlanFile(UUID plan, NativePlanFile file, OutputStream output, Runnable authorize) throws IOException {
+        requireLive();
+        lease.copyPlanFile(plan, file, output, authorize);
     }
 
     /** A discarding copy is gone, and a refreshing one is usable only through its rebuild. */
@@ -146,6 +157,32 @@ final class AccountCommand implements AutoCloseable {
                 && record().copyId().equals(copy);
     }
 
+    /** A native reattachment records possible creation before POST; READY is a separate acknowledged checkpoint. */
+    void attach(AccountCopyRecord.Writer writer) {
+        requireLive();
+        var current = record();
+        resumed |= !current.writer().equals(writer);
+        UUID interrupted = current.executionId() == null ? current.lastInterruptedCommand() : current.executionId();
+        write(current.state(), writer, AccountCopyRecord.Phase.ATTACHING, null, interrupted, current.expiresAt());
+    }
+
+    /** The former writer was fenced before attach. A definite refusal leaves it contained, even after idle expiry. */
+    void attachmentRefused(AccountCopyRecord.Writer fenced) {
+        var current = record();
+        ProtocolValues.require(
+                current.phase() == AccountCopyRecord.Phase.ATTACHING
+                        && current.writer().storage().equals(fenced.storage()),
+                "refused native attachment",
+                "must preserve the fenced copy's storage");
+        write(
+                current.state(),
+                fenced,
+                AccountCopyRecord.Phase.READY,
+                null,
+                current.lastInterruptedCommand(),
+                current.expiresAt());
+    }
+
     /** Called only after the previous lease is confirmed contained. */
     void bind(AccountCopyRecord.Writer writer) {
         requireLive();
@@ -221,12 +258,48 @@ final class AccountCommand implements AutoCloseable {
     }
 
     void complete(RetainedSaveState state) {
+        complete(state, record().writer());
+    }
+
+    void completeWithUpper(NativeTransferStore.File archive, Runnable authorize) {
+        var current = record();
+        var prior = current.writer();
+        var upper = new AccountCopyRecord.Upper(archive.size(), archive.sha256());
+        var writer = new AccountCopyRecord.Writer(
+                prior.principalId(),
+                prior.workerBootId(),
+                prior.appBootId(),
+                prior.leaseId(),
+                prior.storage().withUpper(upper));
+        lease.publishUpper(upper, archive, authorize);
+        authorize.run();
+        complete(current.state(), writer);
+    }
+
+    void copyUpper(OutputStream target, Runnable authorize) throws IOException {
+        lease.copyUpper(target, authorize);
+    }
+
+    private void complete(RetainedSaveState state, AccountCopyRecord.Writer writer) {
         var current = record();
         write(
                 state,
-                current.writer(),
+                writer,
                 AccountCopyRecord.Phase.READY,
                 null,
+                current.lastInterruptedCommand(),
+                Math.max(current.expiresAt(), store.nextExpiry()));
+    }
+
+    /** An authorized artifact read extends idle retention without acknowledging an interrupted command. */
+    void touch() {
+        requireLive();
+        var current = record();
+        write(
+                current.state(),
+                current.writer(),
+                current.phase(),
+                current.executionId(),
                 current.lastInterruptedCommand(),
                 Math.max(current.expiresAt(), store.nextExpiry()));
     }

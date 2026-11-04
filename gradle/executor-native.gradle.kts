@@ -11,7 +11,7 @@ tasks.register<Sync>("stageExecutorNativeTest") {
     val sources = project.extensions.getByType<SourceSetContainer>()
     from(sources.named("main").get().output.classesDirs) { into("classes") }
     from(checkNotNull(sources.named("main").get().output.resourcesDir)) {
-        include("io/github/core607/poketto/executor/*.mjs")
+        include("io/github/core607/poketto/executor/*.mjs", "io/github/core607/poketto/executor/restore-upper.py")
         into("classes")
     }
     from(sources.named("test").get().output.classesDirs) { into("classes") }

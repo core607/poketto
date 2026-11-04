@@ -70,15 +70,10 @@ class SessionMovesTests {
         local.put("private/unsaved.pdf", draft);
         String localText = new String(new RepositoryMediaIndex(local).encode(), StandardCharsets.UTF_8);
         var saves = new SelectedFileSaves(auth, reader, fixture.patches(auth), fixture.moves(auth));
+        var moves = new SessionMoves(reader, fixture.moves(auth));
         var state = new SelectedFileSaves.State(initial);
-        var pending = saves.moves()
-                .prepare(
-                        actor,
-                        workspace,
-                        state,
-                        "private/manual.pdf",
-                        "private/archive/manual.pdf",
-                        Optional.of(localText));
+        var pending = moves.prepare(
+                actor, workspace, state, "private/manual.pdf", "private/archive/manual.pdf", Optional.of(localText));
         var payload = new ObjectMapper().readTree(pending.payload);
         var merged = RepositoryMediaIndex.parse(Base64.getDecoder()
                 .decode(payload.path("replacements")
@@ -88,8 +83,7 @@ class SessionMovesTests {
                 .containsEntry("private/unsaved.pdf", draft)
                 .containsKey("private/archive/manual.pdf")
                 .doesNotContainKey("private/manual.pdf");
-        assertThat(saves.moves().commit(actor, workspace, state, pending).code())
-                .isEqualTo("LOCAL_MOVE_PENDING");
+        assertThat(moves.commit(actor, workspace, state, pending).code()).isEqualTo("LOCAL_MOVE_PENDING");
         assertThat(state.baseCommit).isEqualTo(initial);
         assertThat(saves.save(actor, workspace, state, Map.of("private/later.md", "later"), List.of())
                         .code())
@@ -103,7 +97,7 @@ class SessionMovesTests {
                 .containsKey("private/archive/manual.pdf")
                 .doesNotContainKeys("private/manual.pdf", "private/unsaved.pdf");
         String committed = state.move.result.commit();
-        saves.moves().installed(state);
+        moves.installed(state);
         assertThat(state.move).isNull();
         assertThat(state.baseCommit).isEqualTo(committed);
         assertThat(state.baseline(RepositoryMediaIndex.PATH)).isEqualTo(committed);
@@ -114,20 +108,20 @@ class SessionMovesTests {
     void skippingConfirmedInstallationPreservesBaselinesAndRequiresSyncBeforeOverwritingMovedText() throws Exception {
         var fixture = fixture(false);
         var saves = new SelectedFileSaves(auth, fixture.reader(auth), fixture.patches(auth), fixture.moves(auth));
+        var moves = new SessionMoves(fixture.reader(auth), fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
-        var pending = saves.moves()
-                .prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
+        var pending = moves.prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
         assertThatThrownBy(() -> {
                     state.move = pending;
-                    saves.moves().skipLocal(state);
+                    moves.skipLocal(state);
                 })
                 .isInstanceOf(NullPointerException.class);
         assertThat(state.move).isSameAs(pending);
         state.move = null;
-        saves.moves().commit(actor, workspace, state, pending);
+        moves.commit(actor, workspace, state, pending);
         assertThat(pending.result).isNull();
         String committed = state.move.result.commit();
-        assertThat(saves.moves().skipLocal(state).ok()).isEqualTo(true);
+        assertThat(moves.skipLocal(state).ok()).isEqualTo(true);
         assertThat(state.move).isNull();
         assertThat(state.baseCommit).isEqualTo(committed);
         assertThat(state.baseline("private/secret.md")).isEqualTo(fixture.sourceCommit());
@@ -147,27 +141,25 @@ class SessionMovesTests {
     void recoveryKeepsTheSamePayloadAndDoesNotReplayAnAcknowledgedMove() throws Exception {
         var fixture = fixture(true);
         var saves = new SelectedFileSaves(auth, fixture.reader(auth), fixture.patches(auth), fixture.moves(auth));
+        var moves = new SessionMoves(fixture.reader(auth), fixture.moves(auth));
         var state = new SelectedFileSaves.State(fixture.sourceCommit());
-        var pending = saves.moves()
-                .prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
+        var pending = moves.prepare(actor, workspace, state, "private/secret.md", "private/moved.md", Optional.empty());
         byte[] original = pending.payload.clone();
-        assertThat(saves.moves().commit(actor, workspace, state, pending).code())
-                .isEqualTo("WRITE_OUTCOME_UNKNOWN");
+        assertThat(moves.commit(actor, workspace, state, pending).code()).isEqualTo("WRITE_OUTCOME_UNKNOWN");
         assertThat(state.move.attempt).isNotNull();
         assertThat(pending.attempt).isNull();
-        assertThatThrownBy(() ->
-                        saves.moves().prepare(actor, workspace, state, "article.md", "other.md", Optional.empty()))
+        assertThatThrownBy(() -> moves.prepare(actor, workspace, state, "article.md", "other.md", Optional.empty()))
                 .isInstanceOf(IllegalArgumentException.class);
         fixture.restoreTransport();
-        assertThat(saves.moves().recover(actor, workspace, state).code()).isEqualTo("LOCAL_MOVE_PENDING");
+        assertThat(moves.recover(actor, workspace, state).code()).isEqualTo("LOCAL_MOVE_PENDING");
         assertThat(state.move.result.commit()).isEqualTo(state.move.attempt.commit());
         assertThat(state.move.payload).containsExactly(original);
         assertThat(fixture.pushes()).isEqualTo(1);
-        saves.moves().recover(actor, workspace, state);
+        moves.recover(actor, workspace, state);
         assertThat(fixture.pushes()).isEqualTo(1);
         assertThat(state.move).isNotSameAs(pending);
         String committed = state.move.result.commit();
-        saves.moves().installed(state);
+        moves.installed(state);
         assertThat(state.move).isNull();
         assertThat(state.baseCommit).isEqualTo(committed);
     }

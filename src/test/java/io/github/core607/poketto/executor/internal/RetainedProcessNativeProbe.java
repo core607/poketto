@@ -358,7 +358,7 @@ public final class RetainedProcessNativeProbe {
             assertThat(executor.collectExpiredCopies()).isZero();
             assertThat(busy.record().orElseThrow().phase()).isEqualTo(AccountCopyRecord.Phase.READY);
         }
-        try (var maintenance = new AccountCopyMaintenance(executor, Duration.ofMillis(50))) {
+        try (var maintenance = new AccountCopyMaintenance(executor::collectExpiredCopies, Duration.ofMillis(50))) {
             long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
             boolean absent = false;
             while (!absent && System.nanoTime() < deadline) {

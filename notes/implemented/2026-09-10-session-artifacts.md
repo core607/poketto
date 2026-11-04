@@ -9,20 +9,17 @@ turning temporary work into repository content. A filename in stdout does not
 deliver an image, and an unbounded response cannot preserve the executor's memory
 and transport limits.
 
-The worker captures regular files into immutable protected storage under the
-admitted lease. `poketto artifact create` returns a handle. `get_artifact` serves
-it to any MCP request of the same account, workspace and reading scope while the
-capturing lease stays open, after checking current authority; the handle is not
-bound to the originating request. A request under a different credential of
-the account first moves the copy to a new lease, which closes the old lease and
-its artifacts. A public-only grant never reads a full copy's artifacts, and public
-projection withdrawal also blocks retained results. Sandbox commands cannot read
-the protected copies. Artifact handles never publish, upload an original or save
-Git content.
+`poketto artifact create` captures a regular file into protected storage and returns
+a handle. Each `get_artifact` page checks the caller's account, workspace and
+reading scope. Withdrawing a public projection blocks its retained results.
+Sandbox commands cannot read the protected copies.
 
-A lease retains at most 16 artifacts and 256 MiB, charged to the copy's disk
-quota, with a 128 MiB per-file bound and five-minute expiry. Removal releases an
-artifact early. There is no cross-workspace object registry or deduplication.
+The [signed worker](../../executor-service/README.md#returned-artifacts) charges
+the copy's disk quota and releases artifacts with the capturing lease. The
+[native backend](../../executor-service/native-repository.md) charges the application's
+transfer pool and retains handles across shell replacement for the same copy.
+Both allow 16 artifacts and 256 MiB, with a 128 MiB per-file bound and five-minute
+expiry. Explicit removal releases bytes early.
 Validated PNG, JPEG, GIF and WebP images use MCP image content with the shared
 raster and memory policies. Text uses UTF-8 byte pages; other types, including
 SVG, use binary resource pages. Explicit byte reads also retrieve files that

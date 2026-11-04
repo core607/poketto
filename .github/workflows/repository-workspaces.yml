@@ -1,0 +1,84 @@
+name: Repository workspace acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - src/main/java/io/github/core607/poketto/executor/**
+      - src/main/java/io/github/core607/poketto/content/RepositorySnapshotExports.java
+      - src/main/java/io/github/core607/poketto/content/internal/JGitRepositorySnapshotExports.java
+      - src/main/resources/io/github/core607/poketto/executor/**
+      - src/test/java/io/github/core607/poketto/executor/internal/NativeOverlayCopyProbe.java
+      - src/test/java/io/github/core607/poketto/executor/internal/NativeMigration*.java
+      - executor-service/*migration*.py
+      - executor-service/migrate_native_repository.py
+      - executor-native/legacy_import*.py
+      - executor-native/native_migration_journal_probe.py
+      - executor-native/overlay_copy_probe.py
+      - executor-native/test_overlay_restore.py
+      - gradle/executor-native.gradle.kts
+      - build.gradle.kts
+      - deploy/update-existing.py
+      - .github/workflows/repository-workspaces.yml
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '26'
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+      - run: ./gradlew buildExecutorRust stageExecutorNativeTest --no-daemon
+      - name: Stage a protected helper runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xfsprogs
+          if [[ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" == 1 ]]; then
+            sudo apparmor_parser -r executor-service/rust/sandcrab/install/sandcrab.apparmor
+          fi
+          fixture=$(sudo mktemp -d /var/lib/repo-workspace-ci.XXXXXXXX)
+          sudo chmod 0755 "$fixture"
+          sudo cp -RL "$JAVA_HOME" "$fixture/jdk"
+          sudo cp -R build/executor-native/runtime "$fixture/runtime"
+          sudo chmod -R go-w,a+rX "$fixture"
+          echo "FIXTURE_RUNTIME=$fixture" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/repository-workspaces"
+      - name: Exercise the copy boundary and recover across application process loss
+        run: |
+          python3 -I executor-native/test_overlay_restore.py
+          sudo env SANDCRAB_INSTALL_DISPOSABLE=1 python3 executor-native/overlay_copy_probe.py \
+            --uid "$(id -u daemon)" --gid "$(id -g daemon)" --java "$FIXTURE_RUNTIME/jdk/bin/java" \
+            --binaries build/executor-service/bin --runtime "$FIXTURE_RUNTIME/runtime" \
+            --output "$RUNNER_TEMP/repository-workspaces/overlay"
+      - name: Recover a lost archive receipt in the real account journal
+        run: |
+          sudo env PATH="$FIXTURE_RUNTIME/jdk/bin:$PATH" python3 executor-native/native_migration_journal_probe.py \
+            --runtime "$FIXTURE_RUNTIME/runtime" --service "$PWD/executor-service" \
+            > "$RUNNER_TEMP/repository-workspaces/journal.log"
+      - name: Rehearse the offline operator against stopped legacy writers
+        run: |
+          image_ref=$(awk '$1=="FROM" && $NF=="rust-build" {print $2; exit}' executor-service/Dockerfile.tests)
+          [[ "$image_ref" =~ @sha256:[0-9a-f]{64}$ ]]
+          docker pull --quiet "$image_ref"
+          image_id=$(docker image inspect --format '{{.Id}}' "$image_ref")
+          sudo env SANDCRAB_INSTALL_DISPOSABLE=1 python3 executor-native/legacy_import_probe.py \
+            --uid "$(id -u daemon)" --gid "$(id -g daemon)" --java "$FIXTURE_RUNTIME/jdk/bin/java" \
+            --binaries build/executor-service/bin --runtime "$FIXTURE_RUNTIME/runtime" --operator executor-service \
+            --container-image "$image_id" --revision "$(git rev-parse HEAD)" \
+            --output "$RUNNER_TEMP/repository-workspaces/import"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: repository-workspaces-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/repository-workspaces/
+          if-no-files-found: warn
+          retention-days: 30

@@ -25,9 +25,9 @@ For an article intended to receive community interactions, add a fresh lowercase
 UUID as optional frontmatter `id`. Preserve it through edits and moves; use a new
 ID for a different article copied from it. Articles without an ID remain readable.
 
-- Text: `poketto create PATH --stdin` with a quoted heredoc creates only an absent
-  file. `poketto edit PATH --old 'exact original' --new-stdin` preserves exact-match
-  checks. Use `--text-file`, `--old-file` or `--new-file` for existing UTF-8 inputs.
+- Edit repository files with shell or Python. Use Python's `open(path, "x")` to
+  create an absent file. If `poketto --help` lists `create` and `edit`, those
+  commands also support quoted heredocs and exact text replacement.
 - Media in this worktree: `poketto media import FILE --as LOGICAL_PATH --type MIME
   --key KEY`. Original bytes live outside Git; `.poketto/assets.json` records paths.
 - Media in another client: use MCP `put_asset` with a real download URL, or request
@@ -35,17 +35,17 @@ ID for a different article copied from it. Articles without an ID remain readabl
   Do not transcribe Base64. Link the returned ID/revision with `poketto media link`.
 - Persistence: `poketto save` explicitly selected text and `.poketto/assets.json`
   when media changed. Uploads, shell edits and local Git commits do not save Git.
-- Verification: `poketto status` reports the baseline and remote relationship.
+- Verification: `poketto status` reports the baseline. Use `--remote` if its help lists it.
   Read back the saved text or image through the remote tools. `MATCHES_BASE` alone
   does not prove a rendered page or every local file matches the saved content.
-- Remote changes: `poketto sync` merges into local edits. Inspect conflicts or an
-  uncertain write before retrying; use `poketto recover` when status requests it.
+- Follow `poketto sync --help` to reconcile remote changes with local edits. Inspect
+  conflicts and use `poketto recover` when status requests it.
 
 Use `poketto media list` to discover originals and `poketto media fetch` to
 materialize one. An absent local file does not mean its original was deleted.
 Use `poketto move` for saved content when Markdown references need repair.
-Every command starts at the repository root; `/tmp` resets between commands.
-Keep reusable input files in the worktree. Unsaved work can disappear on expiry.
+Keep reusable input files in the worktree. A fresh shell starts at the repository
+root. Unsaved work can disappear on expiry.
 `poketto --help` and subcommand help describe bounds and exact options.
 
 Place new content in `private/` unless the owner requests publication. Publication

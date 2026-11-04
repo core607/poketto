@@ -17,7 +17,8 @@ public record RepositoryMovePlan(
         RepositoryMoveRequest request,
         Map<String, Original> originals,
         Map<String, String> relocations,
-        Map<String, byte[]> replacements) {
+        Map<String, byte[]> replacements,
+        String writeSha256) {
     /** Paths one move may affect, from the atomic content moves record. */
     public static final int MAX_CHANGED_PATHS = 16_384;
 
@@ -38,6 +39,9 @@ public record RepositoryMovePlan(
     public RepositoryMovePlan {
         Objects.requireNonNull(workspace);
         Objects.requireNonNull(request);
+        if (writeSha256 == null || !writeSha256.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("move requires its remote candidate digest");
+        }
         originals = Map.copyOf(originals);
         relocations = Map.copyOf(relocations);
         var paths = new HashSet<>(originals.keySet());

@@ -29,6 +29,7 @@ final class SessionRepositoryCommands {
     private final SessionWorker io;
     private final SessionFileTransfers files;
     private final SelectedFileSaves saves;
+    private final SessionMoves moves;
     private final RepositorySnapshotExports exports;
     private final Duration openTimeout;
 
@@ -41,6 +42,7 @@ final class SessionRepositoryCommands {
         this.io = io;
         this.files = files;
         this.saves = saves;
+        moves = new SessionMoves(saves.repository(), saves.moves().service());
         this.exports = exports;
         this.openTimeout = openTimeout;
     }
@@ -186,12 +188,12 @@ final class SessionRepositoryCommands {
             return skipLocal ? session.saveState.finishSync(true) : synchronizeWorkspace(session, executionId);
         }
         if (session.saveState.move != null) {
-            var recovered = saves.moves().recover(session.principal, session.key.workspace(), session.saveState);
+            var recovered = moves.recover(session.principal, session.key.workspace(), session.saveState);
             if (session.saveState.move == null || session.saveState.move.result == null) {
                 return recovered;
             }
             if (skipLocal) {
-                return saves.moves().skipLocal(session.saveState);
+                return moves.skipLocal(session.saveState);
             }
             return moveFiles(session, executionId, session.saveState.move, true);
         }
@@ -203,14 +205,13 @@ final class SessionRepositoryCommands {
 
     private BridgeReplies.Reply moveCommand(ExecutionSession session, String executionId, JsonNode arguments) {
         var selected = BridgeArguments.move(arguments);
-        var pending = saves.moves()
-                .prepare(
-                        session.principal,
-                        session.key.workspace(),
-                        session.saveState,
-                        selected.source(),
-                        selected.destination(),
-                        files.captureOptional(session, executionId, RepositoryMediaIndex.PATH));
+        var pending = moves.prepare(
+                session.principal,
+                session.key.workspace(),
+                session.saveState,
+                selected.source(),
+                selected.destination(),
+                files.captureOptional(session, executionId, RepositoryMediaIndex.PATH));
         return moveFiles(session, executionId, pending, false);
     }
 
@@ -271,7 +272,7 @@ final class SessionRepositoryCommands {
     }
 
     private BridgeReplies.Reply moveFiles(
-            ExecutionSession session, String executionId, SessionMoves.Pending pending, boolean recovery) {
+            ExecutionSession session, String executionId, PendingAccountMove pending, boolean recovery) {
         byte[] payload = pending.payload;
         JsonNode begun = io.request(
                 session,
@@ -305,8 +306,7 @@ final class SessionRepositoryCommands {
                     throw new WorkerUnavailableException();
                 }
                 io.authorize(session);
-                var committed =
-                        saves.moves().commit(session.principal, session.key.workspace(), session.saveState, pending);
+                var committed = moves.commit(session.principal, session.key.workspace(), session.saveState, pending);
                 pending = session.saveState.move;
                 if (pending == null || pending.result == null) {
                     return committed;
@@ -351,7 +351,7 @@ final class SessionRepositoryCommands {
     }
 
     private BridgeReplies.Reply installMove(
-            ExecutionSession session, WorkerRequests.Transfer reference, SessionMoves.Pending pending) {
+            ExecutionSession session, WorkerRequests.Transfer reference, PendingAccountMove pending) {
         io.authorize(session);
         JsonNode installed;
         try {
@@ -370,7 +370,7 @@ final class SessionRepositoryCommands {
                 != pending.paths.size()) {
             throw new WorkerUnavailableException();
         }
-        return saves.moves().installed(session.saveState);
+        return moves.installed(session.saveState);
     }
 
     private enum GitInstallation {

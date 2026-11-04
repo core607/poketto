@@ -1,7 +1,10 @@
 package io.github.core607.poketto.executor.internal;
 
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -72,13 +75,77 @@ final class SandcrabClient {
         return new SandcrabFiles(http).download(session, plan, maxBytes, target, authorize);
     }
 
+    SandcrabFiles.Snapshot snapshot(
+            SandcrabProtocol.Session session,
+            SandcrabFiles.Plan plan,
+            long maxBytes,
+            Path target,
+            Duration timeout,
+            Runnable authorize) {
+        return new SandcrabFiles(http)
+                .download(session, plan, maxBytes, target, bounded(timeout, UPLOAD_TIMEOUT), authorize);
+    }
+
+    void putFile(SandcrabProtocol.Session session, SandcrabProtocol.FilePut expected, Path source, Runnable authorize) {
+        authorize.run();
+        String path = "/v1/sessions/" + session.id() + "/files?path="
+                + URLEncoder.encode(expected.path(), StandardCharsets.UTF_8) + "&mode=384&replace=false";
+        try (var file = openUploadFile(expected.bytes(), source);
+                var input = new CheckedSource(file, authorize)) {
+            var receipt = http.upload(
+                    path,
+                    input,
+                    expected.bytes(),
+                    UPLOAD_TIMEOUT,
+                    (head, response) -> readResponse(head, response, SandcrabProtocol.FilePut.class, 200));
+            require(expected.equals(receipt), "Native file publication changed its path, length or digest");
+            authorize.run();
+        } catch (IOException failure) {
+            throw new WorkerUnavailableException(failure);
+        }
+    }
+
+    SandcrabFiles.Snapshot diff(SandcrabProtocol.Session parent, long maximum, Path target, Runnable authorize) {
+        return new SandcrabFiles(http).diff(parent, maximum, target, authorize);
+    }
+
+    SandcrabProtocol.Session openChild(SandcrabProtocol.Session parent, SandcrabProtocol.Reference child) {
+        require(parent.serverId().equals(child.serverId()), "Child request changed the server epoch");
+        var session = request(
+                "POST", sessionPath(parent.reference()) + "/shells", child, SandcrabProtocol.Session.class, 200, 202);
+        require(
+                child.equals(session.reference())
+                        && parent.id().equals(session.parentSessionId())
+                        && parent.profile().equals(session.profile())
+                        && Objects.equals(parent.templateId(), session.templateId())
+                        && Objects.equals(parent.volumeId(), session.volumeId()),
+                "Native shell admission changed its parent workspace");
+        return session;
+    }
+
+    SandcrabTemplates templates() {
+        return new SandcrabTemplates(this, http);
+    }
+
     SandcrabEvents events() {
         return new SandcrabEvents(http);
     }
 
     /** Keep the creation plan before dispatch; a transport failure must not allocate another ID. */
     SandcrabVolume createVolume(SandcrabVolume.Plan plan) {
-        SandcrabVolume volume = request("POST", "/v1/volumes", plan, SandcrabVolume.class, 200, 202);
+        return createVolume(plan, REQUEST_TIMEOUT);
+    }
+
+    SandcrabVolume createVolume(SandcrabVolume.Plan plan, Duration timeout) {
+        SandcrabVolume volume = exchange(
+                "POST",
+                "/v1/volumes",
+                "application/json",
+                SandcrabProtocol.write(plan),
+                bounded(timeout, REQUEST_TIMEOUT),
+                SandcrabVolume.class,
+                200,
+                202);
         require(
                 plan.id().equals(volume.id()) && plan.profile().equals(volume.profile()),
                 "Volume admission changed its identity or profile");
@@ -93,13 +160,28 @@ final class SandcrabClient {
     }
 
     SandcrabVolume volume(String id) {
-        SandcrabVolume volume = request("GET", volumePath(id), null, SandcrabVolume.class, 200);
+        return volume(id, REQUEST_TIMEOUT);
+    }
+
+    private SandcrabVolume volume(String id, Duration timeout) {
+        SandcrabVolume volume = exchange(
+                "GET",
+                volumePath(id),
+                "application/json",
+                null,
+                bounded(timeout, REQUEST_TIMEOUT),
+                SandcrabVolume.class,
+                200);
         require(id.equals(volume.id()), "Volume lookup returned another identity");
         return volume;
     }
 
     SandcrabVolume volume(SandcrabVolume expected) {
-        SandcrabVolume actual = volume(expected.id());
+        return volume(expected, REQUEST_TIMEOUT);
+    }
+
+    SandcrabVolume volume(SandcrabVolume expected, Duration timeout) {
+        SandcrabVolume actual = volume(expected.id(), timeout);
         sameVolume(expected, actual);
         return actual;
     }
@@ -174,6 +256,7 @@ final class SandcrabClient {
         require(
                 plan.profile().equals(session.profile())
                         && Objects.equals(plan.volumeId(), session.volumeId())
+                        && Objects.equals(plan.templateId(), session.templateId())
                         && session.parentSessionId() == null,
                 "Session admission changed its workspace scope");
         return session;
@@ -195,6 +278,23 @@ final class SandcrabClient {
                 session.id().equals(run.sessionId()) && session.profile().equals(run.profile()),
                 "Native command reply changed its session scope");
         return run;
+    }
+
+    SandcrabProtocol.Session renew(SandcrabProtocol.Session expected, long ttlMillis) {
+        SandcrabProtocol.Session actual = request(
+                "POST",
+                sessionPath(expected.reference()) + "/renew",
+                new SandcrabProtocol.Renewal(ttlMillis),
+                SandcrabProtocol.Session.class,
+                200);
+        require(expected.reference().equals(actual.reference()), "Session renewal changed its identity or epoch");
+        require(
+                expected.profile().equals(actual.profile())
+                        && Objects.equals(expected.volumeId(), actual.volumeId())
+                        && Objects.equals(expected.templateId(), actual.templateId())
+                        && Objects.equals(expected.parentSessionId(), actual.parentSessionId()),
+                "Session renewal changed its workspace scope");
+        return actual;
     }
 
     /** Closing is asynchronous; stopping or closing does not establish containment. */
@@ -220,11 +320,25 @@ final class SandcrabClient {
     }
 
     SandcrabProtocol.Upload register(SandcrabProtocol.Session session, SandcrabProtocol.UploadPlan plan) {
+        return register(session, plan, REQUEST_TIMEOUT);
+    }
+
+    /** The consumer may reduce admission time to its remaining operation budget. */
+    SandcrabProtocol.Upload register(
+            SandcrabProtocol.Session session, SandcrabProtocol.UploadPlan plan, Duration timeout) {
         ProtocolValues.require(
                 session.serverId().equals(plan.serverId()) && session.id().equals(plan.sessionId()),
                 "upload session",
                 "must match its retained session identity");
-        SandcrabProtocol.Upload upload = request("POST", "/v1/uploads", plan, SandcrabProtocol.Upload.class, 200, 201);
+        SandcrabProtocol.Upload upload = exchange(
+                "POST",
+                "/v1/uploads",
+                "application/json",
+                SandcrabProtocol.write(plan),
+                bounded(timeout, REQUEST_TIMEOUT),
+                SandcrabProtocol.Upload.class,
+                200,
+                201);
         manifest(plan, upload);
         require(
                 session.profile().equals(upload.profile()) && Objects.equals(session.volumeId(), upload.volumeId()),
@@ -255,30 +369,66 @@ final class SandcrabClient {
 
     /** The consumer retains this staged file until the upload is reconciled; no response loss resends it. */
     SandcrabProtocol.Upload send(SandcrabProtocol.UploadPlan plan, Path content) {
+        return send(plan, content, UPLOAD_TIMEOUT, () -> {});
+    }
+
+    /** A caller's deadline and per-chunk checks can only shorten the normal transfer bounds. */
+    SandcrabProtocol.Upload send(SandcrabProtocol.UploadPlan plan, Path content, Duration timeout, Runnable authorize) {
+        Duration budget = bounded(timeout, UPLOAD_TIMEOUT);
+        authorize.run();
         MessageDigest digest = SandcrabProtocol.digest();
-        try (InputStream file = openUploadFile(plan, content);
-                var input = new DigestInputStream(file, digest)) {
+        try (InputStream file = openUploadFile(plan.bytes(), content);
+                var input = new DigestInputStream(new CheckedSource(file, authorize), digest)) {
             SandcrabProtocol.Upload upload = http.upload(
                     uploadPath(plan.reference()) + "/content",
                     input,
                     plan.bytes(),
-                    UPLOAD_TIMEOUT,
+                    budget,
                     (head, response) -> readResponse(head, response, SandcrabProtocol.Upload.class, 200));
             require(
                     HexFormat.of().formatHex(digest.digest()).equals(plan.sha256()),
                     "Staged upload bytes changed from their registered digest");
             manifest(plan, upload);
+            authorize.run();
             return upload;
         } catch (IOException failure) {
             throw new WorkerUnavailableException(failure);
         }
     }
 
-    private static InputStream openUploadFile(SandcrabProtocol.UploadPlan plan, Path content) {
+    private static Duration bounded(Duration requested, Duration maximum) {
+        Objects.requireNonNull(requested, "Native request timeout must be present");
+        ProtocolValues.require(
+                !requested.isNegative() && !requested.isZero(), "native request timeout", "must be positive");
+        return requested.compareTo(maximum) > 0 ? maximum : requested;
+    }
+
+    static final class CheckedSource extends FilterInputStream {
+        private final Runnable authorize;
+
+        CheckedSource(InputStream input, Runnable authorize) {
+            super(input);
+            this.authorize = authorize;
+        }
+
+        @Override
+        public int read() throws IOException {
+            authorize.run();
+            return in.read();
+        }
+
+        @Override
+        public int read(byte[] bytes, int offset, int length) throws IOException {
+            authorize.run();
+            return in.read(bytes, offset, length);
+        }
+    }
+
+    private static InputStream openUploadFile(long length, Path content) {
         try {
             BasicFileAttributes attributes =
                     Files.readAttributes(content, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            if (!attributes.isRegularFile() || attributes.size() != plan.bytes()) {
+            if (!attributes.isRegularFile() || attributes.size() != length) {
                 throw new IOException("Staged upload must be a regular file with its registered length");
             }
             return Files.newInputStream(content, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
@@ -320,6 +470,9 @@ final class SandcrabClient {
         require(
                 plan.reference().equals(actual.reference()) && plan.sessionId().equals(actual.sessionId()),
                 "Native upload reply changed its identity or session");
+        require(
+                Boolean.TRUE.equals(plan.keepResult()) == Boolean.TRUE.equals(actual.keepResult()),
+                "Native upload reply changed its retention");
         require(
                 plan.path().equals(actual.path())
                         && plan.format().equals(actual.format())
@@ -363,7 +516,7 @@ final class SandcrabClient {
         require(expected.equals(actual.reference()), "Native run reply changed its identity or server epoch");
     }
 
-    private <T> T request(String method, String path, Object data, Class<T> type, int... accepted) {
+    <T> T request(String method, String path, Object data, Class<T> type, int... accepted) {
         byte[] body = data == null ? null : SandcrabProtocol.write(data);
         return exchange(method, path, "application/json", body, REQUEST_TIMEOUT, type, accepted);
     }
@@ -386,7 +539,7 @@ final class SandcrabClient {
                 (head, input) -> readResponse(head, input, type, accepted));
     }
 
-    private static <T> T readResponse(SandboxHttp.Head head, InputStream input, Class<T> type, int... accepted)
+    static <T> T readResponse(SandboxHttp.Head head, InputStream input, Class<T> type, int... accepted)
             throws IOException {
         require(head.length() > 0 && head.length() <= MAX_JSON, "Native JSON response exceeds its bound");
         require("application/json".equals(head.contentType()), "Native reply is not JSON");

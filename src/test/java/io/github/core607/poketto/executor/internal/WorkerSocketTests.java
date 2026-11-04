@@ -105,7 +105,7 @@ class WorkerSocketTests {
     @Test
     void failedGitInstallationLeavesInspectionAvailableWithoutRetryingOnEachCommand() throws Exception {
         var actor = principal();
-        var saves = mock(SelectedFileSaves.class);
+        SelectedFileSaves saves = LegacyExecutorFixture.mockSaves();
         var exports = exports();
         String target = "d".repeat(40);
         when(exports.update(any(), any(), any(), any()))
@@ -213,7 +213,7 @@ class WorkerSocketTests {
 
     @Test
     void unavailableRemoteDoesNotHideLocalStatus() throws Exception {
-        var saves = mock(SelectedFileSaves.class);
+        SelectedFileSaves saves = LegacyExecutorFixture.mockSaves();
         when(saves.currentCommit(any(), any())).thenThrow(new ContentRepositoryException("Remote fetch unavailable"));
         try (var peer = new Peer();
                 var executor = new IsolatedRepositoryExecutor(
@@ -328,7 +328,7 @@ class WorkerSocketTests {
                 })
                 .when(auth)
                 .authorize(eq(actor), eq(WORKSPACE), any(Capability[].class));
-        var saves = mock(SelectedFileSaves.class);
+        SelectedFileSaves saves = LegacyExecutorFixture.mockSaves();
         doReturn(BridgeReplies.succeeded(new BridgeReplies.Recovery(false)))
                 .when(saves)
                 .recover(eq(actor), eq(WORKSPACE), any());
@@ -450,7 +450,7 @@ class WorkerSocketTests {
                             peer.accounts.store(),
                             mock(PortableContentExports.class),
                             mock(MediaFileService.class),
-                            mock(SelectedFileSaves.class),
+                            LegacyExecutorFixture.mockSaves(),
                             auth,
                             exports(),
                             peer.client(),
@@ -785,7 +785,7 @@ class WorkerSocketTests {
                         peer.accounts.store(),
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
-                        mock(SelectedFileSaves.class),
+                        LegacyExecutorFixture.mockSaves(),
                         fullAuth(),
                         exports(),
                         peer.client(),
@@ -1028,31 +1028,6 @@ class WorkerSocketTests {
     }
 
     @Test
-    void executorHealthChecksTheLiveProtocolWithoutOpeningACopy() throws Exception {
-        var exports = exports();
-        try (var peer = new Peer();
-                var executor = executor(fullAuth(), exports, peer)) {
-            var health = new ExecutorHealthIndicator(Optional.of(executor));
-            assertThat(health.health().getStatus().getCode()).isEqualTo("UP");
-            peer.codeActProtocol = 2;
-            assertThat(health.health().getStatus().getCode()).isEqualTo("DOWN");
-            assertThat(health.health().getDetails()).isEmpty();
-            peer.codeActProtocol = 3;
-            assertThat(health.health().getStatus().getCode()).isEqualTo("UP");
-            peer.dropHello = true;
-            assertThat(health.health().getStatus().getCode()).isEqualTo("DOWN");
-            assertThat(peer.operations("OPEN")).isEmpty();
-            assertThat(peer.operations("EXEC")).isEmpty();
-            verify(exports, never()).create(any(), any(), any());
-        }
-        assertThat(new ExecutorHealthIndicator(Optional.empty())
-                        .health()
-                        .getStatus()
-                        .getCode())
-                .isEqualTo("UP");
-    }
-
-    @Test
     void closingATransportKeepsAccountOwnedExportsAndLease() throws Exception {
         var actor = principal();
         var packages = mock(PortableContentExports.class);
@@ -1061,7 +1036,7 @@ class WorkerSocketTests {
                         peer.accounts.store(),
                         packages,
                         mock(MediaFileService.class),
-                        mock(SelectedFileSaves.class),
+                        LegacyExecutorFixture.mockSaves(),
                         fullAuth(),
                         exports(),
                         peer.client(),
@@ -1516,7 +1491,7 @@ class WorkerSocketTests {
                 peer.accounts.store(),
                 mock(PortableContentExports.class),
                 mock(MediaFileService.class),
-                mock(SelectedFileSaves.class),
+                LegacyExecutorFixture.mockSaves(),
                 auth,
                 exports,
                 peer.client(),
@@ -1534,7 +1509,7 @@ class WorkerSocketTests {
                         peer.accounts.store(),
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
-                        mock(SelectedFileSaves.class),
+                        LegacyExecutorFixture.mockSaves(),
                         fullAuth(),
                         exports(),
                         peer.client(),
@@ -1774,7 +1749,7 @@ class WorkerSocketTests {
                         peer.accounts.store(),
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
-                        mock(SelectedFileSaves.class),
+                        LegacyExecutorFixture.mockSaves(),
                         fullAuth(),
                         exports,
                         peer.client(),
@@ -1817,7 +1792,7 @@ class WorkerSocketTests {
                             peer.accounts.store(),
                             mock(PortableContentExports.class),
                             mock(MediaFileService.class),
-                            mock(SelectedFileSaves.class),
+                            LegacyExecutorFixture.mockSaves(),
                             fullAuth(),
                             exports(),
                             peer.client(),
@@ -1857,7 +1832,7 @@ class WorkerSocketTests {
                             peer.accounts.store(),
                             mock(PortableContentExports.class),
                             mock(MediaFileService.class),
-                            mock(SelectedFileSaves.class),
+                            LegacyExecutorFixture.mockSaves(),
                             fullAuth(),
                             exports(),
                             peer.client(),
@@ -1937,7 +1912,7 @@ class WorkerSocketTests {
                         peer.accounts.store(),
                         mock(PortableContentExports.class),
                         mock(MediaFileService.class),
-                        mock(SelectedFileSaves.class),
+                        LegacyExecutorFixture.mockSaves(),
                         auth,
                         exports(),
                         peer.client(),

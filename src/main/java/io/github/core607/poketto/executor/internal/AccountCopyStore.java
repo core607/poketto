@@ -7,15 +7,19 @@ import io.github.core607.poketto.content.RepositoryBaselineLimits;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -28,6 +32,10 @@ final class AccountCopyStore {
     private final RetainedDirectory directory;
     private final RetainedRecordFiles files;
     private final AccountFileBaselines baselines;
+    private final AccountCopyFiles plans;
+    private final AccountCopyFiles uppers;
+    final AccountTemplateCatalog templates;
+    private final AccountCopyIndex ownerIndex;
     private final Limits limits;
     private final Clock clock;
     private String collectionCursor = "";
@@ -49,6 +57,10 @@ final class AccountCopyStore {
             throw unavailable(failure);
         }
         baselines = new AccountFileBaselines(this.root, directory, files, limits.recordBytes());
+        plans = AccountCopyFiles.plans(this.root, directory, limits.originalFiles());
+        uppers = AccountCopyFiles.uppers(this.root, directory, limits.poolBytes());
+        templates = new AccountTemplateCatalog(this.root, directory, files, limits.poolBytes());
+        ownerIndex = new AccountCopyIndex(this.root, directory, baselines, plans, uppers, limits.copies());
     }
 
     RepositoryBaselineLimits traversalLimits() {
@@ -88,7 +100,7 @@ final class AccountCopyStore {
 
     List<AccountCopyRecord.Owner> collectionCandidates(int maximum) {
         ProtocolValues.inRange(maximum, 1, 32, "collection batch size");
-        try (var index = index()) {
+        try (var index = ownerIndex.lock()) {
             index.requireValid();
             var names = new ArrayList<String>();
             try (var entries = Files.newDirectoryStream(root, "*.account")) {
@@ -145,7 +157,7 @@ final class AccountCopyStore {
         var scopes = permitted.fullRead()
                 ? List.of(permitted, new AccountCopyRecord.Owner(permitted.accountId(), permitted.workspaceId(), false))
                 : List.of(permitted);
-        try (var index = index()) {
+        try (var index = ownerIndex.lock()) {
             index.requireValid();
             for (var scope : scopes) {
                 var current = stored(scope);
@@ -168,7 +180,7 @@ final class AccountCopyStore {
      * another command may have claimed it since this inventory was read.
      */
     List<AccountCopyRecord.Owner> unclaimedForksOf(AccountCopyRecord.Owner owner, Duration claim) {
-        try (var index = index()) {
+        try (var index = ownerIndex.lock()) {
             index.requireValid();
             var forks = new ArrayList<AccountCopyRecord.Owner>();
             try (var entries = Files.newDirectoryStream(root, "*.account")) {
@@ -193,7 +205,7 @@ final class AccountCopyStore {
 
     /** How many copies, default and forks in both scopes, this account holds in this workspace. */
     int copiesOf(UUID account, UUID workspace) {
-        try (var index = index()) {
+        try (var index = ownerIndex.lock()) {
             index.requireValid();
             int count = 0;
             try (var entries = Files.newDirectoryStream(root, "*.account")) {
@@ -213,10 +225,10 @@ final class AccountCopyStore {
 
     Lease acquire(AccountCopyRecord.Owner owner) {
         Path lock = root.resolve(key(owner) + ".lock");
-        try (var index = index()) {
+        try (var index = ownerIndex.lock()) {
             index.requireValid();
             boolean newOwner = !Files.exists(lock, NOFOLLOW_LINKS);
-            if (newOwner && countOwners() >= limits.copies()) {
+            if (newOwner && ownerIndex.countOwners() >= limits.copies()) {
                 throw new RetainedCopyException(RetainedCopyException.Reason.LIMIT);
             }
             var held = RetainedFileLocks.acquire(lock, () -> directory.openLock(lock));
@@ -225,15 +237,19 @@ final class AccountCopyStore {
                     // Recovery must be able to find and lock the owner of any unpublished file.
                     RetainedDirectory.sync(root);
                 }
-                cleanPending(key(owner));
+                ownerIndex.cleanPending(key(owner));
                 var stored = stored(owner);
                 if (stored == null) {
                     // A removal deletes its journal before the versions it referenced.
                     baselines.retainOnly(key(owner), null);
+                    plans.retainOnly(key(owner), null, Set.of());
+                    uppers.retainOnly(key(owner), null, Set.of());
                     return new Lease(owner, held, null, null);
                 }
                 String digest = stored.state().fileBaselines();
                 var versions = baselines.read(key(owner), stored.copyId(), digest);
+                retainPlanFiles(owner, stored.state().nativePlan());
+                retainUpper(key(owner), stored.copyId(), stored.writer().storage());
                 return new Lease(owner, held, stored.restore(versions), digest);
             } catch (RuntimeException | IOException failure) {
                 held.close();
@@ -255,119 +271,28 @@ final class AccountCopyStore {
         return record;
     }
 
-    private RetainedFileLocks.Held index() throws IOException {
-        directory.checkRoot();
-        Path lock = root.resolve(".index.lock");
-        return RetainedFileLocks.await(lock, () -> directory.openLock(lock), Duration.ofSeconds(5));
-    }
-
-    private int countOwners() throws IOException {
-        int count = 0;
-        try (var entries = Files.newDirectoryStream(root, "*.lock")) {
-            for (Path path : entries) {
-                directory.checkFile(path);
-                if (!path.getFileName().toString().equals(".index.lock")) {
-                    if (!path.getFileName().toString().matches("[0-9a-f]{64}\\.lock")) {
-                        throw new IOException("Invalid owner lock address");
-                    }
-                    if (removeUnusedLock(path)) {
-                        continue;
-                    }
-                    if (++count > limits.copies()) {
-                        throw new RetainedCopyException(RetainedCopyException.Reason.LIMIT);
-                    }
-                }
-            }
-        }
-        return count;
-    }
-
-    private boolean removeUnusedLock(Path path) throws IOException {
-        String name = path.getFileName().toString();
-        Path record = root.resolve(name.substring(0, 64) + ".account");
-        if (Files.exists(record, NOFOLLOW_LINKS)) {
-            return false;
-        }
-        try (var unused = RetainedFileLocks.acquire(path, () -> directory.openLock(path))) {
-            unused.requireValid();
-            cleanPending(name.substring(0, 64));
-            baselines.retainOnly(name.substring(0, 64), null);
-            Files.delete(path);
-            RetainedDirectory.sync(root);
-            return true;
-        } catch (RetainedCopyException busy) {
-            if (busy.reason() != RetainedCopyException.Reason.BUSY) {
-                throw busy;
-            }
-            return false;
-        }
-    }
-
-    /** Only the owner lock permits deleting this owner's unpublished journal or baseline. */
-    private void cleanPending(String ownerKey) throws IOException {
-        Path path = root.resolve(ownerKey + ".pending");
-        if (Files.exists(path, NOFOLLOW_LINKS)) {
-            directory.checkFile(path);
-            Files.delete(path);
-        }
-    }
-
     private Path recordPath(AccountCopyRecord.Owner owner) {
         return root.resolve(key(owner) + ".account");
     }
 
+    private void retainPlanFiles(AccountCopyRecord.Owner owner, NativeRepositoryPlan plan) throws IOException {
+        plans.retainOnly(key(owner), plan == null ? null : plan.id(), plan == null ? Set.of() : plan.retainedDigests());
+    }
+
+    private void retainUpper(String owner, UUID copy, AccountCopyRecord.NativeStorage storage) throws IOException {
+        var upper = storage == null ? null : storage.upper();
+        uppers.retainOnly(owner, copy, upper == null ? Set.of() : Set.of(upper.sha256()));
+    }
+
     /** A default copy keeps its original address; a fork's address adds its copy ID. */
-    private static String key(AccountCopyRecord.Owner owner) {
+    static String key(AccountCopyRecord.Owner owner) {
         String base = owner.accountId() + ":" + owner.workspaceId() + ":" + owner.fullRead();
-        return SessionWorker.hash(owner.fork() == null ? base : base + ":" + owner.fork());
+        String identity = owner.fork() == null ? base : base + ":" + owner.fork();
+        return HexFormat.of().formatHex(RetainedBaselineIo.sha256().digest(identity.getBytes(StandardCharsets.UTF_8)));
     }
 
     private static RetainedCopyException unavailable(IOException failure) {
         return new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE, failure);
-    }
-
-    /** The journal's transition rules; the socket tests' in-memory journal applies the same ones. */
-    static void requireTransition(
-            AccountCopyRecord.Owner owner, AccountCopyRecord current, AccountCopyRecord next, long nextExpiry) {
-        ProtocolValues.require(next.owner().equals(owner), "copy owner", "must match the held account");
-        ProtocolValues.require(
-                next.revision() == (current == null ? 0 : current.revision() + 1),
-                "copy revision",
-                "must advance the held journal");
-        ProtocolValues.require(
-                current == null || current.copyId().equals(next.copyId()),
-                "copy identity",
-                "must not replace existing work");
-        if (current != null) {
-            ProtocolValues.require(
-                    current.phase() != AccountCopyRecord.Phase.DISCARDING
-                            || next.phase() == AccountCopyRecord.Phase.DISCARDING,
-                    "discarded copy",
-                    "must not become executable again");
-            // Only a public copy's rebuild re-pins its commit and projection, in one write from
-            // REFRESHING to REFRESHING, so the copy ID never leaves the journal.
-            boolean rebuilt = !owner.fullRead()
-                    && current.phase() == AccountCopyRecord.Phase.REFRESHING
-                    && next.phase() == AccountCopyRecord.Phase.REFRESHING;
-            ProtocolValues.require(
-                    rebuilt
-                            || current.state()
-                                    .originalCommit()
-                                    .equals(next.state().originalCommit()),
-                    "original commit",
-                    "must remain pinned");
-            ProtocolValues.require(
-                    current.original() == null || current.original().equals(next.original()),
-                    "original archive",
-                    "must remain immutable");
-            ProtocolValues.require(
-                    rebuilt || Objects.equals(current.publicExport(), next.publicExport()),
-                    "public projection",
-                    "must remain pinned");
-            ProtocolValues.require(next.expiresAt() >= current.expiresAt(), "copy expiry", "must not move backwards");
-        }
-        long latest = Math.max(nextExpiry, current == null ? 0 : current.expiresAt());
-        ProtocolValues.require(next.expiresAt() <= latest, "copy expiry", "exceeds idle retention");
     }
 
     final class Lease implements OriginalFileLookup, AutoCloseable {
@@ -393,6 +318,65 @@ final class AccountCopyStore {
         Optional<AccountCopyRecord> record() {
             requireUsable();
             return Optional.ofNullable(current);
+        }
+
+        void publishUpper(AccountCopyRecord.Upper upper, NativeTransferStore.File archive, Runnable authorize) {
+            var record = record().orElseThrow();
+            ProtocolValues.require(
+                    record.phase() == AccountCopyRecord.Phase.RUNNING
+                            && record.writer().storage().templateId() != null,
+                    "overlay checkpoint",
+                    "requires its running copy");
+            try {
+                uppers.publish(
+                        key(owner),
+                        record.copyId(),
+                        upper,
+                        output -> {
+                            try (var input = archive.open()) {
+                                input.transferTo(output);
+                            }
+                        },
+                        authorize);
+            } catch (IOException failure) {
+                throw unavailable(failure);
+            }
+        }
+
+        void copyUpper(OutputStream target, Runnable authorize) throws IOException {
+            var record = record().orElseThrow();
+            uppers.copy(
+                    key(owner),
+                    record.copyId(),
+                    Objects.requireNonNull(record.writer().storage().upper()),
+                    target,
+                    authorize);
+        }
+
+        void publishPlanFile(UUID plan, NativePlanFile file, NativeTransferStore.Source source, Runnable authorize) {
+            requirePlan(plan);
+            try {
+                plans.publish(key(owner), plan, file, source, authorize);
+            } catch (RetainedRecordFiles.SizeLimit capacity) {
+                throw new RetainedCopyException(RetainedCopyException.Reason.LIMIT, capacity);
+            } catch (IOException failure) {
+                throw unavailable(failure);
+            }
+        }
+
+        void copyPlanFile(UUID plan, NativePlanFile file, OutputStream output, Runnable authorize) throws IOException {
+            requirePlan(plan);
+            plans.copy(key(owner), plan, file, output, authorize);
+        }
+
+        private void requirePlan(UUID plan) {
+            requireUsable();
+            ProtocolValues.require(
+                    current != null
+                            && current.state().nativePlan() != null
+                            && current.state().nativePlan().id().equals(plan),
+                    "plan identity",
+                    "must match the locked copy journal");
         }
 
         AccountCopyRecord.Original captureOriginal(Consumer<Consumer<RepositoryFile>> source) {
@@ -461,10 +445,13 @@ final class AccountCopyStore {
         void write(AccountCopyRecord next) {
             requireUsable();
             requireNext(next);
+            boolean releasedPlan = current != null
+                    && current.state().nativePlan() != null
+                    && next.state().nativePlan() == null;
             Path temporary = root.resolve(key(owner) + ".pending");
             // Only first publication changes inventory membership. Atomic replacement keeps the
             // owner and copy ID; inventory readers lock and reread before acting on mutable state.
-            try (var admission = current == null ? index() : null) {
+            try (var admission = current == null ? ownerIndex.lock() : null) {
                 if (admission != null) {
                     admission.requireValid();
                 }
@@ -478,11 +465,19 @@ final class AccountCopyStore {
                             StandardCopyOption.ATOMIC_MOVE,
                             StandardCopyOption.REPLACE_EXISTING);
                     RetainedDirectory.sync(root);
+                    var previousStorage =
+                            current == null ? null : current.writer().storage();
                     String previous = currentBaselines;
                     current = next;
                     currentBaselines = versions;
                     if (!versions.equals(previous)) {
                         discardSuperseded(versions);
+                    }
+                    if (!Objects.equals(previousStorage, next.writer().storage())) {
+                        retainUpper(key(owner), next.copyId(), next.writer().storage());
+                    }
+                    if (releasedPlan) {
+                        retainPlanFiles(owner, null);
                     }
                 } finally {
                     Files.deleteIfExists(temporary);
@@ -494,7 +489,7 @@ final class AccountCopyStore {
         }
 
         private void requireNext(AccountCopyRecord next) {
-            requireTransition(owner, current, next, nextExpiry());
+            AccountCopyTransitions.requireTransition(owner, current, next, nextExpiry());
         }
 
         /** The journal already names {@code kept}; a leftover file is retried by the next change or removal. */
@@ -525,7 +520,7 @@ final class AccountCopyStore {
                             && current.phase() == AccountCopyRecord.Phase.DISCARDING,
                     "discard identity",
                     "must match the held copy");
-            try (var index = index()) {
+            try (var index = ownerIndex.lock()) {
                 index.requireValid();
                 originals.remove();
                 Files.delete(recordPath(owner));
@@ -533,6 +528,8 @@ final class AccountCopyStore {
                 current = null;
                 currentBaselines = null;
                 baselines.retainOnly(key(owner), null);
+                retainPlanFiles(owner, null);
+                uppers.retainOnly(key(owner), null, Set.of());
             } catch (IOException failure) {
                 uncertain = true;
                 throw unavailable(failure);
@@ -544,11 +541,12 @@ final class AccountCopyStore {
             try {
                 originals.close();
                 if (current == null) {
-                    try (var index = index()) {
+                    try (var index = ownerIndex.lock()) {
                         index.requireValid();
                         if (!Files.exists(recordPath(owner), NOFOLLOW_LINKS)) {
-                            cleanPending(key(owner));
+                            ownerIndex.cleanPending(key(owner));
                             baselines.retainOnly(key(owner), null);
+                            retainPlanFiles(owner, null);
                             Files.deleteIfExists(root.resolve(key(owner) + ".lock"));
                             RetainedDirectory.sync(root);
                         }

@@ -170,21 +170,16 @@ checksum and removes its in-repository Sandcrab sources.
 ### C: consumer adaptation
 
 XFS project IDs span a filesystem. Sandcrab [requires the whole mount](../../executor-service/rust/sandcrab/README.md#durable-volumes)
-before allocating them or recovering active project volumes. Deliver retrieval-lab
-migration, the native consumer plus importer, and legacy removal separately. Adapt callers of removed freeze,
-snapshot and staged-upload interfaces; do not restore them solely for Poketto.
+before allocating them or recovering active project volumes. The
+[retrieval laboratory](../../experiments/retrieval-lab/README.md#connect-the-independent-sandcrab-service)
+uses a fresh volume and a verified Git bundle for each question. One streaming upload
+keeps the corpus independent of the template import deadline.
 
-The [retrieval laboratory](../../experiments/retrieval-lab/README.md#connect-the-independent-sandcrab-service)
-uses a fresh volume and a verified Git bundle for each question. A single streaming upload
-keeps the prepared corpus in the consumer and independent of the service's template import deadline.
-
-New account copies and public projections use the commit snapshot as a template
-and unsaved changes as the upper layer. Existing volumes remain until disposal or
-expiry. Update the owning [account-copy](../implemented/2026-09-14-account-working-copies.md)
-and [authoring](../implemented/2026-09-09-codeact-workspaces.md) decisions with their
-implementation. Preserve data and current authorization during transition.
-Consumers that need a terminal receipt for deferred cleanup must request
-`keepResult` before adopting TTL-enabled native binaries. In particular,
+The [native repository backend](../../executor-service/native-repository.md) shares an
+authorized commit template and journals each copy's unsaved upper. The
+[offline importer](../../executor-service/native-migration.md) preserves old volumes
+through disposal or expiry. The signed worker remains the default until cutover.
+Deferred cleanup that needs a terminal receipt must request `keepResult`. The
 [game cleanup](../../src/main/java/io/github/core607/poketto/executor/internal/GameSandboxJob.java)
 requires an observed terminal session before releasing application admission.
 Before deployment/import/cutover, back up legacy data and record the previous image

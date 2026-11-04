@@ -98,6 +98,7 @@ final class GameSandboxPool implements AutoCloseable {
         ProtocolValues.require(
                 !info.capabilities().contains("volumes"), "game service", "must not own durable volumes");
         SandcrabProtocol.Profile profile = info.profiles().get("games");
+        ProtocolValues.require(profile.networkDisabled(), "game profile", "must disable network access");
         ProtocolValues.require(!profile.hostCalls(), "game profile", "must disable host calls");
         ProtocolValues.require(
                 profile.timeoutMillis() >= 5000 && profile.sessionTtlMillis() >= 15_000,

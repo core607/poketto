@@ -61,6 +61,7 @@ dependencies {
     implementation("org.commonmark:commonmark-ext-task-list-items:0.30.0")
     implementation("org.commonmark:commonmark-ext-footnotes:0.30.0")
     implementation("org.eclipse.jgit:org.eclipse.jgit:7.7.1.202607240634-r")
+    implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("org.yaml:snakeyaml")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
@@ -153,31 +154,71 @@ val stageLinuxStorageTest = tasks.register<Sync>("stageLinuxStorageTest") {
     into(linuxStorageRuntime)
     from(sourceSets.main.get().output.classesDirs) { into("classes") }
     from(checkNotNull(sourceSets.main.get().output.resourcesDir)) {
-        include("io/github/core607/poketto/executor/*.mjs")
+        include("io/github/core607/poketto/executor/*.mjs", "io/github/core607/poketto/executor/restore-upper.py")
         into("classes")
     }
     from(sourceSets.test.get().output.classesDirs) { into("classes") }
     from(configurations.testRuntimeClasspath) { into("jars") }
+    from("executor-service") {
+        include("native_migration_*.py", "migrate_native_repository.py")
+        into("migration-tests")
+    }
+    from("deploy") {
+        include("update-existing.py", "worker_release.py")
+        into("migration-tests/deploy")
+    }
+}
+
+val stageRepositoryMigrationOperator = tasks.register<Sync>("stageRepositoryMigrationOperator") {
+    group = "distribution"
+    description = "Stages the offline data-only migration helper without starting the application."
+    dependsOn(tasks.classes)
+    into(layout.buildDirectory.dir("repositoryMigrationOperator"))
+    from(sourceSets.main.get().output.classesDirs) { into("classes") }
+    from(configurations.runtimeClasspath) { into("jars") }
+    from("executor-service") {
+        include("migrate_native_repository.py", "native_migration_files.py", "native_migration_guard.py")
+        into("operator")
+    }
+}
+
+val linuxStorageImage = layout.buildDirectory.file("linuxStorageTest/image.id")
+val buildLinuxStorageImage = tasks.register<Exec>("buildLinuxStorageImage") {
+    onlyIf { storageTestsNeedLinux }
+    inputs.files("executor-native/Dockerfile.peer-tests", "executor-native/peer_probe.py", "executor-native/rejected_peer.py")
+    outputs.file(linuxStorageImage)
+    doFirst {
+        linuxStorageImage.get().asFile.parentFile.mkdirs()
+    }
+    commandLine(
+        "docker", "build", "--network", "none", "--iidfile", linuxStorageImage.get().asFile.absolutePath,
+        "-f", "executor-native/Dockerfile.peer-tests", "executor-native",
+    )
 }
 
 val linuxStorageTest = tasks.register<Exec>("linuxStorageTest") {
     group = "verification"
     description = "Runs the real durable-storage JUnit suite in Linux when the host is Windows."
-    dependsOn(stageLinuxStorageTest)
+    dependsOn(stageLinuxStorageTest, buildLinuxStorageImage)
     onlyIf { storageTestsNeedLinux }
     inputs.files(sourceSets.test.get().runtimeClasspath)
     outputs.upToDateWhen { false }
-    // Stage only compiled classes and resolved dependency JARs; never mount operator files.
-    commandLine(
-        "docker", "run", "--rm", "--network", "none", "--read-only",
-        "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-        "--memory", "512m", "--pids-limit", "128", "--mount", "type=volume,target=/tmp",
-        "--mount", "type=bind,source=${linuxStorageRuntime.get().asFile.absolutePath},target=/runtime,readonly",
-        "--entrypoint", "java",
-        "eclipse-temurin@sha256:c0fe66ea21e972724000cf402f8081c7841d960839f69cb0754f40b40f74b2cc",
-        "-Xmx256m", "-Djava.io.tmpdir=/tmp", "-Duser.home=/tmp", "-cp", "/runtime/classes:/runtime/jars/*",
-        "io.github.core607.poketto.assets.internal.LinuxStorageTestLauncher",
-    )
+    // The read-only mount contains staged code and fixtures. The test never sees an installed deployment.
+    doFirst {
+        val image = linuxStorageImage.get().asFile.readText().trim()
+        check(Regex("sha256:[0-9a-f]{64}").matches(image)) { "Invalid Linux storage test image identity" }
+        commandLine(
+            "docker", "run", "--rm", "--network", "none", "--read-only",
+            "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+            "--memory", "512m", "--pids-limit", "128", "--mount", "type=volume,target=/tmp",
+            "--mount", "type=bind,source=${linuxStorageRuntime.get().asFile.absolutePath},target=/runtime,readonly",
+            "--tmpfs", "/fixture-keys:rw,mode=0700,uid=65534,gid=65534,size=1m",
+            "--entrypoint", "java",
+            image,
+            "-Xmx256m", "-Djava.io.tmpdir=/tmp", "-Duser.home=/tmp", "-Dpoketto.test.key-root=/fixture-keys", "-cp", "/runtime/classes:/runtime/jars/*",
+            "io.github.core607.poketto.assets.internal.LinuxStorageTestLauncher",
+        )
+    }
 }
 
 // Git for Windows ships bash beside git.exe; System32\bash.exe belongs to WSL and may be absent.

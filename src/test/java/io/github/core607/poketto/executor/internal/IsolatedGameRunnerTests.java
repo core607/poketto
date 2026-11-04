@@ -226,7 +226,8 @@ class IsolatedGameRunnerTests {
                     "a".repeat(64),
                     "succeeded",
                     null,
-                    "committed"));
+                    "committed",
+                    null));
             return upload.get();
         });
         when(client.send(any(), any(byte[].class))).thenAnswer(call -> upload.get());
