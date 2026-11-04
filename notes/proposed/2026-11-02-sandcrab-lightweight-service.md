@@ -172,9 +172,9 @@ checksum and removes its in-repository Sandcrab sources.
 
 ### C: consumer adaptation
 
-After L6 and L7 define the API, rework native adoption against it. Split delivery
-into the XFS bind-mount fix unless L3 replaces it, retrieval-lab migration, native
-consumer plus importer, and legacy removal. Adapt callers of removed freeze,
+XFS project IDs span a filesystem. Sandcrab [requires the whole mount](../../executor-service/rust/sandcrab/README.md#durable-volumes)
+before allocating them or recovering active project volumes. Deliver retrieval-lab
+migration, the native consumer plus importer, and legacy removal separately. Adapt callers of removed freeze,
 snapshot and staged-upload interfaces; do not restore them solely for Poketto.
 
 New account copies and public projections use the commit snapshot as a template
