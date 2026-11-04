@@ -115,10 +115,11 @@ SDK conformance while changing the implementation.
    ordering, no-execution refusals and SDKs.
 10. [Conformance](../../executor-service/rust/sandcrab/README.md#verification) runs selected
     native and published SDK suites with isolated fixtures and cleanup receipts.
-    Document host and container quickstarts, CLI/curl, Python/Kotlin SDKs, a build/test agent
-    and a batch runner. Fresh Ubuntu 22.04/24.04 runners and a Debian 12 VM or systemd
-    container must download the artifact, execute the README verbatim, run conformance
-    and fail CI when first use misses the readiness target.
+    The [quickstart](../../executor-service/rust/sandcrab/README.md#get-started) stages the
+    bundled files before calling the protected native installer. Its authenticated
+    loopback endpoint supports SDK clients on first use. CI downloads the build ZIP,
+    replays the README on Ubuntu 22.04/24.04 and Debian 12, checks first-run output
+    against the readiness limits and exercises the installed binary under delegation.
 
 ### H: same-host hardening
 
