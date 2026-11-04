@@ -6,14 +6,14 @@ replaces that executable. The deployment account needs Docker access and
 noninteractive sudo for `/usr/local/sbin/poketto-update-existing`.
 
 Every installation, including one with execution disabled, must install
-[update-existing.py](update-existing.py) as `/usr/local/sbin/poketto-update-existing`
-and [worker_release.py](worker_release.py) beside it. Both files must be root-owned
-and unwritable by other accounts.
+[update-existing.py](update-existing.py) as `/usr/local/sbin/poketto-update-existing`,
+with [worker_release.py](worker_release.py) and [native_repository.py](native_repository.py)
+beside it. All three files must be root-owned and unwritable by other accounts.
 
 Keep the deployment root and its `deployment.json` root-owned and unwritable by
 other users. Use [existing.example.json](existing.example.json) for the project,
-ordered relative Compose files and loopback HTTP health checks. The worker
-extension below is required when `POKETTO_EXECUTOR_ENABLED=true`.
+ordered relative Compose files and loopback HTTP health checks. Enabled repository
+execution requires the extension for its selected backend.
 
 The updater accepts `--root`, `--app-image`, `--frontend-image`, and the full
 `--app-revision`. Both loaded images must carry that revision label. `--check`
@@ -29,9 +29,11 @@ pending: retry the same images, revision and configuration. A different target
 requires inspection of protected state and running services. There is no automatic
 application rollback across unknown persistent-format changes.
 
+For `POKETTO_EXECUTOR_BACKEND=native`, configure the [independent Sandcrab service](../executor-service/native-repository.md#existing-installation-delivery).
+
 ## Worker source updates
 
-Existing-layout deployments update the configured worker from `/opt/poketto-worker`
+Signed-backend deployments update the configured worker from `/opt/poketto-worker`
 in the selected application image. In the protected
 `deployment.json`, add an `executor` object like this, using the installed paths:
 

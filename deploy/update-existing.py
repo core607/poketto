@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update application images and their configured host worker in an existing installation."""
+"""Update application images and verify the selected repository executor in an existing installation."""
 
 import argparse
 import fcntl
@@ -13,6 +13,7 @@ import sys
 import urllib.parse
 import urllib.request
 
+from native_repository import NativeRepository, validate_config as validate_native_config
 from worker_release import DeploymentError, NoRedirects, WorkerRelease, validate_config as validate_worker_config
 
 
@@ -209,9 +210,19 @@ class Installation:
         if digest(json.loads(self.compose("config", "--format", "json"))) != state["configuration"]:
             raise DeploymentError("installation configuration changed during deployment")
         checks = list(self.config.get("healthChecks", []))
-        if state.get("worker"):
-            WorkerRelease(self.config["executor"], self.state_dir, self.command).verify(state["worker"])
-            checks.append({"url": self.config["executor"]["healthUrl"], "status": "UP"})
+        executor = None
+        if state.get("nativeDependency"):
+            executor = NativeRepository(self.config["nativeExecutor"], self.command)
+            app = current["app"]
+            environment = dict(value.split("=", 1) for value in app["Config"]["Env"])
+            if executor.inspect(state["imageIds"]["app"], app, environment) != state["nativeDependency"]:
+                raise DeploymentError("native executor differs from the approved dependency")
+        elif state.get("worker"):
+            executor = WorkerRelease(self.config["executor"], self.state_dir, self.command)
+            executor.verify(state["worker"])
+        if executor:
+            config = self.config["nativeExecutor" if state.get("nativeDependency") else "executor"]
+            checks.append({"url": config["healthUrl"], "status": "UP"})
         for index, check in enumerate(checks, 1):
             try:
                 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirects())
@@ -225,8 +236,8 @@ class Installation:
                             raise DeploymentError("health check " + str(index) + " did not confirm readiness")
             except (OSError, ValueError) as error:
                 raise DeploymentError("health check " + str(index) + " is unavailable") from error
-        if state.get("worker"):
-            WorkerRelease(self.config["executor"], self.state_dir, self.command).probe()
+        if executor:
+            executor.probe()
 
     # None means Docker confirmed the image is absent; any other failure propagates, so an unanswered
     # lookup never shrinks the retained set.
@@ -312,6 +323,8 @@ class Installation:
         return retired
 
     def update(self, revision, app_image, frontend_image, check_only=False, settings=None):
+        if os.path.lexists(self.state_dir / "maintenance"):
+            raise DeploymentError("the operator has paused deployments for repository maintenance")
         settings = settings or {}
         if not settings.keys() <= APPLICATION_SETTINGS:
             raise DeploymentError("only application settings can be changed")
@@ -358,16 +371,31 @@ class Installation:
             raise DeploymentError("candidate changes more than selected images and application settings")
         worker = None
         worker_plan = None
+        dependency = None
+        native_adopted = state is not None and "nativeDependency" in state
         if actual_environment.get("POKETTO_EXECUTOR_ENABLED", "false").lower() == "true":
-            if not self.config.get("executor"):
-                raise DeploymentError("execution is enabled; configure the host worker updater before deploying")
-            worker = WorkerRelease(self.config["executor"], self.state_dir, self.command)
-            worker_plan = worker.prepare(image_ids["app"], revision)
+            backend = actual_environment.get("POKETTO_EXECUTOR_BACKEND", "signed")
+            if backend == "native":
+                if not self.config.get("nativeExecutor"):
+                    raise DeploymentError("native execution requires a configured nativeExecutor dependency")
+                native = NativeRepository(self.config["nativeExecutor"], self.command)
+                dependency = native.inspect(image_ids["app"], containers["app"], actual_environment)
+            elif backend == "signed":
+                if native_adopted:
+                    raise DeploymentError("a native installation cannot resume signed repository writes")
+                if not self.config.get("executor"):
+                    raise DeploymentError("execution is enabled; configure the host worker updater before deploying")
+                worker = WorkerRelease(self.config["executor"], self.state_dir, self.command)
+                worker_plan = worker.prepare(image_ids["app"], revision)
+            else:
+                raise DeploymentError("unknown repository executor backend")
         # Every image this installation deployed stays on record until it is retired or gone.
         known = set(state.get("knownImages", [])) | set(state.get("imageIds", {}).values()) if state else set()
         if state and state["status"] == "pending":
             if state["revision"] != revision or state["imageIds"] != image_ids or state["configuration"] != digest(rendered):
                 raise DeploymentError("an unfinished deployment requires reconciliation with the same images and configuration")
+            if state.get("nativeDependency") != dependency:
+                raise DeploymentError("an unfinished deployment requires the same native executor dependency")
             pending_worker = state.get("worker")
             if bool(worker_plan) != bool(pending_worker) or worker_plan and any(
                     worker_plan[key] != pending_worker[key] for key in ("release", "configuration", "installation")):
@@ -398,6 +426,8 @@ class Installation:
                 "removing": removing,
                 "worker": worker_plan,
             }
+            if dependency or native_adopted:
+                state["nativeDependency"] = dependency
         state["knownImages"] = sorted(known | set(image_ids.values()))
         if check_only:
             candidate.unlink()
@@ -415,6 +445,8 @@ class Installation:
         result = {"status": "healthy", "revision": revision, "imageIds": image_ids}
         if worker_plan:
             result["workerRelease"] = worker_plan["release"]
+        if dependency:
+            result["nativeRelease"] = dependency["release"]
         state.update(retiredImages=[], retirementError=None)
         try:
             retired = self.retire_images(state, rendered)
@@ -472,6 +504,8 @@ def load_config(root):
             raise DeploymentError("health check port must be between 1 and 65535") from error
     if "executor" in config:
         validate_worker_config(config["executor"])
+    if "nativeExecutor" in config:
+        validate_native_config(config["nativeExecutor"])
     return config
 
 
@@ -499,6 +533,8 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as error:
             raise DeploymentError("another deployment holds the installation lock") from error
+        if load_config(args.root) != config:
+            raise DeploymentError("installation configuration changed while acquiring the deployment lock; retry")
         print(json.dumps(installation.update(args.app_revision, args.app_image, args.frontend_image, args.check, settings)))
 
 

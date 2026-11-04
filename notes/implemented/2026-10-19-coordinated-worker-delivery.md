@@ -10,10 +10,15 @@ therefore leave repository execution rejecting the installed worker.
 
 ## Decision
 
-Execution-enabled deployments take their worker runtime from the selected image. Before changing either
+Signed-backend deployments take their worker runtime from the selected image. Before changing either
 service, the protected updater validates revision, complete file set, checksums
 and native service contract. Missing worker configuration blocks deployment;
 configuration, keys, tools, storage and resource limits remain operator-owned.
+
+A native repository service has its own release lifecycle. Its consumer image
+pins the executable digest, and [existing-installation delivery](../../executor-service/native-repository.md#existing-installation-delivery)
+checks that the application reaches that executable. Updating the signed worker
+for a native consumer would couple two independently managed services.
 
 Protected generations share one atomically replaced selector. Initial adoption
 keeps previous bytes until every entrance link exists, preventing mixed generations.

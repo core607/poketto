@@ -42,6 +42,7 @@ COPY --from=build /app/dependencies/ ./
 COPY --from=build /app/spring-boot-loader/ ./
 COPY --from=build /app/snapshot-dependencies/ ./
 COPY --from=build /app/application/ ./
+COPY executor-service/sandcrab-release.properties /opt/poketto/sandcrab-release.properties
 # The host updater extracts this runtime from the exact image; operator configuration stays on the host.
 COPY executor-service/resource_pool.py /opt/poketto-worker/
 COPY --from=sandbox-programs /bwrap-output/ /opt/poketto-worker/

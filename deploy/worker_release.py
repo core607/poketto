@@ -113,7 +113,11 @@ def validate_config(config):
     if not isinstance(config, dict) or set(config) != {
             "sourceDirectory", "configFile", "service", "healthUrl", "probeTokenFile", "probeCopyId"}:
         raise DeploymentError("executor deployment requires sourceDirectory, configFile, service, healthUrl, probeTokenFile and probeCopyId")
-    for key in ("sourceDirectory", "configFile", "probeTokenFile"):
+    validate_executor_settings(config, ("sourceDirectory", "configFile", "probeTokenFile"))
+
+
+def validate_executor_settings(config, paths):
+    for key in paths:
         if not isinstance(config[key], str) or not re.fullmatch(r"/[A-Za-z0-9_./-]+", config[key]):
             raise DeploymentError("executor deployment paths must be absolute")
         path = Path(config[key])
@@ -137,7 +141,47 @@ class NoRedirects(urllib.request.HTTPRedirectHandler):
         return None
 
 
-class WorkerRelease:
+class RepositoryProbe:
+    def _probe_token(self):
+        path = Path(self.config["probeTokenFile"])
+        protected(path)
+        if path.stat().st_mode & 0o077 or path.stat().st_size > 4096:
+            raise DeploymentError("executor probe token must be a private root-owned file of at most 4096 bytes")
+        token = path.read_text(encoding="ascii").strip()
+        if not re.fullmatch(r"[!-~]{1,4096}", token):
+            raise DeploymentError("executor probe token must be a nonempty single-line value")
+        return token
+
+    def probe(self):
+        # An explicit dedicated copy keeps release checks from creating, deleting or borrowing user copies.
+        body = {"jsonrpc": "2.0", "id": "deployment-probe", "method": "tools/call", "params": {
+            "name": "repo_exec", "arguments": {"expectedCopyId": self.config["probeCopyId"],
+                "command": "poketto --help >/dev/null && printf poketto-deployment-ready", "timeoutSeconds": 30}}}
+        url = self.config["healthUrl"].removesuffix("/actuator/health/executor") + "/mcp"
+        request = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers={
+            "Authorization": "Bearer " + self._probe_token(), "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25",
+            "User-Agent": "poketto-deployment/1"})
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirects())
+        try:
+            with opener.open(request, timeout=75) as response:
+                raw = response.read(1024 * 1024 + 1)
+                if response.status != 200 or len(raw) > 1024 * 1024:
+                    raise ValueError("invalid probe response")
+            envelope = json.loads(raw)
+            result = envelope["result"]
+            if envelope.get("id") != "deployment-probe" or envelope.get("error") or result.get("isError"):
+                raise ValueError("unsuccessful probe response")
+            content = next(item["text"] for item in result["content"] if item.get("type") == "text")
+            answer = json.loads(content)
+            if (answer.get("copyId") != self.config["probeCopyId"] or answer.get("exitCode") != 0
+                    or answer.get("stdout") != "poketto-deployment-ready"):
+                raise ValueError("probe command did not complete")
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration):
+            raise DeploymentError("executor read-only MCP probe failed; deployment remains pending") from None
+
+
+class WorkerRelease(RepositoryProbe):
     def __init__(self, config, state_directory, command):
         validate_config(config)
         self.config = config
@@ -152,16 +196,6 @@ class WorkerRelease:
             raise DeploymentError("executor deployment must match the installed supervisor")
         self.store = self.root / "releases"
         self.current = self.store / "current"
-
-    def _probe_token(self):
-        path = Path(self.config["probeTokenFile"])
-        protected(path)
-        if path.stat().st_mode & 0o077 or path.stat().st_size > 4096:
-            raise DeploymentError("executor probe token must be a private root-owned file of at most 4096 bytes")
-        token = path.read_text(encoding="ascii").strip()
-        if not re.fullmatch(r"[!-~]{1,4096}", token):
-            raise DeploymentError("executor probe token must be a nonempty single-line value")
-        return token
 
     def _config_hash(self):
         protected(self.configuration)
@@ -376,31 +410,3 @@ class WorkerRelease:
         if self._identity(data) != plan["release"]:
             raise DeploymentError("installed worker release checksum mismatch")
         self._active()
-
-    def probe(self):
-        # An explicit dedicated copy keeps release checks from creating, deleting or borrowing user copies.
-        body = {"jsonrpc": "2.0", "id": "deployment-probe", "method": "tools/call", "params": {
-            "name": "repo_exec", "arguments": {"expectedCopyId": self.config["probeCopyId"],
-                "command": "poketto --help >/dev/null && printf poketto-deployment-ready", "timeoutSeconds": 30}}}
-        url = self.config["healthUrl"].removesuffix("/actuator/health/executor") + "/mcp"
-        request = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers={
-            "Authorization": "Bearer " + self._probe_token(), "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25",
-            "User-Agent": "poketto-deployment/1"})
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirects())
-        try:
-            with opener.open(request, timeout=75) as response:
-                raw = response.read(1024 * 1024 + 1)
-                if response.status != 200 or len(raw) > 1024 * 1024:
-                    raise ValueError("invalid probe response")
-            envelope = json.loads(raw)
-            result = envelope["result"]
-            if envelope.get("id") != "deployment-probe" or envelope.get("error") or result.get("isError"):
-                raise ValueError("unsuccessful probe response")
-            content = next(item["text"] for item in result["content"] if item.get("type") == "text")
-            answer = json.loads(content)
-            if (answer.get("copyId") != self.config["probeCopyId"] or answer.get("exitCode") != 0
-                    or answer.get("stdout") != "poketto-deployment-ready"):
-                raise ValueError("probe command did not complete")
-        except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration):
-            raise DeploymentError("executor read-only MCP probe failed; deployment remains pending") from None
