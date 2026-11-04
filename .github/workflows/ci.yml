@@ -288,14 +288,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # A judged small agent load through real login, PostgreSQL, HTTP MCP, the root worker and native
-  # sandboxes on this runner. It gates on calls after the warm-up, as the production stages do.
+  # The legacy OOM fixture runs here. Native account, game and load checks run with the verified release.
   load:
     name: load
     needs: changes
     if: contains(fromJSON(needs.changes.outputs.lanes), 'load')
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: read
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -308,8 +311,8 @@ jobs:
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
         with:
           gradle-home-cache-cleanup: true
-      - name: Stage the acceptance runtime
-        run: ./gradlew stageAcceptanceRuntime stageExecutorWorker --no-daemon
+      - name: Stage the signed supervisor for the isolated OOM test
+        run: ./gradlew stageExecutorWorker --no-daemon
       - name: Prepare the sandbox host
         run: |
           # Bubblewrap needs capability-bearing user namespaces.
@@ -321,10 +324,6 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/pip"
           "$RUNNER_TEMP/pip/bin/pip" install --disable-pip-version-check --no-deps --only-binary=:all: --target "$RUNNER_TEMP/python" -r executor-service/requirements.txt
           sudo cp -R "$RUNNER_TEMP/python" /var/lib/poketto-load/tools/python
-          sudo cp -R build/acceptance/runtime /var/lib/poketto-load/runtime
-          # native-host.py checks every runtime file against this manifest before it starts anything.
-          (cd /var/lib/poketto-load/runtime && find . -type f -printf '%P\0' | xargs -0 sha256sum > "$RUNNER_TEMP/manifest.sha256")
-          sudo cp "$RUNNER_TEMP/manifest.sha256" /var/lib/poketto-load/runtime/manifest.sha256
           sudo chown -R root:root /var/lib/poketto-load
           sudo chmod -R a+rX,go-w /var/lib/poketto-load
       - name: Isolated supervisor and enclosing-pool OOM recovery
@@ -333,18 +332,11 @@ jobs:
           sudo cp -R build/executor-service/worker/. /var/lib/poketto-oom/
           sudo env PYTHONPATH=/var/lib/poketto-load/tools/python python3 /var/lib/poketto-oom/native_probe.py --root /var/lib/poketto-oom --tools /var/lib/poketto-load/tools --oom-only
           sudo rm -r -- /var/lib/poketto-oom
-      - name: Small agent load on native sandboxes
-        run: |
-          mkdir -p build/load
-          sudo env PYTHONPATH=/var/lib/poketto-load/tools/python python3 acceptance/clients/native-load.py --runtime /var/lib/poketto-load/runtime --worker-source build/executor-service/worker --tools /var/lib/poketto-load/tools --java "$JAVA_HOME/bin/java" --evidence build/load/native-load.json
-      - name: Upload the load receipt
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: load-${{ github.run_id }}
-          path: build/load/
-          if-no-files-found: ignore
-          retention-days: 7
+      - name: Require the checked release and native consumer results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SANDCRAB_STATUS_ISSUER: ${{ vars.SANDCRAB_STATUS_ISSUER }}
+        run: python3 acceptance/clients/release-gate.py require
 
   collectors:
     needs: changes

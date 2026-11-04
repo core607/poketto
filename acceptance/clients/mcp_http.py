@@ -21,7 +21,7 @@ def request(opener, endpoint, method, path, data=None, headers=None):
 
 
 def passed(name):
-    print(json.dumps({'test': name, 'result': 'PASS', 'source': 'real-auth-PG-HTTP-MCP-native-SRT'}), flush=True)
+    print(json.dumps({'test': name, 'result': 'PASS', 'source': 'real-auth-PG-HTTP-MCP'}), flush=True)
 
 
 class Browser:

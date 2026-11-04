@@ -9,6 +9,7 @@ status is nonzero when the stage fails its requirement or the cleanup does not p
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -16,11 +17,29 @@ import sys
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from mcp_http import Browser  # noqa: E402
+from native_repository_fixture import sha  # noqa: E402
+
+
+def check_clients(root, directory):
+    directory.mkdir()
+    passed = True
+    for name, marker in (('games', 'gamesHttp'), ('account', 'accountHttp')):
+        command = [sys.executable, '-u', str(HERE / (name + '-http.py')), '--fixture', str(root)]
+        if name == 'account':
+            command.append('--keep')
+        path = directory / (name + '.log')
+        with path.open('xb') as log:
+            check = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=240)
+        reports = [json.loads(line) for line in path.read_text().splitlines() if line.startswith('{')]
+        ok = check.returncode == 0 and any(report.get(marker) == 'PASS' for report in reports)
+        print(json.dumps({marker: 'PASS' if ok else 'FAIL'}), flush=True)
+        passed &= ok
+    return passed
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    for name in ('runtime', 'worker-source', 'tools', 'java'):
+    for name in ('runtime', 'binary', 'tools', 'java'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--agents', type=int, default=8)
     parser.add_argument('--seconds', type=int, default=90)
@@ -29,12 +48,14 @@ def main():
     parser.add_argument('--require', help='AGENTS:OKRATE:P95; defaults to AGENTS:0.99:1.0')
     parser.add_argument('--port', type=int, default=38189)
     parser.add_argument('--evidence', type=Path, required=True)
+    parser.add_argument('--verify-clients', action='store_true', help='Also run the authenticated game and account clients')
     args = parser.parse_args()
     assert os.geteuid() == 0, 'run as root, like native-host.py'
     controller = subprocess.Popen(
         [sys.executable, str(HERE / 'native-host.py'), '--runtime', str(args.runtime),
-         '--worker-source', str(args.worker_source), '--tools', str(args.tools), '--java', str(args.java),
-         '--agents', str(args.agents), '--port', str(args.port), '--lifetime-seconds', '1200'],
+         '--binary', str(args.binary), '--tools', str(args.tools), '--java', str(args.java),
+         '--agents', str(args.agents), '--port', str(args.port), '--lifetime-seconds', '1200']
+        + (['--games'] if args.verify_clients else []),
         stdout=subprocess.PIPE, text=True)
     ready = None
     for line in controller.stdout:
@@ -48,6 +69,10 @@ def main():
     root = Path(ready['root'])
     status = 1
     try:
+        assert ready['backend'] == 'sandcrab-native-v1' and ready['serverId']
+        for field in ('binarySha256', 'nativeConfigSha256', 'runtimeManifestSha256'):
+            assert re.fullmatch('[a-f0-9]{64}', ready[field])
+        assert ready['binarySha256'] == sha(args.binary)
         client = json.loads((root / 'client.json').read_text())
         browser = Browser(client['endpoint'], client['password'])
         token = root / 'load-token'
@@ -58,7 +83,9 @@ def main():
              '--token-file', str(token), '--stages', str(args.agents), '--seconds', str(args.seconds),
              '--warmup', str(args.warmup), '--think', str(args.think[0]), str(args.think[1]),
              '--warm-up-seconds', '0', '--require', args.require or f'{args.agents}:0.99:1.0',
-             '--label', 'native-fixture', '--evidence', str(args.evidence)], timeout=args.seconds + 600).returncode
+             '--label', 'native-sandcrab-fixture', '--evidence', str(args.evidence)], timeout=args.seconds + 600).returncode
+        if args.verify_clients and not check_clients(root, args.evidence.parent / 'clients'):
+            status = 1
     finally:
         (root / 'stop').touch()
         cleanup = None
@@ -67,7 +94,7 @@ def main():
             if line.startswith('{'):
                 cleanup = json.loads(line).get('cleanup', cleanup)
         controller.wait(120)
-    if cleanup != 'PASS':
+    if controller.returncode != 0 or cleanup != 'PASS':
         raise SystemExit('the native controller did not report cleanup: PASS')
     sys.exit(status)
 

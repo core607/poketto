@@ -16,9 +16,12 @@ tasks.register<Sync>("stageExecutorNativeTest") {
     }
     from(sources.named("test").get().output.classesDirs) { into("classes") }
     from(configurations.named("testRuntimeClasspath")) { into("jars") }
+}
+
+tasks.withType<Sync>().matching { it.name in setOf("stageAcceptanceRuntime", "stageExecutorNativeTest") }.configureEach {
     doLast {
-        val root = nativeRuntime.get().asFile
-        val manifest = root.walkTopDown().filter { it.isFile && it.name != "manifest.sha256" }
+        val root = destinationDir
+        val manifest = root.walkTopDown().filter { it.isFile && it != root.resolve("manifest.sha256") }
             .sortedBy { it.relativeTo(root).invariantSeparatorsPath }
             .joinToString("\n", postfix = "\n") { file ->
                 val digest = MessageDigest.getInstance("SHA-256")
