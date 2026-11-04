@@ -1,5 +1,11 @@
 # Native Sandcrab Java consumer
 
+To check the published executable against Poketto's release pin, supply the release ZIP
+in `SANDCRAB_BUNDLE` and an empty results directory in `SANDCRAB_EVIDENCE`. On a
+disposable Linux systemd host, run `SANDCRAB_INSTALL_DISPOSABLE=1 bash .github/ci/sandcrab-release-check.sh`.
+The check reads the running executable's digest and retains sandbox diagnostics and
+the workspace verdict under the results directory.
+
 `sandcrab_volume_java_probe.py` exercises the Java client through the public native
 API, using a synthetic Git bundle larger than the client's in-memory request limit.
 Two Java processes, separated by a daemon restart, verify the Git baseline,
