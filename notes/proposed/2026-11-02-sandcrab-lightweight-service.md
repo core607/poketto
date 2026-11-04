@@ -141,11 +141,9 @@ its isolation boundary and measures footprint without adding runtime dependencie
   observe profile credentials, empty capability sets and no_new_privs in a finite run
   and a shell. Guest attempts to open cgroup controls for writing and raise a hard
   limit fail. The controller checks the effective session caps across those attempts.
-- H4: threat model. Add `executor-service/rust/sandcrab/THREAT-MODEL.md` and
-  link it from the README. Document trusted/semi-trusted code, the same-kernel
-  boundary and excluded protections, profiles/network/host-call guarantees and
-  limits, Unix peer UID and loopback-token authentication, resource exhaustion
-  and known gaps. Publish it with the release.
+- The [threat model](../../executor-service/rust/sandcrab/THREAT-MODEL.md)
+  defines the shared-kernel trust boundary, operator and caller authority, limits
+  and remaining risks. It ships with the standalone release.
 
 ### P: measured performance work
 
