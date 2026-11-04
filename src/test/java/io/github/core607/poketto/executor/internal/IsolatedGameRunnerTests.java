@@ -238,7 +238,7 @@ class IsolatedGameRunnerTests {
                     epoch,
                     "games",
                     "succeeded",
-                    new SandcrabProtocol.Result(0, output, "", false, null),
+                    new SandcrabProtocol.Result(0, output, "", false, null, null),
                     session.get().id()));
             session.set(session(session.get().id(), epoch, "closed"));
             return run.get();

@@ -13,7 +13,16 @@ final class SandcrabEventProtocol {
     static final int OUTPUT_BYTES = 1_048_576;
     static final int CALL_BYTES = 65_536;
     private static final Set<String> RUN_STATES = Set.of(
-            "running", "closing", "succeeded", "failed", "cancelled", "timed_out", "output_limit", "resource_limit");
+            "queued",
+            "running",
+            "closing",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "timed_out",
+            "output_limit",
+            "resource_limit",
+            "refused");
     private static final Set<String> CALL_STATES = Set.of("pending", "replied", "uncertain", "abandoned");
 
     private SandcrabEventProtocol() {}
@@ -64,13 +73,15 @@ final class SandcrabEventProtocol {
         return Integer.parseInt(text);
     }
 
-    record Outcome(Integer exitCode, Boolean truncated, String code) {
+    record Outcome(Integer exitCode, Boolean truncated, String code, Boolean executed) {
         Outcome {
             if (code == null) {
+                require(executed == null, "event output", "must not also claim a refusal");
                 Objects.requireNonNull(exitCode, "event exit code must be present");
                 Objects.requireNonNull(truncated, "event truncation flag must be present");
             } else {
                 code = SandcrabProtocol.code(code);
+                require(executed == null || !executed, "event refusal", "must not claim execution");
                 require(exitCode == null && truncated == null, "event failure", "must not also claim an exit result");
             }
         }
@@ -98,7 +109,13 @@ final class SandcrabEventProtocol {
                     "event run state",
                     "must be known");
             sessionId = SandcrabProtocol.optionalUuid(sessionId, "event session ID");
-            require(state.equals("running") == (result == null), "event result", "must match its lifecycle state");
+            require(
+                    (state.equals("queued") || state.equals("running")) == (result == null),
+                    "event result",
+                    "must match its lifecycle state");
+            if (state.equals("refused")) {
+                require(Boolean.FALSE.equals(result.executed()), "refused event", "must confirm no execution");
+            }
             if (state.equals("succeeded")) {
                 require(result.success(), "successful event result", "must confirm an untruncated zero exit");
             }
@@ -115,7 +132,7 @@ final class SandcrabEventProtocol {
         }
 
         boolean terminal() {
-            return !state.equals("running") && !state.equals("closing");
+            return !state.equals("queued") && !state.equals("running") && !state.equals("closing");
         }
     }
 
