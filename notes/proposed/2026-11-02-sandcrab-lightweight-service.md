@@ -132,13 +132,11 @@ its isolation boundary and measures footprint without adding runtime dependencie
   their acknowledged private network. Fixed file helpers retain host UID mappings for
   ownership changes. [Probes](../../executor-service/rust/sandcrab/sandcrab_conformance/namespaces.py)
   check isolation across same-UID sessions.
-- H2: seccomp. Extend L1's Rust filter using Docker's default profile as the
-  reference. Keep AF_UNIX/AF_VSOCK socket denial. Deny io_uring, bpf,
-  keyctl/add_key/request_key, perf_event_open, userfaultfd, kexec, module loading,
-  the mount family/new mount API, setns, namespace flags in unshare/clone, ptrace
-  and nondefault personality changes. Return ENOSYS for clone3 so runtimes fall
-  back. Probe every rule; keep bash, python3, git, rg, node, the benchmark mix and
-  published SDK conformance working.
+- H2 layers workload denials over the [inherited filter](../implemented/2026-11-02-native-seccomp-filter.md).
+  The [Moby profile](https://github.com/moby/profiles/blob/4b8214fc4971e06172938a1f1554ccff6647ee80/seccomp/default.json)
+  supplies the reference for administrative calls and clone fallback. Sandcrab allows
+  ordinary threads and personality queries. [Kernel probes](../../executor-service/rust/sandcrab/sandcrab_conformance/seccomp_cases.py)
+  exercise the additional denials, including VSOCK and namespace creation.
 - H3: process authority. Test the daemon's replacement process setup: the
   profile's execution user, no capabilities, no_new_privs, no writable cgroup
   controls and no ability to raise resource limits from inside a sandbox.
