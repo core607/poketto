@@ -11,8 +11,8 @@ import time
 import uuid
 
 from sandcrab_volume_java_probe import sha256, verify_runtime
-import native_probe
-from native_probe import Probe, call, http
+import sandcrab_conformance.native as native_probe
+from sandcrab_conformance.native import Probe, call, http
 
 ACTIONS = ('restart-output', 'restart-calls', 'restart-handler', 'enable-cleanup-fault', 'recover-cleanup')
 MAIN = 'io.github.core607.poketto.executor.internal.SandcrabRecoveryNativeProbe'

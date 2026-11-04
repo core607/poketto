@@ -20,7 +20,7 @@ sudo python3 executor-native/sandcrab_volume_java_probe.py \
 
 Use Java 26, Git, XFS tools and the systemd host prerequisites in the
 [native volume reference](../executor-service/rust/sandcrab/README.md#durable-volumes).
-Keep this script and `native_probe.py`/`volume_probe.py` in their repository layout.
+Keep this script and the `sandcrab_conformance` package in their repository layout.
 The controller verifies the runtime manifest and creates a disposable 512 MiB XFS
 image and 384 MiB slice; its Java processes have a 192 MiB cap inside that slice.
 Use a new report path for each attempt. Success requires `result: PASS`, both Java

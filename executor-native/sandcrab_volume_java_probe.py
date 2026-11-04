@@ -13,8 +13,8 @@ import sys
 
 NATIVE_SOURCE = Path(__file__).resolve().parents[1] / 'executor-service/rust/sandcrab'
 sys.path.insert(0, str(NATIVE_SOURCE))
-import native_probe
-from volume_probe import VolumeProbe
+import sandcrab_conformance.native as native_probe
+from sandcrab_conformance.volume import VolumeProbe
 
 
 def sha256(path):
