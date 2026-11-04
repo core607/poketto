@@ -26,7 +26,10 @@ def select(event, paths):
             lanes.update(('image', 'evals'))
         elif path.startswith(('executor-service/', 'executor-native/')) or path == 'gradle/executor-service.gradle.kts':
             lanes.update(('image', 'evals', 'load', 'stack'))
-        elif path in ('acceptance/clients/native-host.py', 'acceptance/clients/native-load.py'):
+        elif path in ('acceptance/clients/native-host.py', 'acceptance/clients/native-load.py',
+                      'acceptance/clients/native_repository_fixture.py', 'acceptance/clients/release-gate.py',
+                      'acceptance/clients/account-http.py', 'acceptance/clients/games-http.py',
+                      'acceptance/clients/mcp_http.py', '.github/ci/sandcrab-release-check.sh'):
             lanes.add('load')
         elif path in ('deploy/worker_release.py', 'deploy/tests/test_worker_deployment.py',
                       'deploy/tests/validate_app_identity.sh'):

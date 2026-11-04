@@ -22,7 +22,7 @@ root-level executables, bundled `bwrap` with its source/notices, `bin/` director
 
 For `--scenario games`, stage `game_fixture.py` beside `probe.py`. Add `sandcrab`
 and `game-example.mjs` from [the verified game bundle](../docs/games.md) to the worker sources.
-Poketto supplies its game runtime.
+Poketto supplies its game runtime. Restricted hosts require the [AppArmor profile](../acceptance/clients/README.md).
 
 The host needs cgroup v2, systemd, root access, Git, Python with the worker's pinned dependencies and
 its prepared sandbox toolchain. The probe requires a Java 26 runtime; `prepare-jdk.sh NEW_DIRECTORY`

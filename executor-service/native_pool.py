@@ -4,6 +4,12 @@ import re
 import subprocess
 
 
+def userns_service_args(restriction=Path('/proc/sys/kernel/apparmor_restrict_unprivileged_userns')):
+    if restriction.exists() and restriction.read_text().strip() == '1':
+        return ['-p', 'AppArmorProfile=sandcrab-service']
+    return []
+
+
 class NativePool:
     def __init__(self, token, memory='512M', tasks=256, cpu=200):
         if (not re.fullmatch('[a-f0-9]{8}', token) or not re.fullmatch('[1-9][0-9]*M', memory)

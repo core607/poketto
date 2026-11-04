@@ -14,7 +14,10 @@ class LaneSelectionTests(unittest.TestCase):
         native = 'executor-service/rust/sandcrab/src/config.rs'
         self.assertEqual({'docs', 'image', 'evals'}, select('pull_request', [native]))
         self.assertTrue({'load', 'stack'} <= select('pull_request', [native, 'executor-service/worker.py']))
-        self.assertEqual({'docs', 'load'}, select('pull_request', ['acceptance/clients/native-host.py']))
+        for name in ('native-host.py', 'native-load.py', 'native_repository_fixture.py', 'release-gate.py',
+                     'account-http.py', 'games-http.py', 'mcp_http.py'):
+            self.assertEqual({'docs', 'load'}, select('pull_request', ['acceptance/clients/' + name]))
+        self.assertEqual({'docs', 'load'}, select('pull_request', ['.github/ci/sandcrab-release-check.sh']))
 
     def test_evidence_and_collector_changes_do_not_schedule_a_load(self):
         summary = 'executor-native/evidence/sandcrab-l5/summary.json'

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real login, PostgreSQL, HTTP MCP and native SRT acceptance for shared account copies."""
+"""Real login, PostgreSQL, HTTP MCP and native Sandcrab acceptance for shared account copies."""
 import argparse
 import fcntl
 import hashlib
@@ -8,6 +8,7 @@ import threading
 import json
 import os
 from pathlib import Path
+import shlex
 import stat
 import time
 
@@ -29,7 +30,7 @@ def verify(browser, left, right, public, root):
     passed('account-http-copy-initialization-waits-for-a-contended-journal-index')
     copy = first['copyId']
     assert first['exitCode'] == 0 and first['retention']['expiresAt'] > int(time.time() * 1000)
-    same = right.call('repo_exec', {'expectedCopyId': 'new', 'command': 'cat private/draft.md'})
+    same = right.call('repo_exec', {'expectedCopyId': copy, 'command': 'cat private/draft.md'})
     assert same['copyId'] == copy and same['commit'] == first['commit'] and same['stdout'] == 'before'
     denied = public.call('repo_exec', {'expectedCopyId': copy, 'command': 'cat private/draft.md'}, error=True)
     assert denied['executed'] is False and denied['reason'] == 'MISSING_COPY'
@@ -54,7 +55,7 @@ def verify(browser, left, right, public, root):
     scoped = left.call('repo_exec', {'expectedCopyId': projection['copyId'], 'command':
         'set -eu; test ! -e private; cat public-draft'})
     assert scoped['exitCode'] == 0 and scoped['stdout'] == 'scoped' and scoped['copyId'] == projection['copyId']
-    public_status = left.call('repo_exec', {'expectedCopyId': projection['copyId'], 'command': 'poketto status'})
+    public_status = left.call('repo_exec', {'expectedCopyId': projection['copyId'], 'command': 'poketto status --remote'})
     assert public_status['exitCode'] == 0
     assert json.loads(public_status['stdout'])['result']['remote'] == {
         'state': 'PUBLIC_PROJECTION', 'commit': projection['commit']}
@@ -112,7 +113,7 @@ PY
 
 def verify_remote_status(browser, client, copy, saved, root):
     def status():
-        result = client.call('repo_exec', {'expectedCopyId': copy, 'command': 'poketto status'})
+        result = client.call('repo_exec', {'expectedCopyId': copy, 'command': 'poketto status --remote'})
         assert result['exitCode'] == 0
         reply = json.loads(result['stdout'])
         assert reply['ok']
@@ -140,11 +141,13 @@ def verify_remote_status(browser, client, copy, saved, root):
     latest = browser.api('POST', browser.admin + '/repository/patch', {
         'baseCommit': changed['commit'], 'changes': [{'path': 'private/second-saved.md',
             'expectedAbsence': False, 'expectedRevision': removed['revision'], 'content': None}]})
-    synced = client.call('repo_exec', {'expectedCopyId': copy, 'timeoutSeconds': 60,
-        'command': 'poketto sync'})
-    assert synced['exitCode'] == 0, synced
-    reply = json.loads(synced['stdout'])
-    assert reply['ok'] and reply['code'] == 'SYNCHRONIZED', reply
+    blocked = client.call('repo_exec', {'expectedCopyId': copy, 'command':
+        'set -eu; mkdir -p .poketto/plan-trap; ln -s plan-trap .poketto/plans; poketto sync prepare'})
+    assert blocked['exitCode'] == 1 and json.loads(blocked['stdout'])['code'] == 'LOCAL_PATH_TYPE'
+    repaired = client.call('repo_exec', {'expectedCopyId': copy, 'command':
+        'set -eu; test "$(readlink .poketto/plans)" = plan-trap; rmdir .poketto/plan-trap; rm .poketto/plans'})
+    assert repaired['exitCode'] == 0
+    synced = accept_sync(client, copy, {'private/second-saved.md', 'private/browser-only.md'})
     assert synced['commit'] == latest['commit']
     checked = client.call('repo_exec', {'expectedCopyId': copy, 'command':
         "set -eu; test ! -e private/second-saved.md; test \"$(cat private/local-only.md)\" = unsaved; "
@@ -152,29 +155,66 @@ def verify_remote_status(browser, client, copy, saved, root):
         "git diff --cached --quiet; poketto status"})
     assert checked['exitCode'] == 0, checked
     status = json.loads(checked['stdout'])['result']
-    assert not status['syncPending'] and not status['localBaselinePending']
+    assert status.get('plan') is None and not status['localBaselinePending']
     assert status['baseCommit'] == latest['commit']
     passed('account-http-workspace-sync-discovers-additions-deletions-and-preserves-unsaved-files')
     verify_sync_conflicts(browser, client, copy, root)
 
 
+def accept_sync(client, copy, paths, conflicts=()):
+    def execute(command):
+        result = client.call('repo_exec', {'expectedCopyId': copy, 'timeoutSeconds': 60, 'command': command})
+        assert result['exitCode'] == 0, (result['exitCode'], result.get('terminationReason'))
+        return result
+
+    prepared = json.loads(execute('poketto sync prepare')['stdout'])['result']
+    assert prepared['prepared'] and prepared['kind'] == 'SYNC'
+    plan = prepared['planId']
+    page = json.loads(execute(shlex.join(['poketto', 'plan', 'show', plan]))['stdout'])['result']
+    items = page['items']
+    assert page.get('nextOffset') is None and {item['path'] for item in items} == paths
+    assert {item['path'] for item in items if item['conflict']} == set(conflicts)
+    edits = ['set -eu']
+    accept = ['poketto', 'sync', 'accept', plan]
+    for item in items:
+        path = item['path']
+        quoted = shlex.quote(path)
+        original = item.get('original')
+        if original is None:
+            edits.append(f'test ! -e {quoted}')
+        else:
+            edits.append(f'test "$(sha256sum -- {quoted} | cut -c1-64)" = {shlex.quote(original["sha256"])}')
+        candidate = item.get('candidate')
+        if candidate is None:
+            edits.append(shlex.join(['rm', '-f', '--', path]))
+            accept.extend(['--absent', path])
+        else:
+            digest = candidate['sha256']
+            assert item['candidatePath'] == f'.poketto/plans/{plan}/candidate/{digest}'
+            edits.append(shlex.join(['cp', '--', item['candidatePath'], path]))
+            accept.extend(['--expect', f'{path}={digest}'])
+    result = execute('\n'.join(edits + [shlex.join(accept)]))
+    assert json.loads(result['stdout'])['result']['complete']
+    assert result['commit'] == prepared['remoteCommit']
+    released = execute(shlex.join(['poketto', 'plan', 'release', plan]))
+    assert json.loads(released['stdout'])['result']['released']
+    return result
+
+
 def verify_sync_conflicts(browser, client, copy, root):
     original = bytes([0, 255, 1, 2])
     commit_binary(root, original)
-    binary = client.call('repo_exec', {'expectedCopyId': copy, 'timeoutSeconds': 60,
-        'command': "poketto sync && python3 -c \"from pathlib import Path; assert Path('private/remote-sync.bin').read_bytes() == bytes([0,255,1,2])\""})
-    assert binary['exitCode'] == 0, binary
+    accept_sync(client, copy, {'private/remote-sync.bin'})
+    read_binary = "python3 -c \"from pathlib import Path; print(Path('private/remote-sync.bin').read_bytes().hex())\""
+    binary = client.call('repo_exec', {'expectedCopyId': copy, 'command': read_binary})
+    assert binary['exitCode'] == 0 and binary['stdout'].strip() == original.hex()
     local = client.call('repo_exec', {'expectedCopyId': copy, 'command':
         "python3 -c \"from pathlib import Path; Path('private/remote-sync.bin').write_bytes(bytes([0,255,9]))\""})
     assert local['exitCode'] == 0
     commit_binary(root, bytes([0, 255, 3, 4]))
-    binary_conflict = client.call('repo_exec', {'expectedCopyId': copy, 'timeoutSeconds': 60, 'command': 'poketto sync'})
-    reply = json.loads(binary_conflict['stdout'])
-    assert binary_conflict['exitCode'] == 1 and reply['code'] == 'MERGE_CONFLICT', binary_conflict
-    assert 'private/remote-sync.bin' in reply['result']['conflicts']
-    kept = client.call('repo_exec', {'expectedCopyId': copy, 'command':
-        "python3 -c \"from pathlib import Path; assert Path('private/remote-sync.bin').read_bytes() == bytes([0,255,9])\""})
-    assert kept['exitCode'] == 0
+    accept_sync(client, copy, {'private/remote-sync.bin'}, conflicts={'private/remote-sync.bin'})
+    kept = client.call('repo_exec', {'expectedCopyId': copy, 'command': read_binary})
+    assert kept['exitCode'] == 0 and kept['stdout'].strip() == bytes([0, 255, 9]).hex()
     passed('account-http-workspace-sync-installs-remote-binary-and-preserves-conflicting-local-bytes')
     assert client.call('repo_exec', {'expectedCopyId': copy, 'command':
         "printf 'local text' > private/browser-only.md"})['exitCode'] == 0
@@ -182,10 +222,8 @@ def verify_sync_conflicts(browser, client, copy, root):
     competing = browser.api('POST', browser.admin + '/repository/patch', {
         'baseCommit': observed['commit'], 'changes': [{'path': 'private/browser-only.md',
             'expectedAbsence': False, 'expectedRevision': observed['revision'], 'content': 'remote text'}]})
-    conflict = client.call('repo_exec', {'expectedCopyId': copy, 'timeoutSeconds': 60, 'command': 'poketto sync'})
-    reply = json.loads(conflict['stdout'])
-    assert conflict['exitCode'] == 1 and reply['code'] == 'MERGE_CONFLICT', conflict
-    assert conflict['commit'] == competing['commit'] and 'private/browser-only.md' in reply['result']['conflicts']
+    conflict = accept_sync(client, copy, {'private/browser-only.md'}, conflicts={'private/browser-only.md'})
+    assert conflict['commit'] == competing['commit']
     versions = client.call('repo_exec', {'expectedCopyId': copy, 'command': 'cat private/browser-only.md'})
     assert all(text in versions['stdout'] for text in ('<<<<<<< LOCAL', '||||||| BASE', 'local text', 'from browser', 'remote text'))
     assert browser.file('private/browser-only.md')['source'] == 'remote text'
@@ -257,7 +295,7 @@ def main():
         public = Mcp(browser.endpoint, browser.key(['EXECUTE_REPOSITORY'])['token'])
         verify(browser, left, right, public, root)
         print(json.dumps({'accountHttp': 'PASS', 'tests': 11,
-                          'source': 'real-auth-PG-HTTP-MCP-native-SRT', 'modelDriven': False}), flush=True)
+                          'source': 'real-auth-PG-HTTP-MCP', 'modelDriven': False}), flush=True)
     finally:
         if not args.keep:
             (root / 'stop').touch()
