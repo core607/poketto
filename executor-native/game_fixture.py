@@ -9,7 +9,7 @@ import subprocess
 import threading
 import time
 import uuid
-from native_pool import NativePool
+from native_pool import NativePool, userns_service_args
 
 
 def run(args):
@@ -110,7 +110,7 @@ host_calls = false
         supervisor = str(self.binary)
         run(['systemd-run', '--quiet', '--collect', '--unit', self.supervisor, '--slice', self.pool.name,
              '-p', 'User=root', '-p', 'UMask=0077', '-p', 'Delegate=yes', '-p', 'MemorySwapMax=0',
-             '-p', 'TasksMax=infinity', supervisor, 'serve', '--config', str(self.config_path)])
+             '-p', 'TasksMax=infinity', *userns_service_args(), supervisor, 'serve', '--config', str(self.config_path)])
         deadline = time.monotonic() + 25
         while time.monotonic() < deadline:
             if self.socket.is_socket():

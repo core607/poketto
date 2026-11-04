@@ -102,15 +102,13 @@ class RepositorySandbox:
         self.config.chmod(0o600)
         self.submitted = False
 
-    def start(self):
+    def start(self, userns_args):
         subprocess.run([self.binary, 'check', '--config', self.config], check=True, capture_output=True, timeout=15)
         options = ['Delegate=yes', 'MemorySwapMax=0', 'TasksMax=infinity', 'KillMode=control-group', 'UMask=0077']
-        restricted = Path('/proc/sys/kernel/apparmor_restrict_unprivileged_userns')
-        if restricted.exists() and restricted.read_text().strip() == '1':
-            options.append('AppArmorProfile=sandcrab-service')
         self.submitted = True
         subprocess.run(['systemd-run', '--quiet', '--collect', '--unit', self.unit, '--slice', self.resource_slice,
-                        *[part for value in options for part in ('-p', value)], self.binary, 'serve', '--config', self.config],
+                        *[part for value in options for part in ('-p', value)], *userns_args,
+                        self.binary, 'serve', '--config', self.config],
                        check=True, capture_output=True, timeout=30)
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:

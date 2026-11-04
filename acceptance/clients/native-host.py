@@ -48,7 +48,7 @@ def main():
     with socket.socket() as port_check:
         port_check.bind(('127.0.0.1', args.port))
     sys.path.insert(0, str(REPOSITORY / 'executor-service'))
-    from native_pool import NativePool
+    from native_pool import NativePool, userns_service_args
     token = uuid.uuid4().hex[:8]
     pool = NativePool(token, f'{max(512, 128 * args.agents)}M', max(256, 48 * args.agents))
     root = Path(tempfile.mkdtemp(prefix='poketto-client-', dir='/var/lib'))
@@ -75,7 +75,7 @@ def main():
             path.mkdir(mode=0o700)
             os.chown(path, app_account.pw_uid, app_account.pw_gid)
         repository = RepositorySandbox(root, disk_pool, binary, tools, app_account, exec_user, pool.name, token, args.agents)
-        server_id = repository.start()
+        server_id = repository.start(userns_service_args())
         password = secrets.token_urlsafe(32)
         environment = root / 'database.env'
         private_text(environment, 'POSTGRES_USER=acceptance\nPOSTGRES_DB=acceptance\nPOSTGRES_PASSWORD=' + password + '\n')
