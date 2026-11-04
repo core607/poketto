@@ -16,7 +16,7 @@ Read scope remains a security boundary. A public-only grant must never mount the
 
 Copies use disk storage with kernel-enforced limits. Initial configurable limits are 4 GiB per copy and 32 GiB for the complete executor storage pool, including exports, recovery data and artifacts. Byte limits are ceilings rather than per-copy reservations; inode usage is also bounded. Refuse growth or new admission when capacity is exhausted, preserving existing acknowledged work. Size polling is observation, not enforcement. Keep command temporary storage and command CPU/memory limits separate from stored-copy capacity.
 
-Storage requires a dedicated, size-bounded XFS filesystem with enforced project quotas. An installation on an existing filesystem can use one preallocated loopback image for the aggregate bound; no host-root remount is required. Each copy receives an inherited block and inode hard quota before command access. This reserves aggregate pool capacity, not the full individual allowance for every copy. The worker refuses an absent, oversized or non-enforcing mount. Project identifiers remain allocated across restarts and are not recycled onto another retained copy.
+The signed worker requires a dedicated, size-bounded XFS filesystem with enforced project quotas. An installation on an existing filesystem can use one preallocated loopback image for the aggregate bound; no host-root remount is required. Each copy receives an inherited block and inode hard quota before command access. This reserves aggregate pool capacity, not the full individual allowance for every copy. The worker refuses an absent, oversized or non-enforcing mount. Project identifiers remain allocated across restarts and are not recycled onto another retained copy.
 
 Allocation publishes a copy directory only after its protected identity is durable. Under the project allocation lock, startup and subsequent allocations remove unpublished staging left by an interrupted creator. This cleanup never sweeps published copies by guessing whether application metadata still exists. Runtime lease cleanup can run even when the copy mount fails validation.
 
@@ -28,7 +28,7 @@ Commands are serialized for a shared copy, including host bridge writes and disp
 
 A command timeout keeps the copy once the worker confirms that the command's control group is empty. The result reports the timeout and a nonzero exit code under the same copy ID; earlier edits and the command's partial work remain. Resource exhaustion, cancellation, revocation and unconfirmed containment close the lease, and the disk copy remains for a later lease. A copy whose initialization never completed is discarded by the next `new` admission; a request naming its ID is refused with `RECOVERY_REQUIRED`.
 
-Application continuity uses only the account journal and disk copy. The optional Java checkpoint coordinator, duplicate metadata/original-store lifecycle and obsolete fixtures are removed. Immutable original-file framing, current authorization checks, host save-state receipts, process containment and bounded record publication remain. The MCP interface identifies a copy by ID and returns expiry/interruption information; it does not require a generation counter or an explicit resume switch.
+The signed worker retains a quota volume. The [native backend](../../executor-service/native-repository.md) keeps a verified upper archive with each account's pinned template because session closure releases the live overlay. Imported volumes keep their original binding until disposal or expiry. The copy ID addresses either form across reconnects.
 
 ## Copy identity and disposal
 
@@ -38,7 +38,7 @@ Every `repo_exec` request carries `expectedCopyId`. The literal `new` opens the 
 
 Executor metrics count sessions, operations and admission refusals with fixed reasons. They carry no identity, workspace, command, file path or content labels. The [worker reference](../../executor-service/README.md#working-copy-identity) lists their names.
 
-## Editing and synchronization
+## Signed-worker editing and synchronization
 
 The `poketto edit` CLI operation replaces an exact, nonempty old text with new text in an existing file. Reject missing or ambiguous matches without changing the file. New-file creation must not overwrite an existing path. Keep ordinary shell execution; these edit checks do not claim to prevent deliberate whole-file overwrites or every semantic conflict. Do not require a workspace revision or separate read/write mode on every command.
 

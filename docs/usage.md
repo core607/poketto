@@ -443,15 +443,11 @@ for listings, search, reads and edits, the `poketto` CLI to persist changes, and
 the repository's `AGENTS.md` files as you go. See the
 [CodeAct entrance record](../notes/implemented/2026-09-10-codeact-mcp-entrance.md).
 
-`repo_exec` requires the `EXECUTE_REPOSITORY` capability and
-`POKETTO_EXECUTOR_ENABLED=true`. Configure `POKETTO_EXECUTOR_SOCKET`,
-`POKETTO_EXECUTOR_SIGNING_KEY` and `POKETTO_EXECUTOR_STAGING_DIRECTORY` on the Linux
-application, then install and verify the root supervisor and unprivileged execution account
-as the [worker reference](../executor-service/README.md) describes. The application
-admits four sessions, four concurrent commands and 128 MiB bundles by default, within the
-worker's limits; [.env.example](../deploy/.env.example) also lists per-account command limits
-by site group. A missing worker or unsupported isolation never
-falls back to an ordinary subprocess.
+`repo_exec` requires `EXECUTE_REPOSITORY` and `POKETTO_EXECUTOR_ENABLED=true`.
+On Linux, install and verify the [signed worker](../executor-service/README.md)
+or configure the [native repository backend](../executor-service/native-repository.md).
+[Deployment settings](../deploy/.env.example) control session, command, bundle and
+per-account limits. Unavailable isolation refuses execution.
 
 Request bodies are limited to 128 KiB (413 before any tool runs), a command to 16,384
 characters and an encoded bridge frame to 512 KiB. Refusals carry `code` and
@@ -469,13 +465,14 @@ replay it; inspect the same copy with a read-only command,
 a remote save needs reconciliation. See
 [working-copy identity](../executor-service/README.md#working-copy-identity).
 
-Commands in one live lease share the working directory, environment, shell functions,
+This section describes the default signed worker. See the [native commands and copy lifecycle](../executor-service/native-repository.md) for Sandcrab-backed deployments.
+
+Commands in one live signed lease share the working directory, environment, shell functions,
 aliases, private `/tmp` and background processes. A timeout, output-limit stop, shell
 exit, idle cleanup or lease replacement discards that runtime state but keeps the
 copy's files, including partial work; the next command reports `freshSandbox: true`.
-Idle cleanup follows the worker's `idleUnitSeconds` (1 to 86400; 1800 in the example
-configuration). Background processes stop with the sandbox and cannot run `poketto`
-operations after their command ends.
+The worker's `idleUnitSeconds` controls idle cleanup. Background processes lose
+access to `poketto` when the command ends.
 
 Full-read sessions hold authorized current files and Git history. Public-only
 sessions get the current public projection without history or private metadata,

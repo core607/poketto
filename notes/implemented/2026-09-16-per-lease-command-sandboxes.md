@@ -3,6 +3,8 @@
 Date: 2026-09-16
 Status: Implemented
 
+This decision covers the signed worker. The [native repository backend](../../executor-service/native-repository.md) contains each command shell before capturing its template-backed workspace.
+
 ## Problem
 
 Per-command systemd units discarded working directories, exported variables,
