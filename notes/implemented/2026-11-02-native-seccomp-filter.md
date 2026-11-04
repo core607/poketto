@@ -11,7 +11,7 @@ protected nested PID namespace, potentially exposing an unfiltered, traceable re
 ## Decision
 
 The shared [launcher](../../executor-service/rust/sandcrab-launch/src/seccomp.rs)
-compiles its filter with pinned `seccompiler`, preserving SRT 0.0.75's policy at
+compiles an inherited bootstrap filter with pinned `seccompiler`, preserving SRT 0.0.75's policy at
 `40804af269e1616092e9971de12a1f358f58eba9`:
 
 - Non-x86-64 audit architectures return `KILL_THREAD`.
@@ -19,8 +19,7 @@ compiles its filter with pinned `seccompiler`, preserving SRT 0.0.75's policy at
   `0xffffffff`, which passes through to the kernel.
 - `socket` with the low 32 bits of its domain equal to `AF_UNIX` returns `EPERM`.
 - `io_uring_setup`, `io_uring_enter` and `io_uring_register` return `EPERM`.
-- Other native calls remain allowed, including `socketpair` and `AF_VSOCK` socket
-  creation. Broader denials belong to the separate hardening workstream.
+- The bootstrap filter allows other native calls. Workload filters additionally deny VSOCK.
 
 The references are the upstream
 [generator](https://github.com/anthropics/sandbox-runtime/blob/40804af269e1616092e9971de12a1f358f58eba9/vendor/seccomp-src/seccomp-unix-block.c)
@@ -29,11 +28,12 @@ The x64 helper's SHA-256 is
 `64fa7514fa7199584b836159885e59b9ce3684fb8fef7e13de49965b23f54f6b`.
 Its embedded instructions form the independent test reference.
 
-The launcher passes a sealed, rewound memfd to bubblewrap's `--seccomp FD`.
-Installing the same base filter before exec protects bubblewrap's reaper before
-its own filter installation. Every visible peer inherits these rules. The immutable
-descriptor stays owned until exec and is consumed before the workload.
-Installation failure refuses execution.
+The bootstrap filter protects bubblewrap and its reaper before sandbox setup.
+The launcher passes a sealed, rewound workload filter to bubblewrap's `--seccomp`.
+Applying mount and namespace denials before setup would prevent bubblewrap from
+constructing the sandbox. The stronger rules take effect before guest execution.
+The fixed overlay exporter alone may clone its private view with `open_tree` on
+`AT_FDCWD` and the required flags. Failure to install a filter refuses execution.
 
 The [bundled helper's patch](../../executor-service/rust/sandcrab-launch/bwrap/loopback-index.patch)
 keeps musl's loopback lookup compatible with inherited AF_UNIX denial. Helper
@@ -57,7 +57,6 @@ helper's x32 guard. Explicit guards preserve the existing behavior.
 The release owns the filter and checksummed bubblewrap. Sandcrab needs no Node.js,
 npm or SRT; Poketto separately provisions Node for commands and games.
 
-`executorRustCheck` compares generated actions with the pinned helper and verifies
-descriptor seals. The native probe checks rule equivalence, visible peers and FD
-consumption; launcher, worker and game probes cover consumers and cleanup.
-These establish neither kernel isolation nor broader hardening.
+`executorRustCheck` compares bootstrap actions with the pinned helper and verifies
+workload actions and descriptor seals. The native conformance suite probes the kernel
+rules, visible processes, descriptor consumption and application runtimes.
