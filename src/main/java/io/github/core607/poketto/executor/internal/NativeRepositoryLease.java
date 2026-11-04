@@ -209,6 +209,13 @@ final class NativeRepositoryLease {
         return deadline - System.nanoTime() <= margin.toNanos();
     }
 
+    int runMaintenance(String source) {
+        try (var shell = new NativeMaintenanceShell(client, this)) {
+            shell.open();
+            return shell.execute(source, remaining());
+        }
+    }
+
     SandcrabProtocol.CommandPlan maintenanceCommand(String source, Duration budget) {
         long millis = Math.max(1, Math.min(setupTimeout.toMillis(), budget.toMillis()));
         return new SandcrabProtocol.CommandPlan(

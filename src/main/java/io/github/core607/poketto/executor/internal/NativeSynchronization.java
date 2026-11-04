@@ -58,6 +58,9 @@ final class NativeSynchronization {
             if (!state.nativePlan.files().containsKey(path)) {
                 prepareFile(actor, workspace, held, lease, state, inputs, path);
             }
+            if (!advanced) {
+                files.prepareDirectories(lease, state.nativePlan.id());
+            }
             files.stage(held, lease, state.nativePlan, path);
             state.retainPlan(state.nativePlan.staged(path));
             advanced = true;

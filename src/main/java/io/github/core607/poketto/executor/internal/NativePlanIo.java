@@ -117,6 +117,41 @@ final class NativePlanIo {
         }
     }
 
+    void prepareDirectories(NativeRepositoryLease lease, UUID plan) {
+        String source = """
+                /usr/bin/python3 -I - %s <<'POKETTO_PLAN_DIRS'
+                import errno, os, sys
+                flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                def directory(parent, name):
+                    try:
+                        os.mkdir(name, 0o700, dir_fd=parent)
+                    except FileExistsError:
+                        pass
+                    return os.open(name, flags, dir_fd=parent)
+
+                parent = os.open('/workspace', flags)
+                try:
+                    for name in ('work', 'repository'):
+                        parent = os.open(name, flags, dir_fd=parent)
+                    for name in ('.poketto', 'plans', sys.argv[1]):
+                        parent = directory(parent, name)
+                    for name in ('original', 'candidate'):
+                        os.close(directory(parent, name))
+                except OSError as error:
+                    if error.errno in (errno.ENOTDIR, errno.ELOOP):
+                        sys.exit(20)
+                    raise
+                POKETTO_PLAN_DIRS""".formatted(plan);
+        int exit = lease.runMaintenance(source);
+        if (exit == 20) {
+            throw new UnsupportedPath(".poketto/plans/" + plan);
+        }
+        if (exit != 0) {
+            throw new WorkerUnavailableException(
+                    new IllegalStateException("Preparing plan directories exited " + exit));
+        }
+    }
+
     void stage(AccountCommand held, NativeRepositoryLease lease, NativeRepositoryPlan plan, String path) {
         NativeRepositoryPlan.File file = plan.files().get(path);
         materialize(held, lease, plan.id(), file.original(), destination(plan.id(), "original", file.original()));
@@ -160,7 +195,7 @@ final class NativePlanIo {
         private final String path;
 
         UnsupportedPath(String path) {
-            super("A selected plan path is not a regular file or confirmed absence");
+            super("A path in the working copy has an incompatible type");
             this.path = path;
         }
 
