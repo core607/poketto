@@ -23,7 +23,7 @@ class AccountCopyTransitionTests {
     @Test
     void onlyARefreshingPublicCopyIsRepinnedToANewProjectionInOneWrite() {
         var refreshing = record(0, AccountCopyRecord.Phase.REFRESHING, FIRST);
-        assertThatCode(() -> AccountCopyStore.requireTransition(
+        assertThatCode(() -> AccountCopyTransitions.requireTransition(
                         owner, refreshing, record(1, AccountCopyRecord.Phase.REFRESHING, SECOND), expiry))
                 .doesNotThrowAnyException();
 
@@ -31,16 +31,16 @@ class AccountCopyTransitionTests {
         for (var next : new AccountCopyRecord[] {
             record(1, AccountCopyRecord.Phase.READY, SECOND), record(1, AccountCopyRecord.Phase.REFRESHING, SECOND)
         }) {
-            assertThatThrownBy(() -> AccountCopyStore.requireTransition(owner, ready, next, expiry))
+            assertThatThrownBy(() -> AccountCopyTransitions.requireTransition(owner, ready, next, expiry))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("pinned");
         }
-        assertThatThrownBy(() -> AccountCopyStore.requireTransition(
+        assertThatThrownBy(() -> AccountCopyTransitions.requireTransition(
                         owner, refreshing, record(1, AccountCopyRecord.Phase.READY, SECOND), expiry))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("pinned");
         var discarding = record(0, AccountCopyRecord.Phase.DISCARDING, FIRST);
-        assertThatThrownBy(() -> AccountCopyStore.requireTransition(
+        assertThatThrownBy(() -> AccountCopyTransitions.requireTransition(
                         owner, discarding, record(1, AccountCopyRecord.Phase.REFRESHING, SECOND), expiry))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("executable again");

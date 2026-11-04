@@ -4,21 +4,16 @@ import static io.github.core607.poketto.executor.internal.SessionWorker.requireL
 import static io.github.core607.poketto.executor.internal.SessionWorker.requireOk;
 
 import io.github.core607.poketto.assets.MediaFileService;
-import io.github.core607.poketto.auth.AuthException;
 import io.github.core607.poketto.auth.AuthPrincipal;
 import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.SiteGroup;
-import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.PortableContentExports;
-import io.github.core607.poketto.content.RepositoryEmptyException;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
-import io.github.core607.poketto.mcp.RepositoryExecutor;
-import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -38,10 +33,9 @@ import org.springframework.context.event.EventListener;
 import tools.jackson.databind.JsonNode;
 
 /** Owns account-copy admission, command execution and lease containment; the bridge handles CLI operations. */
-final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoCloseable {
+final class IsolatedRepositoryExecutor implements RepositoryRuntime, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(IsolatedRepositoryExecutor.class);
-    // An agent thinks between its commands; a copy used within this window still belongs to it,
-    // so another agent asking for a new copy gets its own rather than a turn in this one.
+    // An agent retains its claim between commands; another agent asking for a new copy gets a fork.
     private static final Duration AGENT_CLAIM = Duration.ofMinutes(2);
     private final SessionWorker io;
     private final SessionRepositoryCommands repository;
@@ -93,7 +87,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         this.artifacts = new SessionArtifacts(registry, io, lifecycle, accounts);
     }
 
-    void checkWorker() {
+    @Override
+    public void checkWorker() {
         worker.hello();
     }
 
@@ -143,11 +138,13 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                         slot.close();
                     }
                 } catch (ExecutionAdmissionException refused) {
-                    throw refused.copyId().isPresent() ? refused : admissionFailure(refused, held.record());
+                    throw refused.copyId().isPresent()
+                            ? refused
+                            : AccountCopyFailures.admission(refused, held.record());
                 }
             } catch (RuntimeException failure) {
                 timings.failed();
-                throw admissionFailure(failure, null);
+                throw AccountCopyFailures.admission(failure, null);
             }
         } finally {
             timings.record();
@@ -248,6 +245,9 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
             ExecutionCancellation cancellation) {
         ExecutionSession.Key key = lifecycle.keyFor(held.owner());
         var record = held.record();
+        if (record != null && record.writer().storage() != null) {
+            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.RECOVERY_REQUIRED, true);
+        }
         registry.requireCopyMatch(record, expected);
         WorkerClient.Hello hello = worker.hello();
         ExecutionSession previous = registry.openSession(key);
@@ -380,7 +380,7 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
                 throw new ExecutionUnconfirmedException(
                         session.copyId.toString(), unconfirmedView(session, held), true, failure);
             }
-            throw admissionFailure(failure, held.record());
+            throw AccountCopyFailures.admission(failure, held.record());
         }
     }
 
@@ -423,35 +423,6 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         }
     }
 
-    static RuntimeException admissionFailure(RuntimeException failure, AccountCopyRecord record) {
-        if (failure instanceof ExecutionAdmissionException refused) {
-            return record == null ? refused : refused.withCopyId(record.copyId().toString());
-        }
-        if (failure instanceof ExecutionUnconfirmedException
-                || failure instanceof AuthException
-                || failure instanceof SecurityException
-                || failure instanceof IllegalArgumentException
-                || failure instanceof SessionReplacedException
-                || failure instanceof ContentRepositoryException
-                || failure instanceof RepositoryEmptyException) {
-            return failure;
-        }
-        log.warn("Account copy admission failed", failure);
-        ExecutionAdmissionException.Reason reason = failure instanceof RetainedCopyException retained
-                ? switch (retained.reason()) {
-                    case MISSING -> ExecutionAdmissionException.Reason.MISSING_COPY;
-                    case EXPIRED -> ExecutionAdmissionException.Reason.EXPIRED;
-                    case BUSY -> ExecutionAdmissionException.Reason.BUSY;
-                    case LIMIT -> ExecutionAdmissionException.Reason.CAPACITY;
-                    case STALE, UNCERTAIN -> ExecutionAdmissionException.Reason.RECOVERY_REQUIRED;
-                    case UNAVAILABLE -> ExecutionAdmissionException.Reason.UNAVAILABLE;
-                }
-                : ExecutionAdmissionException.Reason.UNAVAILABLE;
-        boolean available = record != null && record.expiresAt() > System.currentTimeMillis();
-        var refused = new ExecutionAdmissionException(reason, available, failure);
-        return record == null ? refused : refused.withCopyId(record.copyId().toString());
-    }
-
     @Override
     public DiscardResult discard(
             AuthPrincipal principal,
@@ -461,7 +432,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return disposal.discard(principal, workspace, request, cancellation);
     }
 
-    int collectExpiredCopies() {
+    @Override
+    public int collectExpiredCopies() {
         return disposal.collectExpiredCopies();
     }
 
@@ -476,7 +448,8 @@ final class IsolatedRepositoryExecutor implements RepositoryExecutor, AutoClosea
         return artifacts.read(principal, workspace, artifactId, offset, limit, cancellation);
     }
 
-    void bindMetrics(MeterRegistry meters) {
+    @Override
+    public void bindMetrics(MeterRegistry meters) {
         registry.bindMetrics(meters);
     }
 

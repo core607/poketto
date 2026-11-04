@@ -35,6 +35,8 @@ record AccountCopyRecord(
                 phase != Phase.REFRESHING || !owner.fullRead(), "refreshing copy", "must be a public projection");
         if (!owner.fullRead()) {
             ProtocolValues.require(original == null, "public baseline", "must not contain a private archive");
+            ProtocolValues.require(
+                    state.nativePlan() == null, "public copy", "must not retain a private preparation plan");
         } else if (phase != Phase.INITIALIZING && phase != Phase.DISCARDING) {
             Objects.requireNonNull(original, "a ready full copy requires its immutable original baseline");
         }
@@ -87,12 +89,77 @@ record AccountCopyRecord(
         }
     }
 
-    record Writer(UUID principalId, UUID workerBootId, UUID appBootId, UUID leaseId) {
+    record Writer(UUID principalId, UUID workerBootId, UUID appBootId, UUID leaseId, NativeStorage storage) {
+        Writer(UUID principalId, UUID workerBootId, UUID appBootId, UUID leaseId) {
+            this(principalId, workerBootId, appBootId, leaseId, null);
+        }
+
+        boolean sameBinding(Writer other) {
+            if (equals(other)) {
+                return true;
+            }
+            return storage != null
+                    && storage.templateId() != null
+                    && other != null
+                    && other.storage() != null
+                    && new Writer(
+                                    principalId,
+                                    workerBootId,
+                                    appBootId,
+                                    leaseId,
+                                    storage.withUpper(other.storage().upper()))
+                            .equals(other);
+        }
+
         Writer {
             Objects.requireNonNull(principalId, "writer grant must be present");
             Objects.requireNonNull(workerBootId, "worker epoch must be present");
             Objects.requireNonNull(appBootId, "application epoch must be present");
             Objects.requireNonNull(leaseId, "lease must be present");
+        }
+    }
+
+    /** The application binds an account copy to ordinary Sandcrab storage; labels grant no authority. */
+    record NativeStorage(
+            UUID volumeId, String profile, long byteLimit, long inodeLimit, String templateId, Upper upper) {
+        NativeStorage(UUID volumeId, String profile, long byteLimit, long inodeLimit) {
+            this(volumeId, profile, byteLimit, inodeLimit, null, null);
+        }
+
+        NativeStorage {
+            ProtocolValues.require(
+                    (volumeId == null) != (templateId == null), "native storage", "requires one volume or template");
+            templateId = templateId == null ? null : ProtocolValues.hex(templateId, 64, "copy template");
+            ProtocolValues.require(
+                    upper == null || (templateId != null && upper.bytes() <= byteLimit),
+                    "overlay checkpoint",
+                    "must fit its template-backed copy");
+            requireLimits(profile, byteLimit, inodeLimit);
+        }
+
+        static void requireLimits(String profile, long byteLimit, long inodeLimit) {
+            SandcrabProtocol.profile(profile);
+            ProtocolValues.inRange(byteLimit, 1_048_576, 1L << 50, "native volume byte limit");
+            ProtocolValues.require(byteLimit % 1024 == 0, "native volume byte limit", "must be a multiple of 1024");
+            ProtocolValues.inRange(inodeLimit, 32, 1_000_000, "native volume inode limit");
+        }
+
+        NativeStorage withUpper(Upper change) {
+            return new NativeStorage(volumeId, profile, byteLimit, inodeLimit, templateId, change);
+        }
+
+        void requireVolume(SandcrabVolume volume) {
+            ProtocolValues.require(volumeId.toString().equals(volume.id()), "native volume", "must match its copy");
+            ProtocolValues.require(profile.equals(volume.profile()), "native profile", "must match its copy");
+            ProtocolValues.require(byteLimit == volume.byteLimit(), "native byte limit", "must match its copy");
+            ProtocolValues.require(inodeLimit == volume.inodeLimit(), "native inode limit", "must match its copy");
+        }
+    }
+
+    record Upper(long bytes, String sha256) implements AccountCopyFiles.Content {
+        Upper {
+            ProtocolValues.inRange(bytes, 1024, 1_073_741_824, "overlay archive bytes");
+            sha256 = ProtocolValues.hex(sha256, 64, "overlay archive digest");
         }
     }
 
@@ -113,6 +180,7 @@ record AccountCopyRecord(
      */
     enum Phase {
         INITIALIZING,
+        ATTACHING,
         READY,
         RUNNING,
         INTERRUPTED,

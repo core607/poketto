@@ -12,7 +12,7 @@ public final class ExecutionAdmissionException extends RuntimeException {
         BUSY,
         CAPACITY,
         UNAVAILABLE,
-        /** Publication changed under a public copy that has local work; the copy is kept untouched. */
+        /** Publication changed under a public copy; its files are kept untouched. */
         PUBLICATION_CHANGED
     }
 
@@ -39,7 +39,7 @@ public final class ExecutionAdmissionException extends RuntimeException {
     }
 
     /**
-     * The kept copy is named because a caller that sent {@code new} needs its ID to discard it; the
+     * The kept copy is named so a caller can address or explicitly discard it; the
      * ID is not a credential, since discarding still requires the account's current authorization.
      */
     public static ExecutionAdmissionException publicationChanged(String copyId) {

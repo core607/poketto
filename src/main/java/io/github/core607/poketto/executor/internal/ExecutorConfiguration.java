@@ -35,11 +35,51 @@ class ExecutorConfiguration {
     private static final Logger log = LoggerFactory.getLogger(ExecutorConfiguration.class);
 
     @Bean
-    MeterBinder executorMetrics(IsolatedRepositoryExecutor executor) {
+    MeterBinder executorMetrics(RepositoryRuntime executor) {
         return executor::bindMetrics;
     }
 
     @Bean
+    @ConditionalOnProperty(name = "poketto.executor.backend", havingValue = "native")
+    NativeRepositoryExecutor nativeRepositoryExecutor(
+            AccountCopyStore accounts,
+            AuthService auth,
+            RepositorySnapshotExports exports,
+            MediaFileService media,
+            PortableContentExports packages,
+            AuthorizedRepositoryReader reader,
+            RepositoryPatchService patches,
+            RepositoryMoveService moves,
+            @Value("${poketto.executor.socket}") Path socket,
+            ExecutionLimits limits,
+            @Value("${poketto.executor.transfers.directory}") Path transfers,
+            @Value("${poketto.executor.transfers.max-bytes:1073741824}") long transferBytes,
+            @Value("${poketto.executor.profile:repository}") String profile,
+            @Value("${poketto.executor.copies.bytes}") long copyBytes,
+            @Value("${poketto.executor.copies.inodes}") long copyInodes) {
+        if (!System.getProperty("os.name").equalsIgnoreCase("Linux")) {
+            throw new IllegalStateException("The native repository service requires Linux containment");
+        }
+        // Validate persisted volume bounds before acquiring the private transfer store's owner lock.
+        AccountCopyRecord.NativeStorage.requireLimits(profile, copyBytes, copyInodes);
+        return NativeRepositoryRuntime.create(
+                sandcrabClient(socket),
+                auth,
+                accounts,
+                exports,
+                new SelectedFileSaves(auth, reader, patches, moves),
+                media,
+                packages,
+                limits,
+                transfers,
+                transferBytes,
+                profile,
+                copyBytes,
+                copyInodes);
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "poketto.executor.backend", havingValue = "signed", matchIfMissing = true)
     IsolatedRepositoryExecutor isolatedRepositoryExecutor(
             AccountCopyStore accounts,
             AuthService auth,
