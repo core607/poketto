@@ -33,11 +33,16 @@ def main():
     args = parser.parse_args()
     if os.geteuid() != 0 or min(args.uid, args.gid) <= 0 or os.environ.get('RUNNER_ENVIRONMENT') != 'github-hosted':
         parser.error('Run as root on a disposable hosted runner with an unprivileged client UID and GID')
-    if shutil.disk_usage('/var/lib').free < 12 * 1024**3:
-        parser.error('The complete-corpus fixture needs 12 GiB of free disk')
     output = args.output.absolute()
     output.mkdir(mode=0o755)
-    root = Path(tempfile.mkdtemp(prefix='labcorpus-', dir='/var/lib'))
+    available = {path: shutil.disk_usage(path).free for path in (Path('/var/lib'), Path('/mnt'))
+                 if path.is_dir() and path.resolve() == path and path.stat().st_uid == 0 and not path.stat().st_mode & 0o022}
+    receipt = {'result': 'FAIL', 'cleanup': 'NOT_STARTED', 'freeBytes': {str(p): size for p, size in available.items()}}
+    parent = next((p for p, size in available.items() if size >= 12 * 1024**3), None)
+    if parent is None:
+        (output / 'host.json').write_text(json.dumps(receipt, indent=2) + '\n')
+        parser.error('The complete-corpus fixture needs 12 GiB of free disk on a protected host filesystem')
+    root = Path(tempfile.mkdtemp(prefix='labcorpus-', dir=parent))
     unit = 'labcorpus-' + uuid.uuid4().hex[:12] + '.service'
     controller = 'labclient-' + uuid.uuid4().hex[:12] + '.service'
     cgroup = Path('/sys/fs/cgroup/system.slice') / unit
@@ -46,7 +51,7 @@ def main():
     socket = root / 'runtime/control.sock'
     started = False
     controller_started = False
-    receipt = {'result': 'FAIL', 'cleanup': 'UNCONFIRMED'}
+    receipt.update(cleanup='UNCONFIRMED', fixtureFilesystem=str(parent))
     def interrupted(signum, frame):
         raise InterruptedError('Corpus acceptance interrupted')
     signal.signal(signal.SIGTERM, interrupted)
@@ -151,7 +156,7 @@ host_calls = false
                 run('umount', target)
             mounts = run('findmnt', '-rn', '-o', 'TARGET').stdout.splitlines()
             assert all(not Path(mount).is_relative_to(root) for mount in mounts)
-            assert root.resolve() == root and root.parent == Path('/var/lib') and root.name.startswith('labcorpus-')
+            assert root.resolve() == root and root.parent == parent and root.name.startswith('labcorpus-')
             shutil.rmtree(root)
             receipt['cleanup'] = 'PASS'
         finally:
