@@ -6,7 +6,7 @@ Partially superseded by: [Native Seccomp Filter](2026-11-02-native-seccomp-filte
 
 ## Problem
 
-Each [per-lease sandbox](2026-09-16-per-lease-command-sandboxes.md) retains its launcher. SRT 0.0.75 starts Node.js, HTTP/SOCKS proxies and three `socat` bridges even with no allowed domains. These consume memory and tasks; exceeding `maxLiveUnits` makes eviction repeat startup CPU work, bounded by `maxStartingUnits` admission refusals.
+Each [per-lease sandbox](../archived/2026-09-16-per-lease-command-sandboxes.md) retains its launcher. SRT 0.0.75 starts Node.js, HTTP/SOCKS proxies and three `socat` bridges even with no allowed domains. These consume memory and tasks; exceeding `maxLiveUnits` makes eviction repeat startup CPU work, bounded by `maxStartingUnits` admission refusals.
 
 The worker needs no proxy, but omitting SRT's network section removes isolation and its CLI has no isolated proxy-free mode. Compilation caching retains Node bootstrap, module evaluation and proxies.
 
@@ -28,7 +28,7 @@ The containment contract is:
 
 Supervisors and unprivileged launchers verify the [bundled helper's](../../executor-service/rust/sandcrab-launch/bwrap/README.md) checksum before serving and per execution. Binaries and ancestors remain root-owned, nonsymlink and unwritable by other accounts. Cleanup precedes validation, including with damaged tools.
 
-[Coordinated delivery](2026-10-19-coordinated-worker-delivery.md) binds the helper to the launcher's immutable generation, preserving operator workload tools/configuration and restoring the previous generation after failed startup. Acceptance requires a post-deployment read-only MCP sandbox command. Workload-tool upgrades remain explicit operator work.
+[Coordinated delivery](../archived/2026-10-19-coordinated-worker-delivery.md) binds the helper to the launcher's immutable generation, preserving operator workload tools/configuration and restoring the previous generation after failed startup. Acceptance requires a post-deployment read-only MCP sandbox command. Workload-tool upgrades remain explicit operator work.
 
 ### Resource evidence
 

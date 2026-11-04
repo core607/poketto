@@ -444,13 +444,12 @@ the repository's `AGENTS.md` files as you go. See the
 [CodeAct entrance record](../notes/implemented/2026-09-10-codeact-mcp-entrance.md).
 
 `repo_exec` requires `EXECUTE_REPOSITORY` and `POKETTO_EXECUTOR_ENABLED=true`.
-On Linux, install and verify the [signed worker](../executor-service/README.md)
-or configure the [native repository backend](../executor-service/native-repository.md).
+On Linux, configure the [native repository service](../executor-service/native-repository.md).
 [Deployment settings](../deploy/.env.example) control session, command, bundle and
 per-account limits. Unavailable isolation refuses execution.
 
-Request bodies are limited to 128 KiB (413 before any tool runs), a command to 16,384
-characters and an encoded bridge frame to 512 KiB. Refusals carry `code` and
+Request bodies are limited to 128 KiB (413 before any tool runs) and a command to
+16,384 characters. Refusals carry `code` and
 `reason`. See [MCP request admission removal](../notes/implemented/2026-09-15-mcp-request-admission-removal.md).
 
 `repo_exec` requires `expectedCopyId`: pass `"new"` to open the account's default
@@ -463,66 +462,49 @@ expiry and discard remove local work. `SESSION_REPLACED` and `EXECUTION_REFUSED`
 replay it; inspect the same copy with a read-only command,
 `retention.lastInterruptedCommand` and `poketto status`, and use `poketto recover` when
 a remote save needs reconciliation. See
-[working-copy identity](../executor-service/README.md#working-copy-identity).
+[working-copy identity](../executor-service/native-repository.md#working-copies).
 
-This section describes the default signed worker. See the [native commands and copy lifecycle](../executor-service/native-repository.md) for Sandcrab-backed deployments.
+New template-backed copies start a fresh shell for each command and report
+`freshSandbox: true`. Keep state needed by later commands in files. Successful
+capture records the writable layer in the account journal so it can survive a new
+application process. Imported copies keep their volume until disposal or expiry.
 
-Commands in one live signed lease share the working directory, environment, shell functions,
-aliases, private `/tmp` and background processes. A timeout, output-limit stop, shell
-exit, idle cleanup or lease replacement discards that runtime state but keeps the
-copy's files, including partial work; the next command reports `freshSandbox: true`.
-The worker's `idleUnitSeconds` controls idle cleanup. Background processes lose
-access to `poketto` when the command ends.
+Full-read copies contain authorized files and Git history. Public copies contain
+a parentless publication projection and report `PUBLIC_PROJECTION` with its
+synthetic commit. A changed publication refuses the old copy with
+`PUBLICATION_CHANGED`. Dispose that copy and request `new` for current publication.
 
-Full-read sessions hold authorized current files and Git history. Public-only
-sessions get the current public projection without history or private metadata,
-report `PUBLIC_PROJECTION` with a synthetic commit, and cannot save. When publication
-changes, a public copy without local changes is rebuilt under the same `copyId` before
-the next command, which reports `refreshed: true` and the new commit; a copy with local
-changes, including any file in `$HOME` or beside the repository, is left untouched and
-refused with `PUBLICATION_CHANGED` until `repo_discard` removes it.
-
-`poketto edit PATH --old TEXT --new TEXT` replaces one exact occurrence in an existing
-local text file, refusing missing or ambiguous text. `poketto create PATH --text TEXT`
-creates a file only when the path is absent. For long text, `create` accepts `--stdin`
-or `--text-file FILE`, and `edit` accepts `--old-file FILE` for `--old` and
-`--new-stdin` or `--new-file FILE` for `--new`. Input is UTF-8 and keeps final
-newlines; input files resolve from the shell's current directory, while target paths
-stay repository-relative. These options do not raise the command or frame bounds.
-Both commands recheck the local bytes before writing, unlike plain shell writes, and
-change nothing remote until `poketto save`.
+Use shell or Python for local editing. This example creates a UTF-8 file and fails
+if the path already exists.
 
 ```sh
-poketto create private/article.md --stdin <<'MARKDOWN'
-# Article
-
-Quotes, `$variables` and backticks remain ordinary Markdown.
-MARKDOWN
+python3 - <<'PY'
+from pathlib import Path
+article = Path("private/article.md")
+article.parent.mkdir(parents=True, exist_ok=True)
+with article.open("x", encoding="utf-8") as stream:
+    stream.write("# Article\n\nDraft text.\n")
+PY
 ```
 
-`poketto save` commits selected files and explicit deletions, keeping other edits
-local, and checks each selected file against the remote. In full-read copies an
-acknowledged save or move also updates local Git HEAD; `repo_exec.commit` and
-`poketto status.gitCommit` report that baseline. If status shows
-`localBaselinePending`, run `poketto recover` instead of saving again.
+`poketto save` commits selected files and explicit deletions. The host checks each
+selected path against its remote baseline and verifies its captured SHA-256.
+An acknowledged save or move also advances local Git HEAD. `repo_exec.commit`
+and `poketto status.gitCommit` report that baseline. If status shows
+`localBaselinePending`, use `poketto recover` to finish the retained Git update.
 
-`poketto status` in full-read copies compares remote `main` with the last confirmed
-base: `remote.state` is `MATCHES_BASE`, `DIFFERS_FROM_BASE` or `UNAVAILABLE`. Status
-never changes files. `poketto sync` merges the whole workspace with one remote
-revision, keeping local-only files and conflicting binary bytes and marking
-overlapping text edits with LOCAL/BASE/REMOTE sections; it saves nothing remotely.
-After an interruption, status shows `syncPending`; `poketto recover` continues and
-`poketto recover --skip-local` releases the operation without undoing installed
-files. A sync that runs short of command time stops with `SYNC_INCOMPLETE` and keeps
-its progress; run `poketto sync` again or give `repo_exec` a larger `timeoutSeconds`.
-See [workspace synchronization](../notes/implemented/2026-09-15-workspace-synchronization.md).
+`poketto status` reads acknowledged local state. Add `--remote` to compare it with
+remote main. `poketto sync prepare` produces candidates, and `poketto plan show PLAN`
+lists their paths and hashes. Inspect the candidates, edit the working files and
+run `poketto sync accept PLAN --expect PATH=SHA256` for each accepted path, using
+`--absent PATH` for an intended absence. Acceptance records the remote baselines.
+Use `poketto plan release PLAN` when the plan is finished.
 
-`poketto move SOURCE DESTINATION` moves saved files, directories and indexed media
-and repairs Markdown references in one remote commit; dirty selected files and
-occupied destinations are refused. If local installation is then pending, run
-`poketto recover` before another save, move or sync. If local changes block it,
-`poketto recover --skip-local` accepts the remote move without touching local files;
-run `poketto sync` before saving affected paths.
+For a saved move, start with `poketto move prepare SOURCE DESTINATION`. Apply the
+candidate file, link and index changes locally, then verify paths through
+`poketto move accept PLAN` with the same hash or absence arguments. The last
+acceptance requests the remote move. `poketto move recover PLAN` reconciles an
+uncertain attempt. See the [native command contract](../executor-service/native-repository.md#repository-commands).
 
 `repo_discard` with the exact `expectedCopyId` deletes the copy and its unsaved work.
 It needs execution permission and ownership of the copy; busy copies are refused.
@@ -530,26 +512,29 @@ It needs execution permission and ownership of the copy; busy copies are refused
 Retry an unconfirmed discard only with the same ID. Discarding never undoes remote
 commits.
 
-`poketto media import` stores an immutable original and updates the local media
-index; save the index with the referring text to persist the reference.
-`poketto media link PATH --asset ID --revision REV` adds an already uploaded original.
+`poketto media import` stores an immutable original and returns an index entry.
+`poketto media link PATH --asset ID --revision REV` returns an entry for an already
+uploaded original. Add the entry to `.poketto/assets.json`, then save the index
+with the referring text.
 `poketto media fetch` and `poketto media list` read the local index or, in full-read
 sessions, a historical `--commit`; public sessions see only approved media. Page
 `media list` with the returned `nextOffset` and `indexVersion`, keeping `--prefix` and
 `--commit` unchanged. Historical listing can return `MEDIA_UNAVAILABLE` while
 original reads are busy. See `poketto --help` and the
-[worker reference](../executor-service/README.md) for limits and conflicts.
+[native command reference](../executor-service/native-repository.md#repository-commands) for limits and conflicts.
 
 `poketto artifact create FILE --type MIME` keeps an immutable, temporary result that
 `get_artifact` returns to any MCP request of the same account, workspace and reading
 scope, as a rendered image or text or binary pages; long command output also supplies
-artifact handles. Handles expire after five minutes or when the lease closes, for
-example when another credential of the account takes over the copy. See
-[returned artifacts](../executor-service/README.md#returned-artifacts).
+artifact handles. A handle remains bound to its original copy across shell
+replacement. Removal, five-minute expiry, copy disposal or application restart
+releases it. Each read checks the caller's current grant and public projection.
+See the [native artifact contract](../executor-service/native-repository.md#repository-commands).
 
 `put_asset` imports an image and returns `assetId`, `revision`, `reference`,
-`mediaType` and `size`; link it with `poketto media link` and save the text and
-`.poketto/assets.json`. Uploading alone neither saves nor publishes. Each call takes
+`mediaType` and `size`. Use `poketto media link`, add its returned index entry to
+`.poketto/assets.json`, and save the index with the text. Uploading alone neither
+saves nor publishes. Each call takes
 an `operationKey`, reused for identical retries, and one source:
 
 - `url`: a public HTTPS image address on port 443, fetched within three redirects,
@@ -593,8 +578,8 @@ To enable `repo_exec` on a fresh installation, provision the [native repository 
 
 For an operator-owned Compose installation,
 [existing-installation delivery](../notes/implemented/2026-09-08-existing-installation-delivery.md)
-updates app/frontend images, explicitly supplied identity settings, and matching
-[worker sources](../executor-service/README.md#automatic-source-updates) when execution is enabled.
+updates app/frontend images and explicitly supplied identity settings. Enabled
+execution verifies the [independently installed native service](../executor-service/native-repository.md#existing-installation-delivery).
 Install the current protected updater and set `POKETTO_DEPLOY_LAYOUT=existing`.
 `POKETTO_DEPLOY_MODE` is `pull` (the host fetches both digests from the canonical
 registry with the deployment job's package-read token) or `transfer` (a checksummed

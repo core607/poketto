@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "scope": "Poketto native-only consumer verification on a disposable local Linux host",
+  "baseCommit": "5f7e719352a9aaf24dfdd992da2b83bc5064f890",
+  "release": {
+    "version": "v0.1.1",
+    "binarySha256": "de7de59f292a067dca7f034ffd971f17dd126e984ac624bb892db808d38853d6"
+  },
+  "gameAttempts": [
+    {
+      "attempt": "native-game-trial1-results",
+      "result": "FAIL",
+      "cleanup": "PASS",
+      "receiptSha256": "1f66f9f33dabd2c9064a7b05741ea0751164b9b6b78f961a222c8851ee5ade58",
+      "failure": "AssertionError: Native game Java probe failed; retain its diagnostic output"
+    },
+    {
+      "attempt": "native-game-trial2-results",
+      "result": "FAIL",
+      "cleanup": "PASS",
+      "receiptSha256": "275ff32619e6f4089a564cb5b037e466bec9b27af58c7368ba8832af7a4f79e4",
+      "failure": "KeyError: 'sessions'"
+    },
+    {
+      "attempt": "native-game-trial3-results",
+      "result": "FAIL",
+      "cleanup": "PASS",
+      "receiptSha256": "48886eeb3995462e2483cffcca80291d7ed5c67d81421204c28d12f4de62d979",
+      "failure": "AssertionError: Native game service did not become ready"
+    },
+    {
+      "attempt": "native-game-trial4-results",
+      "result": "FAIL",
+      "cleanup": "PASS",
+      "receiptSha256": "a07652b837701a20ed9177202646ee840737b4a4f22d7bce48ea497de2c475a7",
+      "failure": "AssertionError: previous game fixture unit and delegated cgroup were not collected"
+    },
+    {
+      "attempt": "native-game-trial5-results",
+      "result": "PASS",
+      "cleanup": "PASS",
+      "receiptSha256": "58ab8674bec671d1ed4c37553e9581436ac30a8ef4c2b30c3b8fec7715255b7f"
+    }
+  ],
+  "releaseEntryAttempt": {
+    "attempt": "packet1",
+    "workspaces": {
+      "result": "PASS",
+      "cleanup": "PASS",
+      "checks": 7,
+      "runtimeManifestSha256": "f059d6245d94222cc60ab9ea75a34d432e2d1aff16931b3d470948160a0e4dec"
+    },
+    "games": {
+      "result": "PASS",
+      "cleanup": "PASS",
+      "checks": 7,
+      "simultaneousKernelObservation": true,
+      "runtimeManifestSha256": "f059d6245d94222cc60ab9ea75a34d432e2d1aff16931b3d470948160a0e4dec"
+    },
+    "load": {
+      "result": "FAIL",
+      "afterWarmup": {
+        "calls": 8,
+        "p50": 53.296,
+        "p95": 63.299,
+        "p99": 63.299,
+        "okRate": 0.0,
+        "callsPerSecond": 0.13,
+        "outcomes": {
+          "EXECUTION_REFUSED:BUSY": 8
+        }
+      },
+      "receiptSha256": "85a9b62b5c3fab30351383ecd384c66cdadafd24928762ad3e64538fba0a8e59"
+    },
+    "cleanup": "FAIL",
+    "manualRecovery": {
+      "result": "PASS",
+      "receiptSha256": "352f660055cce11e11a4cebdfd13d4a68704d61b43b1fe0cac5908e0d7a78562"
+    },
+    "issue": "https://github.com/core607/poketto/issues/409"
+  },
+  "clientAttempt": {
+    "attempt": "final1",
+    "runtimeManifestSha256": "c93dfc64ce6000f5ec127fe4f4a577ad2a88db62f67e2241ed21294c8958f18f",
+    "residentBuildDaemons": 0,
+    "load": {
+      "result": "PASS",
+      "agents": 8,
+      "seconds": 90,
+      "warmupSeconds": 30.0,
+      "afterWarmup": {
+        "calls": 210,
+        "p50": 0.236,
+        "p95": 0.276,
+        "p99": 0.313,
+        "okRate": 1.0,
+        "callsPerSecond": 3.5,
+        "outcomes": {
+          "OK": 210
+        }
+      },
+      "receiptSha256": "061f09cb7386bac79ae2637b1dbbec3dceccb07b0d6911565c4fa47db0c9f77d"
+    },
+    "clients": {
+      "account": {
+        "result": "PASS",
+        "checks": 11,
+        "modelDriven": false
+      },
+      "games": {
+        "result": "PASS",
+        "checks": 4,
+        "modelDriven": false
+      }
+    },
+    "cleanup": "PASS"
+  },
+  "peerGuard": {
+    "positive": {
+      "accepted": true,
+      "requestBytes": 0,
+      "cleanup": "PASS",
+      "logSha256": "b873ee62e142cbc87aa2f8e53b273aab76836c13d261b6341ba4351eaf0f0e96"
+    },
+    "negative": {
+      "result": "PASS",
+      "scope": "isolated peer-guard mutation; original source unchanged",
+      "mutantExit": 1,
+      "requestBytes": 60,
+      "cleanup": "PASS",
+      "originalSourceSha256": "6802a377c8e6e671b56399b6022a6e2e39837b4d28801fbd3169531e6482c48c"
+    }
+  },
+  "knownIssues": [
+    "https://github.com/core607/poketto/issues/408",
+    "https://github.com/core607/poketto/issues/409"
+  ],
+  "rawEvidence": "Retained in protected operator storage; hosted release verification retains CI artifacts.",
+  "claims": {
+    "productionCapacity": false,
+    "browserExecution": false,
+    "realModelEvaluation": false
+  }
+}

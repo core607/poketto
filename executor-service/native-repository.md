@@ -1,8 +1,8 @@
 # Native repository execution
 
-Set `POKETTO_EXECUTOR_BACKEND=native` with `POKETTO_EXECUTOR_ENABLED=true` to use a
-[Sandcrab service](rust/sandcrab/README.md) for `repo_exec`. An existing installation
-uses the signed worker until its operator selects the native backend.
+With `POKETTO_EXECUTOR_ENABLED=true`, `repo_exec` uses the configured
+[Sandcrab service](rust/sandcrab/README.md). The application accepts the native
+backend and requires the [offline import](native-migration.md) for existing signed copies.
 
 ## Application settings
 
@@ -44,9 +44,9 @@ from the deployment configuration. The entrance rejects these retired keys.
 
 ## Existing-installation delivery
 
-For `POKETTO_EXECUTOR_BACKEND=native`, reserve a repository copy for the [read-only MCP probe](../deploy/README.md#worker-source-updates). Add a
-`nativeExecutor` object to `deployment.json` with the same `service`, `healthUrl`,
-`probeTokenFile` and `probeCopyId` fields as the signed worker. Set `service` to
+For `POKETTO_EXECUTOR_BACKEND=native`, reserve a repository copy for the [read-only MCP probe](../deploy/README.md#repository-service). Add a
+`nativeExecutor` object to `deployment.json` with `service`, `healthUrl`,
+`probeTokenFile` and `probeCopyId` fields. Set `service` to
 the Sandcrab unit. Supply the absolute paths `binary`, `configFile` and `socket`,
 and the SHA-256 of the installed configuration in `configSha256`.
 

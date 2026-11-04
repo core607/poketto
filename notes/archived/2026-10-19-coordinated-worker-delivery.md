@@ -1,6 +1,7 @@
 # Coordinated Worker Delivery
 
 Date: 2026-10-19
+Archived: 2026-11-05
 
 ## Problem
 

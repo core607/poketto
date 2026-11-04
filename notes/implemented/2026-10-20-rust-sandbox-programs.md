@@ -33,8 +33,8 @@ an uncertain write is never retried. The reply deadline remains 55 seconds.
 Subcommands, defaults, input bounds, help content and exit statuses remain covered
 by a test-only Python oracle; that oracle is absent from runtime bundles.
 
-The [worker delivery decision](2026-10-19-coordinated-worker-delivery.md) owns
-installation, generation selection and rollback. Programs run from the selected
+The earlier [worker delivery decision](../archived/2026-10-19-coordinated-worker-delivery.md) records
+installation, generation selection and rollback for signed deployments. Programs run from the selected
 generation's protected `bin/` directory, bound read-only into every repository
 sandbox. Sharing one inode lets units share executable pages instead of each
 paying for a copied binary. The directory contains only the expected programs;

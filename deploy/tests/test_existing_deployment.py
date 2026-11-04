@@ -17,7 +17,6 @@ spec.loader.exec_module(updater)
 REVISION = "a" * 40
 SOURCE = "https://github.com/example/poketto"
 
-
 class Docker:
     def __init__(self):
         self.calls = []
@@ -133,7 +132,6 @@ class Docker:
                     self.running["app"]["Config"]["Env"].append("POKETTO_REVISION=unexpected")
                 return ""
         raise AssertionError(args)
-
 
 class ExistingDeploymentTests(unittest.TestCase):
     def setUp(self):
@@ -462,18 +460,14 @@ class ExistingDeploymentTests(unittest.TestCase):
         self.assertFalse(any("up" in call for call in self.docker.calls))
         self.assertEqual(self.docker.removed, [])
 
-    def enable_executor(self):
-        self.docker.configuration["services"]["app"]["environment"]["POKETTO_EXECUTOR_ENABLED"] = "true"
-        self.docker.running["app"]["Config"]["Env"].append("POKETTO_EXECUTOR_ENABLED=true")
-        self.config["executor"] = {"healthUrl": "http://127.0.0.1:8080/actuator/health/executor"}
-
-    def worker_plan(self):
-        return {"release": "1" * 64, "previousRelease": "2" * 64,
-                "configuration": "3" * 64, "installation": "4" * 64}
 
     def native_environment(self, backend):
         env = self.docker.configuration["services"]["app"]["environment"]
-        env.update(POKETTO_EXECUTOR_ENABLED="true", POKETTO_EXECUTOR_BACKEND=backend)
+        env["POKETTO_EXECUTOR_ENABLED"] = "true"
+        if backend is None:
+            env.pop("POKETTO_EXECUTOR_BACKEND", None)
+        else:
+            env["POKETTO_EXECUTOR_BACKEND"] = backend
         self.docker.running["app"]["Config"]["Env"] = [k + "=" + v for k, v in env.items()]
         self.config["nativeExecutor"] = {"healthUrl": "http://127.0.0.1:8080/actuator/health/executor"}
 
@@ -491,18 +485,17 @@ class ExistingDeploymentTests(unittest.TestCase):
         with self.assertRaisesRegex(updater.DeploymentError, "nativeExecutor"):
             self.installation.update(REVISION, "new-app", "new-frontend")
         self.native_environment("native")
-        with patch.object(updater, "NativeRepository") as native, patch.object(updater, "WorkerRelease") as signed:
+        with patch.object(updater, "NativeRepository") as native:
             native.return_value.inspect.side_effect = updater.DeploymentError("checksum pin")
             with self.assertRaisesRegex(updater.DeploymentError, "checksum pin"):
                 self.installation.update(REVISION, "new-app", "new-frontend")
-            signed.assert_not_called()
         self.assertEqual(self.docker.running["app"]["Id"], "app-original")
         self.assertFalse(self.installation.state_file.exists())
 
     def test_native_reconciliation_requires_the_pinned_dependency_health_and_dedicated_copy(self):
         self.native_environment("native")
         receipt = {"release": "v0.1.0", "configSha256": "3" * 64}
-        with patch.object(updater, "NativeRepository") as native, patch.object(updater, "WorkerRelease") as signed, \
+        with patch.object(updater, "NativeRepository") as native, \
                 patch.object(updater.urllib.request, "build_opener") as opener:
             service = native.return_value
             service.inspect.return_value = receipt
@@ -524,68 +517,42 @@ class ExistingDeploymentTests(unittest.TestCase):
             self.assertEqual((result["status"], result["nativeRelease"]), ("healthy", "v0.1.0"))
             service.probe.assert_called_once()
             self.native_environment("signed")
-            with self.assertRaisesRegex(updater.DeploymentError, "cannot resume signed"):
+            with self.assertRaisesRegex(updater.DeploymentError, "offline import"):
                 self.installation.update(REVISION, "new-app", "new-frontend")
-            signed.assert_not_called()
+
+    def test_omitted_backend_uses_the_native_dependency_during_preflight(self):
+        self.native_environment(None)
+        with patch.object(updater, "NativeRepository") as native:
+            native.return_value.inspect.return_value = {"release": "v0.1.1"}
+            result = self.installation.update(REVISION, "new-app", "new-frontend", True)
+            self.assertEqual(result["status"], "validated")
+            native.return_value.inspect.assert_called_once()
+            native.return_value.probe.assert_not_called()
+        self.assertFalse(self.installation.state_file.exists())
+        self.assertFalse(any("up" in call for call in self.docker.calls))
+
+    def test_legacy_pending_state_requires_reconciliation_before_replacement(self):
+        self.docker.fail_up = True
+        with self.assertRaises(updater.DeploymentError):
+            self.installation.update(REVISION, "new-app", "new-frontend")
+        pending = json.loads(self.installation.state_file.read_text())
+        pending["worker"] = {"release": "1" * 64}
+        self.installation.state_file.write_text(json.dumps(pending))
+        self.docker.calls.clear()
+        with self.assertRaisesRegex(updater.DeploymentError, "reconcile the legacy deployment"):
+            self.installation.update(REVISION, "new-app", "new-frontend")
+        self.assertEqual(json.loads(self.installation.state_file.read_text()), pending)
+        self.assertFalse(any("up" in call for call in self.docker.calls))
 
     def test_enabled_executor_requires_a_deployment_configuration(self):
-        self.enable_executor()
-        del self.config["executor"]
-        with self.assertRaisesRegex(updater.DeploymentError, "configure the host worker"):
+        self.native_environment("native")
+        del self.config["nativeExecutor"]
+        with self.assertRaisesRegex(updater.DeploymentError, "nativeExecutor"):
             self.installation.update(REVISION, "new-app", "new-frontend")
         self.assertEqual(self.docker.running["app"]["Id"], "app-original")
         self.assertFalse(self.installation.state_file.exists())
 
-    def test_worker_failure_leaves_pending_state_without_replacing_the_application(self):
-        self.enable_executor()
-        with patch.object(updater, "WorkerRelease") as worker_type:
-            worker = worker_type.return_value
-            worker.prepare.return_value = self.worker_plan()
-            worker.install.side_effect = updater.DeploymentError("worker startup failed")
-            with self.assertRaisesRegex(updater.DeploymentError, "worker startup"):
-                self.installation.update(REVISION, "new-app", "new-frontend")
-            self.assertEqual(self.docker.running["app"]["Id"], "app-original")
-            self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
-            worker.prepare.return_value = {**self.worker_plan(), "release": "5" * 64}
-            with self.assertRaisesRegex(updater.DeploymentError, "same worker release"):
-                self.installation.update(REVISION, "new-app", "new-frontend")
-            self.assertEqual(worker.install.call_count, 1)
 
-    def test_worker_preflight_never_installs_sources_or_restarts_services(self):
-        self.enable_executor()
-        with patch.object(updater, "WorkerRelease") as worker_type:
-            worker = worker_type.return_value
-            worker.prepare.return_value = self.worker_plan()
-            self.assertEqual(self.installation.update(REVISION, "new-app", "new-frontend", True)["status"], "validated")
-            worker.install.assert_not_called()
-            self.assertEqual(self.docker.running["app"]["Id"], "app-original")
-            self.assertFalse(self.installation.state_file.exists())
-
-    def test_worker_protocol_health_gates_success_and_retry_retains_the_original_recovery_release(self):
-        self.enable_executor()
-        response = MagicMock()
-        response.__enter__.return_value = response
-        response.status = 200
-        response.read.return_value = b'{"status":"DOWN"}'
-        opener = MagicMock()
-        opener.open.return_value = response
-        with patch.object(updater, "WorkerRelease") as worker_type, \
-                patch.object(updater.urllib.request, "build_opener", return_value=opener):
-            worker = worker_type.return_value
-            worker.prepare.return_value = self.worker_plan()
-            worker.install.side_effect = lambda plan: self.assertEqual(self.docker.running["app"]["Id"], "app-original")
-            with self.assertRaisesRegex(updater.DeploymentError, "did not confirm readiness"):
-                self.installation.update(REVISION, "new-app", "new-frontend")
-            self.assertEqual(self.docker.running["app"]["Id"], "app-updated")
-            self.assertEqual(json.loads(self.installation.state_file.read_text())["status"], "pending")
-            opener.open.assert_called_with(self.config["executor"]["healthUrl"], timeout=15)
-            worker.install.side_effect = None
-            worker.prepare.return_value = {**self.worker_plan(), "previousRelease": "1" * 64}
-            response.read.return_value = b'{"status":"UP"}'
-            result = self.installation.update(REVISION, "new-app", "new-frontend")
-            self.assertEqual(result["status"], "healthy")
-            self.assertEqual(result["workerRelease"], "1" * 64)
-            worker.install.assert_called_with(self.worker_plan())
 
     def test_failed_update_keeps_pending_state_and_same_target_can_be_reconciled(self):
         self.docker.fail_up = True
@@ -707,7 +674,6 @@ class ExistingDeploymentTests(unittest.TestCase):
         updater.write_json(path, {**self.config, "healthChecks": [{"url": None}]})
         with self.assertRaisesRegex(updater.DeploymentError, "loopback HTTP entrance"):
             updater.load_config(self.root)
-
 
 if __name__ == "__main__":
     unittest.main()

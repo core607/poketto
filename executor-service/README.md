@@ -1,9 +1,10 @@
-# Local execution service
+# Legacy signed-worker fixtures
 
-The signed worker runs credential-free Git bundles in bubblewrap under a separate
-unprivileged account. Spring authorizes each lease and the operator supplies its host
-paths. See the [supervisor decision](../notes/implemented/2026-09-05-local-execution-supervisor.md)
-and the [native repository backend](native-repository.md).
+Poketto repository execution uses the [native consumer](native-repository.md).
+The signed worker described here supports legacy-source and containment fixtures.
+It runs credential-free Git bundles under a separate execution account. Its
+[supervisor decision](../notes/implemented/2026-09-05-local-execution-supervisor.md)
+records the original ownership and protocol choices.
 
 ## Runtime
 
@@ -84,7 +85,7 @@ Each copy receives inherited project hard limits `diskBytes` and `diskInodes` be
 
 Each copy retains a private journal of ownership, pinned original commit, pending remote-write receipts and the digest of per-file baselines stored once beside it, plus a checksummed immutable original archive. Public copies carry only their host-owned projection proof. Publication requires file fsync, atomic rename and directory fsync before acknowledgment. Commands hold the account writer lock, record intent before EXEC and host-write state before acknowledging writes, and flush before success. Reconnection fences the prior writer and reattaches files and baselines; incomplete commands remain potentially partial. Copies survive transport loss, lease closure, timeout and restarts.
 
-A copy initialized from an export is reflinked, before any command runs, into the supervisor-private seed `copyRoot/seeds/<workspace>/<scope>/<commit>`, which is never mounted. A later full copy at that commit is reflinked from it without an export or clone; the two newest seeds per workspace and scope, and any opened in the last ten minutes, are kept ([seed copies](../notes/implemented/2026-10-18-seed-copies.md)).
+A copy initialized from an export is reflinked, before any command runs, into the supervisor-private seed `copyRoot/seeds/<workspace>/<scope>/<commit>`, which is never mounted. A later full copy at that commit is reflinked from it without an export or clone; the two newest seeds per workspace and scope, and any opened in the last ten minutes, are kept ([seed copies](../notes/archived/2026-10-18-seed-copies.md)).
 
 Successful authorized operations renew a seven-day idle deadline. A collector removes expired copies and incomplete initializations after containment, deferring to active writers. Disposal intent is durable, so an interrupted deletion resumes and never makes the copy executable again. Cleanup never undoes remote Git commits, and there is no off-host backup.
 
@@ -94,7 +95,7 @@ For full-read copies, an acknowledged save or move installs its authoritative co
 
 Git initialization and commands use `execUser`, bubblewrap and pinned seccomp, without fallback. Startup stays in a root-owned bootstrap until isolated, excluding repository Git/shell configuration. Every mode has an empty root bound only to permitted reads/writes, network/user/PID namespaces, dropped capabilities and seccomp. Proxy variables are absent; `TMPDIR=/tmp` names the unit's private tmpfs.
 
-One unit starts lazily per lease, retaining shell state, directory, environment, `/tmp` and background processes ([contract](../notes/implemented/2026-09-16-per-lease-command-sandboxes.md)); units never cross leases. systemd bounds memory, swap, CPU, tasks and temporary storage including background work; XFS bounds repository storage. Timeout, output limit, shell exit, `idleUnitSeconds` or `maxLiveUnits` eviction stops it. Containment requires confirmed empty cgroups, not exit codes; the next command starts with `freshSandbox: true`. The driver discards post-command background output, retaining at most 128 readers and closing the oldest beyond that bound; later writes receive `EPIPE`/`SIGPIPE`.
+One unit starts lazily per lease, retaining shell state, directory, environment, `/tmp` and background processes ([contract](../notes/archived/2026-09-16-per-lease-command-sandboxes.md)); units never cross leases. systemd bounds memory, swap, CPU, tasks and temporary storage including background work; XFS bounds repository storage. Timeout, output limit, shell exit, `idleUnitSeconds` or `maxLiveUnits` eviction stops it. Containment requires confirmed empty cgroups, not exit codes; the next command starts with `freshSandbox: true`. The driver discards post-command background output, retaining at most 128 readers and closing the oldest beyond that bound; later writes receive `EPIPE`/`SIGPIPE`.
 
 The worker captures at most 4 MiB of combined output, stopping the unit beyond it, and returns a preview of at most 16 KiB per stream with malformed UTF-8 replaced. Longer streams also return immutable artifact handles: an artifact's `truncated` means its capture is incomplete, `stdoutTruncated` and `stderrTruncated` describe the previews, and per-stream failures appear in `artifactErrors`. The framed response has a separate 1 MiB bound. Leases closed by resource limits, cancellation or revocation cannot deliver handles; their long output reports `ARTIFACT_UNAVAILABLE`.
 
@@ -135,7 +136,7 @@ All other requests are `POST /v1/requests` with the body `{"payload":"BASE64URL_
 | `leaseId` | Application-generated opaque UUID |
 | `data` | Operation-specific object |
 
-The worker rejects `data` with a missing or extra field; [java-frames.json](java-frames.json), written by `WorkerFrameContractTests`, holds one exact sample per operation.
+The worker rejects `data` with a missing or extra field; [java-frames.json](java-frames.json) retains one historical signed request per operation.
 
 | Operation | Behavior |
 |---|---|

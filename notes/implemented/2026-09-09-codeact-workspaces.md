@@ -3,9 +3,11 @@
 Date: 2026-09-09
 Implemented: 2026-09-15
 
+Partially superseded by: [Native repository consumer](2026-11-05-native-repository-consumer.md).
+
 ## Problem
 
-Agents worked the repository through fixed read and write tools, which left two content views (the tool projection and the repository) and made every edited byte travel through the model. The [execution service](../../executor-service/README.md) already provided isolated workspaces, so the agent's file workflow could move into the workspace: search, edit and inspect with ordinary tools, and hand only explicitly selected files back to the host for an authorized save. That workflow needed a permission-scoped export (a public-only key must never receive private files, metadata or history), a host-mediated bridge that keeps remote and storage credentials out of the sandbox, and a save contract in which a command exit or a local commit never implies a durable write.
+Agents worked the repository through fixed read and write tools, which left two content views (the tool projection and the repository) and made every edited byte travel through the model. The [execution service](../../executor-service/native-repository.md) already provided isolated workspaces, so the agent's file workflow could move into the workspace: search, edit and inspect with ordinary tools, and hand only explicitly selected files back to the host for an authorized save. That workflow needed a permission-scoped export (a public-only key must never receive private files, metadata or history), a host-mediated bridge that keeps remote and storage credentials out of the sandbox, and a save contract in which a command exit or a local commit never implies a durable write.
 
 ## Decision
 
@@ -20,11 +22,37 @@ The notes linked below own their parts of this workflow.
 
 The public-only export is built from an empty destination by the [public execution projection](2026-09-09-public-execution-projection.md), never by cloning and pruning: no object database, commit messages, refs, reflogs, alternates or credentials are transferred, and a service-owned root guide replaces excluded guides. A session keeps the scope selected when it opened; a permission downgrade or publication withdrawal terminates affected sessions and denies further output and bridge access, revalidated at admission, dispatch, output delivery and every bridge operation. A full workspace is never downgraded by deleting files in place, and delivered content cannot be recalled. [Account working copies](2026-09-14-account-working-copies.md) own copy ownership, quotas, expiry and identity.
 
-**Execution and the service bridge.** `repo_exec` is the composition entrance ([CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md)): ordinary search, shell, Python and Git in the declared [toolkit](2026-09-05-local-execution-supervisor.md#sandbox-toolkit) operate on the same session files; there is no parallel model-facing filesystem API. The `poketto` CLI is a bounded capability bridge over a supervisor-owned request FIFO and read-only reply directory per lease, with 512 KiB frames, four pending requests and 256 request identities per command; the host claims each request once and publishes complete replies by atomic rename, so no-network execution, resource admission and process-tree cancellation stay intact, and Unix socket creation stays denied. CLI calls wait for the host result; a lost reply reports an unknown outcome and never replays a write. Signed host polling and completion stay responsive while the command runs, because polling does not hold the command's operation lock. Images and long output return through the narrow channel of [session artifacts](2026-09-10-session-artifacts.md).
+**Execution and the service bridge.** `repo_exec` is the composition entrance
+([CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md)). Ordinary search,
+shell, Python and Git operate on the retained copy through a fresh sandbox shell
+for each command. The consumer-owned `poketto` CLI sends bounded requests through
+Sandcrab's optional host-call API; Poketto reauthorizes and dispatches them to its
+domain services. Remote and storage credentials stay on the host. Calls wait for
+the host result; a lost reply reports an unknown outcome and never replays a write.
+The [runtime reference](../../executor-service/native-repository.md) owns transport,
+profiles and lifecycle. Images and long output return through
+[session artifacts](2026-09-10-session-artifacts.md).
 
-**Durable authoring.** On the signed worker, a save collects explicitly selected paths and deletion intent from a stable capture of the session files: the worker freezes the lease's sandbox unit, captures only selected UTF-8 files within the shared 64-file, 4 MiB bounds without following symlinks, and thaws it; the application verifies lengths and hashes, reads expected revisions from its own baseline, never from sandbox Git, and calls the shared atomic writer of the [repository authoring foundations](2026-09-05-repository-authoring-foundations.md). Success advances the host baseline without rewriting unselected edits; a conflicting remote ref leaves the changes for reconciliation; an uncertain acknowledgement retains the exact commit bytes and blocks another save until `poketto recover` acknowledges the existing commit or retries that same commit from the original base. `poketto sync` reconciles the workspace against remote with per-file baselines and conflict markers ([whole-workspace synchronization](2026-09-15-workspace-synchronization.md)); acknowledged saves install their commit in the copy's local Git ([mutable working copy baselines](2026-09-15-mutable-working-copy-baselines.md)). `poketto media fetch` and `poketto media import` move originals through the host with exact-byte validation and idempotency keys, [atomic moves](2026-09-09-atomic-content-moves.md) use host-owned plans, and [portable exports](2026-09-10-portable-content-exports.md) package content through the host. Public-only sessions cannot save or upload. Unsaved work stays in the account's disk copy across restarts and lease closure; only explicit disposal or the idle expiry owned by [account working copies](2026-09-14-account-working-copies.md) removes it.
+**Durable authoring.** The CLI supplies a digest for each selected write and
+explicit deletion intent. The host independently captures and verifies every
+selected path within the shared 64-file, 4 MiB text limits before calling the
+[atomic writer](2026-09-05-repository-authoring-foundations.md). Background edits
+can make capture fail; a mismatch leaves the entire selection uncommitted.
+Host-owned file baselines supply expected revisions, independently of sandbox
+Git. A conflicting remote ref leaves local work for reconciliation. An uncertain
+acknowledgement retains the exact commit bytes and blocks another save until
+`poketto recover` acknowledges that commit or retries it from the original base.
+Acknowledged saves install their commit in the copy's
+[local Git baseline](2026-09-15-mutable-working-copy-baselines.md).
 
-On a native copy the CLI supplies a digest for each selected write. The host compares the independently captured bytes for every path before calling the same atomic Git writer. This binds a save to its selected bytes while background processes may edit the working tree. A mismatch leaves the entire selection uncommitted. The [account-copy record](2026-09-14-account-working-copies.md) owns local retention.
+[Synchronization](2026-09-15-workspace-synchronization.md) and
+[moves](2026-09-09-atomic-content-moves.md) retain candidates for explicit path
+acceptance. Media fetch and import transfer originals with exact-byte validation
+and idempotency keys; import proposes an index entry for the caller to edit and
+save. [Portable exports](2026-09-10-portable-content-exports.md) package saved
+content through the host. Public-only copies cannot save or upload. The
+[account-copy record](2026-09-14-account-working-copies.md) owns retention across
+commands and application restarts.
 
 **MCP cutover.** Execution became the agent file workflow and the standalone read, list and patch entrances were removed without a compatibility alias; the browser APIs and their shared services stayed. The worker is therefore a prerequisite for the agent workflow, and its cold-start and resident cost are part of the executor's acceptance rather than a second agent CRUD architecture.
 
@@ -46,6 +74,11 @@ An agent's edits live in a retained copy and become authoritative only through a
 
 ## Implementation and acceptance
 
-The worker advertises the CodeAct protocol marker that the [worker reference](../../executor-service/README.md#runtime) lists, and the application rejects incompatible readiness before exporting files. `executorServiceTests` (the worker's `test_bridge.py` and `test_session_files.py`) and `WorkerSocketTests` pin the bridge bounds and frozen capture. The [native bridge evidence](../../executor-native/evidence/2026-09-10-public-projection.json) and the [real-client workflow](../../acceptance/clients/evidence/2026-09-10-codeact.json) record the CLI through Java, the root worker and SRT, and through Codex and Claude Code over authenticated HTTP MCP.
+`NativeRepositoryHostTests` and the native synchronization and move suites pin the
+host boundary. The [native probes](../../executor-native/README.md) exercise the
+production adapter with the released service, and
+[client acceptance](../../acceptance/clients/README.md) covers authenticated HTTP
+and MCP. Earlier [bridge evidence](../../executor-native/evidence/2026-09-10-public-projection.json)
+is retained as signed-worker history.
 
-Related: [CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns the content format, media ownership, history and export contracts; [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) own shared writes, visibility and media; the [local execution supervisor](2026-09-05-local-execution-supervisor.md) owns transport, resource and lifecycle guarantees.
+Related: [CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns the content format, media ownership, history and export contracts; [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) own shared writes, visibility and media; the [native consumer](2026-11-05-native-repository-consumer.md) owns the application and sandbox boundary.

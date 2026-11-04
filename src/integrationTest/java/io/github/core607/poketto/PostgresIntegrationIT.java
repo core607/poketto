@@ -138,7 +138,7 @@ class PostgresIntegrationIT {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        // Executor metrics exist only with an executor; WorkerSocketTests checks those names.
+        // Executor metrics exist only with an executor; NativeRepositoryMetricsTests checks those names.
         String examples = Files.readString(Path.of("deploy/observability/alerts.yml"))
                 + Files.readString(Path.of("deploy/observability/README.md"));
         List<String> alerted = Pattern.compile(

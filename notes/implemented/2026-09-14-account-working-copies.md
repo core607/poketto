@@ -2,6 +2,8 @@
 
 Date: 2026-09-14
 
+Partially superseded by: [Native repository consumer](2026-11-05-native-repository-consumer.md).
+
 ## Problem
 
 An MCP transport is not a durable editing identity. A connector may initialize a new transport for each tool call while retaining the same authorization. Transport-owned copies then reject continuation, duplicate repository exports and consume idle capacity. Keeping those copies in tmpfs couples stored work to scarce execution memory.
@@ -14,21 +16,17 @@ The executor uses a default working copy per Poketto account and content workspa
 
 Read scope remains a security boundary. A public-only grant must never mount the account's full repository or obtain its private output, artifacts, file names or history. Restricted execution uses an independently isolated public projection. Each command and host operation uses the requesting principal's current grants, not the principal that originally opened the copy. Grant revocation stops affected execution and access without deleting the account's work or granting another client additional permissions. An explicit copy ID selects its existing authorized reading scope even after a grant gains private-read permission; permission expansion does not silently replace or expand a public copy.
 
-Copies use disk storage with kernel-enforced limits. Initial configurable limits are 4 GiB per copy and 32 GiB for the complete executor storage pool, including exports, recovery data and artifacts. Byte limits are ceilings rather than per-copy reservations; inode usage is also bounded. Refuse growth or new admission when capacity is exhausted, preserving existing acknowledged work. Size polling is observation, not enforcement. Keep command temporary storage and command CPU/memory limits separate from stored-copy capacity.
+The [native consumer](2026-11-05-native-repository-consumer.md) stores acknowledged writable-layer archives and journals on a bounded XFS filesystem. Each copy has configured byte and entry ceilings, with separate limits for transfers and the aggregate account pool. A failed capture retains the previous acknowledged journal. Execution memory, CPU and temporary storage have independent sandbox limits.
 
-The signed worker requires a dedicated, size-bounded XFS filesystem with enforced project quotas. An installation on an existing filesystem can use one preallocated loopback image for the aggregate bound; no host-root remount is required. Each copy receives an inherited block and inode hard quota before command access. This reserves aggregate pool capacity, not the full individual allowance for every copy. The worker refuses an absent, oversized or non-enforcing mount. Project identifiers remain allocated across restarts and are not recycled onto another retained copy.
-
-Allocation publishes a copy directory only after its protected identity is durable. Under the project allocation lock, startup and subsequent allocations remove unpublished staging left by an interrupted creator. This cleanup never sweeps published copies by guessing whether application metadata still exists. Runtime lease cleanup can run even when the copy mount fails validation.
-
-Commands must retain the sandbox's noninitial user namespace. Linux rejects project-ID and project-inheritance changes from that namespace, including changes requested by a file's owner. Ordinary unprivileged host processes do not provide this restriction. Native acceptance therefore exercises quota attribute changes from inside the actual command sandbox, alongside byte and inode exhaustion.
+Imported copies retain quota-enforced native volumes. The daemon owns allocation, project identities and recovery of its storage. Sandboxed commands retain a noninitial user namespace that prevents changing project IDs or inheritance. The [offline import contract](../../executor-service/native-migration.md) owns validation and deferred cases.
 
 A copy expires after seven days without successful authorized use. Read and write use renews that deadline. Return its expiry to callers. A transport disconnect, command timeout or ordinary service restart does not expire the copy. Explicit owner-authorized disposal and stated expiry remove local work without reversing remote saves. Persist ownership, expiry, the original commit, the installed Git baseline ([mutable working copy baselines](2026-09-15-mutable-working-copy-baselines.md)), per-file baselines and pending remote-write receipts with the files. Reconcile interrupted commands and uncertain saves before claiming completion or retrying writes. No off-host backup guarantee is introduced.
 
-Commands are serialized for a shared copy, including host bridge writes and disposal. Use bounded waiting and distinct capacity/busy reasons. Copy files remain after execution resources stop. Capacity pressure releases an idle lease's runtime resources but never deletes copy files: unsaved work is never evicted to admit another client. Site-wide bounds cap leases and concurrent commands; each account's concurrent commands are further bounded by its site group, administrators excepted, and there is no per-account fair scheduling. [Per-lease command sandboxes](2026-09-16-per-lease-command-sandboxes.md) records the measurement and owns runtime reuse, idle cleanup and explicit sandbox resets.
+Commands are serialized for a shared copy, including host calls and disposal. Bounded admission distinguishes capacity from a busy copy. The [native consumer](2026-11-05-native-repository-consumer.md) releases each command's runtime after recording its acknowledged changes. Account copies retain unsaved files until explicit disposal or expiry. Site-wide and per-group command limits bound concurrent work; administrators retain the site-wide bound.
 
-A command timeout keeps the copy once the worker confirms that the command's control group is empty. The result reports the timeout and a nonzero exit code under the same copy ID; earlier edits and the command's partial work remain. Resource exhaustion, cancellation, revocation and unconfirmed containment close the lease, and the disk copy remains for a later lease. A copy whose initialization never completed is discarded by the next `new` admission; a request naming its ID is refused with `RECOVERY_REQUIRED`.
+After confirmed containment and a successful writable-layer capture, a timeout returns under the same copy ID with partial work retained. An uncertain close or capture records an interruption and keeps the last acknowledged state. An incompletely initialized copy is refused by exact ID with `RECOVERY_REQUIRED` and can be replaced through a new admission.
 
-The signed worker retains a quota volume. The [native backend](../../executor-service/native-repository.md) keeps a verified upper archive with each account's pinned template because session closure releases the live overlay. Imported volumes keep their original binding until disposal or expiry. The copy ID addresses either form across reconnects.
+The [native backend](../../executor-service/native-repository.md) keeps a verified upper archive with each account's pinned template because session closure releases the live overlay. Imported volumes keep their original binding until disposal or expiry. The copy ID addresses either form across reconnects.
 
 ## Copy identity and disposal
 
@@ -36,19 +34,29 @@ Every `repo_exec` request carries `expectedCopyId`. The literal `new` opens the 
 
 `repo_discard` takes the exact copy ID and requires current `EXECUTE_REPOSITORY` permission. Lookup binds the account, workspace and copy ID in either reading scope, so lost content-read permission does not prevent cleanup, and no content is returned. A busy copy refuses disposal. The worker must confirm containment before the application removes the binding and releases admission capacity; an unconfirmed close keeps both and never admits an overlapping replacement. `DISCARDED` and `ABSENT` confirm that the addressed copy is gone; repeating the call is safe, and disposal never reverses remote Git commits. A later `new` creates another copy.
 
-Executor metrics count sessions, operations and admission refusals with fixed reasons. They carry no identity, workspace, command, file path or content labels. The [worker reference](../../executor-service/README.md#working-copy-identity) lists their names.
+Executor metrics count sessions, operations and admission refusals with fixed reasons. They carry no identity, workspace, command, file path or content labels. The [metrics reference](../../deploy/observability/README.md) lists their names.
 
-## Signed-worker editing and synchronization
+## Editing and synchronization
 
-The `poketto edit` CLI operation replaces an exact, nonempty old text with new text in an existing file. Reject missing or ambiguous matches without changing the file. New-file creation must not overwrite an existing path. Keep ordinary shell execution; these edit checks do not claim to prevent deliberate whole-file overwrites or every semantic conflict. Do not require a workspace revision or separate read/write mode on every command.
-
-For full-read copies, `poketto status` checks remote main against the last confirmed save/sync base and reports whether it matches, differs, or could not be checked. It preserves local status on remote failure and never updates working files or baselines. The head comparison does not certify freshness of every file: selected operations retain separate per-file baselines. [Whole-workspace synchronization](2026-09-15-workspace-synchronization.md) is explicit and reuses those baselines and JGit three-way merge. Preserve local work, surface conflicting versions for the agent to resolve, and retain final save conflict checks. Never silently update working files in the background. Keep credentials and authoritative remote writes outside the sandbox; local checkpoints do not publish content. Public copies report their synthetic projection commit without exposing or comparing the private authority commit; every command still requires the current public-projection check. When publication changes, a public copy without local work is rebuilt under the same ID and one with local work is refused untouched, as the [public execution projection](2026-09-09-public-execution-projection.md) record owns.
+Shell commands edit local files. Selected saves compare each affected path with
+its acknowledged baseline and use host-side Git authority. Full-read copies can
+request `poketto status --remote` to compare their baseline with remote main.
+Preparing synchronization creates candidates for inspection and explicit
+acceptance. Credentials stay in the host, and publication changes fence public
+copies. The [native command contract](../../executor-service/native-repository.md)
+and [public projection](2026-09-09-public-execution-projection.md) own those rules.
 
 ## Verification and operational delivery
 
-`WorkerSocketTests`, `McpCopyIdentityTests`, `McpDiscardTests` and `McpProtocolIntegrationIT` pin identity refusal, disposal and admission; `AccountCopyStoreNativeProbe`, `EphemeralLifecycleNativeProbe` and `executor-service/disk_pool_probe.py` pin quotas, timeout retention, containment and restart recovery on real XFS and SRT. The [authenticated HTTP evidence](../../acceptance/clients/evidence/2026-09-14-account-copies.json) records one copy shared across new transports and independently issued grants.
+`NativeRepositoryCopyClaimsTests`, `NativeDurabilityBarriersTests`,
+`McpCopyIdentityTests`, `McpDiscardTests` and `McpProtocolIntegrationIT`
+pin copy ownership and transitions. The [native workspace probe](../../executor-native/overlay_copy_probe.py)
+checks process-loss recovery and disposal on real XFS with the released daemon.
+[Authenticated acceptance](../../acceptance/clients/README.md) exercises current
+clients, grants, timeouts, conflict handling and disposal through HTTP/MCP.
 
-The worker's disk-copy handshake is required, so application and worker installation are coordinated; the [worker reference](../../executor-service/README.md#account-copy-storage) owns pool installation and default limits.
+The [native deployment contract](../../executor-service/native-repository.md)
+owns the release pin and independently installed service prerequisites.
 
 ## Alternatives
 
@@ -56,7 +64,7 @@ Transport-owned and grant-owned copies multiply storage for one account. The def
 
 A response-only `fresh` flag arrives after the command has already run in the wrong copy, and comparing commits misses a fresh export at the same revision; only a precondition checked before execution prevents that. Letting `new` replace a live copy would turn an admission request into implicit data deletion.
 
-Capturing each command's work into archived checkpoints and restoring them into fresh tmpfs copies under per-transport writer generations was built first. Attaching the same quota-bounded disk copy made capture, restore and generation handshakes unnecessary, and they were removed. Packing work only at normal shutdown would miss crashes, untracked binary files and host-write recovery state.
+The earlier disk worker attached a quota volume to avoid full-tree capture and per-transport writer generations. The native consumer instead shares immutable commit templates and journals each account copy's changes. This adds capture and restore work while separating stored copies from resident shells. Capturing only at shutdown would omit interrupted work and host-write recovery state.
 
 Reattaching a copy onto current remote history would change the user's baseline and create an implicit merge. A reattached copy keeps its own baseline; background reset or pull can invalidate unsaved work and is excluded, so synchronization stays explicit.
 
