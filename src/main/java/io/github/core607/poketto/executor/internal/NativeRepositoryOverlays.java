@@ -17,11 +17,15 @@ final class NativeRepositoryOverlays {
     private final NativeCommitTemplate templates;
     private final AccountTemplateCatalog catalog;
 
-    NativeRepositoryOverlays(SandcrabClient client, NativeTransferStore transfers, AccountTemplateCatalog catalog) {
+    NativeRepositoryOverlays(
+            SandcrabClient client,
+            NativeTransferStore transfers,
+            AccountTemplateCatalog catalog,
+            NativeRepositoryProfiles profiles) {
         this.catalog = catalog;
         this.client = client;
         this.transfers = transfers;
-        templates = new NativeCommitTemplate(client, transfers);
+        templates = new NativeCommitTemplate(client, transfers, profiles);
     }
 
     void bind(
@@ -35,8 +39,7 @@ final class NativeRepositoryOverlays {
                 source,
                 client,
                 transfers,
-                publish -> withBundle.read(
-                        bundle -> templates.withArchive(server, source.profile(), export, bundle, authorize, publish)),
+                publish -> withBundle.read(bundle -> templates.withArchive(server, export, bundle, authorize, publish)),
                 initialize,
                 authorize);
     }

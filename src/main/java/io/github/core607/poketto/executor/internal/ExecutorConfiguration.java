@@ -55,6 +55,8 @@ class ExecutorConfiguration {
             @Value("${poketto.executor.transfers.directory}") Path transfers,
             @Value("${poketto.executor.transfers.max-bytes:1073741824}") long transferBytes,
             @Value("${poketto.executor.profile:repository}") String profile,
+            @Value("${poketto.executor.template-profile:${poketto.executor.profile:repository}}")
+                    String templateProfile,
             @Value("${poketto.executor.copies.bytes}") long copyBytes,
             @Value("${poketto.executor.copies.inodes}") long copyInodes) {
         if (!System.getProperty("os.name").equalsIgnoreCase("Linux")) {
@@ -73,7 +75,7 @@ class ExecutorConfiguration {
                 limits,
                 transfers,
                 transferBytes,
-                profile,
+                new NativeRepositoryProfiles(profile, templateProfile),
                 copyBytes,
                 copyInodes);
     }

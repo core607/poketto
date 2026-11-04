@@ -22,7 +22,7 @@ final class NativeRepositoryRuntime {
             ExecutionLimits limits,
             Path transfers,
             long transferBytes,
-            String profile,
+            NativeRepositoryProfiles profiles,
             long copyBytes,
             long copyInodes) {
         var storage = new NativeTransferStore(transfers, transferBytes, 4096);
@@ -41,8 +41,8 @@ final class NativeRepositoryRuntime {
                 exports,
                 saves,
                 accounts,
-                new NativeRepositoryOverlays(client, storage, accounts.templates),
-                profile,
+                new NativeRepositoryOverlays(client, storage, accounts.templates, profiles),
+                profiles,
                 copyBytes,
                 copyInodes);
         return new NativeRepositoryExecutor(

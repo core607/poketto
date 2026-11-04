@@ -45,7 +45,7 @@ public final class NativeCommitTemplateProbe {
         var info = client.info();
         try (var fixture = new PublicExecutionNativeFixture(root, root.resolve("bundles"), auth, workspace);
                 var transfers = new NativeTransferStore(root.resolve("transfers"), 32 * 1024 * 1024L, 8)) {
-            var builder = new NativeCommitTemplate(client, transfers);
+            var builder = new NativeCommitTemplate(client, transfers, new NativeRepositoryProfiles("python", "python"));
             var exports = fixture.exports();
             var full = materialize(
                     builder,
@@ -101,7 +101,6 @@ public final class NativeCommitTemplateProbe {
                     export,
                     path -> builder.withArchive(
                             info,
-                            "python",
                             export,
                             path,
                             () -> {},

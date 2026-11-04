@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.util.EnumSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Supplier;
@@ -44,6 +45,8 @@ public final class NativeOverlayCopyProbe {
         boolean full = !args[2].equals("public");
         UUID account = args[2].equals("other") ? UUID.fromString("0f453746-a87f-4d2a-af03-062c2c63c7db") : ACCOUNT;
         boolean write = args[3].equals("write");
+        String profile = args.length > 4 ? args[4] : "python";
+        String builder = args.length > 5 ? args[5] : profile;
         AuthService auth = mock(AuthService.class);
         AuthPrincipal actor = mock(AuthPrincipal.class);
         when(actor.accountId()).thenReturn(account);
@@ -63,11 +66,9 @@ public final class NativeOverlayCopyProbe {
                 .withAuthorization(any(), any(), anySet(), any());
         Files.createDirectories(root.resolve("authority"));
         var accounts = AccountCopyTestData.disk(root.resolve("metadata"));
-        try (var fixture = write && args[2].equals("full")
-                        ? new PublicExecutionNativeFixture(
-                                root.resolve("authority"), root.resolve("exports"), auth, WORKSPACE)
-                        : PublicExecutionNativeFixture.reopen(
-                                root.resolve("authority"), root.resolve("exports"), auth, WORKSPACE);
+        boolean first = write && args[2].equals("full");
+        try (var fixture = PublicExecutionNativeFixture.withExportLimit(
+                        root.resolve("authority"), root.resolve("exports"), auth, WORKSPACE, !first, 16L << 20);
                 var executor = new ExecutorConfiguration()
                         .nativeRepositoryExecutor(
                                 accounts,
@@ -82,9 +83,15 @@ public final class NativeOverlayCopyProbe {
                                 ExecutionLimits.sessions(3),
                                 root.resolve("transfers"),
                                 32L << 20,
-                                args.length > 4 ? args[4] : "python",
+                                profile,
+                                builder,
                                 8L << 20,
                                 256)) {
+            if (first && !builder.equals(profile)) {
+                byte[] contents = new byte[3 << 20];
+                new Random(42).nextBytes(contents);
+                fixture.seedFile("private/large-template.bin", contents);
+            }
             var cancellation = mock(ExecutionCancellation.class);
             if (args[3].equals("save")) {
                 String file = "private/selected.md";

@@ -10,30 +10,37 @@ import java.util.function.Consumer;
 final class NativeCommitTemplate {
     private final SandcrabClient client;
     private final NativeTransferStore transfers;
+    private final NativeRepositoryProfiles profiles;
 
-    NativeCommitTemplate(SandcrabClient client, NativeTransferStore transfers) {
+    NativeCommitTemplate(SandcrabClient client, NativeTransferStore transfers, NativeRepositoryProfiles profiles) {
         this.client = client;
         this.transfers = transfers;
+        this.profiles = profiles;
     }
 
     void withArchive(
             SandcrabProtocol.Info service,
-            String profile,
             RepositorySnapshotExports.Export export,
             Path bundle,
             Runnable authorize,
             Consumer<NativeTransferStore.File> publish) {
-        var settings = service.profiles().get(profile);
+        SandcrabProtocol.Profile settings = profiles.offlinePreparation(service);
+        SandcrabProtocol.Profile execution = service.profiles().get(profiles.execution());
         ProtocolValues.require(
-                settings != null && service.capabilities().contains("templates"),
+                execution != null && service.capabilities().contains("templates"),
                 "commit template",
                 "requires a supported native profile");
         ProtocolValues.require(
                 export.bundleBytes() <= settings.transferBytes(),
                 "commit bundle",
                 "exceeds the profile transfer bound");
+        long archiveLimit = Math.min(settings.transferBytes(), execution.transferBytes());
         var plan = new SandcrabProtocol.SessionPlan(
-                UUID.randomUUID().toString(), service.serverId(), profile, settings.sessionTtlMillis(), null);
+                UUID.randomUUID().toString(),
+                service.serverId(),
+                profiles.preparation(),
+                settings.sessionTtlMillis(),
+                null);
         try (var builder = new Builder(plan)) {
             authorize.run();
             var session = builder.open(authorize);
@@ -45,10 +52,10 @@ final class NativeCommitTemplate {
                     authorize);
             builder.checkout(session, settings, export.commit(), authorize);
             try (var tree = transfers.capture(
-                    settings.transferBytes(),
+                    archiveLimit,
                     authorize,
                     path -> client.snapshot(
-                            session, new SandcrabFiles.Plan(".", "tar"), settings.transferBytes(), path, authorize))) {
+                            session, new SandcrabFiles.Plan(".", "tar"), archiveLimit, path, authorize))) {
                 publish.accept(tree);
             }
         }
