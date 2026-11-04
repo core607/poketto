@@ -4,7 +4,8 @@
 //! record's mode and replaces itself with bubblewrap. `--verify` checks the tools and the
 //! sandbox program directory without launching.
 use sandcrab_launch::{
-    Error, Seccomp, enter_bootstrap, exec, sandbox_arguments, verify_bundled_bwrap, verify_programs,
+    Error, NamespaceMode, Seccomp, enter_bootstrap, exec, sandbox_arguments, verify_bundled_bwrap,
+    verify_programs,
 };
 use serde_json::Value;
 use std::{
@@ -99,7 +100,8 @@ fn plan(record: &Value) -> Result<Launch, Error> {
         ],
         _ => return Err(Error("Invalid execution mode".into())),
     };
-    let arguments = sandbox_arguments(&bwrap, &seccomp, &policy, &command)?;
+    let arguments =
+        sandbox_arguments(&bwrap, &seccomp, &policy, &command, NamespaceMode::Workload)?;
     Ok((arguments, environment, seccomp))
 }
 
@@ -150,15 +152,17 @@ mod tests {
                 &Seccomp::new().unwrap(),
                 &policies[mode],
                 &command,
+                NamespaceMode::Workload,
             )
             .unwrap();
             assert_eq!(args[args.len() - 4], "--", "{mode}");
             assert!(args.contains(&"--seccomp".to_string()), "{mode}");
             assert_eq!(args[args.len() - 3..], command[..], "{mode}");
             for flag in [
-                "--unshare-net",
+                "--unshare-all",
                 "--unshare-user",
-                "--unshare-pid",
+                "--unshare-cgroup",
+                "--disable-userns",
                 "--die-with-parent",
                 "--new-session",
             ] {

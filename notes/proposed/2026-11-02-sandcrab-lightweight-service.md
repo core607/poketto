@@ -123,15 +123,15 @@ SDK conformance while changing the implementation.
 
 ### H: same-host hardening
 
-After L1 and L2, verify each gap in the owning code before changing it; complete
-H1 through H4 before extraction, observing L4's bwrap dependency. Each change
-tests its affected isolation boundary and adds no runtime dependency or resident
-process. Use the checkpoint measurements for footprint comparisons.
+Complete hardening before extraction using L4's bundled bwrap. Each change tests
+its isolation boundary and measures footprint without adding runtime dependencies or resident processes.
 
-- H1: namespaces. Use `--unshare-all` and `--disable-userns`; preserve L8's private
-  network. Probe real sandboxes: nested `unshare -U` fails, SysV shared memory is
-  invisible across sessions using the same execution user, hostnames are private,
-  and `/proc/self/cgroup` does not reveal host unit names.
+- H1 gives workloads private namespaces, a fixed hostname and disabled nested
+  user namespaces. The launch policy requires user and cgroup isolation explicitly
+  because bundled bwrap only tries both under `--unshare-all`. Proxy workloads retain
+  their acknowledged private network. Fixed file helpers retain host UID mappings for
+  ownership changes. [Probes](../../executor-service/rust/sandcrab/sandcrab_conformance/namespaces.py)
+  check isolation across same-UID sessions.
 - H2: seccomp. Extend L1's Rust filter using Docker's default profile as the
   reference. Keep AF_UNIX/AF_VSOCK socket denial. Deny io_uring, bpf,
   keyctl/add_key/request_key, perf_event_open, userfaultfd, kexec, module loading,
