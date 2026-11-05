@@ -50,12 +50,24 @@ if [[ ${GITHUB_ACTIONS:-} == true || "$jdk" == "$stage/jdk" ]]; then gradle_args
 ./gradlew "${gradle_args[@]}" -PsandcrabBundle="$bundle" stageGameWorker stageExecutorNativeTest stageAcceptanceRuntime
 command -v mkfs.xfs >/dev/null || { as_root apt-get update -qq && as_root apt-get install -y --no-install-recommends xfsprogs; }
 if [[ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || true)" == 1 ]]; then
-  as_root apparmor_parser -r executor-service/rust/sandcrab/install/sandcrab.apparmor
+  as_root apparmor_parser -r deploy/sandcrab.apparmor
   echo 'Loaded the sandcrab-service AppArmor profile for restricted user namespaces.'
 fi
 if [[ "$jdk" != "$stage/jdk" ]]; then as_root cp -RL "$jdk" "$stage/jdk"; fi
 as_root cp -R build/executor-native/runtime "$stage/runtime"
 as_root chmod -R a+rX,go-w "$stage/jdk" "$stage/runtime"
+as_root docker build --network none -f executor-native/Dockerfile.peer-tests \
+  --iidfile "$stage/peer-image.id" executor-native
+peer_image=$(as_root cat "$stage/peer-image.id")
+[[ "$peer_image" =~ ^sha256:[0-9a-f]{64}$ ]]
+as_root docker run --rm --network none --read-only --memory 512m --cpus 1 --pids-limit 64 \
+  --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN --cap-add DAC_OVERRIDE \
+  --security-opt no-new-privileges \
+  --tmpfs /run:rw,nosuid,nodev,noexec,size=16m,mode=0755 \
+  --tmpfs /tmp:rw,nosuid,nodev,noexec,size=32m,mode=1777 \
+  --mount "type=bind,source=$stage/runtime,target=/runtime,readonly" "$peer_image" \
+  | as_root tee "$stage/results/peer.log" >/dev/null
+python3 -I executor-native/test_overlay_restore.py
 as_root env SANDCRAB_INSTALL_DISPOSABLE=1 python3 executor-native/overlay_copy_probe.py \
   --uid "$(id -u daemon)" --gid "$(id -g daemon)" --java "$stage/jdk/bin/java" \
   --binaries build/game-worker --runtime "$stage/runtime" --output "$stage/results/workspaces"
@@ -74,6 +86,24 @@ as_root cp -R build/acceptance/runtime "$stage/account-runtime"
 as_root chmod -R a+rX,go-w "$stage/account-runtime"
 as_root bash executor-service/prepare-tools.sh "$stage/tools"
 as_root bash executor-service/prepare-node.sh "$stage/tools"
+as_root env PATH="$stage/jdk/bin:$PATH" python3 -m unittest discover -s executor-native -p test_sandcrab_recovery_java_probe.py -v
+as_root mkdir -m 700 "$stage/results/client-api" "$stage/results/migration"
+for probe in volume recovery; do
+  as_root python3 "executor-native/sandcrab_${probe}_java_probe.py" --runtime "$stage/runtime" \
+    --binary build/game-worker/sandcrab --tools "$stage/tools" --java "$stage/jdk/bin/java" \
+    --report "$stage/results/client-api/$probe.json"
+done
+as_root env PATH="$stage/jdk/bin:$PATH" python3 executor-native/native_migration_journal_probe.py \
+  --runtime "$stage/runtime" --service "$PWD/executor-service" \
+  | as_root tee "$stage/results/migration/journal.log" >/dev/null
+image_ref=$(awk '$1=="FROM" && $NF=="python" {print $2; exit}' executor-native/Dockerfile.peer-tests)
+[[ "$image_ref" =~ @sha256:[0-9a-f]{64}$ ]]
+as_root docker pull --quiet "$image_ref"
+image_id=$(as_root docker image inspect --format '{{.Id}}' "$image_ref")
+as_root env SANDCRAB_INSTALL_DISPOSABLE=1 python3 executor-native/legacy_import_probe.py \
+  --uid "$(id -u daemon)" --gid "$(id -g daemon)" --java "$stage/jdk/bin/java" \
+  --binaries build/game-worker --runtime "$stage/runtime" --operator executor-service \
+  --container-image "$image_id" --revision "$(git rev-parse HEAD)" --output "$stage/results/migration/import"
 as_root env PATH="$stage/jdk/bin:$PATH" python3 -m unittest discover -s executor-native -p test_native_game_java_probe.py -v
 as_root mkdir -m 700 "$stage/results/games"
 as_root python3 executor-native/native_game_java_probe.py --runtime "$stage/runtime" \

@@ -16,19 +16,20 @@ pending request, so identity validation cannot consume a second slot.
 It does not exercise Poketto authorization or establish a product cutover.
 
 ```sh
-./gradlew stageExecutorNativeTest buildExecutorRust
+./gradlew -PsandcrabBundle=/prepared/sandcrab.zip stageExecutorNativeTest stageGameWorker
 sudo python3 executor-native/sandcrab_volume_java_probe.py \
   --runtime build/executor-native/runtime \
-  --binary build/executor-service/bin/sandcrab \
+  --binary build/game-worker/sandcrab \
   --tools /prepared/tools --java /prepared/jdk/bin/java \
   --report /tmp/sandcrab-volume-java.json
 ```
 
-Use Java 26, Git, XFS tools and the systemd host prerequisites in the
-[native volume reference](../executor-service/rust/sandcrab/README.md#durable-volumes).
-Keep this script and the `sandcrab_conformance` package in their repository layout.
-The controller verifies the runtime manifest and creates a disposable 512 MiB XFS
-image and 384 MiB slice; its Java processes have a 192 MiB cap inside that slice.
+Use Java 26, Git, XFS tools, curl, root access and delegated cgroup v2 on a
+disposable systemd host. Keep the consumer fixture and controller in their
+repository layout. The controller verifies the runtime manifest and creates two
+disposable 512 MiB XFS images: one for the overlay-capable runtime and one whole
+filesystem for quota-enforced volumes. A 384 MiB slice bounds the service and
+workloads; its Java processes have a 192 MiB cap inside that slice.
 Use a new report path for each attempt. Success requires `result: PASS`, both Java
 phases and `cleanup: PASS`; a cleanup failure retains the fixture for inspection.
 
@@ -51,13 +52,14 @@ terminal result for the old command.
 ```sh
 sudo python3 executor-native/sandcrab_recovery_java_probe.py \
   --runtime build/executor-native/runtime \
-  --binary build/executor-service/bin/sandcrab \
+  --binary build/game-worker/sandcrab \
   --tools /prepared/tools --java /prepared/jdk/bin/java \
   --report /tmp/sandcrab-recovery-java.json
 ```
 
 Use the same staged runtime and repository layout. This fixture uses the native
-controller's 384 MiB slice and a 192 MiB Java cap, without a volume image. A temporary
+controller's 384 MiB slice and a 192 MiB Java cap, with one 512 MiB XFS image
+for its runtime. A temporary
 helper refuses cleanup for one owned job; its flag is removed before recovery and
 final cleanup. The controller verifies daemon containment, old job cgroups and
 runtime directories after each restart. Stream failure itself never supplies that proof. All four Java

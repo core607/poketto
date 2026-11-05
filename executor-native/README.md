@@ -36,8 +36,9 @@ SANDCRAB_EVIDENCE=/prepared/results SANDCRAB_INSTALL_DISPOSABLE=1 \
   bash .github/ci/sandcrab-release-check.sh
 ```
 
-This entry checks the running executable's digest, workspace recovery, game
-confinement and authenticated clients. It prepares an isolated JDK and toolchain,
+This entry checks Unix peers, the running executable's digest, workspace recovery,
+Java volume and observer behavior, offline migration, game confinement and
+authenticated clients. It prepares an isolated JDK and toolchain,
 runs the bounded client stage and preserves receipts on success and failure.
 The public CI gate checks the [maintainer-issued release receipt](../acceptance/clients/README.md).
 
@@ -107,24 +108,6 @@ docker run --rm --network none --read-only --memory 512m --cpus 1 --pids-limit 6
 Require Java exit zero, an accepted connection, zero request bytes and fixture
 cleanup. A temporary build with the peer guard removed must transmit bytes and
 fail the assertion. Restore the guard before delivery.
-
-## Launcher comparison
-
-[sandbox_probe.py](sandbox_probe.py) and [sandbox_snapshot.py](sandbox_snapshot.py) compare the
-current launcher with a supplied reference on one prepared x64 host, without application copies.
-Run as root with `--worker-source`, `--tools` and `--output`. An SRT comparison
-also takes `--reference-launcher` and its Python `--reference-driver`.
-Each path runs three serial fresh shells at 50% CPU and 192 MiB. The probe verifies live mounts,
-permissions, environment differences, seccomp, visible processes and tool tampering, records cgroup
-CPU/memory/tasks, and requires each direct/reference median resource ratio to be at most one third.
-Add `--toolkit` and [sandbox_toolkit.py](sandbox_toolkit.py) to verify installed image, PDF, Office,
-archive and Git operations. Require exit zero and `cleanup: PASS`; these figures do not establish HTTP capacity.
-
-`--reference-worker-source` selects a staged reference. Python drivers require
-`--idle-seconds 60` and an idle CPU ratio at most one tenth. Native-driver snapshots
-allow only the [filter replacement's](../notes/implemented/2026-11-02-native-seccomp-filter.md)
-init, capability bounding and environment differences. Startup, memory and task
-ratios have no SRT threshold.
 
 ## Evidence
 

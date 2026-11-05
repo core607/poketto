@@ -164,7 +164,7 @@ val stageLinuxStorageTest = tasks.register<Sync>("stageLinuxStorageTest") {
         into("migration-tests")
     }
     from("deploy") {
-        include("update-existing.py", "worker_release.py", "native_repository.py")
+        include("update-existing.py", "native_repository.py")
         into("migration-tests/deploy")
     }
 }
@@ -274,7 +274,7 @@ val observabilityConfigCheck = tasks.register<Exec>("observabilityConfigCheck") 
 val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
     group = "verification"
     description = "Verifies existing-installation updates and interrupted-run reconciliation on Linux."
-    inputs.files("deploy/update-existing.py", "deploy/worker_release.py", "deploy/native_repository.py")
+    inputs.files("deploy/update-existing.py", "deploy/native_repository.py", "deploy/resource_pool.py")
     inputs.files(fileTree("deploy/tests") { include("test_*deployment.py") })
     outputs.upToDateWhen { false }
     commandLine(
@@ -290,7 +290,7 @@ val existingDeploymentTests = tasks.register<Exec>("existingDeploymentTests") {
 tasks.named("check") { dependsOn(existingDeploymentTests) }
 
 val appIdentityDirectory = layout.buildDirectory.dir("app-image-identity")
-val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src", "content-template", "frontend/public/games/runtime.mjs", "executor-service/rust", "executor-service/resource_pool.py", "executor-service/sandcrab-release.properties")
+val appImageInputs = listOf("Dockerfile", ".dockerignore", "gradlew", "settings.gradle.kts", "build.gradle.kts", "gradle.properties", "gradle", "src", "content-template", "frontend/public/games/runtime.mjs", "executor-service/sandcrab-release.properties")
 val appImageRevision = providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() }
 val buildAppIdentityImage = tasks.register<Exec>("buildAppIdentityImage") {
     group = "verification"

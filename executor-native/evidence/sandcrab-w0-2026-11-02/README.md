@@ -3,7 +3,7 @@
 Date: 2026-11-02
 
 These measurements use synthetic data, the standalone native API and no model
-calls. The [protocol](../../../experiments/sandcrab-density/README.md) owns workload,
+calls. The [protocol](https://github.com/core607/poketto/blob/c805d59bf215bc8008e317fb578eb92d0859dc0d/experiments/sandcrab-density/README.md) owns workload,
 scoring and measurement boundaries. [index.json](index.json) lists each retained
 artifact, its archive digest and every copied file's SHA-256. Receipt timestamps
 are UTC. All three canonical budgets and the first-use baseline are complete.

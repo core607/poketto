@@ -1,7 +1,7 @@
 # Native repository execution
 
 With `POKETTO_EXECUTOR_ENABLED=true`, `repo_exec` uses the configured
-[Sandcrab service](rust/sandcrab/README.md). The application accepts the native
+Sandcrab service at the [pinned release](sandcrab-release.properties). The application accepts the native
 backend and requires the [offline import](native-migration.md) for existing signed copies.
 
 ## Application settings
@@ -26,7 +26,7 @@ of the legacy data before the write pause and import.
 
 Install the pinned Sandcrab release as a root service with cgroup delegation in a
 dedicated, bounded slice. Set its Unix socket group to the application GID. Install
-Poketto's [resource-pool checker](resource_pool.py) at
+Poketto's [resource-pool checker](../deploy/resource_pool.py) at
 `/usr/local/lib/poketto/resource_pool.py` with root ownership and mode 0644.
 The deployment account needs permission to connect to the socket, for example
 through the application group. The checker verifies the peer's root UID, main

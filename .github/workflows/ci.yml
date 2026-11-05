@@ -240,8 +240,8 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12.14"
-      - name: Application image identity and executor service
-        run: ./gradlew appImageIdentityCheck executorRustCheck executorServiceTests --no-daemon
+      - name: Application image identity
+        run: ./gradlew appImageIdentityCheck --no-daemon
       - name: Upload verification reports
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -288,7 +288,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # The legacy OOM fixture runs here. Native account, game and load checks run with the verified release.
+  # The protected release check owns native API, migration, workspace, game and client acceptance.
   load:
     name: load
     needs: changes
@@ -302,62 +302,15 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - name: Set up Java
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
-        with:
-          distribution: temurin
-          java-version: "26"
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
-        with:
-          gradle-home-cache-cleanup: true
-      - name: Stage the signed supervisor for the isolated OOM test
-        run: ./gradlew stageExecutorWorker --no-daemon
-      - name: Prepare the sandbox host
-        run: |
-          # Bubblewrap needs capability-bearing user namespaces.
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          command -v mkfs.xfs || { sudo apt-get update && sudo apt-get install --yes --no-install-recommends xfsprogs; }
-          sudo install -d -m 755 /var/lib/poketto-load
-          sudo bash executor-service/prepare-tools.sh /var/lib/poketto-load/tools
-          sudo bash executor-service/prepare-node.sh /var/lib/poketto-load/tools
-          python3 -m venv "$RUNNER_TEMP/pip"
-          "$RUNNER_TEMP/pip/bin/pip" install --disable-pip-version-check --no-deps --only-binary=:all: --target "$RUNNER_TEMP/python" -r executor-service/requirements.txt
-          sudo cp -R "$RUNNER_TEMP/python" /var/lib/poketto-load/tools/python
-          sudo chown -R root:root /var/lib/poketto-load
-          sudo chmod -R a+rX,go-w /var/lib/poketto-load
-      - name: Isolated supervisor and enclosing-pool OOM recovery
-        run: |
-          sudo mkdir /var/lib/poketto-oom
-          sudo cp -R build/executor-service/worker/. /var/lib/poketto-oom/
-          sudo env PYTHONPATH=/var/lib/poketto-load/tools/python python3 /var/lib/poketto-oom/native_probe.py --root /var/lib/poketto-oom --tools /var/lib/poketto-load/tools --oom-only
-          sudo rm -r -- /var/lib/poketto-oom
       - name: Require the checked release and native consumer results
         env:
           GH_TOKEN: ${{ github.token }}
           SANDCRAB_STATUS_ISSUER: ${{ vars.SANDCRAB_STATUS_ISSUER }}
         run: python3 acceptance/clients/release-gate.py require
 
-  collectors:
-    needs: changes
-    if: contains(fromJSON(needs.changes.outputs.lanes), 'collectors')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - name: Test density collectors without measuring capacity
-        run: |
-          command -v rg || { sudo apt-get update && sudo apt-get install -y ripgrep; }
-          python3 -m unittest discover -s experiments/sandcrab-density -p 'test_*.py' -v
-
-  evals:
-    needs: changes
-    if: contains(fromJSON(needs.changes.outputs.lanes), 'evals')
-    uses: ./.github/workflows/evals.yml
-
   verify:
     name: verify
-    needs: [changes, docs, java, database, web, image, stack, load, retrieval-lab, evals, collectors]
+    needs: [changes, docs, java, database, web, image, stack, load, retrieval-lab]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

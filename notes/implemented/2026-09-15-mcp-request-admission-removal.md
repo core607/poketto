@@ -97,7 +97,7 @@ application.
 
 ## Related decisions
 
-- [Local execution supervisor](2026-09-05-local-execution-supervisor.md): executor
+- [Native consumer](2026-11-05-native-repository-consumer.md): executor
   admission is independent of these request bounds.
 - [Image transfers](2026-09-15-mcp-image-transfers.md): this record withdraws its
   programmatic Base64 input; grants, download validation and idempotency remain.

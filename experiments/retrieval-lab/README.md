@@ -25,7 +25,7 @@ Corpus-only TF-IDF and MiniBatchKMeans produce 32 topic folders. Each folder lis
 
 ## Connect the independent Sandcrab service
 
-Run a dedicated [Sandcrab service](../../executor-service/rust/sandcrab/README.md) on a Linux host. Reserve the socket and durable volume pool for this experiment. Set `LAB_WORKER_SOCKET` and `LAB_WORKER_PROFILE`. The application's Unix UID must match the service's configured client UID. Give guest commands a separate execution account.
+Run a dedicated [Sandcrab service](../../executor-service/README.md#release) on a Linux host. Reserve the socket and durable volume pool for this experiment. Set `LAB_WORKER_SOCKET` and `LAB_WORKER_PROFILE`. The application's Unix UID must match the service's configured client UID. Give guest commands a separate execution account.
 
 The complete FiQA corpus requires enforced project quotas, a 2 GiB volume and 150,000 inodes per question. The acceptance fixture uses an 8 GiB XFS project-quota pool, a 256 MiB transfer limit, 512 MiB of guest memory, a 1 MiB output limit, a 120-second maximum command duration and a renewable 60-second session. Disable networking and host calls. The guest needs bash, Git, Python 3 and ripgrep.
 

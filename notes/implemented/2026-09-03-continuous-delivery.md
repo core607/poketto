@@ -19,7 +19,7 @@ Poketto targets a self-hosted single machine. Its delivery path needs only to tu
 
 After a `main` push of the canonical repository passes the required `verify` job, the `publish` job builds the application image with Buildx and pushes it to `ghcr.io/core607/poketto` tagged `sha-<commit>` and `main`. The moving tag aids discovery only; deployment selects an image by its registry digest or by the per-commit tag carried in a transferred archive, and always verifies the `org.opencontainers.image.revision` label against the commit being deployed. Provenance attestations are disabled so the published digest names one `linux/amd64` manifest.
 
-The separate [Sandcrab installer workflow](../../.github/workflows/sandcrab-readiness.yml) can publish the image archive from its container check on an explicit main dispatch. It requires the successful main CI verdict for the same revision and tags that revision. Publishing the package does not switch the application executor.
+The application image carries its [Sandcrab release pin](../../executor-service/sandcrab-release.properties). Service publication and provisioning belong to the independent distribution and operator. The [native dependency verifier](../../deploy/native_repository.py) checks the installed service before and after application replacement.
 
 Only the image publication jobs hold `packages: write`. Verification, pull-request, and deployment jobs hold no package-write authority. Every third-party action is pinned to a full commit SHA. The workflow summary records the source commit, the application and frontend digests, and the database pin.
 

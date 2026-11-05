@@ -107,7 +107,7 @@ The application must run on Linux. Disabled games have no active marker or
 execution entrance; stored saves remain in PostgreSQL. This switch is independent
 of plaza interactions.
 
-Run a dedicated [Sandcrab service](../executor-service/rust/sandcrab/README.md)
+Run a dedicated [Sandcrab service](../executor-service/README.md#release)
 with only the `games` profile, no durable volumes and no host calls. The application
 checks these constraints and the native inventory endpoints at startup. Its peer
 UID must match `client_uid`; it needs access to the root-owned socket, not a signing

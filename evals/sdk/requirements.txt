@@ -1,4 +1,0 @@
-opensandbox==1.1.0
-httpx==0.28.1
-httpx-sse==0.4.3
-pydantic==2.14.2

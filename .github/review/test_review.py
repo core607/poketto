@@ -627,7 +627,7 @@ class ReviewTests(unittest.TestCase):
         # Every task the check lifecycle runs still belongs to a lane.
         for task in ("test", "spotlessCheck", "checkstyleMain", "checkstyleTest",
                      "checkstyleIntegrationTest", "repoCheck", "integrationTest", "frontendCheck",
-                     "appImageIdentityCheck", "executorServiceTests", "deployScriptTests",
+                     "appImageIdentityCheck", "deployScriptTests",
                      "existingDeploymentTests", "gatewayConfigCheck", "observabilityConfigCheck",
                      "proxyForwardingCheck", "linuxStorageTest"):
             self.assertIn(" " + task, ci, task + " is no longer run by any lane")
