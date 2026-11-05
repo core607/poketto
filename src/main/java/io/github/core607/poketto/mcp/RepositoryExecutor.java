@@ -153,8 +153,8 @@ public interface RepositoryExecutor {
     }
 
     /**
-     * Command output. {@code freshSandbox} identifies a newly started runtime for this command.
-     * Native execution starts a fresh shell each time; the copy has an independent lifetime.
+     * Command output. {@code freshSandbox} identifies a newly started runtime for this command;
+     * otherwise the lease's shell state was reused. The disk copy has an independent lifetime.
      * {@code refreshed} means a clean public copy was rebuilt from changed publication under the
      * same copy ID before this command ran; {@code commit} then names the new projection.
      */

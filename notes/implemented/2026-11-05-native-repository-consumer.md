@@ -16,9 +16,10 @@ publication checks, transfers and host-side Git authority. The daemon receives
 sandbox profiles, templates, sessions, files and host-call bytes.
 
 A new copy shares an immutable template of its authorized commit and reading
-scope. Each command uses a fresh shell, and the application records the verified
+scope. Each template-backed command uses a fresh shell, and the application records the verified
 writable layer before acknowledging it. Independent application processes recover
-from that journal. An imported volume keeps its binding until disposal or expiry.
+from that journal. An imported volume keeps its binding until disposal or expiry
+and can reuse its live native lease between commands.
 The [runtime contract](../../executor-service/native-repository.md) owns the
 directory layout, profiles, commands and deployment prerequisites.
 
@@ -58,7 +59,8 @@ generic daemon.
 
 Durability belongs to the consumer's bounded XFS journals and verified archives.
 Capturing and restoring changes adds work to each command and preserves files
-across process loss. Shell-local state ends with the command. Template ownership
+across process loss. Template shell state ends with the command; imported-volume
+shell state ends with its lease. Template ownership
 and imported-volume ownership require different disposal paths.
 
 The signed application's [per-lease design](../archived/2026-09-16-per-lease-command-sandboxes.md)

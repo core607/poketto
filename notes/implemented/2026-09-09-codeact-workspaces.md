@@ -24,8 +24,9 @@ The public-only export is built from an empty destination by the [public executi
 
 **Execution and the service bridge.** `repo_exec` is the composition entrance
 ([CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md)). Ordinary search,
-shell, Python and Git operate on the retained copy through a fresh sandbox shell
-for each command. The consumer-owned `poketto` CLI sends bounded requests through
+shell, Python and Git operate on the retained copy. Template-backed commands use
+fresh shells; imported volumes can reuse a live native lease. The consumer-owned
+`poketto` CLI sends bounded requests through
 Sandcrab's optional host-call API; Poketto reauthorizes and dispatches them to its
 domain services. Remote and storage credentials stay on the host. Calls wait for
 the host result; a lost reply reports an unknown outcome and never replays a write.

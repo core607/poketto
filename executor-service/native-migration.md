@@ -33,6 +33,25 @@ Prepare and execute require a healthy deployment state under the updater's lock.
 
 Prepare and execute require the target service to report kernel-enforced quotas for the imported volume. Execute rechecks that service epoch, the fixed source, archives and expected journal. It uses the same volume, session and upload IDs, confirms both durable transfers and native session containment, then changes the writer once. Owner, copy ID, expiry, save state, original baseline and public projection remain unchanged. The source remains after success and must not become a writable fallback after native edits.
 
+## Deferred copies and retirement
+
+Keep the previous application image, supervisor, configuration and storage backup
+until every retained account journal has a native binding. A deferred legacy
+record still counts toward the account's copy quota. Native execution, disposal
+and expiry leave it untouched and cannot complete its migration.
+
+Before cutover, reconcile uncertain writes through the retained signed deployment
+while it is the sole writer. Use its authorized disposal or expiry path for copies
+that should be removed. Stop both old writers again, inventory the remaining
+journals and prepare fresh import requests for eligible copies. Resolve every
+deferred record before activating native authoring.
+
+After native writes begin, never resume the old writer against mixed live
+journals or delete a legacy journal to bypass its quota. The current operator has
+no post-cutover retirement command for a deferred record; retain its source and
+receipts for offline reconciliation. [The follow-up](https://github.com/core607/poketto/issues/411)
+tracks this limitation and its account-quota impact.
+
 ## Uncertain outcomes
 
 Timeouts observe the same helper process; the controller never starts a concurrent replacement. Failed preparation keeps candidate files for explicit reconciliation. It does not silently rebuild archives after source changes. Both archive uploads request `keepResult`. Their receipts survive the service result TTL until the journal commits, including when an upload response is lost. Waiting, receiving, publishing, failed or unknown uploads, or an incomplete old-epoch plan, require explicit operator reconciliation. They are not resent under replacement IDs. A lost journal response is checked against the same published writer and retained state.

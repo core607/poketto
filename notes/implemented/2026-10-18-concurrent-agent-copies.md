@@ -13,7 +13,7 @@ Date: 2026-10-18
 - A fork's owner carries its copy ID, so its journal address, lease key, worker identity and portable-export client all differ from the default copy's and from every other fork's. The default copy keeps its original journal address.
 - A named `expectedCopyId` resolves to the default copy of a readable scope, or to the fork with that ID, and waits for its own journal as before. Disposal and artifact reads find forks the same way, and the expiry collector handles them like any copy.
 - The site group bounds the copies an account holds in a workspace (`poketto.executor.account-copies.*`: 2, 4 and 16 for viewers, community members and creators). Administrators are bounded only by the copy store's site-wide limit. At its bound, `new` waits for the default copy.
-- The result names the fork's `copyId`. An agent that keeps the ID its results return keeps its own files. Each command starts a fresh shell. One that sends `new` again within a claim lands in another copy, without its edits.
+- The result names the fork's `copyId`. An agent that keeps the ID its results return keeps its own files. Template-backed commands start fresh shells; an imported volume can reuse its live lease. One that sends `new` again within a claim lands in another copy, without its edits.
 
 ## Alternatives
 
