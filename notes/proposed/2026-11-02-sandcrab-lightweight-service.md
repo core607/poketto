@@ -160,6 +160,124 @@ that threshold. An eviction proposal must protect background processes, restore 
 and exports, describe lost shell state and keep workspaces on disk. Other optimizations
 require a measured bottleneck and a proposal before implementation.
 
+### D: environment reuse and measured performance
+
+[DSec](https://arxiv.org/html/2609.22978v1) motivates reusable environment layers,
+less repeated setup, resource-aware execution and independent grading. Its
+cluster measurements are not Sandcrab estimates. These work items extend P and
+the independent-consumer target; they do not change the no-KVM, small-host,
+readiness or security requirements. Sandcrab owns generic mechanisms and SDK/CLI
+workflows. The [native consumer](../implemented/2026-11-05-native-repository-consumer.md)
+owns application journals, authorization and adaptation.
+
+Implement D0 first, then D1/D2 with the relevant D3 measurements. D4 follows its
+measured bottleneck. D5 accompanies the affected APIs and evaluations. D6/D7
+remain conditional investigations. Complete this work before the final JVM
+footprint work and closure of the overall plan.
+
+#### D0: execution cost breakdown
+
+Measure request admission, template lookup, sandbox and shell startup, upper
+restoration, command execution, change capture, durable acknowledgement and
+cleanup separately. Distinguish a native API call from the consumer's whole
+request. Record wall/CPU time, transferred and written bytes, CPU throttling,
+run-queue or CPU-pressure observations, I/O pressure, and anon/file/kernel memory.
+Separate cold and warm starts, successful work, refusals and timeouts. A low
+all-outcome latency with many refusals is not improved goodput. Do not infer
+the bottleneck from aggregate RSS, an empty admission queue or zero OOM alone.
+
+Use fixed command replays and representative small and large writable layers.
+Preserve an unmodified baseline and change one mechanism per comparison. Propose
+and implement removal of repeated setup only where this breakdown establishes
+the cost; preserve integrity checks, containment and acknowledged durability.
+
+#### D1: prepare, validate and publish environments
+
+Provide a short CLI/SDK workflow to prepare an environment interactively, validate
+it, publish an immutable template and start independent instances from it. Reuse
+existing template and diff primitives before adding a daemon operation. Consumers
+must not each implement tar, whiteout and reimport orchestration.
+
+Define this as a filesystem checkpoint: process state, shell variables and cwd
+are not implicitly restored. Bound capture and import, coordinate writers, preserve
+deletions and supported link/permission semantics, and define cancellation and
+lost-reply reconciliation without replaying effects. Demonstrate the workflow in
+an independent build/test example and compare preparation cost and client steps.
+
+#### D2: composable environment recipes
+
+Allow independently versioned base, dependency/toolkit and workspace layers with
+a private writable upper. Specify layer order, conflicting paths, whiteouts,
+execution identity, rootfs anchors and profile authority. Bind the ordered recipe
+to immutable digests. Callers select authorized content, never arbitrary host
+mount paths or stronger privileges. Pins survive active users; deletion and
+garbage collection respect every reference and uncertain cleanup.
+
+Verify independent instances, changing a toolkit without republishing unchanged
+workspace content, rootfs and SDK behavior, restart recovery and failed
+publication. Record cold/warm preparation, imported bytes, metadata and mount
+cost, and the effect on first-use instructions and dependencies.
+
+#### D3: shared file cache and preparation reuse
+
+Identify dependencies, indexes and caches still duplicated in writable copies.
+Share immutable trees and file identities where safe; do not count existing
+template sharing as a new gain. Measure 1/10/50 readers with matched cold/warm
+conditions, file/anon/kernel memory, actual copy-up and bytes written. Include a
+write-heavy case so saved read cache does not conceal copy-up cost. Preserve
+private writable state and ownership; never drop production caches for a test.
+
+#### D4: bounded startup, execution and CPU service classes
+
+Evaluate separate bounds for live sessions, concurrent startup and executing
+commands. Add controls only when D0 demonstrates contention or a useful capacity
+trade-off. Compare interactive commands alongside background builds using
+successful throughput, p95/p99, starvation and CPU throttling. Evaluate task
+weights before scheduler or physical-core controls; verify available topology
+and kernel support before claiming SMT isolation on a virtual host.
+
+Keep finite aggregate CPU/memory/task limits and zero swap. Scheduling classes
+remain operator-authorized. Cancellation, queue timeout and revocation preserve
+no-execution refusals and no replay; admission is released only after containment.
+Changing a queue length alone is not a performance result.
+
+#### D5: evaluation integrity and interference
+
+Extend the independent grader with bounded cases that attempt to read reference
+answers or grader logs, access control channels, modify protected execution
+entrypoints, pollute later samples, or exhaust output/storage. Separate builder,
+agent and grader authority; published templates exclude reference answers,
+credentials and build residue. Check expected denial or bounded termination,
+independent output/state readback and cleanup. Keep scripted boundary probes
+distinct from paid model-directed tasks and retain every attempted run.
+
+#### D6: conditional EROFS and on-demand loading
+
+Proceed only when D0/D2 show large-environment import, extraction or local storage
+cost dominating the target workload. Compare the existing unpack-once template
+path with optional local EROFS first. Record CPU, I/O, cache reuse, startup tail,
+tool/kernel requirements and readiness. Remote lazy loading follows only an
+observed distribution bottleneck; account for network failure and cache eviction.
+Do not introduce 3FS, a distributed scheduler, a required container runtime or a
+resident storage service into the small-host default.
+
+#### D7: conditional idle reclamation
+
+Retain P1's 40% trigger and background-process, cwd/export, disk-workspace and
+state-loss requirements. Freezing alone establishes no memory saving. Evaluate
+only reclamation compatible with the zero-swap reference profile; measure
+memory released, reclaim CPU/I/O and resume latency. Swap-assisted pause requires
+a separately accepted profile and cannot replace zero-swap evidence. VM-specific
+DAX/balloon mechanisms remain inapplicable to the bwrap backend; KVM and new
+execution backends stay outside this work.
+
+For each conditional item, retain the trigger measurement and either implement
+and verify the warranted mechanism or record why it remains deferred. A deferred
+item is not an implemented capability. W0's checkpoint-only full measurements,
+aggregate-only committed evidence and issue-and-continue rule still apply;
+intermediate changes run only affected checks and targeted comparisons. Update
+the owning API/docs and release before Poketto adopts a cross-boundary change.
+
 ### X: extraction by readiness
 
 Extract when L1-L10 and H1-H4 have landed and CI readiness, conformance and published
