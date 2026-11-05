@@ -1,8 +1,0 @@
-usage: poketto artifact create [-h] [--type MEDIA_TYPE] path
-
-positional arguments:
-  path
-
-options:
-  -h, --help         show this help message and exit
-  --type MEDIA_TYPE

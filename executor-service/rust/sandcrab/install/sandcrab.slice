@@ -1,8 +1,0 @@
-[Unit]
-Description=Sandcrab resource limits
-
-[Slice]
-MemoryMax=1G
-MemorySwapMax=0
-CPUQuota=200%
-TasksMax=512

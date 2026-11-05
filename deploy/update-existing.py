@@ -13,8 +13,7 @@ import sys
 import urllib.parse
 import urllib.request
 
-from native_repository import NativeRepository, validate_config as validate_native_config
-from worker_release import DeploymentError, NoRedirects
+from native_repository import DeploymentError, NativeRepository, NoRedirects, validate_config as validate_native_config
 
 
 APPLICATION_SETTINGS = frozenset((

@@ -5,7 +5,7 @@ Status: Implemented
 
 ## Scope
 
-This record owns repository-native reads, the public content snapshot and its format bounds, the atomic text writer, managed originals and snapshot-bound image delivery of the [phase-one delivery](2026-09-05-phase-one-daily-use.md). The [identity HTTP backend](2026-09-06-workspace-identity-http.md) owns accounts, invitations, membership, keys and browser sessions; [member content permissions](2026-09-12-member-content-permissions.md) own which capability each changed path needs; the [MCP and local execution record](2026-09-05-local-execution-supervisor.md) owns the transport and worker adapter.
+This record owns repository-native reads, the public content snapshot and its format bounds, the atomic text writer, managed originals and snapshot-bound image delivery of the [phase-one delivery](2026-09-05-phase-one-daily-use.md). The [identity HTTP backend](2026-09-06-workspace-identity-http.md) owns accounts, invitations, membership, keys and browser sessions; [member content permissions](2026-09-12-member-content-permissions.md) own which capability each changed path needs; the [CodeAct entrance](2026-09-10-codeact-mcp-entrance.md) owns MCP tools and the [native consumer](2026-11-05-native-repository-consumer.md) owns the execution adapter.
 
 ## Repository and publication
 

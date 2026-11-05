@@ -1,0 +1,102 @@
+{
+  "scope": "Consumer source extraction and release-only Java fixture verification on disposable Linux; no production capacity or model claims.",
+  "source": {
+    "baseRevision": "c7eaa05047dff4e0fd92c6f89998ed36120fe6f4",
+    "filesSha256": {
+      "executor-native/java_native_fixture.py": "53f3517ca0ecc1dacaa8ade34564b80b00baa5db872340aab79063c357dd9211",
+      "executor-native/sandcrab_volume_java_probe.py": "02efd56e533926f03b64fed85aac826c4c6ba3b5356135999c516216bc91500e",
+      "executor-native/sandcrab_recovery_java_probe.py": "bf58a16e4e039748ed0ef56f2a5b8d25adc9ff5d91b4d72a72d4ee590d25bfee",
+      ".github/ci/sandcrab-release-check.sh": "2d99fb4c60bf559f16c4222a2192ae12b061d69448543fa1df04d1942891e5eb",
+      "deploy/native_repository.py": "119003ce44fcc4ca5bedd1575858637e4456e68f78bcc5fd48e4703ed9c0899f"
+    }
+  },
+  "release": {
+    "version": "v0.1.1",
+    "bundleSha256": "175ced6a3cc479aab94f691c8da4807336d42b7f8389d54469ea6090f5227bfe",
+    "sandcrabSha256": "de7de59f292a067dca7f034ffd971f17dd126e984ac624bb892db808d38853d6"
+  },
+  "runtimeManifestSha256": "10f977ae87c1d6467ca0b38890b6cfbc9fb2499aa20c8b74d2dbd3a54373bfcd",
+  "javaApi": {
+    "volumeChecks": 8,
+    "recoveryChecks": 5,
+    "result": "PASS",
+    "cleanup": "PASS",
+    "fixtureBounds": {
+      "sliceMemoryMiB": 384,
+      "sliceCpuPercent": 50,
+      "sliceTasks": 256,
+      "xfsImagesMiB": [
+        512,
+        512
+      ]
+    },
+    "attempts": [
+      {
+        "attempt": "trial1",
+        "result": "FAIL",
+        "cleanup": "PASS",
+        "fixtureSha256": "a18bf45982b1d9a45c433a10c3ccbaff65f31d300c6b1e01945d05035b1ebff5",
+        "failure": "Overlay runtime was on the enclosing Docker overlay filesystem."
+      },
+      {
+        "attempt": "trial2",
+        "result": "FAIL",
+        "cleanup": "PASS",
+        "fixtureSha256": "daf8c4cde494e4184ee6e46b38b74419b90152536456c355b3fd76368c79dad9",
+        "failure": "Quota-enforced volume data was not a whole XFS filesystem."
+      },
+      {
+        "attempt": "trial3",
+        "result": "PASS",
+        "cleanup": "PASS",
+        "fixtureSha256": "53f3517ca0ecc1dacaa8ade34564b80b00baa5db872340aab79063c357dd9211",
+        "failure": null
+      }
+    ]
+  },
+  "migration": {
+    "realService": {
+      "result": "PASS",
+      "cleanup": "PASS",
+      "checks": [
+        "active-app-running-systemd-writer-and-real-bind-mount-each-refused",
+        "prepare-pinned-archives-without-native-volume-or-journal-mutation",
+        "legacy-git-work-home-link-topology-and-all-retained-state-survived-cutover",
+        "fixed-plan-replay-preserved-the-journal-and-owned-resources-were-released"
+      ],
+      "comparedEntries": 73
+    },
+    "lostReplyJournal": {
+      "result": "PASS",
+      "cleanup": "PASS",
+      "journalFilesystem": "XFS",
+      "nativeHttpAndHostFence": "fixture"
+    }
+  },
+  "localChecks": {
+    "linuxStorage": {
+      "passed": 476,
+      "skipped": 0
+    },
+    "existingDeployment": {
+      "passed": 55
+    },
+    "ciSelectorAndReleaseReceipt": {
+      "passed": 7
+    },
+    "reviewTool": {
+      "passed": 105,
+      "platformSkipped": 1
+    },
+    "appImage": {
+      "result": "PASS",
+      "embeddedWorkerAbsent": true,
+      "exactReleasePin": true,
+      "uid10001SocketAccess": true,
+      "unrelatedUidDenied": true
+    },
+    "repoCheck": "PASS"
+  },
+  "rawEvidence": "CI artifacts and protected operator storage retain process output and every failed attempt.",
+  "hostedReleaseGate": "The protected workflow must separately pass against the committed consumer head before merge."
+}

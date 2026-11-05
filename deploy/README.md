@@ -7,8 +7,8 @@ noninteractive sudo for `/usr/local/sbin/poketto-update-existing`.
 
 Every installation, including one with execution disabled, must install
 [update-existing.py](update-existing.py) as `/usr/local/sbin/poketto-update-existing`,
-with [worker_release.py](worker_release.py) and [native_repository.py](native_repository.py)
-beside it. All three files must be root-owned and unwritable by other accounts.
+with [native_repository.py](native_repository.py)
+beside it. Both files must be root-owned and unwritable by other accounts.
 
 Keep the deployment root and its `deployment.json` root-owned and unwritable by
 other users. Use [existing.example.json](existing.example.json) for the project,

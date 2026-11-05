@@ -1,5 +1,6 @@
 """Verify the app image's pinned release against an independently managed repository service."""
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -7,9 +8,57 @@ import re
 import socket
 import stat
 import struct
+import urllib.request
 import uuid
 
-from worker_release import DeploymentError, RepositoryProbe, protected, sha, validate_executor_settings
+class DeploymentError(RuntimeError):
+    def __init__(self, message, missing=False):
+        super().__init__(message)
+        self.missing = missing
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def protected(path, directory=False):
+    if not path.is_absolute() or path.resolve() != path or path.is_symlink():
+        raise DeploymentError("worker paths must be canonical and must not traverse symlinks")
+    for parent in path.parents:
+        ancestor = parent.stat()
+        # A root-owned sticky directory protects root-owned children, including private /tmp fixtures.
+        writable = ancestor.st_mode & 0o022 and not ancestor.st_mode & stat.S_ISVTX
+        if ancestor.st_uid != 0 or writable:
+            raise DeploymentError("worker path ancestors must prevent replacement by other users")
+    info = path.stat()
+    kind = stat.S_ISDIR if directory else stat.S_ISREG
+    if not kind(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+        raise DeploymentError("worker paths must be root-owned and not writable by other users")
+
+
+def validate_executor_settings(config, paths):
+    for key in paths:
+        if not isinstance(config[key], str) or not re.fullmatch(r"/[A-Za-z0-9_./-]+", config[key]):
+            raise DeploymentError("executor deployment paths must be absolute")
+        path = Path(config[key])
+        if ".." in path.parts or path == Path("/"):
+            raise DeploymentError("invalid executor deployment path")
+    if not isinstance(config["service"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@-]{0,120}\.service", config["service"]):
+        raise DeploymentError("invalid executor service name")
+    if not isinstance(config["healthUrl"], str) or not re.fullmatch(r"http://127\.0\.0\.1:[0-9]{1,5}/actuator/health/executor", config["healthUrl"]):
+        raise DeploymentError("executor health URL must be the application's loopback executor health endpoint")
+    if not 1 <= int(config["healthUrl"].split(":")[2].split("/")[0]) <= 65535:
+        raise DeploymentError("invalid executor health port")
+    try:
+        if not isinstance(config["probeCopyId"], str) or str(uuid.UUID(config["probeCopyId"])) != config["probeCopyId"]:
+            raise ValueError("invalid copy ID")
+    except ValueError:
+        raise DeploymentError("executor probe requires an existing copy UUID") from None
+
+
+class NoRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, file, code, message, headers, new_url):
+        return None
 
 
 def validate_config(config):
@@ -65,7 +114,7 @@ def consumer_socket(container, environment, host):
     return str(path)
 
 
-class NativeRepository(RepositoryProbe):
+class NativeRepository:
     def __init__(self, config, command):
         validate_config(config)
         self.config = config
@@ -133,3 +182,41 @@ class NativeRepository(RepositoryProbe):
         if builder != profile:
             receipt["templateProfile"] = builder
         return receipt
+
+    def _probe_token(self):
+        path = Path(self.config["probeTokenFile"])
+        protected(path)
+        if path.stat().st_mode & 0o077 or path.stat().st_size > 4096:
+            raise DeploymentError("executor probe token must be a private root-owned file of at most 4096 bytes")
+        token = path.read_text(encoding="ascii").strip()
+        if not re.fullmatch(r"[!-~]{1,4096}", token):
+            raise DeploymentError("executor probe token must be a nonempty single-line value")
+        return token
+
+    def probe(self):
+        # An explicit dedicated copy keeps release checks from creating, deleting or borrowing user copies.
+        body = {"jsonrpc": "2.0", "id": "deployment-probe", "method": "tools/call", "params": {
+            "name": "repo_exec", "arguments": {"expectedCopyId": self.config["probeCopyId"],
+                "command": "poketto --help >/dev/null && printf poketto-deployment-ready", "timeoutSeconds": 30}}}
+        url = self.config["healthUrl"].removesuffix("/actuator/health/executor") + "/mcp"
+        request = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST", headers={
+            "Authorization": "Bearer " + self._probe_token(), "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25",
+            "User-Agent": "poketto-deployment/1"})
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirects())
+        try:
+            with opener.open(request, timeout=75) as response:
+                raw = response.read(1024 * 1024 + 1)
+                if response.status != 200 or len(raw) > 1024 * 1024:
+                    raise ValueError("invalid probe response")
+            envelope = json.loads(raw)
+            result = envelope["result"]
+            if envelope.get("id") != "deployment-probe" or envelope.get("error") or result.get("isError"):
+                raise ValueError("unsuccessful probe response")
+            content = next(item["text"] for item in result["content"] if item.get("type") == "text")
+            answer = json.loads(content)
+            if (answer.get("copyId") != self.config["probeCopyId"] or answer.get("exitCode") != 0
+                    or answer.get("stdout") != "poketto-deployment-ready"):
+                raise ValueError("probe command did not complete")
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, StopIteration):
+            raise DeploymentError("executor read-only MCP probe failed; deployment remains pending") from None

@@ -4,10 +4,9 @@ from pathlib import Path
 import socket
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from native_repository import NativeRepository, consumer_socket, release_pin
-from worker_release import DeploymentError, sha
+from native_repository import DeploymentError, NativeRepository, consumer_socket, release_pin, sha
 
 
 class NativeDeploymentTests(unittest.TestCase):
@@ -119,3 +118,51 @@ class NativeDeploymentTests(unittest.TestCase):
         self.environment["POKETTO_EXECUTOR_SIGNING_KEY"] = "/some/operator/key"
         with self.assertRaisesRegex(DeploymentError, "signed executor key"):
             verify()
+
+    def test_mcp_probe_uses_only_the_configured_copy_and_does_not_follow_redirects(self):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        answer = {"copyId": self.config["probeCopyId"], "exitCode": 0, "stdout": "poketto-deployment-ready"}
+        envelope = {"id": "deployment-probe", "result": {"content": [{"type": "text", "text": json.dumps(answer)}]}}
+        response.read.return_value = json.dumps(envelope).encode()
+        opener = MagicMock()
+        opener.open.return_value = response
+        with patch("native_repository.urllib.request.build_opener", return_value=opener) as factory:
+            self.service.probe()
+            request = opener.open.call_args.args[0]
+            self.assertEqual(request.full_url, "http://127.0.0.1:8080/mcp")
+            self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
+            self.assertEqual(json.loads(request.data)["params"]["arguments"]["expectedCopyId"], self.config["probeCopyId"])
+            self.assertEqual(factory.call_args.args[0].proxies, {})
+            self.assertIsNone(factory.call_args.args[1].redirect_request(None, None, 302, None, None, "http://example.test"))
+            for failure in ({"error": "rejected"}, {"id": "deployment-probe", "result": {"isError": True}},
+                            {"id": "deployment-probe", "result": {"content": []}}):
+                response.read.return_value = json.dumps(failure).encode()
+                with self.assertRaisesRegex(DeploymentError, "read-only MCP probe failed"):
+                    self.service.probe()
+
+    def test_private_probe_credentials_are_checked_before_inspecting_images(self):
+        token = Path(self.config['probeTokenFile'])
+        with patch.object(self.service, 'command') as command:
+            token.chmod(0o644)
+            with self.assertRaisesRegex(DeploymentError, 'private root-owned'):
+                self.inspect()
+            token.unlink()
+            with self.assertRaises(FileNotFoundError):
+                self.inspect()
+            command.assert_not_called()
+
+    def test_probe_paths_refuse_symlinks_and_replaceable_parents(self):
+        token = Path(self.config['probeTokenFile'])
+        alias = self.root / 'token-alias'
+        alias.symlink_to(token.name)
+        with patch.object(self.service, 'command') as command:
+            self.config['probeTokenFile'] = str(alias)
+            with self.assertRaisesRegex(DeploymentError, 'canonical'):
+                self.inspect()
+            self.config['probeTokenFile'] = str(token)
+            self.root.chmod(0o777)
+            with self.assertRaisesRegex(DeploymentError, 'ancestors must prevent replacement'):
+                self.inspect()
+            command.assert_not_called()
