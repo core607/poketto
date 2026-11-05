@@ -1,6 +1,7 @@
 # Seed Copies
 
 Date: 2026-10-18
+Archived: 2026-11-05
 
 ## Problem
 

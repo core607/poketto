@@ -1,6 +1,7 @@
 # Per-Lease Command Sandboxes
 
 Date: 2026-09-16
+Archived: 2026-11-05
 Status: Implemented
 
 This decision covers the signed worker. The [native repository backend](../../executor-service/native-repository.md) contains each command shell before capturing its template-backed workspace.

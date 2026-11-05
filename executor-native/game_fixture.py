@@ -35,8 +35,10 @@ class GameFixture:
         assert self.user != repository_user and self.pool.name != repository_slice
         self.assets = root / 'game-assets'
         self.assets.mkdir(mode=0o755)
+        self.assets.chmod(0o755)
         programs = root / 'game-programs'
         programs.mkdir(mode=0o755)
+        programs.chmod(0o755)
         for name in ('sandcrab', 'bwrap', 'bwrap-notices.txt', 'bwrap-source.tar.xz'):
             shutil.copy2(source / name, programs / name)
             (programs / name).chmod(0o755 if name in ('sandcrab', 'bwrap') else 0o644)
@@ -103,8 +105,9 @@ host_calls = false
 
     def start_worker(self):
         deadline = time.monotonic() + 10
-        while run(['systemctl', 'show', self.supervisor, '-p', 'LoadState', '--value']) != 'not-found':
-            assert time.monotonic() < deadline, 'previous game fixture unit was not collected'
+        group = Path('/sys/fs/cgroup') / self.pool.name / (self.supervisor + '.service')
+        while run(['systemctl', 'show', self.supervisor, '-p', 'LoadState', '--value']) != 'not-found' or group.exists():
+            assert time.monotonic() < deadline, 'previous game fixture unit and delegated cgroup were not collected'
             time.sleep(.05)
         self.socket.unlink(missing_ok=True)
         supervisor = str(self.binary)

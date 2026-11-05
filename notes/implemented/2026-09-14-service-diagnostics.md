@@ -2,6 +2,8 @@
 
 Date: 2026-09-14
 
+Partially superseded by: [Native repository consumer](2026-11-05-native-repository-consumer.md).
+
 ## Problem
 
 A failure that reached a caller left nothing behind. `repo_exec` refusals returned a structured code to the client while the service recorded neither the refusal nor its cause, so the only account of a failed call lived in that client's transcript. The unexpected-failure handler recorded a stack trace and returned "an unexpected error occurred", with nothing tying the two together.
@@ -20,7 +22,7 @@ That outer position cannot read the caller. The security chain clears its contex
 
 `McpToolOutcomes` wraps the single dispatch point every tool shares. It records the tool, the duration, and the outcome code read back from the result. Reading the code from the body rather than accepting it as a parameter also covers an operation that returns a refusal of its own without raising. A refusal built without a code is recorded as `UNREPORTED` rather than omitted, because that is a defect in the producer.
 
-`repo_exec` adds one `ExecutionTimings` record per call: the wall time of each stage from authorization through the journal lock, the global operation permit, lease admission, preparation, the command with the bridge requests it raised, and completion. The tool's single duration could not tell queueing on the account journal from sandbox, bridge or journal-write cost, so capacity work had to reconstruct stages from cgroup counters and profiler samples. The record carries durations and a count only. The shared request identifier joins it to the outcome record, so it needs no command, path, copy ID or principal. A call that ends early charges its elapsed time up to the failure to the stage it stopped in and names it as `stoppedIn`, while stages it never entered read `-1`; stopping the sandbox and releasing the copy afterwards are reported as `cleanupMs`. A worker lost forty seconds into a command therefore shows forty seconds of command time, not an unreached command or the containment that followed. A command's result also names its stages inside the worker, making room among live units, waiting for the session, preparing or starting the sandbox, running, releasing command files and flushing to disk, which the record adds with a `worker` prefix beside `freshSandbox`: the 2026-10-18 load test showed eight-second commands that the application's stages could not split.
+Native `repo_exec` uses the tool outcome record and aggregate [executor metrics](../../deploy/observability/README.md). It emits no signed-worker `ExecutionTimings` stage record. That earlier instrumentation distinguished authorization, account-journal and operation-permit waits, lease preparation, bridged commands, completion and cleanup because a single duration could not locate capacity delays. Worker stages further separated unit admission, startup, execution and disk flush after eight-second commands appeared in the 2026-10-18 load test. Those durations and counts contained no command, path, copy or principal and used the shared request identifier for correlation. The [native consumer](2026-11-05-native-repository-consumer.md) retires that instrumentation with the signed execution path.
 
 `ProblemResponses` records the status and title of every mapped failure at its one shared construction point.
 

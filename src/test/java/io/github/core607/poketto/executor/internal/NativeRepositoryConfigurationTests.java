@@ -1,6 +1,7 @@
 package io.github.core607.poketto.executor.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import io.github.core607.poketto.assets.MediaFileService;
@@ -36,8 +37,6 @@ class NativeRepositoryConfigurationTests {
             try (var context = context(true)) {
                 assertThat(context.getBeansOfType(RepositoryExecutor.class)).hasSize(1);
                 assertThat(context.getBean(RepositoryExecutor.class)).isInstanceOf(NativeRepositoryExecutor.class);
-                assertThat(context.getBeansOfType(IsolatedRepositoryExecutor.class))
-                        .isEmpty();
                 assertThat(context.getBean(AccountCopyMaintenance.class)).isNotNull();
                 context.getBean("executorMetrics", MeterBinder.class).bindTo(meters);
                 assertThat(meters.get("poketto.executor.sessions.active")
@@ -69,38 +68,16 @@ class NativeRepositoryConfigurationTests {
     }
 
     @Test
-    void upgradingAnEnabledInstallationKeepsItsSignedWorkerUntilAnExplicitSwitch() throws Exception {
-        root = root.toRealPath();
-        var keyRoot = Path.of(System.getProperty("poketto.test.key-root", System.getProperty("user.home")))
-                .toRealPath();
-        var key = java.nio.file.Files.createTempFile(
-                keyRoot,
-                ".poketto-test-",
-                ".key",
-                java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
-                        java.nio.file.attribute.PosixFilePermissions.fromString("rw-------")));
-        var bytes = java.security.KeyPairGenerator.getInstance("Ed25519")
-                .generateKeyPair()
-                .getPrivate()
-                .getEncoded();
-        java.nio.file.Files.writeString(key, java.util.Base64.getEncoder().encodeToString(bytes));
-        java.nio.file.Files.setPosixFilePermissions(
-                key, java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
-        try (var context = context(true, key)) {
-            assertThat(context.getBeansOfType(RepositoryExecutor.class)).hasSize(1);
-            assertThat(context.getBean(RepositoryExecutor.class)).isInstanceOf(IsolatedRepositoryExecutor.class);
-            assertThat(context.getBeansOfType(NativeRepositoryExecutor.class)).isEmpty();
-            assertThat(context.getBean(AccountCopyMaintenance.class)).isNotNull();
-        } finally {
-            java.nio.file.Files.deleteIfExists(key);
-        }
+    void anExplicitSignedBackendIsRejectedBeforeOpeningNativeStorage() {
+        assertThatThrownBy(() -> context(true, "signed"))
+                .hasRootCauseMessage("Repository execution requires the native Sandcrab backend");
     }
 
     private AnnotationConfigApplicationContext context(boolean enabled) {
         return context(enabled, null);
     }
 
-    private AnnotationConfigApplicationContext context(boolean enabled, Path key) {
+    private AnnotationConfigApplicationContext context(boolean enabled, String backend) {
         var context = new AnnotationConfigApplicationContext();
         if (enabled) {
             // Real XFS account storage has a separate native probe; this test owns application wiring.
@@ -120,14 +97,10 @@ class NativeRepositoryConfigurationTests {
                 "8388608",
                 "poketto.executor.copies.inodes",
                 "256"));
-        if (key == null) {
-            settings.put("poketto.executor.backend", "native");
-        } else {
-            settings.put("poketto.executor.signing-key", key.toString());
+        if (backend != null) {
+            settings.put("poketto.executor.backend", backend);
         }
         context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("backend-test", settings));
-        context.registerBean(
-                tools.jackson.databind.ObjectMapper.class, () -> new tools.jackson.databind.ObjectMapper());
         context.registerBean(AuthService.class, () -> mock(AuthService.class));
         context.registerBean(RepositorySnapshotExports.class, () -> mock(RepositorySnapshotExports.class));
         context.registerBean(AuthorizedRepositoryReader.class, () -> mock(AuthorizedRepositoryReader.class));

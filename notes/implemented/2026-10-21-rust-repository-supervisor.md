@@ -20,7 +20,7 @@ Parsing rejects duplicate keys, preserves numeric token types across shared JSON
 features and bounds nesting. Library-version differences may reject malformed
 encodings earlier than the oracle; neither implementation admits them.
 
-[Atomic delivery](2026-10-19-coordinated-worker-delivery.md) keeps the supervisor
+[Atomic delivery](../archived/2026-10-19-coordinated-worker-delivery.md) keeps the supervisor
 outside the sandbox's three-program allowlist. Native-service adoption verifies
 the service/process contract separately from generation updates; obsolete
 production runtimes are removed after acceptance.

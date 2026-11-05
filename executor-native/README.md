@@ -1,100 +1,96 @@
-# Java and sandbox execution acceptance
+# Native repository and game acceptance
 
-This probe runs the production Java executor adapter, Unix peer checks, Ed25519 requests, the Rust
-repository supervisor and sandbox against a real Linux systemd host, so a failure here names the isolation layer.
-Authentication and the Git authority are synthetic fixtures on purpose. The probe does not replace
-PostgreSQL integration tests, the HTTP MCP entrance, or [client acceptance](../acceptance/clients/README.md)
-with real login, issued API keys and actual Codex and Claude Code clients. See the
-[worker contract and probes](../executor-service/README.md) or [native Sandcrab consumer](sandcrab.md).
+The workspace and game probes exercise Poketto's Java adapters against Sandcrab on
+a disposable Linux systemd host. They supply synthetic identities and Git
+repositories. [HTTP/MCP client acceptance](../acceptance/clients/README.md) covers
+actual login, PostgreSQL and issued grants. Browser iframe behavior uses the
+[browser entrance](../acceptance/README.md).
 
 ## Prepare
 
-Build the runtime with Java 26:
+Use Java 26 and a release archive matching the [consumer pin](../executor-service/sandcrab-release.properties).
 
 ```sh
-./gradlew stageExecutorNativeTest stageExecutorWorker
+./gradlew -PsandcrabBundle=/prepared/sandcrab.zip stageGameWorker stageExecutorNativeTest
 ```
 
-`build/executor-native/runtime` contains compiled classes, game resources, resolved JARs and a SHA-256 manifest;
-the probe verifies every manifest entry and rejects unlisted files. Copy that directory, `probe.py`,
-`rejected_peer.py` and `build/executor-service/worker` to isolated host staging. Preserve the latter's
-root-level executables, bundled `bwrap` with its source/notices, `bin/` directory and executable permissions. Never stage operator settings or credentials.
+The staged game bundle contains the executable, Bubblewrap, its source and notices.
+`build/executor-native/runtime` contains compiled classes, game resources, JARs
+and a SHA-256 manifest. The controllers verify each entry and reject unlisted
+files. Keep the controllers in their checkout layout so they can load the shared
+fixtures and game example. Make the runtime and isolated JDK readable by the
+temporary application account.
 
-For `--scenario games`, stage `game_fixture.py` beside `probe.py`. Add `sandcrab`
-and `game-example.mjs` from [the verified game bundle](../docs/games.md) to the worker sources.
-Poketto supplies its game runtime. Restricted hosts require the [AppArmor profile](../acceptance/clients/README.md).
+The host needs root access, systemd, delegated cgroup v2, Git, Python, XFS tools
+and the prepared sandbox toolchain with Node. `prepare-jdk.sh NEW_DIRECTORY`
+downloads the pinned Java 26 runtime. Restricted hosts also load the
+[AppArmor profile](../acceptance/clients/README.md).
 
-The host needs cgroup v2, systemd, root access, Git, Python with the worker's pinned dependencies and
-its prepared sandbox toolchain. The probe requires a Java 26 runtime; `prepare-jdk.sh NEW_DIRECTORY`
-downloads an isolated Temurin 26.0.2+10 archive and verifies its pinned SHA-256 without installing it
-globally. Runtime classes and JARs must be readable by the probe's temporary application account.
+## Release acceptance
 
-## Run
+Supply a readable release ZIP and a new, empty, writable results directory.
 
 ```sh
-sudo env PYTHONPATH=/prepared/tools/python python3 probe.py \
-  --runtime /staged/runtime \
-  --worker-source /staged/worker-source \
-  --tools /prepared/tools \
-  --java /isolated/jdk-26.0.2+10/bin/java
+SANDCRAB_BUNDLE=/prepared/sandcrab.zip \
+SANDCRAB_EVIDENCE=/prepared/results SANDCRAB_INSTALL_DISPOSABLE=1 \
+  bash .github/ci/sandcrab-release-check.sh
 ```
 
-`--scenario` selects what runs; each invocation uses a fresh fixture with its own account-copy pool and
-synthetic authority, and checks cleanup. A focused result does not prove the omitted scenarios.
+This entry checks the running executable's digest, workspace recovery, game
+confinement and authenticated clients. It prepares an isolated JDK and toolchain,
+runs the bounded client stage and preserves receipts on success and failure.
+The public CI gate checks the [maintainer-issued release receipt](../acceptance/clients/README.md).
 
-| Scenario | Coverage |
-|---|---|
-| `all` (default) | The complete adapter batch: peer refusal, lifecycle, copy identity, public scope, every CLI mode, media, exports, artifacts, twenty fixed-commit reuses, cancellation, revocation and worker restart with the sole session slot occupied; then lease expiry after abrupt Java process loss |
-| `ephemeral-lifecycle` | Account journal handoff between JVMs, then a real five-second timeout, persistent shell state and `freshSandbox`, preserved text and binary bytes, explicit and repeated disposal, and fresh admission in the same transport |
-| `account-state` | Account journal handoff between independent JVMs only |
-| `exports` | Private and public CLI ZIP flows |
-| `media` | Original fetches, historical versions, local collision protection and member projection access while the anonymous website is disabled |
-| `public-scope` | Real public projection: no private files, metadata or history, unchanged copy after a permission increase, publication checks on artifact delivery and after withdrawal |
-| `admission` | Capacity refusal without copy leakage; startup retries reuse leases without executing rejected commands |
-| `peer-only` | Refusal of a non-root worker peer before it receives request bytes |
-| `games` | Separate game worker and slice: shared puzzle, complete saves, host/network denial, resource exhaustion, descendants, revocation, restart and repository execution during full game admission |
-| `cli-save`, `cli-save-recovery`, `cli-media-import`, `cli-media-link`, `cli-move`, `cli-move-installation`, `cli-move-recovery` | One CLI handler each; `cli-save` includes workspace sync and conflicts, and the recovery modes cover uncertain remote acknowledgement or local installation without repeating the original write |
-| `retained-process` | Independent producer and recovery JVMs with external SIGKILL; `--process-case` selects one of `acknowledged`, `interrupted`, `uncertain`, `beforepublish`, `afterpublish`, `discarding` or `expired` |
+## Repository workspaces
 
-In `retained-process`, the controller verifies the producer's Java executable and kills it after an
-acknowledged command, during a command with an acknowledged host save, after a successful remote push,
-around final journal publication, or during disposal. A new JVM opens the same authority without
-reseeding, attaches the original copy, checks its local work and saves the recovered draft; the uncertain
-case reconciles without a second push. The expiry case advances only the fixture clock, checks that a held
-writer prevents deletion, then verifies scheduled cleanup and preserved remote commits.
+`overlay_copy_probe.py` exercises the configured Java repository adapter with
+commit templates, independent writable layers and XFS journals. It checks
+reconnection after process loss, scope-specific projections, selected Git saves
+and interrupted baseline installation. Its output directory contains the
+aggregate `summary.json` and the individual process logs.
 
-The complete batch has a 360-second deadline and focused batches 240 seconds. These are whole-test
-budgets: every command and lease keeps its own timeout, and cleanup still verifies that no execution
-processes remain.
+```sh
+sudo env SANDCRAB_INSTALL_DISPOSABLE=1 python3 executor-native/overlay_copy_probe.py \
+  --uid "$(id -u daemon)" --gid "$(id -g daemon)" \
+  --java /prepared/jdk/bin/java --binaries build/game-worker \
+  --runtime build/executor-native/runtime --output /prepared/workspace-results
+```
 
-## Fixture
+[Native Java API and migration acceptance](sandcrab.md) owns the additional
+volume, observer-fault and offline-import checks.
 
-The root controller creates a disposable directory under `/var/lib`, two temporary accounts, a signing
-key, synthetic history, transient units and an isolated XFS copy pool. Java runs as the application
-account, and the worker launches commands as the distinct execution account. The supervisor uses the
-production `UMask=0077` and a disposable finite resource slice shared with its commands. The
-controller's test mailbox observes detached descendants, checks unchanged source bytes and restarts only
-its own transient worker unit.
+## Games
 
-Repository copies must never be staged on tmpfs or below broadly writable `/tmp`. The worker grants
-read access to specific session paths, never to the whole session directory; a fixture under `/tmp`
-inherits a write grant that hides a violation
-([supervisor decision](../notes/implemented/2026-09-05-local-execution-supervisor.md#supervisor-and-worker)).
+`native_game_java_probe.py` runs the Java game adapter with a separate service,
+execution identity and resource slice. The fixed checks cover the example game,
+host and network confinement, exhausted resources, revocation, orphan discovery
+and daemon restart. Kernel process identities establish that a game job and a
+repository command ran together in separate cgroups. The repository adapter
+retains its copy across reads and disposes it at the end.
 
-For the peer check, a root-owned socket is served by the application account. The peer records an
-accepted connection and zero request bytes, because the production check must reject it before writing;
-an ordinary EOF cannot satisfy that assertion.
+```sh
+sudo python3 executor-native/native_game_java_probe.py \
+  --runtime build/executor-native/runtime --binary build/game-worker/sandcrab \
+  --tools /prepared/tools --java /prepared/jdk/bin/java \
+  --report /prepared/game-results/summary.json
+```
 
-Success requires exit zero, Java scenario assertions (`gameNative: PASS` for games),
-controller `nativeCombined: PASS` and `cleanup: PASS`.
-Cleanup stops all temporary units, checks mounts and process ownership, and removes both accounts, the
-signing key and the fixture; runtime staging and the isolated JDK remain for later runs. Output records
-the scenario, runtime manifest and source hashes, and a different build requires new evidence.
+Use a new report path in an existing private directory. The controller bounds its
+own address space, the Java process and the two native services. It owns a
+512 MiB XFS image, temporary accounts and transient units. Requests from Java name
+fixed actions and carry a sequence and fixture identity. The controller decides
+which owned service to inspect or restart.
 
-## Isolated peer regression
+Success requires Java's structured result, all seven game checks, three
+repository reads, simultaneous kernel observations, released session/template
+records and `cleanup: PASS`. Failed attempts retain process output, service
+journals and the owned cgroup inventory before cleanup. An incomplete cleanup
+retains the private fixture for inspection.
 
-This container check exercises the peer-identity assertion through the production configuration and
-socket client, with root-owned paths and a non-root peer. It does not run a sandbox or replace the host probe.
+## Unix peer regression
+
+This container check exercises the production socket client with a root-owned
+socket served by a non-root peer.
 
 ```sh
 ./gradlew stageExecutorNativeTest
@@ -108,10 +104,9 @@ docker run --rm --network none --read-only --memory 512m --cpus 1 --pids-limit 6
   poketto-peer-test
 ```
 
-Success requires Java exit zero, `accepted: true`, `requestBytes: 0` and fixture cleanup. A temporary
-build without the production peer guard must fail with nonzero request bytes; restore production source
-before delivery. The fixture changes only container-local UIDs, paths and processes and opens no network
-listener.
+Require Java exit zero, an accepted connection, zero request bytes and fixture
+cleanup. A temporary build with the peer guard removed must transmit bytes and
+fail the assertion. Restore the guard before delivery.
 
 ## Launcher comparison
 
@@ -133,6 +128,6 @@ ratios have no SRT threshold.
 
 ## Evidence
 
-[evidence/](evidence/) holds one JSON record per run, named by date and subject. A record describes only
-the build and scope it records; it is not acceptance for changed sources. Timings describe the fixture,
-not production sizing.
+Commit aggregate summaries under [evidence/](evidence/). Retain raw process and
+service output in CI artifacts or protected operator storage. Each result names
+the exact binary and runtime manifest it exercised.

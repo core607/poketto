@@ -93,7 +93,8 @@ public final class NativeOverlayCopyProbe {
                                 profile,
                                 builder,
                                 8L << 20,
-                                256)) {
+                                256,
+                                "native")) {
             if (first && !builder.equals(profile)) {
                 byte[] contents = new byte[3 << 20];
                 new Random(42).nextBytes(contents);

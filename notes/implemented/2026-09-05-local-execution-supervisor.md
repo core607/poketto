@@ -3,6 +3,8 @@
 Date: 2026-09-05
 Implemented: 2026-09-15
 
+Partially superseded by: [Native repository consumer](2026-11-05-native-repository-consumer.md).
+
 ## Problem
 
 [Phase one](2026-09-05-phase-one-daily-use.md) requires authenticated repository
@@ -12,10 +14,14 @@ or restart guarantees.
 
 ## Decision
 
+The signed supervisor below remains the owner of the legacy standalone fixtures.
+Current application execution uses the [native runtime](../../executor-service/native-repository.md).
+The sandbox toolkit and the requirement for verified containment still apply.
+
 The [CodeAct MCP entrance](2026-09-10-codeact-mcp-entrance.md) owns the tool
 catalog, [account working copies](2026-09-14-account-working-copies.md) own disk
 quotas, shared copy identity, expiry and restart persistence, and
-[per-lease command sandboxes](2026-09-16-per-lease-command-sandboxes.md) own unit
+[per-lease command sandboxes](../archived/2026-09-16-per-lease-command-sandboxes.md) record earlier unit
 reuse and reset reporting. Runtime leases and command containment remain separate
 from stored-copy lifetime.
 
@@ -201,9 +207,9 @@ properties. Resource examples require real corpus sizing before production.
 
 The Gradle `executorServiceTests` task runs the worker's tests, with real Ed25519
 signatures, on Linux with zero skipped or aborted tests; Windows uses a pinned
-Linux container. `WorkerSocketTests`, `WorkerAnswerTests` and
-`WorkerFrameContractTests` pin the Java adapter, and `McpProtocolIntegrationIT` the
-HTTP MCP entrance. These gates do not rerun the privileged sandbox probes. The
+Linux container. The [native consumer](2026-11-05-native-repository-consumer.md)
+owns current Java adapter verification, with `McpProtocolIntegrationIT` covering
+the HTTP MCP entrance. Privileged probes run separately. The
 privileged runs are recorded in the [native evidence](../../executor-service/evidence.jsonl),
 the [combined Java/worker evidence](../../executor-native/evidence/2026-09-05-combined.json),
 the [real-corpus worker sample](../../acceptance/evidence/2026-09-15-real-corpus-worker-timing.json)

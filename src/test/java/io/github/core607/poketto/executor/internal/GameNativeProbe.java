@@ -11,6 +11,8 @@ import io.github.core607.poketto.workspace.WorkspaceId;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -27,6 +29,7 @@ final class GameNativeProbe {
     private final IsolatedGameRunner runner;
     private final GameRunner.Player identity = GameTestIdentities.player(WorkspaceId.random());
     private final Set<UUID> revokedAccounts = ConcurrentHashMap.newKeySet();
+    private final List<Evidence> checks = new ArrayList<>();
 
     GameNativeProbe(JsonNode config) {
         this.config = config;
@@ -39,7 +42,7 @@ final class GameNativeProbe {
                 });
     }
 
-    void run(RepositoryRead repository, Control control) throws Exception {
+    Summary run(RepositoryRead repository, Control control) throws Exception {
         try {
             example();
             confinement();
@@ -49,7 +52,9 @@ final class GameNativeProbe {
             revocation(control);
             restart(control);
             control.run("game-assert-clean");
-            System.out.println(json.writeValueAsString(new Summary("PASS")));
+            var summary = new Summary("PASS", List.copyOf(checks));
+            System.out.println(json.writeValueAsString(summary));
+            return summary;
         } finally {
             runner.close();
         }
@@ -248,14 +253,14 @@ final class GameNativeProbe {
     }
 
     private void passed(String test, Double repositoryBaselineMillis, Double repositoryWithGameMillis) {
-        System.out.println(json.writeValueAsString(
-                new Evidence(test, "PASS", repositoryBaselineMillis, repositoryWithGameMillis)));
+        var evidence = new Evidence(test, "PASS", repositoryBaselineMillis, repositoryWithGameMillis);
+        checks.add(evidence);
+        System.out.println(json.writeValueAsString(evidence));
     }
 
-    private record Evidence(
-            String test, String result, Double repositoryBaselineMillis, Double repositoryWithGameMillis) {}
+    record Evidence(String test, String result, Double repositoryBaselineMillis, Double repositoryWithGameMillis) {}
 
-    private record Summary(String gameNative) {}
+    record Summary(String gameNative, List<Evidence> checks) {}
 
     @FunctionalInterface
     interface RepositoryRead {

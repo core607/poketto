@@ -117,5 +117,5 @@ http://127.0.0.1:9428` with `--app-logs 'SYSLOG_IDENTIFIER:~"^poketto-app"'`.
 `./gradlew observabilityConfigCheck` validates the Compose file, the Prometheus configuration and
 rules, and the Fluent Bit configuration with the pinned images. It then ships a Poketto record and
 an unrelated record through the real filter into VictoriaLogs and requires only the first to arrive.
-`PostgresIntegrationIT` and `WorkerSocketTests` require every application metric that `alerts.yml`
+`PostgresIntegrationIT` and `NativeRepositoryMetricsTests` require every application metric that `alerts.yml`
 or this file names to appear in the application's output.

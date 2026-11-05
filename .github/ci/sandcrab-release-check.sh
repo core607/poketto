@@ -74,6 +74,11 @@ as_root cp -R build/acceptance/runtime "$stage/account-runtime"
 as_root chmod -R a+rX,go-w "$stage/account-runtime"
 as_root bash executor-service/prepare-tools.sh "$stage/tools"
 as_root bash executor-service/prepare-node.sh "$stage/tools"
+as_root env PATH="$stage/jdk/bin:$PATH" python3 -m unittest discover -s executor-native -p test_native_game_java_probe.py -v
+as_root mkdir -m 700 "$stage/results/games"
+as_root python3 executor-native/native_game_java_probe.py --runtime "$stage/runtime" \
+  --binary build/game-worker/sandcrab --tools "$stage/tools" --java "$stage/jdk/bin/java" \
+  --report "$stage/results/games/summary.json"
 as_root python3 acceptance/clients/native-load.py --runtime "$stage/account-runtime" \
   --binary build/game-worker/sandcrab --tools "$stage/tools" --java "$stage/jdk/bin/java" \
   --verify-clients --evidence "$stage/results/native-load.json"

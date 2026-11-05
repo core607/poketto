@@ -212,10 +212,9 @@ val linuxStorageTest = tasks.register<Exec>("linuxStorageTest") {
             "--user", "65534:65534", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--memory", "512m", "--pids-limit", "128", "--mount", "type=volume,target=/tmp",
             "--mount", "type=bind,source=${linuxStorageRuntime.get().asFile.absolutePath},target=/runtime,readonly",
-            "--tmpfs", "/fixture-keys:rw,mode=0700,uid=65534,gid=65534,size=1m",
             "--entrypoint", "java",
             image,
-            "-Xmx256m", "-Djava.io.tmpdir=/tmp", "-Duser.home=/tmp", "-Dpoketto.test.key-root=/fixture-keys", "-cp", "/runtime/classes:/runtime/jars/*",
+            "-Xmx256m", "-Djava.io.tmpdir=/tmp", "-Duser.home=/tmp", "-cp", "/runtime/classes:/runtime/jars/*",
             "io.github.core607.poketto.assets.internal.LinuxStorageTestLauncher",
         )
     }
@@ -338,8 +337,6 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
-    // Lets WorkerFrameContractTests rewrite its worker-frame fixture on request.
-    System.getProperty("poketto.frames.update")?.let { systemProperty("poketto.frames.update", it) }
     testLogging {
         exceptionFormat = TestExceptionFormat.FULL
         events("failed", "skipped")

@@ -54,6 +54,6 @@ deliberate bumps. Prometheus exports the executor's `sessions.created` counter a
 ## Verification
 
 `PokettoApplicationTests` pins the endpoint's absence by default. `PostgresIntegrationIT` scrapes
-it with the export on, and with `WorkerSocketTests` checks the metric names in the example.
+it with the export on, and with `NativeRepositoryMetricsTests` checks the metric names in the example.
 `observabilityConfigCheck` covers the example configuration and shipping path, and the deploy
 script and existing-installation tests carry the setting through both layouts.

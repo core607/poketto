@@ -79,7 +79,7 @@ class SessionTests(unittest.TestCase):
             self.assertTrue(is_core(path), path)
         for path in ["src/test/java/AppTests.java", "src/integrationTest/resources/db.yaml",
                      "frontend/tests/page.test.tsx", "executor-service/test_worker.py", "deploy/tests/lib.sh",
-                     "executor-service/Dockerfile.tests", "executor-native/probe.py", "docs/usage.md",
+                     "executor-service/Dockerfile.tests", "executor-native/native_game_java_probe.py", "docs/usage.md",
                      "AGENTS.md", ".agents/skills/x/SKILL.md", "executor-service/native_probe.py", "acceptance/seed.py",
                      ".github/review/test_rounds.py"]:
             self.assertFalse(is_core(path), path)

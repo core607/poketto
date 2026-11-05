@@ -4,7 +4,7 @@ Date: 2026-10-18
 
 ## Problem
 
-[Account working copies](2026-09-14-account-working-copies.md) gave each account one copy per reading scope and serialized its commands. Parallel agents of one account therefore queued behind each other, and got `EXECUTION_REFUSED BUSY` after five seconds: six writers of one account produced 47 such refusals on 2026-10-15. [Seed copies](2026-10-18-seed-copies.md) made a further copy at a known commit cheap to create.
+[Account working copies](2026-09-14-account-working-copies.md) gave each account one copy per reading scope and serialized its commands. Parallel agents of one account therefore queued behind each other, and got `EXECUTION_REFUSED BUSY` after five seconds: six writers of one account produced 47 such refusals on 2026-10-15. [Seed copies](../archived/2026-10-18-seed-copies.md) made a further copy at a known commit cheap to create.
 
 ## Decision
 
@@ -13,7 +13,7 @@ Date: 2026-10-18
 - A fork's owner carries its copy ID, so its journal address, lease key, worker identity and portable-export client all differ from the default copy's and from every other fork's. The default copy keeps its original journal address.
 - A named `expectedCopyId` resolves to the default copy of a readable scope, or to the fork with that ID, and waits for its own journal as before. Disposal and artifact reads find forks the same way, and the expiry collector handles them like any copy.
 - The site group bounds the copies an account holds in a workspace (`poketto.executor.account-copies.*`: 2, 4 and 16 for viewers, community members and creators). Administrators are bounded only by the copy store's site-wide limit. At its bound, `new` waits for the default copy.
-- The result names the fork's `copyId`. An agent that keeps the ID its results return keeps its own files and shell state. One that sends `new` again within a claim lands in another copy, without its edits.
+- The result names the fork's `copyId`. An agent that keeps the ID its results return keeps its own files. Template-backed commands start fresh shells; an imported volume can reuse its live lease. One that sends `new` again within a claim lands in another copy, without its edits.
 
 ## Alternatives
 
@@ -24,9 +24,9 @@ Date: 2026-10-18
 ## Consequences
 
 - Agents of one account that work at the same time get a copy each, whether they start together or one at a time. A copy is shared again only after two minutes without a command, so an agent that pauses longer may find another agent in it.
-- Leases and command units now scale with active agents rather than with accounts, so the site-wide session bound and the worker's `maxLiveUnits` decide how many run at once.
+- Live native shells scale with active commands. Application admission and the native profile bound concurrency independently of the retained-copy count.
 - Saves from different copies meet at the remote branch, where per-file baselines and the exact-commit push decide conflicts, as they already did for browser and other client writes.
 
 ## Verification
 
-`WorkerSocketTests.overlappingInitialCallsOpenSeparateCopiesUntilTheAccountsCopyQuota` pins that a busy default copy makes `new` fork and that a fork is addressable by its ID, and that the account's quota makes `new` wait instead. `anotherAgentGetsItsOwnCopyWhileTheDefaultCopyIsClaimed` and `anUnclaimedForkIsReusedBeforeAnotherIsOpened` pin the claim and the reuse of forks outside it.
+`NativeRepositoryCopyClaimsTests` pins busy and recently used copy claims, fork addressing, account quotas and reuse of unclaimed forks.

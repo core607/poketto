@@ -1,6 +1,8 @@
 # Public Execution Projection
 
 Date: 2026-09-09
+
+Partially superseded by: [Native repository consumer](2026-11-05-native-repository-consumer.md).
 Implemented: 2026-09-14
 
 ## Problem
@@ -23,19 +25,11 @@ The public reader therefore needs a separate reading namespace derived solely fr
 
 **Validity without exposing the authority commit.** `PublicExecutionProjection.fingerprint` hashes length-delimited projected files, source mappings and media aliases with SHA-256. `JGitRepositorySnapshotExports` keeps a bounded, access-ordered cache of 64 fingerprints keyed by workspace and immutable authority commit; the cache holds hashes, never source text. `requireCurrentPublic` authorizes `EXECUTE_REPOSITORY`, rejects a proof from another workspace even when the content would be identical, obtains the current unexpired publication snapshot, compares its fingerprint with `PublicExport.projectionSha256`, then re-authorizes and checks that the snapshot commit has not moved in the meantime. Private-only commits therefore leave a public session valid; a changed public article, changed source mapping, disabled publication or failed authorization invalidates it. `publicProjectionChanged` runs the same checks but returns a fingerprint mismatch as a result; it reports a change only when authorization, the workspace and one unmoved snapshot all hold, and every other failure still throws. `requireCurrentPublic` throws on that result.
 
-**Session lifecycle.** The session keeps the scope selected when it opens. Gaining `READ_PRIVATE` later does not enlarge an existing public copy, and an explicit copy ID retains its reading scope, as [account working copies](2026-09-14-account-working-copies.md) records. `SessionWorker.authorize` routes every check for a public session, except the inspection lease described below, through `requireCurrentPublic`, and the executor's lease, command, artifact and bridge owners call it before opening, before each command, after a completed command before its output is returned, before artifact reads and bridge replies, and on each lease renewal. The existing worker close protocol terminates an invalid lease. A command may finish locally while publication is withdrawn; its output is then suppressed. The host never replaces local files during a command.
+**Session lifecycle.** The copy keeps its initial reading scope. The native workspace owner checks the current public fingerprint before use, and the command, artifact and host-call paths re-authorize before releasing data. Withdrawal during a command suppresses its output. The host keeps local files stable during execution.
 
-**Changed publication.** A [native copy](../../executor-service/native-repository.md) retains its pinned template and upper when publication changes. Access by ID returns `PUBLICATION_CHANGED`. The caller can open the current projection with `new` and explicitly discard the old copy.
+**Changed publication.** The [native consumer decision](2026-11-05-native-repository-consumer.md) retires automatic clean-copy inspection and refresh. Any changed public projection refuses the old copy with `PUBLICATION_CHANGED`. Its files remain until explicit disposal or expiry. A new copy starts from the current authorized projection under a new copy ID. Reconnection preserves the scope and binding already recorded by the account journal.
 
-The signed worker can safely refresh a clean copy under its ID. [`PublicCopyRefresh`](../../src/main/java/io/github/core607/poketto/executor/internal/PublicCopyRefresh.java) closes any live lease and runs a fixed inspection in a fresh sandbox under the account lock. Only the application reads its output. An empty home and no siblings of the repository under `work` protect changes outside Git. Inside the repository, the Git baseline must match the journal, HEAD, refs and reflogs must reach only the projected commit, and the index and working tree must show no hidden, staged, unstaged, untracked or ignored changes. Inspection requires execution permission and runs no caller command.
-
-A clean copy is journaled `REFRESHING`; the rebuilt session takes the old lease's admission slot before that lease closes, the worker's `DISCARD` removes the files, and the copy is exported and opened again from current publication under the same copy ID, which `createPublic` and `requireCurrentPublic` authorize before the command runs. Once the new export exists, one journal write re-pins the `REFRESHING` record to the new commit and projection, the only transition the store allows to change them; the record keeps `REFRESHING` until the new lease is ready, so the copy ID never leaves the journal and the next admission, by ID or `new`, resumes an interrupted rebuild without inspecting again. The result reports `refreshed: true` with the new commit. A copy that is not clean is left untouched and the request is refused with `PUBLICATION_CHANGED`, naming the copy ID; a public copy cannot save, so the user discards it with `repo_discard`. The account lock each request holds serializes inspection, discard and rebuild against every other command, so concurrent requests rebuild once.
-
-The ID names the account's copy for a workspace and reading scope, not a commit or an export ([account working copies](2026-09-14-account-working-copies.md)), so a clean rebuild keeps it and a client's retained `expectedCopyId` stays valid. A clean public copy holds nothing a client could lose; `refreshed` and `freshSandbox` tell the client that files, shell state and artifacts were replaced. A copy with local work never changes under its ID.
-
-**Export bounds and cleanup.** Projection export runs under the configured bundle byte limit and wall-time limit shared with full exports, in a fresh disposable `<id>.projection` directory with private permissions. After object writing and bundle creation the export re-authorizes and re-reads the snapshot; a withdrawal during export leaves no bundle and no projection. Cleanup refuses paths outside the staging directory, refuses to follow symlinks, and clears the read-only flag JGit sets on loose objects so Windows can delete them.
-
-This mechanism limits the data available to a public key. It does not infer user intent and does not prevent a fully authorized external harness from following injected instructions. Already delivered data cannot be recalled.
+A public key receives the publication-derived namespace. An external harness remains responsible for its own response to untrusted content. Already delivered data can remain with the recipient.
 
 ## Alternatives
 
@@ -43,13 +37,13 @@ This mechanism limits the data available to a public key. It does not infer user
 
 **Pinning validity to every source commit.** Rejected: it would close public sessions after each unrelated private edit. Comparing the fingerprint of the approved projection keeps the session alive across private-only commits while still catching every public change.
 
-**Rebuilding the working tree in place or during a command.** Rejected: it would change command semantics mid-session and mix two projections in one tree. A changed publication is handled only at admission, by discarding and re-exporting the whole copy.
+**Rebuilding the working tree in place or during a command.** Rejected: it would change command semantics mid-session and mix two projections in one tree. The native consumer fences the old copy at admission and requires explicit disposal before replacement.
 
 **Always rebuilding a stale copy.** Rejected: it would silently discard local analysis, generated files and fetched media, which a public copy cannot save. A copy with local work is refused and kept until the user discards it.
 
 **Merging local changes into the new projection.** Rejected: installing the new projection's objects beside local work needs the baseline installation that public copies deliberately cannot invoke, conflicts would land in a copy that cannot save, and local files could carry withdrawn text into a copy presented as current publication.
 
-**A worker-side status operation.** Rejected: the application's HELLO requires exact protocol markers and the production worker is installed by hand, so a new operation would force a worker upgrade before every application deploy. The existing ATTACH and EXEC operations answer the question inside the sandbox, where Git already runs as the execution account, at the cost of one extra lease per changed publication.
+**Automatic clean-copy refresh.** The signed worker inspected a stale copy through an extra lease and could rebuild it under the same ID. The native consumer fences the copy and lets its owner dispose it. This removes the inspection and refresh protocol from the application while retaining local work until an explicit choice.
 
 **Treating a fingerprint as authorization.** Rejected: the cache accelerates comparison only. Every check still obtains a current publication snapshot and re-authorizes the principal, so a cached hash cannot substitute for current authorization.
 
@@ -61,15 +55,18 @@ This mechanism limits the data available to a public key. It does not infer user
 - Route segments that collide with reserved names are visibly renamed with `~`; agents reading the projection must not assume projected paths equal repository paths.
 - Withdrawal is not instantaneous for bytes already in flight; the guarantee is that no further output is returned after the check fails.
 - The projection rejects, rather than partially serves, a workspace whose routes collide or nest or whose size exceeds its bounds.
-- A changed publication costs a clean copy one inspection lease, a discard and a new export before the command. A copy with local work stays unusable until discarded: no command can retrieve its files while its publication differs.
-- Git state in the sandbox is untrusted. The inspection guards against accidental loss, not against the account's own commands: one that deliberately rewrites repository configuration or attributes, such as a clean filter, can make it report clean, and that copy's local work is then discarded.
+- A changed publication fences its old copy until disposal or expiry, including a copy without local edits. Its owner requests a new copy for current publication.
 - An interruption at any point of a rebuild leaves a `REFRESHING` record under the same ID, and the next request resumes it; a `REFRESHING` copy is collected only after its idle expiry.
 - A tool that writes a cache under `$HOME` during ordinary use makes the copy count as not clean; the user then discards it explicitly.
 
 ## Implementation and acceptance
 
-[`PublicExecutionProjection`](../../src/main/java/io/github/core607/poketto/content/internal/PublicExecutionProjection.java) builds the projection, computes the fingerprint and owns the route, media and sanitization rules; [`JGitRepositorySnapshotExports`](../../src/main/java/io/github/core607/poketto/content/internal/JGitRepositorySnapshotExports.java) implements `createPublic`, `requireCurrentPublic`, `publicProjectionChanged`, the fingerprint cache, the parentless commit and cleanup; [`SessionWorker`](../../src/main/java/io/github/core607/poketto/executor/internal/SessionWorker.java) selects the public check, [`SessionLifecycle`](../../src/main/java/io/github/core607/poketto/executor/internal/SessionLifecycle.java) refuses a requested commit for a public open, and `PublicCopyRefresh` owns the inspection and rebuild. Gallery originals are not materialized inside the projection, as its root guide states.
-
-`RepositorySnapshotExportsTests` (real Git fixtures) and `WorkerSocketTests` (real socket exchanges) pin the approved-fields-only commit, withdrawal during export, validity across private-only commits, scope preservation and output suppression after withdrawal. `PublicCopyRefreshTests` drives changed publication through the executor against a socket peer that keeps each copy's pinned commit, and `PublicCopyInspectionTests` runs the inspection with real Git on Linux. The [native projection run](../../executor-native/evidence/2026-09-10-public-projection.json) and [native member-media run](../../executor-native/evidence/2026-09-14-member-projection-media.json) record the projection and its media mapping through the root worker and SRT.
+`PublicExecutionProjection` owns the publication-only tree and fingerprint.
+`JGitRepositorySnapshotExports` owns export and current-publication checks.
+`NativeRepositoryWorkspace` owns projection selection and admission.
+`RepositorySnapshotExportsTests`, `RetainedPublicProjectionTests` and the
+[native workspace probe](../../executor-native/overlay_copy_probe.py) exercise
+those boundaries. [Authenticated client acceptance](../../acceptance/clients/README.md)
+covers public-copy refusal and disposal through HTTP/MCP.
 
 Related: [CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns the repository format, media bridge and exports; [workspace website delivery](2026-09-14-workspace-public-delivery.md) owns the member-authorized media entrance the projection fetches through; [account working copies](2026-09-14-account-working-copies.md) own copy ownership and storage, not this security boundary.

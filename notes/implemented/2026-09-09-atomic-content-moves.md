@@ -3,6 +3,8 @@
 Date: 2026-09-09
 Status: Implemented
 
+Partially superseded by: [Native repository consumer](2026-11-05-native-repository-consumer.md).
+
 ## Scope
 
 The [CodeAct content plan](2026-09-09-codeact-content-and-media.md) requires one move operation for the browser and CLI. A directory can contain Git files and indexed media, while other documents refer to either kind. Separate rename, index and link commits can leave broken references or expose only part of a selected folder.
@@ -18,7 +20,7 @@ carry their immutable content hashes and may be absent from the sandbox; prepari
 the plan does not fetch them from media storage. Plans retain their workspace and
 exact authority base, bound affected paths to 16,384, replacement text to 32 MiB,
 each Git original to 128 MiB and aggregate Git fingerprint reads to the workspace
-byte limit. The worker stages and installs this plan through the CLI integration below.
+byte limit. The native consumer retains this plan for the explicit CLI acceptance below.
 
 The service derives its requirements from every affected path, as [member content permissions](2026-09-12-member-content-permissions.md) define: a publishable source, destination, repaired reference or media entry requires `PUBLISH`, and any other one requires `READ_PRIVATE` and `WRITE_PRIVATE`. A plan that would disclose private media-index entries also requires `READ_PRIVATE`. It uses the same remote-ref writer as text patches, including atomic compare-and-swap, current publication authorization, withdrawal before an uncertain outcome, reconciliation, attribution and separate snapshot-installation acknowledgement. A move that creates a public-to-private reference fails before authority advances. Invalid publication or media configuration must be repaired first.
 
@@ -29,7 +31,7 @@ tree, parent and attribution. If remote history already contains that commit,
 recovery acknowledges it without another push and retains later remote changes.
 Otherwise only the same commit can be retried from the unchanged base; a changed
 destination or diverged remote is rejected. CLI recovery reconciles this retained
-commit before acknowledging local installation.
+commit before advancing host baselines.
 
 Reference repair scans bounded Markdown at the same immutable base, resolves existing file/media paths and unambiguous document routes, and computes relative destinations with preserved fragments. CommonMark source spans identify links, images and reference definitions. Only destination tokens change; frontmatter, labels, titles, code, HTML and line endings remain intact. Missing or external targets remain authored text. Unsupported repair syntax fails the whole operation instead of silently rewriting prose. The existing document, node, reference and workspace byte bounds apply. Copying objects avoids the 64-file/4-MiB external text-patch limit while retaining the repository tree bound.
 
@@ -39,66 +41,51 @@ The session-authenticated `/api/admin/workspaces/{workspaceId}/repository/direct
 
 `RepositoryPatchServiceTests`, `RepositoryPatchIntegrationIT` and `RepositoryAdminIntegrationIT` pin moves through real Git fixtures, PostgreSQL, scoped keys and authenticated HTTP; the required Linux storage replay includes the shared writer suite, and native executor and client evidence below covers the CLI.
 
-## CLI session integration
+## CLI integration
 
 The CLI moves existing authoritative content, matching the browser entrance.
 Selected files and affected backlinks must match their host-owned baselines;
-unsaved affected edits require saving or resolving them before the move. Unrelated
-local edits remain in place. A missing on-demand media file is not a deletion.
-Materialized originals can move only after their bytes match the workspace index.
-For the local media index, session integration applies only the planned mapping
-changes and retain unrelated unsaved entries. A changed selected mapping or a
-collision at the new logical path prevents the move.
+unsaved affected edits require saving or resolving them before preparation.
+A missing on-demand media file is not a deletion. Materialized originals must
+match their immutable content hashes. Local media-index planning retains unrelated
+unsaved entries and refuses a changed selected mapping or destination collision.
 
-The host prepares the affected Git paths, media mappings and repaired references
-at one immutable authority commit. Sandbox Git refs never supply the plan or its
-preconditions. The worker stages incoming bytes outside the sandbox, checks the
-affected local paths without following symlinks, and freezes the command cgroup
-for final comparison and installation. Local paths absent from the authority,
-including untracked files in a moved directory, must be preserved or cause an
-explicit conflict before an overwrite or deletion. File-count, byte, inode and
-session lifetime bounds apply to staging as well as the final workspace.
+The host retains the request, affected paths, repaired references and immutable
+candidate at one authority commit. Sandbox Git refs never supply its preconditions.
+Preparation records original bytes and stages candidate files under the copy's
+plan directory without replacing working files. File-count, byte, inode and
+account-storage limits also apply to retained originals and staging. An interrupted
+preparation resumes the same request and candidate.
 
-Remote commit acknowledgement and local installation are separate outcomes. A
-committed move with incomplete local installation remains pending and blocks new
-saves and moves until recovery reconciles the retained move and local state.
-Recovery never recomputes a different move from newer local edits. Changed local
-bytes remain intact and cause an explicit synchronization conflict. Only affected
-file baselines advance after installation; unrelated file baselines retain their
-prior revisions. A lost installation reply leaves the move pending when the
-worker remains reachable. A local precondition refusal returns `LOCAL_MOVE_CONFLICT`.
-`poketto recover --skip-local` confirms the remote outcome before releasing
-pending installation, leaves local files untouched and retains their old file
-baselines. Explicit per-file synchronization can then resolve the difference;
-a save cannot silently resurrect an old path or overwrite its moved destination.
-Skipping does not roll back or add a remote commit.
+The caller applies the candidates and explicitly accepts each expected hash or
+absence. A hash must match both the retained candidate and observed working file;
+all paths in one acceptance batch are checked before the batch is retained. After
+every path has been accepted, the host requests the retained atomic remote move.
+Each acceptance observes its own paths at that time; it does not freeze the tree
+or promise a simultaneous local snapshot. Untracked files outside the plan remain
+the caller's responsibility and are never implicitly published or removed.
 
-The `materialize.LocalMove` primitive verifies local fingerprints and
-rejects unexpected source entries before moving a file or directory. Directory
-renames preserve binary inodes and move only already-materialized originals.
-Replacement text and rollback copies stay in the protected lease filesystem.
-An installation fault restores the directory and original references before the
-caller can unfreeze execution. A rollback failure retains protected evidence and
-requires closing the lease. The primitive assumes the caller holds the lease
-filesystem lock and freezes the command cgroup; signed worker dispatch and CLI
-integration establish those conditions before using it.
+The host records the exact remote attempt before publication. An uncertain result
+blocks new writes and plan release until recovery reconciles that same candidate.
+Recovery preserves later remote changes and never derives a different move from
+new local edits. A confirmed remote result advances affected host baselines and
+the [local Git baseline](2026-09-15-mutable-working-copy-baselines.md); unrelated
+file baselines keep their prior revisions. Working files remain as edited even
+when the remote move conflicts.
 
-The signed `MOVE_*` dispatch and CLI session coordinator connect these operations.
-`IncomingMove` validates a bounded host-generated plan and reserves a protected
-receipt before the authority write. Receipts bind a fresh host operation ID and
-the full plan hash, so retrying an acknowledged local installation preserves later
-edits and a new cyclic move cannot reuse an older completion. Pending moves retain
-the original request, plan and uncertain commit separately from local completion.
-The [native run](../../executor-native/evidence/2026-09-10-cli-moves.json), the
+Retained originals and candidates can be recovered to an absent output path.
+Explicit release removes host backups after any submitted move and baseline work
+are reconciled; it leaves local files and accepted baselines intact. The
+[native consumer decision](2026-11-05-native-repository-consumer.md) records why
+the signed worker's frozen installation and rollback contract was retired.
+
+`NativeMovesTests`, `NativeMoveRecoveryTests`, `NativeMoveCheckpointTests` and
+`NativeNonTextMoveTests` cover this consumer protocol. The
+[native workspace probe](../../executor-native/overlay_copy_probe.py) verifies
+candidate staging and acceptance with the released daemon. The
+[earlier CLI run](../../executor-native/evidence/2026-09-10-cli-moves.json) and
 [recovery run](../../executor-native/evidence/2026-09-10-cli-move-recovery.json)
-and the [Codex client run](../../acceptance/clients/evidence/2026-09-10-cli-moves.json)
-record the CLI verification, including reply loss, installation refusal and
-dirty-source refusal.
-
-The worker advertises `moveProtocol: 1`; the application requires it before
-opening a lease. Deploy the matching worker before enabling the application
-version that requires this protocol. Completed move receipts remain in the
-protected lease until closure, bounded to 256 receipts of 4 KiB each.
+remain historical evidence for signed-worker local installation.
 
 ## Alternatives and related records
 

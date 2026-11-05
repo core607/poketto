@@ -162,8 +162,8 @@ can still increase latency.
 `GameSavesIntegrationIT`, `GameCatalogueTests`, `GameContentSnapshotsTests`,
 `IsolatedGameRunnerTests` and the frontend game tests cover their respective
 contracts. `GameSandboxJobTests` covers uncertain admission and cleanup; native acceptance
-checks actual cancellation, recovery and retained capacity. Run the [native probe](../executor-native/README.md) with `--scenario
-games` to check real containment and mixed workload behavior. Browser acceptance
+checks actual cancellation, recovery and retained capacity. Run the [native game probe](../executor-native/README.md#games)
+to check real containment and mixed workload behavior. Browser acceptance
 must separately exercise opaque-origin execution, withdrawal, account save
 conflicts and browser/agent handoff; DOM tests do not prove browser isolation.
 
