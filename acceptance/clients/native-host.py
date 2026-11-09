@@ -42,16 +42,39 @@ def main():
     parser.add_argument('--origin', help='Browser gateway origin; defaults to the API loopback origin')
     parser.add_argument('--phase-evidence', type=Path, help='Run the fixed serial phase measurement, then clean up')
     parser.add_argument('--phase-recording', action='store_true', help='Enable only the optional native JFR phases')
+    parser.add_argument('--jvm-evidence', type=Path, help='Measure NMT and memory during a bounded real MCP load')
+    parser.add_argument('--jvm-profile', choices=('baseline', 'headers', 'heap', 'g1', 'pools', 'aot-training', 'aot'), default='baseline')
+    parser.add_argument('--jvm-classpath-jar', type=Path)
+    parser.add_argument('--jvm-cache', type=Path)
+    parser.add_argument('--jvm-cache-output', type=Path)
+    parser.add_argument('--jvm-memory-mib', type=int, default=1536)
+    parser.add_argument('--jvm-seconds', type=int, default=60)
+    parser.add_argument('--jvm-warmup', type=int, default=15)
     args = parser.parse_args()
     assert os.geteuid() == 0 and 1024 <= args.port <= 65535 and 60 <= args.lifetime_seconds <= 3600
     assert 1 <= args.agents <= 64
     assert not args.phase_recording or args.phase_evidence, '--phase-recording requires --phase-evidence'
+    assert not (args.phase_evidence and args.jvm_evidence)
+    if args.jvm_evidence:
+        from native_jvm import preflight
+        preflight(args.jvm_memory_mib, args.agents, args.jvm_seconds, args.jvm_warmup)
+        args.jvm_evidence = args.jvm_evidence.absolute()
+        args.jvm_evidence.mkdir(mode=0o700)
     if args.phase_evidence:
         assert not args.games, 'Phase comparisons use only the repository fixture'
         args.phase_evidence = args.phase_evidence.absolute()
         args.phase_evidence.mkdir(mode=0o700)
     runtime, binary, tools, java = [p.resolve(strict=True) for p in (args.runtime, args.binary, args.tools, args.java)]
     manifest = verify_runtime(runtime)
+    classpath = str(runtime / 'classes') + ':' + str(runtime / 'jars/*')
+    if args.jvm_classpath_jar:
+        from native_jvm import verify_classpath_jar
+        assert args.jvm_evidence
+        verify_classpath_jar(runtime, args.jvm_classpath_jar)
+        classpath = str(args.jvm_classpath_jar.resolve(strict=True)) + ':' + str(runtime / 'jars/*')
+    if args.jvm_profile in ('aot-training', 'aot'):
+        assert args.jvm_evidence and args.jvm_classpath_jar
+        assert args.jvm_cache_output if args.jvm_profile == 'aot-training' else args.jvm_cache
     with socket.socket() as port_check:
         port_check.bind(('127.0.0.1', args.port))
     sys.path.insert(0, str(REPOSITORY / 'executor-service'))
@@ -129,12 +152,28 @@ def main():
         if args.games:
             copy_args.extend(['--poketto.games.enabled=true', '--poketto.games.max-jobs=1',
                 '--poketto.games.socket=' + game_settings['gameSocket']])
+        java_options = ['-Xmx384m', '-XX:MaxMetaspaceSize=192m']
+        app_memory, app_cpu, app_tasks = 768, 100, 256
+        if args.jvm_evidence:
+            from native_jvm import APPLICATION_CPU_PERCENT, APPLICATION_TASKS, profile_options
+            java_options, settings = profile_options(args.jvm_profile)
+            java_options.append('-Xlog:gc*:file=' + str(root / 'home/gc.log') + ':uptime,level,tags')
+            if args.jvm_profile == 'aot-training':
+                java_options += ['-XX:AOTMode=record', '-XX:AOTConfiguration=' + str(root / 'home/training.aotconfig')]
+            elif args.jvm_profile == 'aot':
+                assert args.jvm_cache.resolve(strict=True) == args.jvm_cache and args.jvm_cache.is_file()
+                java_options += ['-XX:AOTMode=on', '-XX:AOTCache=' + str(args.jvm_cache)]
+            copy_args.extend(settings)
+            app_memory = args.jvm_memory_mib
+            app_cpu, app_tasks = APPLICATION_CPU_PERCENT, APPLICATION_TASKS
+        startup = time.monotonic()
         run(['systemd-run', '--quiet', '--unit', app_unit, '-p', 'User=' + app_user,
              '-p', 'EnvironmentFile=' + str(app_environment), '-p', 'UMask=0077',
-             '-p', 'MemoryMax=768M', '-p', 'MemorySwapMax=0', '-p', 'TasksMax=256', '-p', 'CPUQuota=100%',
+             '-p', 'MemoryMax=' + str(app_memory) + 'M', '-p', 'MemorySwapMax=0',
+             '-p', 'TasksMax=' + str(app_tasks), '-p', 'CPUQuota=' + str(app_cpu) + '%',
              '-p', 'RuntimeMaxSec=' + str(args.lifetime_seconds),
-             str(java), '-Xmx384m', '-XX:MaxMetaspaceSize=192m', '-Duser.home=' + str(root / 'home'),
-             '-Djava.awt.headless=true', '-cp', str(runtime / 'classes') + ':' + str(runtime / 'jars/*'),
+             str(java), *java_options, '-Duser.home=' + str(root / 'home'),
+             '-Djava.awt.headless=true', '-cp', classpath,
              'io.github.core607.poketto.acceptance.AcceptanceApplication',
              '--server.address=127.0.0.1', '--server.port=' + str(args.port),
              '--poketto.executor.enabled=true', '--poketto.executor.socket=' + str(repository.socket),
@@ -146,6 +185,10 @@ def main():
             logs = run(['journalctl', '-u', app_unit, '--no-pager', '-n', '30', '-o', 'cat'])
             if 'Synthetic acceptance services are ready' in logs:
                 break
+            if args.jvm_evidence:
+                (args.jvm_evidence / 'startup.log').write_text(logs.replace(password, '[redacted]'))
+                state = run(['systemctl', 'show', app_unit, '-p', 'ActiveState', '--value'])
+                assert state not in ('failed', 'inactive'), 'disposable JVM exited during startup'
             assert time.monotonic() < deadline, 'disposable application did not become ready'
             time.sleep(.5)
         try:
@@ -167,7 +210,13 @@ def main():
         ready = {'ready': True, 'root': str(root), 'endpoint': endpoint, 'backend': 'sandcrab-native-v1',
                           'serverId': server_id, 'controllerSha256': sha(Path(__file__)), 'runtimeManifestSha256': manifest,
                           'binarySha256': sha(repository.binary), 'nativeConfigSha256': sha(repository.config)}
+        if args.jvm_evidence:
+            ready['applicationStartupMillis'] = (time.monotonic() - startup) * 1000
         print(json.dumps(ready), flush=True)
+        if args.jvm_evidence:
+            from native_jvm import measure
+            measure(root, java, app_unit, repository.unit, pool.name, ready, args, classpath)
+            return
         if args.phase_evidence:
             from native_phases import measure
             measure(root, java, app_unit, repository.unit, pool.name, ready, args.phase_evidence,
@@ -177,6 +226,13 @@ def main():
         while not (root / 'stop').exists() and time.monotonic() < deadline:
             assert run(['systemctl', 'is-active', app_unit]) == 'active'
             time.sleep(1)
+    except BaseException as error:
+        if args.jvm_evidence:
+            path = args.jvm_evidence / 'summary.json'
+            observed = json.loads(path.read_text()) if path.exists() else {}
+            observed.update(result='FAIL', failureType=type(error).__name__)
+            path.write_text(json.dumps(observed, indent=2) + '\n')
+        raise
     finally:
         failures = []
 
@@ -218,9 +274,9 @@ def main():
             shutil.rmtree(root)
         if not failures:
             attempt('fixture cleanup', remove_root)
-        if args.phase_evidence:
+        if args.phase_evidence or args.jvm_evidence:
             from native_phases import finish
-            finish(args.phase_evidence, failures)
+            finish(args.phase_evidence or args.jvm_evidence, failures)
         if failures:
             attempt('restrict retained fixture', lambda: root.chmod(0o700))
             print(json.dumps({'cleanup': 'FAILED', 'failures': failures}), flush=True)

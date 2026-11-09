@@ -326,6 +326,9 @@ W0's issue-and-continue rule rather than blocking extraction.
 JVM footprint work is last: measure NMT and anon versus file memory under load,
 then tune heap, GC, compact object headers, pool sizes and AOT cache as warranted;
 report memory freed for sandboxes.
+The [matched JVM comparison](../../acceptance/clients/native-jvm.md) selects candidates
+by measured private residency and successful throughput. Validate a selected
+setting against the deployment artifact and affected capabilities before changing defaults.
 
 ## Alternatives
 
