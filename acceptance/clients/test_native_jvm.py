@@ -4,10 +4,28 @@ from pathlib import Path
 import tempfile
 import zipfile
 
-from native_jvm import nmt_summary, verify_classpath_jar
+from native_jvm import check_ancestor_memory, nmt_summary, verify_classpath_jar
 
 
 class NativeMemoryEvidence(unittest.TestCase):
+    def test_real_root_has_no_limit_but_namespace_and_descendant_limits_still_bind(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            child = root / 'controller'
+            child.mkdir()
+            (child / 'memory.max').write_text('100')
+            (child / 'memory.current').write_text('25')
+            check_ancestor_memory(child, 70, root)
+            with self.assertRaises(AssertionError):
+                check_ancestor_memory(child, 80, root)
+            (root / 'memory.max').write_text('100')
+            (root / 'memory.current').write_text('50')
+            with self.assertRaises(AssertionError):
+                check_ancestor_memory(child, 70, root)
+            (child / 'memory.max').unlink()
+            with self.assertRaises(FileNotFoundError):
+                check_ancestor_memory(child, 1, root)
+
     def test_disabled_and_truncated_output_are_not_zero_memory(self):
         for text in ('123:\nNative memory tracking is not enabled', 'Total: reserved=100KB',
                      'Total: reserved=100KB, committed=20KB\n- Shared class space (reserved=30KB, committed=10KB'):

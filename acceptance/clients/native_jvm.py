@@ -41,9 +41,17 @@ def preflight(memory, agents, seconds, warmup):
     assert membership[:2] == ['0', ''] and membership[2].startswith('/')
     group = Path('/sys/fs/cgroup' + membership[2])
     assert group.resolve(strict=True) == group
+    check_ancestor_memory(group, required)
+
+
+def check_ancestor_memory(group, required, root=Path('/sys/fs/cgroup')):
     for ancestor in (group, *group.parents):
-        if not ancestor.is_relative_to('/sys/fs/cgroup'):
+        if not ancestor.is_relative_to(root):
             break
+        # The real v2 hierarchy root has no memory.max interface. A namespace
+        # root with an inherited container limit does expose it and is checked.
+        if ancestor == root and not (ancestor / 'memory.max').exists():
+            continue
         maximum = (ancestor / 'memory.max').read_text().strip()
         if maximum != 'max':
             assert int(maximum) - int((ancestor / 'memory.current').read_text()) >= required, 'Insufficient enclosing cgroup headroom'
@@ -146,9 +154,12 @@ def measure(root, java, application_unit, repository_unit, resource_slice, ready
             current = observation['groups'][name]
             assert current['memoryCurrent'] < .9 * int(current['limits']['memory.max']), 'Fixture memory stop threshold reached'
             assert current['memoryEvents']['oom_kill'] == 0, 'Fixture OOM kill observed'
-        maximum = Path('/sys/fs/cgroup/memory.max').read_text().strip()
+        limit_file = Path('/sys/fs/cgroup/memory.max')
+        maximum = limit_file.read_text().strip() if limit_file.is_file() else 'max'
         if maximum != 'max':
             assert int(Path('/sys/fs/cgroup/memory.current').read_text()) < .9 * int(maximum), 'Enclosing memory stop threshold reached'
+        host = dict(line.split(':',1) for line in Path('/proc/meminfo').read_text().splitlines())
+        assert int(host['MemAvailable'].split()[0]) * 1024 >= 512 * MIB, 'Host memory reserve reached'
         return observation
 
     try:

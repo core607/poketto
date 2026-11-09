@@ -15,7 +15,7 @@
     "heapRatioPercent": 65
   },
   "tests": {
-    "jvmCollector": 4,
+    "jvmCollector": 5,
     "adjacentPhaseCollector": 6,
     "ciSelectorAndReceipt": 8,
     "repoCheck": "PASS",
@@ -539,10 +539,17 @@
     "acceptance/clients/jvm-footprint.py": "b85afd586ad6ddf6149afea3388284606822543fbb905807aace2a1282e6b2de",
     "acceptance/clients/native-host.py": "c35c4fdc74b64103ae021e215b6b3c02f8d62e7c7cfd4bd0717f892f9ebd8c17",
     "acceptance/clients/native-jvm.md": "592d6e2cb7a6f7031784ca987a41547c34d59f52303e533818b68b84be4fd62c",
-    "acceptance/clients/native_jvm.py": "3a4a74335df33123913e120cbcf3522d56871bfdd7f58d971e58092ab13bcdfd",
-    "acceptance/clients/test_native_jvm.py": "a2251211eb93f948e78e912aed74417a73835e7ea4ee8fa81b613d08137c82d3",
+    "acceptance/clients/native_jvm.py": "8aa95dd26badc29fb220f4d30a8fb81f8816b6fa4f6ef0e7b63bcdaf973834df",
+    "acceptance/clients/test_native_jvm.py": "ecf798ccb65ec1cab5b449d0793b61f1d8d29eea93584217de23fdf9d4f5a9b2",
     "notes/proposed/2026-11-02-sandcrab-lightweight-service.md": "4de68d2ab5cfbc35214e32e1a635ae7f55260570d97ae69ed1600177155181f0"
   },
   "rawEvidence": "Every raw attempt is retained outside source control. Canonical CI uploads observations, NMT and GC logs; AOT caches and restricted crash reports stay outside the published evidence.",
-  "limits": "Local smoke outcomes establish instrumentation and lifecycle, not a production saving or SLO. Earlier one-CPU observations are retained separately from the final 150-percent CPU reference. NMT is unavailable in AOT record mode on the tested JDK; cache consumption supplies all required NMT observations."
+  "limits": "Local smoke outcomes establish instrumentation and lifecycle, not a production saving or SLO. Earlier one-CPU observations are retained separately from the final 150-percent CPU reference. NMT is unavailable in AOT record mode on the tested JDK; cache consumption supplies all required NMT observations.",
+  "ciAttempts": [
+    {
+      "run": 42597860825,
+      "result": "PRECHECK_FAIL",
+      "reason": "The real cgroup-v2 root on the disposable CI host omits memory.max. The preflight treated it like a bounded namespace root and failed before any measurement. Host reserve and every exposed ancestor limit remain enforced."
+    }
+  ]
 }
