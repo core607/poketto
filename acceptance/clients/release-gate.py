@@ -12,6 +12,7 @@ from urllib.parse import quote
 import uuid
 
 CONTEXT = 'sandcrab-release'
+CONTEXTS = {'release': CONTEXT, 'corpus': 'sandcrab-corpus'}
 WORKFLOW = 'downstream-release.yml'
 
 
@@ -37,18 +38,19 @@ def description(version, digest):
     return f'Verified {version} ZIP {digest}'
 
 
-def status(repo, revision, issuer):
+def status(repo, revision, issuer, context=CONTEXT):
     values = api(repo, f'commits/{revision}/statuses?per_page=100')
-    return next((item for item in values if item['context'] == CONTEXT
+    return next((item for item in values if item['context'] == context
                  and (item.get('creator') or {}).get('login', '').casefold() == issuer.casefold()), {})
 
 
-def post(repo, revision, state, message):
+def post(repo, revision, state, message, context=CONTEXT):
     gh('api', '--method', 'POST', f'repos/{repo}/statuses/{revision}', '--silent',
-       '-f', 'context=' + CONTEXT, '-f', 'state=' + state, '-f', 'description=' + message)
+       '-f', 'context=' + context, '-f', 'state=' + state, '-f', 'description=' + message)
 
 
 def dispatch(args):
+    context = CONTEXTS[args.check]
     repo = args.repo or gh('repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner')
     verifier = args.verifier or os.environ.get('SANDCRAB_VERIFIER_REPOSITORY')
     if not verifier:
@@ -66,9 +68,9 @@ def dispatch(args):
         revision = api(repo, 'branches/' + quote(branch, safe=''))['commit']['sha']
     version, digest = pin(repo, revision)
     expected = description(version, digest)
-    previous = status(repo, revision, issuer)
+    previous = status(repo, revision, issuer, context)
     if previous.get('state') == 'success' and previous.get('description') == expected:
-        print(f'{revision} already passed {version}')
+        print(f'{revision} already passed {args.check} with {version}')
         return
     pending = re.fullmatch(r'Release verification request ([0-9a-f]{32})', previous.get('description') or '')
     if previous.get('state') == 'pending' and pending:
@@ -76,7 +78,9 @@ def dispatch(args):
     else:
         request = uuid.uuid4().hex
         payload = {'consumer': repo, 'branch': branch, 'revision': revision, 'release': version, 'request_id': request}
-        post(repo, revision, 'pending', 'Release verification request ' + request)
+        if args.check != 'release':
+            payload['check'] = args.check
+        post(repo, revision, 'pending', 'Release verification request ' + request, context)
         try:
             subprocess.run(['gh', 'workflow', 'run', WORKFLOW, '--repo', verifier, '--ref', 'main', '--json'],
                            input=json.dumps(payload), text=True, capture_output=True, timeout=40)
@@ -90,7 +94,7 @@ def dispatch(args):
             break
         time.sleep(5)
     else:
-        post(repo, revision, 'error', 'No matching protected workflow run was acknowledged')
+        post(repo, revision, 'error', 'No matching protected workflow run was acknowledged', context)
         raise RuntimeError(f'No workflow acknowledgement for release request {request}')
     try:
         subprocess.run(['gh', 'run', 'watch', str(run['id']), '--repo', verifier, '--interval', '30', '--exit-status'],
@@ -98,14 +102,21 @@ def dispatch(args):
         with tempfile.TemporaryDirectory() as folder:
             gh('run', 'download', run['id'], '--repo', verifier, '--name', 'downstream-receipt', '--dir', folder)
             receipt = json.loads((Path(folder) / 'summary.json').read_bytes())
-        if receipt != {'request': request, 'consumer': repo, 'revision': revision, 'release': version,
-                       'bundleSha256': digest, 'result': 'success'}:
-            raise ValueError('The release receipt differs from the requested commit or archive')
+        validate_receipt(receipt, request, repo, revision, version, digest, args.check)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
-        post(repo, revision, 'error', 'The protected check did not return a passing release receipt')
+        post(repo, revision, 'error', 'The protected check did not return a passing release receipt', context)
         raise RuntimeError('Release verification failed') from error
-    post(repo, revision, 'success', expected)
-    print(f'{revision} passed {version}')
+    post(repo, revision, 'success', expected, context)
+    print(f'{revision} passed {args.check} with {version}')
+
+
+def validate_receipt(receipt, request, repo, revision, version, digest, check):
+    expected = {'request': request, 'consumer': repo, 'revision': revision, 'release': version,
+                'bundleSha256': digest, 'result': 'success'}
+    if check != 'release':
+        expected['check'] = check
+    if receipt != expected:
+        raise ValueError('The release receipt differs from the requested check, commit or archive')
 
 
 def merged_heads(repo, revision):
@@ -120,6 +131,7 @@ def merged_heads(repo, revision):
 
 
 def require(args):
+    context = CONTEXTS[args.check]
     repo = os.environ['GITHUB_REPOSITORY']
     event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_bytes())
     pr = event.get('pull_request')
@@ -129,13 +141,13 @@ def require(args):
     candidates = [revision] if pr else [revision, *merged_heads(repo, revision)]
     deadline = time.monotonic() + args.seconds
     while True:
-        records = [(head, status(repo, head, issuer)) for head in candidates]
+        records = [(head, status(repo, head, issuer, context)) for head in candidates]
         for head, item in records:
             if item.get('state') == 'success' and item.get('description') == expected:
                 print(f'{revision} has the verified release tree from {head}')
                 return
         if records[0][1].get('state') in ('failure', 'error') or time.monotonic() >= deadline:
-            raise RuntimeError(f'Missing passing {CONTEXT} receipt for {revision}. Dispatch the protected release check.')
+            raise RuntimeError(f'Missing passing {context} receipt for {revision}. Dispatch the protected {args.check} check.')
         time.sleep(30)
 
 
@@ -151,6 +163,7 @@ def main():
     wait = actions.add_parser('require', help='Check the public CI receipt for this push or pull request')
     wait.add_argument('--seconds', type=int, default=1500)
     for action in (start, wait):
+        action.add_argument('--check', choices=sorted(CONTEXTS), default='release')
         action.add_argument('--issuer', default=os.environ.get('SANDCRAB_STATUS_ISSUER'))
     args = parser.parse_args()
     (dispatch if args.action == 'dispatch' else require)(args)

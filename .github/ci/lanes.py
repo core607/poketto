@@ -18,7 +18,8 @@ def select(event, paths):
             continue
         if path.startswith('evals/evidence/') and path.endswith('.json'):
             continue
-        if path.startswith('experiments/retrieval-lab/') or path == '.github/workflows/retrieval-corpus.yml':
+        if path.startswith('experiments/retrieval-lab/') or path in (
+                '.github/workflows/retrieval-corpus.yml', '.github/ci/sandcrab-corpus-check.sh'):
             lanes.add('retrieval-lab')
         elif path in ('executor-service/sandcrab-release.properties', 'gradle/executor-service.gradle.kts'):
             lanes.update(('image', 'load', 'stack'))

@@ -106,10 +106,12 @@ network = "none"
 host_calls = false
 ''')
         config.chmod(0o600)
+        restriction = Path('/proc/sys/kernel/apparmor_restrict_unprivileged_userns')
+        userns = ['-p', 'AppArmorProfile=sandcrab-service'] if restriction.exists() and restriction.read_text().strip() == '1' else []
         run('systemd-run', '--unit', unit, '--slice=system.slice', '--collect', '--quiet',
             '-p', 'Delegate=yes', '-p', 'MemoryMax=1G', '-p', 'MemorySwapMax=0',
             '-p', 'CPUQuota=100%', '-p', 'TasksMax=256', '-p', 'KillMode=control-group',
-            exe, 'serve', '--config', config)
+            *userns, exe, 'serve', '--config', config)
         started = True
         deadline = time.monotonic() + 25
         while time.monotonic() < deadline:

@@ -11,6 +11,23 @@ spec.loader.exec_module(gate)
 
 
 class ReleaseReceiptTests(unittest.TestCase):
+    def test_a_release_verdict_cannot_substitute_for_corpus_acceptance(self):
+        release = {'request': 'nonce', 'consumer': 'owner/consumer', 'revision': 'head',
+                   'release': 'v0.1.1', 'bundleSha256': 'digest', 'result': 'success'}
+        arguments = ('nonce', 'owner/consumer', 'head', 'v0.1.1', 'digest')
+        gate.validate_receipt(release, *arguments, 'release')
+        with self.assertRaises(ValueError):
+            gate.validate_receipt(release, *arguments, 'corpus')
+        corpus = {**release, 'check': 'corpus'}
+        gate.validate_receipt(corpus, *arguments, 'corpus')
+        for changed in ({**corpus, 'revision': 'other'}, {**corpus, 'check': 'release'},
+                        {**corpus, 'bundleSha256': 'other'}, {**corpus, 'result': 'failure'}):
+            with self.subTest(receipt=changed), self.assertRaises(ValueError):
+                gate.validate_receipt(changed, *arguments, 'corpus')
+        with patch.object(gate, 'api', return_value=[
+                {'context': gate.CONTEXT, 'creator': {'login': 'issuer'}, 'state': 'success'}]):
+            self.assertEqual({}, gate.status('owner/consumer', 'head', 'issuer', gate.CONTEXTS['corpus']))
+
     def test_only_the_latest_status_from_the_designated_issuer_counts(self):
         items = [
             {'context': gate.CONTEXT, 'creator': {'login': 'elsewhere'}, 'state': 'success'},
