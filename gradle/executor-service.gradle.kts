@@ -9,6 +9,8 @@ import java.util.zip.ZipInputStream
 val executorServiceSource = layout.projectDirectory.dir("executor-service")
 
 val releaseName = "sandcrab-linux-x86_64.zip"
+val releaseDocuments = listOf("LICENSE", "THIRD-PARTY-NOTICES.txt", "rust-library-copyright.html", "THREAT-MODEL.md",
+    "bwrap-notices.txt", "bwrap-source.tar.xz")
 val releasePin = executorServiceSource.file("sandcrab-release.properties")
 val suppliedRelease = providers.gradleProperty("sandcrabBundle").map { project.file(it) }
     .orElse(gradle.gradleUserHomeDir.resolve("sandcrab/$releaseName"))
@@ -54,12 +56,17 @@ tasks.register<Sync>("stageGameWorker") {
         filePermissions { unix("755") }
     }
     from(verifiedRelease.map { zipTree(it) }) {
-        include("LICENSE", "THIRD-PARTY-NOTICES.txt", "rust-library-copyright.html", "THREAT-MODEL.md",
-            "bwrap-notices.txt", "bwrap-source.tar.xz")
+        include(releaseDocuments)
     }
     from(executorServiceSource) {
         include("game-config.example.toml", "sandcrab-games.service", "pokettogames.slice")
     }
     from(layout.projectDirectory.file("examples/pocket-game/rules.mjs")) { rename { "game-example.mjs" } }
     into(layout.buildDirectory.dir("game-worker"))
+    doLast {
+        releaseDocuments.forEach { name ->
+            val document = destinationDir.resolve(name)
+            check(document.isFile && document.length() > 0) { "Sandcrab staging is missing required release material: $name" }
+        }
+    }
 }
