@@ -15,6 +15,18 @@ The application owns authorization, account-copy identity, repository commands,
 publication checks, transfers and host-side Git authority. The daemon receives
 sandbox profiles, templates, sessions, files and host-call bytes.
 
+The independent distribution owns sandbox source, SDK conformance, generic
+evals, benchmarks and releases. Poketto carries only its checksum pin, adapters,
+operator configuration and consumer acceptance. Cross-boundary changes require
+a release before adoption; rebuilding provider code inside the application image
+would bypass that boundary. The protected verifier runs the exact consumer head
+against the pinned archive. Application delivery verifies the installed service
+and never replaces its executable or the privileged deployment updater.
+
+Workload tools follow host distribution packages and operator upgrades. Sharing
+read-only tools avoids per-copy installation and a second vendored interpreter
+or native-library tree; these workload dependencies do not become daemon dependencies.
+
 A new copy shares an immutable template of its authorized commit and reading
 scope. Each template-backed command uses a fresh shell, and the application records the verified
 writable layer before acknowledging it. Independent application processes recover

@@ -70,4 +70,4 @@ Reattaching a copy onto current remote history would change the user's baseline 
 
 A dynamic user per command would still need a persistent ownership and UID-reuse design for retained files; enabling `DynamicUser` independently for each command is insufficient. Commands run as one fixed execution account.
 
-Related: [CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns remote authority, selected saves and the CLI; the [local execution supervisor](2026-09-05-local-execution-supervisor.md) and [public execution projection](2026-09-09-public-execution-projection.md) keep their isolation boundaries.
+Related: [CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns remote authority, selected saves and the CLI; the [native consumer](2026-11-05-native-repository-consumer.md) and [public execution projection](2026-09-09-public-execution-projection.md) keep their isolation boundaries.

@@ -26,51 +26,20 @@ endpoint does not exist. The output includes:
 
 **Logs.** Every service writes to the host journal. Application lines are one ECS JSON record each;
 [Diagnostics](../../docs/usage.md#diagnostics) owns what the records contain and never contain.
-Containers log under `SYSLOG_IDENTIFIER=poketto-<container>`. The executor and game runner are the
-`poketto-executor.service` and `sandcrab-games.service` units. Repository command sandboxes
-use `poketto-exec-…` units; native game sandboxes use delegated cgroups inside their service.
+Containers log under `SYSLOG_IDENTIFIER=poketto-<container>`. The repository and game services
+use the operator's configured systemd units. Native sandboxes use delegated cgroups inside those
+services. Adapt node exporter's unit selector and the service alert to those unit names.
 
-## Executor command timings
+## Repository read events
 
-Command result timings appear in the application's `repo_exec stages` records as
-`workerRoomMs`, `workerLockMs`, `workerPrepareMs`, `workerRunMs`, `workerReleaseMs`
-and `workerFlushMs`.
-
-`workerRunMs` includes a fresh sandbox's startup. Within it, `workerReadyMs` measures
-the wait for the shell's greeting (zero on reuse), and `workerCommandMs` measures
-command delivery and response handling after that greeting. A failure before the
-greeting reports the ready wait and omits `workerCommandMs`. Both share the command's
-timeout budget; these are elapsed times, not command CPU time.
-
-## Executor request events
-
-The application's `poketto.WorkerRequestPreparation` JFR event records signed-request preparation:
-operation/type, payload byte count, serialization/signing elapsed time and whether an envelope was
-prepared. Preparation does not prove a request was sent; unsigned handshakes are excluded.
-
-`poketto.WorkerBridgePoll` separates authorization and request elapsed time and records whether a
-reply arrived, reported success or contained a bridge request. These flags precede lease validation.
-Its request time includes preparation and the socket exchange, and a poll can finish after its
-command. These events contain no payloads, keys or caller identities. Their elapsed durations
-overlap across requests and are not CPU time.
-
-`poketto.WorkerBridgeAnswer` measures the answer after a poll delivers a request. Its
-`authorizationNanos` sums the outer checks before and after the host operation;
-`completionNanos` covers `BRIDGE_COMPLETE` preparation, exchange and lease validation.
-`completionAttempted` distinguishes an unentered exchange from a failed one, and `completed`
-confirms the mailbox reply, not command containment or a successful host operation.
-
-`poketto.WorkerRemoteStatus` measures remote-status resolution inside that answer. `fullRead`
-distinguishes an authority lookup from a public projection; `resolved=false` includes a failed
-lookup even when the bridge successfully replies with an unavailable status.
 `poketto.RepositoryReadResolution` covers read-side main resolution before the reader callback:
 workspace-lock wait, remote-fetch time, and `cacheReused`, `fetchAttempted` and `resolved` flags.
 Reuse can use a known commit or the configured recent-fetch window. Failed attempts retain their
-elapsed time; `resolved` does not claim the subsequent reader succeeded.
+elapsed time; `resolved` does not claim the subsequent reader succeeded. This JFR event records
+elapsed times and booleans with stack traces disabled; it changes neither admission nor fetch reuse.
 
-These three events add only elapsed times and booleans, with stack traces disabled. Relate nested
-events by their JFR thread and time interval; their overlapping durations must not be summed.
-They supplement command timings without changing admission, fetch reuse or load-test scoring.
+Native execution uses the tool outcome duration and executor metrics above. Those observations
+do not separate request preparation, startup, command execution and durable acknowledgement.
 
 ## Running this stack
 
@@ -94,22 +63,21 @@ Alertmanager.
 
 ## Queries
 
-Live command sandboxes, in PromQL:
+Application parent-session admissions, in PromQL:
 
 ```
-count(node_systemd_unit_state{name=~"poketto-exec-.+\\.service", state="active"} == 1) or vector(0)
+poketto_executor_sessions_active{job="poketto-app"}
 ```
 
-Application warnings, the slowest `repo_exec` calls and the most frequent problems, in LogsQL:
+Application warnings and the most frequent problems, in LogsQL:
 
 ```
 SYSLOG_IDENTIFIER:~"^poketto-app" | unpack_json | log.level:WARN | fields _time, message
-SYSLOG_IDENTIFIER:~"^poketto-app" "repo_exec stages" | unpack_json | stats quantile(0.95, totalMs) p95, count() calls
 _time:1h SYSLOG_IDENTIFIER:~"^poketto-app" | unpack_json | log.level:in(WARN, ERROR) | stats by (message) count() hits | sort by (hits desc)
 ```
 
 The [load suite](../../acceptance/README.md) takes these sources directly: `--prometheus
-http://127.0.0.1:9090` with the sandbox query above as `--live-units`, and `--logs
+http://127.0.0.1:9090` with an operator-supplied sandbox count query as `--live-units`, and `--logs
 http://127.0.0.1:9428` with `--app-logs 'SYSLOG_IDENTIFIER:~"^poketto-app"'`.
 
 ## Verification

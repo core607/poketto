@@ -1,8 +1,0 @@
-usage: poketto save [-h] [--delete DELETE] [paths ...]
-
-positional arguments:
-  paths
-
-options:
-  -h, --help       show this help message and exit
-  --delete DELETE

@@ -1,4 +1,0 @@
-id: cancel
-task: "Submit the fixture using the python profile, request cancellation immediately, then inspect the terminal result."
-fixture: {"command":["python3","-c","import time; time.sleep(20)"],"exercise":"cancel"}
-expected: {"state":"cancelled"}

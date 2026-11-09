@@ -24,7 +24,7 @@ startup fails in the tested sandboxed Chrome context. The frame pins script
 addresses to the public request origin rather than the internal proxy listener.
 Platform controls explicitly
 save untrusted state; author code has no platform operation channel. Native games
-use [Sandcrab's public API](../../executor-service/rust/sandcrab/README.md) in a
+use [the pinned Sandcrab release](../../executor-service/README.md#release) in a
 separate service, execution account, admission pool and resource slice. Repository
 copies and shell lifetimes retain their own contract. Keeping admission when
 containment is unknown prevents repeated failures from exhausting the host;
@@ -42,8 +42,9 @@ The application uploads its game runtime with each step. This keeps browser and
 native execution on the same source without synchronizing privileged host assets,
 at the cost of transferring the runtime again. A separate product supervisor would
 duplicate admission and cleanup; platform identity and game parsing must remain
-outside the generic daemon. The [shared process runner](2026-10-27-sandcrab-in-repository-split.md)
-owns bounded output, cancellation and containment mechanisms.
+outside the generic daemon. Sandcrab owns bounded output, cancellation and containment. The
+[earlier in-repository split](../archived/2026-10-27-sandcrab-in-repository-split.md)
+records the shared runner's extraction rationale.
 
 Account transactions reserve versioned attempts, release locks before execution,
 then recheck authorization and publication before committing. Attempt UUIDs prevent

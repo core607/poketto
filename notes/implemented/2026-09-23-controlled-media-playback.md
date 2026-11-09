@@ -83,7 +83,7 @@ an explicit constrained playback mode. The
 [CodeAct content contract](../implemented/2026-09-09-codeact-content-and-media.md)
 retains immutable originals, logical paths and independent publication authority.
 Its original delivery excluded playback; this record extends that boundary.
-The [sandbox toolkit](2026-09-05-local-execution-supervisor.md#sandbox-toolkit)
+The [sandbox toolkit](../../executor-service/README.md#toolkit)
 continues to exclude audio/video processing.
 
 [HTTP range semantics](https://httpwg.org/specs/rfc9110.html#field.range) and the

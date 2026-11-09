@@ -25,7 +25,7 @@ Corpus-only TF-IDF and MiniBatchKMeans produce 32 topic folders. Each folder lis
 
 ## Connect the independent Sandcrab service
 
-Run a dedicated [Sandcrab service](../../executor-service/rust/sandcrab/README.md) on a Linux host. Reserve the socket and durable volume pool for this experiment. Set `LAB_WORKER_SOCKET` and `LAB_WORKER_PROFILE`. The application's Unix UID must match the service's configured client UID. Give guest commands a separate execution account.
+Run a dedicated [Sandcrab service](../../executor-service/README.md#release) on a Linux host. Reserve the socket and durable volume pool for this experiment. Set `LAB_WORKER_SOCKET` and `LAB_WORKER_PROFILE`. The application's Unix UID must match the service's configured client UID. Give guest commands a separate execution account.
 
 The complete FiQA corpus requires enforced project quotas, a 2 GiB volume and 150,000 inodes per question. The acceptance fixture uses an 8 GiB XFS project-quota pool, a 256 MiB transfer limit, 512 MiB of guest memory, a 1 MiB output limit, a 120-second maximum command duration and a renewable 60-second session. Disable networking and host calls. The guest needs bash, Git, Python 3 and ripgrep.
 
@@ -74,7 +74,7 @@ python3 python/native_fixture.py --binary /var/lib/sandcrab-release/sandcrab \
 
 The fixture checks the pinned database and Git bundle, gives the client only the bundle and manifest, and exercises all 57,600 documents, navigation, host and network isolation, paged output, mutation isolation and timeout handling. It kills an application process with a live sandbox command and verifies that recovery leaves the three inventories empty. The output retains stdout, stderr, the private test database and `summary.json`. The test makes no model requests.
 
-The [complete-corpus workflow](../../.github/workflows/retrieval-corpus.yml) provisions a bounded service on a fresh runner. It runs on sandbox consumer changes or manual dispatch and retains the raw acceptance artifacts with the workflow run.
+The [complete-corpus workflow](../../.github/workflows/retrieval-corpus.yml) requires a separate `sandcrab-corpus` receipt for its commit and pinned release. After reviewing the branch, dispatch `python3 acceptance/clients/release-gate.py dispatch --pr NUMBER --check corpus` from a trusted checkout with the configured verifier. The [corpus entry](../../.github/ci/sandcrab-corpus-check.sh) stages the checksum-pinned distribution, provisions the bounded service on a fresh runner and retains raw acceptance artifacts there. It removes that disposable runner's unused Android and .NET SDKs before preparing data; the 12 GiB disk preflight and sandbox quotas remain required. The public workflow runs on sandbox consumer changes or manual dispatch; the ordinary release receipt cannot satisfy it.
 
 For isolated browser acceptance, set `LAB_DATA` to the prepared corpus and run `node dist/test/browser-fixture.js`, then open `http://127.0.0.1:38471` in Chrome. This fixture uses separate temporary run state and synthetic model/worker replies. Exercise clarification, refresh/history recovery, a reply, paired evidence rendering and cancellation. Its marked results do not establish real-provider compatibility or retrieval quality.
 

@@ -11,8 +11,7 @@ import time
 import uuid
 
 from sandcrab_volume_java_probe import sha256, verify_runtime
-import sandcrab_conformance.native as native_probe
-from sandcrab_conformance.native import Probe, call, http
+from java_native_fixture import JavaNativeFixture, call, http
 
 ACTIONS = ('restart-output', 'restart-calls', 'restart-handler', 'enable-cleanup-fault', 'recover-cleanup')
 MAIN = 'io.github.core607.poketto.executor.internal.SandcrabRecoveryNativeProbe'
@@ -169,13 +168,7 @@ def java(probe, args, runtime, consumer, flag):
 def run(args):
     runtime_hash = verify_runtime(args.runtime)
     assert (args.runtime / 'classes' / Path(*MAIN.split('.')).with_suffix('.class')).is_file()
-    probe = Probe(args.binary, args.tools, args.report)
-    config = probe.config.read_text()
-    assert config.count('[service]\n') == 1 and config.count('network = "none"\n') == 1
-    config = config.replace('[service]\n', '[service]\nmax_event_streams = 1\n')
-    config = config.replace('network = "none"\n', 'network = "none"\nhost_calls = true\n')
-    config = config.replace('timeout_millis = 10000\n', 'timeout_millis = 30000\n')
-    probe.config.write_text(config)
+    probe = JavaNativeFixture(args.binary, args.tools, args.report)
     flag = fault_helper(probe)
     probe.receipt.update(scope='Java event and host-call observers during real daemon loss and cleanup faults; only owned fixture units, no product cutover or model calls',
                          controllerSha256=sha256(Path(__file__)), runtimeManifestSha256=runtime_hash,
@@ -191,7 +184,7 @@ def run(args):
             path.chmod(0o755 if path.is_dir() else 0o644)
         consumer = probe.root / 'consumer'
         consumer.mkdir(mode=0o700)
-        os.chown(consumer, *native_probe.CLIENT)
+        os.chown(consumer, probe.client.pw_uid, probe.client.pw_gid)
         probe.receipt['java'] = java(probe, args, runtime, consumer, flag)
         probe.receipt['result'] = 'PASS'
         probe.done('java-live-observers-reconcile-daemon-restart-without-effect-replay')

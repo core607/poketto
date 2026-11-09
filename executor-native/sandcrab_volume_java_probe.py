@@ -9,12 +9,8 @@ import random
 import shutil
 import signal
 import subprocess
-import sys
 
-NATIVE_SOURCE = Path(__file__).resolve().parents[1] / 'executor-service/rust/sandcrab'
-sys.path.insert(0, str(NATIVE_SOURCE))
-import sandcrab_conformance.native as native_probe
-from sandcrab_conformance.volume import VolumeProbe
+from java_native_fixture import JavaNativeFixture, call
 
 
 def sha256(path):
@@ -68,7 +64,7 @@ def seed_bundle(probe, consumer):
     git('bundle', 'create', str(bundle), 'HEAD')
     assert bundle.stat().st_size > 1024 * 1024
     bundle.chmod(0o600)
-    os.chown(bundle, *native_probe.CLIENT)
+    os.chown(bundle, probe.client.pw_uid, probe.client.pw_gid)
     return bundle, git('rev-parse', 'HEAD'), hashlib.sha256(payload).hexdigest()
 
 
@@ -92,28 +88,15 @@ def java_phase(probe, java, runtime, consumer, phase, extra=()):
         assert receipt['result'] == 'PASS'
         return receipt
     finally:
-        native_probe.call('systemctl', 'stop', unit, check=False)
-        active = native_probe.call('systemctl', 'show', unit, '-p', 'ActiveState', '--value', check=False).stdout.strip()
+        call('systemctl', 'stop', unit, check=False)
+        active = call('systemctl', 'show', unit, '-p', 'ActiveState', '--value', check=False).stdout.strip()
         assert active in ('', 'inactive', 'failed'), 'Java fixture process did not stop'
-        native_probe.call('systemctl', 'reset-failed', unit, check=False)
+        call('systemctl', 'reset-failed', unit, check=False)
 
 
 def run(args):
     runtime_hash = verify_runtime(args.runtime)
-    probe = VolumeProbe(args.binary, args.tools, args.report)
-    original = probe.config.read_text()
-    profile_network = 'network = "none"\n'
-    assert original.count(profile_network) == 2 and 'host_calls' not in original
-    enabled = original.replace(profile_network, profile_network + 'host_calls = true\n')
-    assert enabled.count('[service]\n') == 1 and 'max_event_streams' not in enabled
-    enabled = enabled.replace('[service]\n', '[service]\nmax_event_streams = 1\n')
-    assert enabled.count('[profiles.') == 2
-    for name in ('python', 'other'):
-        header = '[profiles.' + name + ']\n'
-        assert enabled.count(header) == 1
-        profile = enabled.split(header, 1)[1].split('\n[', 1)[0]
-        assert profile.count('host_calls = true\n') == 1
-    probe.config.write_text(enabled)
+    probe = JavaNativeFixture(args.binary, args.tools, args.report, volumes=True)
     probe.receipt.update(scope='Java public API, streamed synthetic Git bundle, snapshots, opaque host calls, SSE output, durable volumes and restart; no product cutover or model calls',
                          controllerSha256=sha256(Path(__file__)), runtimeManifestSha256=runtime_hash)
     try:
@@ -125,7 +108,7 @@ def run(args):
             path.chmod(0o755 if path.is_dir() else 0o644)
         consumer = probe.root / 'consumer'
         consumer.mkdir(mode=0o700)
-        os.chown(consumer, *native_probe.CLIENT)
+        os.chown(consumer, probe.client.pw_uid, probe.client.pw_gid)
         bundle, commit, file_digest = seed_bundle(probe, consumer)
         probe.receipt['corpus'] = {'commit': commit, 'bundleSha256': sha256(bundle),
                                    'bundleBytes': bundle.stat().st_size, 'fileSha256': file_digest}
@@ -145,7 +128,7 @@ def run(args):
         probe.receipt['result'] = 'FAIL'
         probe.receipt['failureType'] = type(error).__name__
         args.report.with_suffix('.diagnostic.txt').write_text(str(error) + '\n' +
-            native_probe.call('journalctl', '-u', probe.unit, '--no-pager', '-n', '60', check=False).stdout)
+            call('journalctl', '-u', probe.unit, '--no-pager', '-n', '60', check=False).stdout)
         raise
     finally:
         try:

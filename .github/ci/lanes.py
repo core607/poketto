@@ -4,7 +4,7 @@ import os
 import subprocess
 
 
-FULL = {'java', 'database', 'web', 'image', 'stack', 'load', 'retrieval-lab', 'evals', 'collectors'}
+FULL = {'java', 'database', 'web', 'image', 'stack', 'load', 'retrieval-lab'}
 
 
 def select(event, paths):
@@ -14,28 +14,28 @@ def select(event, paths):
     for path in paths:
         if path.endswith('.md') or path == 'LICENSE':
             continue
-        if path.startswith('executor-native/evidence/sandcrab-') and path.endswith('/summary.json'):
+        if path.startswith('executor-native/evidence/') and path.endswith('/summary.json'):
             continue
-        if path.startswith('experiments/sandcrab-density/') or path == '.github/workflows/sandcrab-density.yml':
-            lanes.add('collectors')
-        elif path.startswith('experiments/retrieval-lab/') or path == '.github/workflows/retrieval-corpus.yml':
+        if path.startswith('evals/evidence/') and path.endswith('.json'):
+            continue
+        if path.startswith('experiments/retrieval-lab/') or path in (
+                '.github/workflows/retrieval-corpus.yml', '.github/ci/sandcrab-corpus-check.sh'):
             lanes.add('retrieval-lab')
-        elif path.startswith('evals/') or path == '.github/workflows/evals.yml':
-            lanes.add('evals')
-        elif path.startswith('executor-service/rust/sandcrab/'):
-            lanes.update(('image', 'evals'))
-        elif path.startswith(('executor-service/', 'executor-native/')) or path == 'gradle/executor-service.gradle.kts':
-            lanes.update(('image', 'evals', 'load', 'stack'))
+        elif path in ('executor-service/sandcrab-release.properties', 'gradle/executor-service.gradle.kts'):
+            lanes.update(('image', 'load', 'stack'))
+        elif path.startswith('executor-service/'):
+            lanes.update(('load', 'stack'))
+        elif path.startswith('executor-native/'):
+            lanes.add('load')
         elif path in ('acceptance/clients/native-host.py', 'acceptance/clients/native-load.py',
                       'acceptance/clients/native_repository_fixture.py', 'acceptance/clients/release-gate.py',
                       'acceptance/clients/account-http.py', 'acceptance/clients/games-http.py',
                       'acceptance/clients/mcp_http.py', '.github/ci/sandcrab-release-check.sh'):
             lanes.add('load')
-        elif path in ('deploy/worker_release.py', 'deploy/tests/test_worker_deployment.py',
-                      'deploy/tests/validate_app_identity.sh'):
-            lanes.update(('image', 'stack'))
-        elif path == '.github/workflows/sandcrab-readiness.yml':
-            continue  # Its own workflow runs the distribution fixtures.
+        elif path in ('deploy/native_repository.py', 'deploy/resource_pool.py', 'deploy/update-existing.py'):
+            lanes.update(('load', 'stack'))
+        elif path == 'deploy/tests/validate_app_identity.sh':
+            lanes.add('image')
         else:
             return FULL
     return lanes

@@ -15,7 +15,7 @@ Status: Implemented
 
 The [identity HTTP backend](2026-09-06-workspace-identity-http.md) delivers the self-hosted account, session, invitation, membership and key foundation.
 
-The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) add repository-native content, publication policy, atomic patches and snapshot-bound images. The [MCP and local execution integration](2026-09-05-local-execution-supervisor.md) supplies the tool transport and signed worker adapter. The [blog and browser administration](2026-09-06-blog-browser-interface.md) provides public pages and the editor.
+The [repository authoring foundations](2026-09-05-repository-authoring-foundations.md) add repository-native content, publication policy, atomic patches and snapshot-bound images. The [CodeAct entrance](2026-09-10-codeact-mcp-entrance.md) supplies MCP tools, and the [native consumer](2026-11-05-native-repository-consumer.md) supplies repository execution. The [blog and browser administration](2026-09-06-blog-browser-interface.md) provides public pages and the editor.
 
 ## Problem
 
