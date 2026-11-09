@@ -1,7 +1,8 @@
 # Evaluation evidence
 
 This directory retains the Sandcrab evaluation receipts recorded while its
-implementation shared the Poketto repository. The independent Sandcrab distribution
+implementation shared the Poketto repository. The independent
+[Sandcrab distribution](https://github.com/core607/sandcrab/blob/main/evals/README.md)
 owns the Inspect harness, programming corpus, published SDK consumers, model
 configuration and evaluation workflows. Poketto's [native release acceptance](../executor-native/README.md#release-acceptance)
 verifies its application adapters against the pinned executable.

@@ -15,13 +15,17 @@ The application owns authorization, account-copy identity, repository commands,
 publication checks, transfers and host-side Git authority. The daemon receives
 sandbox profiles, templates, sessions, files and host-call bytes.
 
-The independent distribution owns sandbox source, SDK conformance, generic
-evals, benchmarks and releases. Poketto carries only its checksum pin, adapters,
+The [independent distribution](https://github.com/core607/sandcrab) owns sandbox
+source, SDK conformance, generic evals, benchmarks and releases; its
+[provider decision](https://github.com/core607/sandcrab/blob/main/notes/implemented/2026-11-02-sandcrab-lightweight-service.md)
+owns runtime, installation and measurement trade-offs. Poketto carries its checksum pin, adapters,
 operator configuration and consumer acceptance. Cross-boundary changes require
 a release before adoption; rebuilding provider code inside the application image
 would bypass that boundary. The protected verifier runs the exact consumer head
-against the pinned archive. Application delivery verifies the installed service
-and never replaces its executable or the privileged deployment updater.
+against the pinned archive. The [release verifier](../../deploy/native_repository.py)
+checks the installed binary, configuration, process, endpoint and protected-copy
+behavior before replacing application containers. Application delivery never
+replaces the service executable or the privileged deployment updater.
 
 Workload tools follow host distribution packages and operator upgrades. Sharing
 read-only tools avoids per-copy installation and a second vendored interpreter
@@ -51,8 +55,12 @@ This replaces automatic frozen installation and rollback of working files. The
 authorization and remote-recovery rules.
 
 The [offline importer](../../executor-service/native-migration.md) preserves
-existing data and uncertain receipts. An interrupted host save is reconciled by
-its durable receipt before local baseline installation can be repeated. Privileged
+existing data and uncertain receipts. Stopped writers, backups and the previous
+image pin bound recovery; deferred copies keep their legacy source and journals
+until explicitly reconciled or retired through their authorized disposal or expiry
+path. An interrupted host save is reconciled by its durable receipt before local
+baseline installation can be repeated. Transfers and cleanup that need terminal
+receipts request `keepResult` until caller reconciliation completes. Privileged
 service installation and application deployment have separate owners.
 
 ## Alternatives
@@ -88,3 +96,6 @@ save, synchronization and move tests pin the consumer's transitions.
 production adapters and kernel boundaries with the released executable.
 [Authenticated client acceptance](../../acceptance/clients/README.md) covers the
 HTTP/MCP entrance and repository authority.
+The protected release receipt, complete retrieval-corpus check, `stageGameWorker`
+and `appImageIdentityCheck` bind the released archive and consumer tree. Provider
+readiness does not replace those integration checks.
