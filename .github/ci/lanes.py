@@ -31,6 +31,8 @@ def select(event, paths):
                       'acceptance/clients/native_repository_fixture.py', 'acceptance/clients/release-gate.py',
                       'acceptance/clients/native_phases.py', 'acceptance/clients/native_phase_metrics.py',
                       'acceptance/clients/test_native_phases.py',
+                      'acceptance/clients/native_jvm.py', 'acceptance/clients/test_native_jvm.py',
+                      'acceptance/clients/jvm-footprint.py', '.github/ci/sandcrab-jvm-check.sh',
                       'acceptance/clients/account-http.py', 'acceptance/clients/games-http.py',
                       'acceptance/clients/mcp_http.py', '.github/ci/sandcrab-release-check.sh'):
             lanes.add('load')

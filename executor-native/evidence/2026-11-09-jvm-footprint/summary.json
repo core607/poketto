@@ -1,0 +1,548 @@
+{
+  "scope": "Local collector and AOT lifecycle smoke only; canonical two-order comparison is pending CI",
+  "measurementStatus": "SMOKE_VERIFIED",
+  "applicationChanges": false,
+  "modelCalls": 0,
+  "consumerBase": "64e73e4edeba4a136d48436ec5ae80a514c41295",
+  "serviceVersion": "v0.1.1",
+  "serviceBinarySha256": "de7de59f292a067dca7f034ffd971f17dd126e984ac624bb892db808d38853d6",
+  "runtimeManifestSha256": "062eeb9032dcc83fc72793edda99530cc2712ff85bdcccb02717691aa009b558",
+  "selectedReference": {
+    "applicationMemoryBytes": 1610612736,
+    "cpuQuotaPercent": 150,
+    "tasksMax": 384,
+    "memorySwapMax": 0,
+    "heapRatioPercent": 65
+  },
+  "tests": {
+    "jvmCollector": 4,
+    "adjacentPhaseCollector": 6,
+    "ciSelectorAndReceipt": 8,
+    "repoCheck": "PASS",
+    "shellSyntax": "PASS",
+    "stagedAcceptanceRuntime": "PASS"
+  },
+  "attempts": [
+    {
+      "name": "smoke-baseline1",
+      "description": "Original directory-classpath smoke passed; one CPU reference.",
+      "case": {
+        "profile": "baseline",
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 20251.78046093788,
+        "receiptSha256": "c4db611142309f90578f9df632de5ff255c021af5ebfb04fc4196c02ef873e80",
+        "memory": {
+          "VmRSS": {
+            "minimum": 507203584,
+            "median": 518774784,
+            "p95": 519696384,
+            "maximum": 519819264
+          },
+          "RssAnon": {
+            "minimum": 476438528,
+            "median": 488009728,
+            "p95": 488931328,
+            "maximum": 489054208
+          },
+          "RssFile": {
+            "minimum": 30732288,
+            "median": 30732288,
+            "p95": 30732288,
+            "maximum": 30732288
+          },
+          "RssShmem": {
+            "minimum": 32768,
+            "median": 32768,
+            "p95": 32768,
+            "maximum": 32768
+          },
+          "Threads": {
+            "minimum": 51,
+            "median": 51,
+            "p95": 54,
+            "maximum": 56
+          }
+        },
+        "nativeMemoryObservations": [
+          "nmtBefore",
+          "nmtAfter"
+        ],
+        "load": [
+          {
+            "verdict": "PASS",
+            "afterWarmup": {
+              "calls": 5,
+              "p50": 0.302,
+              "p95": 0.316,
+              "p99": 0.316,
+              "okRate": 1.0,
+              "callsPerSecond": 0.42,
+              "outcomes": {
+                "OK": 5
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "matrix-smoke1",
+      "description": "JAR omitted package directory entries needed by Spring scanning; readiness failed and cleanup passed.",
+      "measurementStatus": "INCOMPLETE",
+      "cases": [
+        {
+          "result": "FAIL",
+          "cleanup": "PASS",
+          "receiptSha256": "afe982c3e56decf82cd00eb1c0a4a915a738d937d7b58fc600025f9bdf035858"
+        }
+      ],
+      "receiptSha256": "f32dbb9e38f342b0818458e8a59a78468715c027f6e79227d713fc09734f5323"
+    },
+    {
+      "name": "matrix-smoke2",
+      "description": "Baseline passed; reusing its port hit TIME_WAIT before AOT fixture startup. The controller stopped with unknown cleanup rather than claiming a complete matrix. No client unit remained active.",
+      "measurementStatus": "INCOMPLETE",
+      "cases": [
+        {
+          "profile": "baseline",
+          "result": "PASS",
+          "cleanup": "PASS",
+          "applicationStartupMillis": 19359.340192982927,
+          "receiptSha256": "d8e71f4cef7ceef8f77d566d988154d226cb4ca5df4aae7fbac91c90c8327ece",
+          "memory": {
+            "VmRSS": {
+              "minimum": 524869632,
+              "median": 535826432,
+              "p95": 536760320,
+              "maximum": 536875008
+            },
+            "RssAnon": {
+              "minimum": 494166016,
+              "median": 505122816,
+              "p95": 506056704,
+              "maximum": 506171392
+            },
+            "RssFile": {
+              "minimum": 30670848,
+              "median": 30670848,
+              "p95": 30670848,
+              "maximum": 30670848
+            },
+            "RssShmem": {
+              "minimum": 32768,
+              "median": 32768,
+              "p95": 32768,
+              "maximum": 32768
+            },
+            "Threads": {
+              "minimum": 50,
+              "median": 51,
+              "p95": 54,
+              "maximum": 54
+            }
+          },
+          "nativeMemoryObservations": [
+            "nmtBefore",
+            "nmtDuring",
+            "nmtAfter"
+          ],
+          "load": [
+            {
+              "verdict": "PASS",
+              "afterWarmup": {
+                "calls": 5,
+                "p50": 0.237,
+                "p95": 0.256,
+                "p99": 0.256,
+                "okRate": 1.0,
+                "callsPerSecond": 0.42,
+                "outcomes": {
+                  "OK": 5
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "receiptSha256": "a0b2aa2e51e01f05e256cccc67cf16fe330fbac86e383eecfa1a7ede5bc356c6"
+    },
+    {
+      "name": "matrix-smoke3",
+      "description": "JAR baseline and compact-header smokes passed; AOT record mode crashed during NMT reporting, tracked by issue 414. Every started fixture confirmed cleanup.",
+      "measurementStatus": "COMPLETE",
+      "cases": [
+        {
+          "profile": "aot-training",
+          "result": "FAIL",
+          "cleanup": "PASS",
+          "failureType": "CalledProcessError",
+          "applicationStartupMillis": 21024.46354890708,
+          "receiptSha256": "0faa21eae9d22ff932dc6447b4709dabe1d1dcf6e9fbea94b11020b74bf1c39e"
+        },
+        {
+          "profile": "baseline",
+          "result": "PASS",
+          "cleanup": "PASS",
+          "applicationStartupMillis": 19893.01357208751,
+          "receiptSha256": "6d3267277077cc7d5690a6fc70ad36a7ed777cff236fef56fb2e34c16bc358fc",
+          "memory": {
+            "VmRSS": {
+              "minimum": 529653760,
+              "median": 540098560,
+              "p95": 540794880,
+              "maximum": 540893184
+            },
+            "RssAnon": {
+              "minimum": 498917376,
+              "median": 509362176,
+              "p95": 510058496,
+              "maximum": 510156800
+            },
+            "RssFile": {
+              "minimum": 30703616,
+              "median": 30703616,
+              "p95": 30703616,
+              "maximum": 30703616
+            },
+            "RssShmem": {
+              "minimum": 32768,
+              "median": 32768,
+              "p95": 32768,
+              "maximum": 32768
+            },
+            "Threads": {
+              "minimum": 51,
+              "median": 51,
+              "p95": 54,
+              "maximum": 55
+            }
+          },
+          "nativeMemoryObservations": [
+            "nmtBefore",
+            "nmtDuring",
+            "nmtAfter"
+          ],
+          "load": [
+            {
+              "verdict": "PASS",
+              "afterWarmup": {
+                "calls": 5,
+                "p50": 0.23,
+                "p95": 0.257,
+                "p99": 0.257,
+                "okRate": 1.0,
+                "callsPerSecond": 0.42,
+                "outcomes": {
+                  "OK": 5
+                }
+              }
+            }
+          ]
+        },
+        {
+          "profile": "baseline",
+          "result": "PASS",
+          "cleanup": "PASS",
+          "applicationStartupMillis": 18840.789231006056,
+          "receiptSha256": "cd029c0608fbb06bb5c784c6e8919ff127dd1e652a215b8a1b3c037f2b841a1e",
+          "memory": {
+            "VmRSS": {
+              "minimum": 496680960,
+              "median": 509218816,
+              "p95": 510734336,
+              "maximum": 510853120
+            },
+            "RssAnon": {
+              "minimum": 465989632,
+              "median": 478527488,
+              "p95": 480043008,
+              "maximum": 480161792
+            },
+            "RssFile": {
+              "minimum": 30658560,
+              "median": 30658560,
+              "p95": 30658560,
+              "maximum": 30658560
+            },
+            "RssShmem": {
+              "minimum": 32768,
+              "median": 32768,
+              "p95": 32768,
+              "maximum": 32768
+            },
+            "Threads": {
+              "minimum": 51,
+              "median": 52,
+              "p95": 54,
+              "maximum": 54
+            }
+          },
+          "nativeMemoryObservations": [
+            "nmtBefore",
+            "nmtDuring",
+            "nmtAfter"
+          ],
+          "load": [
+            {
+              "verdict": "PASS",
+              "afterWarmup": {
+                "calls": 5,
+                "p50": 0.299,
+                "p95": 0.344,
+                "p99": 0.344,
+                "okRate": 1.0,
+                "callsPerSecond": 0.42,
+                "outcomes": {
+                  "OK": 5
+                }
+              }
+            }
+          ]
+        },
+        {
+          "profile": "headers",
+          "result": "PASS",
+          "cleanup": "PASS",
+          "applicationStartupMillis": 19889.435488032177,
+          "receiptSha256": "0318401df01a43fe63ff8f766f65b0a34da9e8b8f9eb3a43c23d1e4f9d523251",
+          "memory": {
+            "VmRSS": {
+              "minimum": 530685952,
+              "median": 541523968,
+              "p95": 542392320,
+              "maximum": 542507008
+            },
+            "RssAnon": {
+              "minimum": 500142080,
+              "median": 510980096,
+              "p95": 511848448,
+              "maximum": 511963136
+            },
+            "RssFile": {
+              "minimum": 30511104,
+              "median": 30511104,
+              "p95": 30511104,
+              "maximum": 30511104
+            },
+            "RssShmem": {
+              "minimum": 32768,
+              "median": 32768,
+              "p95": 32768,
+              "maximum": 32768
+            },
+            "Threads": {
+              "minimum": 51,
+              "median": 51,
+              "p95": 54,
+              "maximum": 56
+            }
+          },
+          "nativeMemoryObservations": [
+            "nmtBefore",
+            "nmtDuring",
+            "nmtAfter"
+          ],
+          "load": [
+            {
+              "verdict": "PASS",
+              "afterWarmup": {
+                "calls": 5,
+                "p50": 0.298,
+                "p95": 0.316,
+                "p99": 0.316,
+                "okRate": 1.0,
+                "callsPerSecond": 0.42,
+                "outcomes": {
+                  "OK": 5
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "receiptSha256": "fe8c2cbf88c8b5f3613b243092cfceb5a436f3682676c277f314df99ca0e0522"
+    },
+    {
+      "name": "aot-training1",
+      "description": "Second retained AOT record-mode NMT crash identified NMTDCmd in the native stack; cleanup passed.",
+      "case": {
+        "profile": "aot-training",
+        "result": "FAIL",
+        "cleanup": "PASS",
+        "failureType": "FileNotFoundError",
+        "applicationStartupMillis": 23082.914091064595,
+        "receiptSha256": "2840a771fd509c49f2f642f4707c07cc5631dd5a300c960b767c569ea0713410"
+      }
+    },
+    {
+      "name": "aot-training2",
+      "description": "AOT training without unsupported NMT queries and bounded cache assembly passed; training has no NMT category claim.",
+      "case": {
+        "profile": "aot-training",
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 22082.05382397864,
+        "assembly": {
+          "result": "PASS",
+          "cacheBytes": 137932800,
+          "cacheSha256": "aab9f302e94d8d22bf85761f873c16e290f28f830276bbeda9024ec149ea2f19",
+          "scope": "Verified staged acceptance classes packaged as a JAR; production image adoption requires matching its own application and JDK"
+        },
+        "nmtAvailability": "UNAVAILABLE_IN_AOT_RECORD_MODE: diagnostic crash tracked in issue 414; training resources are observed through process/cgroup counters",
+        "receiptSha256": "ae5bc7071cead9b44557e1263d4c29fbff8977e23fc6c253b9dc857d7522fbf7",
+        "memory": {
+          "VmRSS": {
+            "minimum": 514277376,
+            "median": 520646656,
+            "p95": 521687040,
+            "maximum": 521801728
+          },
+          "RssAnon": {
+            "minimum": 476549120,
+            "median": 482918400,
+            "p95": 483958784,
+            "maximum": 484073472
+          },
+          "RssFile": {
+            "minimum": 37695488,
+            "median": 37695488,
+            "p95": 37695488,
+            "maximum": 37695488
+          },
+          "RssShmem": {
+            "minimum": 32768,
+            "median": 32768,
+            "p95": 32768,
+            "maximum": 32768
+          },
+          "Threads": {
+            "minimum": 50,
+            "median": 51,
+            "p95": 52,
+            "maximum": 52
+          }
+        },
+        "nativeMemoryObservations": [],
+        "load": [
+          {
+            "verdict": "PASS",
+            "afterWarmup": {
+              "calls": 5,
+              "p50": 0.312,
+              "p95": 0.333,
+              "p99": 0.333,
+              "okRate": 1.0,
+              "callsPerSecond": 0.42,
+              "outcomes": {
+                "OK": 5
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "aot-consume1",
+      "description": "The strict parser rejected the valid readonly field in Shared class space; the process remained alive and cleanup passed.",
+      "case": {
+        "profile": "aot",
+        "result": "FAIL",
+        "cleanup": "PASS",
+        "failureType": "ValueError",
+        "cpuQuotaPercent": 150,
+        "tasksMax": 384,
+        "applicationStartupMillis": 10272.092005005106,
+        "receiptSha256": "b47436d3a8700c9ab96e11d4b6e779013ac680ee8078248ac62a65152c3eb42f"
+      }
+    },
+    {
+      "name": "aot-consume2",
+      "description": "Cache-required consumption, before/during/after NMT, real MCP outcomes and cleanup passed at the 150 percent CPU / 384 task reference.",
+      "case": {
+        "profile": "aot",
+        "result": "PASS",
+        "cleanup": "PASS",
+        "cpuQuotaPercent": 150,
+        "tasksMax": 384,
+        "applicationStartupMillis": 10747.230431064963,
+        "receiptSha256": "835553a1cf3cdc3fe896a1f8002be349337018d5b880fee4b7e1ea40fea0a181",
+        "memory": {
+          "VmRSS": {
+            "minimum": 426360832,
+            "median": 426713088,
+            "p95": 444026880,
+            "maximum": 444043264
+          },
+          "RssAnon": {
+            "minimum": 375607296,
+            "median": 375959552,
+            "p95": 393273344,
+            "maximum": 393289728
+          },
+          "RssFile": {
+            "minimum": 50688000,
+            "median": 50720768,
+            "p95": 50720768,
+            "maximum": 50720768
+          },
+          "RssShmem": {
+            "minimum": 32768,
+            "median": 32768,
+            "p95": 32768,
+            "maximum": 32768
+          },
+          "Threads": {
+            "minimum": 51,
+            "median": 51,
+            "p95": 55,
+            "maximum": 55
+          }
+        },
+        "nativeMemoryObservations": [
+          "nmtBefore",
+          "nmtDuring",
+          "nmtAfter"
+        ],
+        "load": [
+          {
+            "verdict": "PASS",
+            "afterWarmup": {
+              "calls": 5,
+              "p50": 0.244,
+              "p95": 0.254,
+              "p99": 0.254,
+              "okRate": 1.0,
+              "callsPerSecond": 0.42,
+              "outcomes": {
+                "OK": 5
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "issues": [
+    "https://github.com/core607/poketto/issues/414"
+  ],
+  "setupAttempts": [
+    {
+      "result": "FAIL",
+      "reason": "Restarting the owned nested Docker fixture with overlay2 failed before use; its existing vfs driver was restored. No container was started in the failed attempt."
+    }
+  ],
+  "sourceSha256Lf": {
+    ".github/ci/lanes.py": "03c369fd4d6bb37507ecbfc3917084058388e00a57bb2e587feef1bbd37cc554",
+    ".github/ci/sandcrab-jvm-check.sh": "ec6b912b1ad4a304fe217b335d2698e1a169c5c67f1a5bbaea01c84522401560",
+    ".github/ci/test_lanes.py": "b018231df07fc5c9d03f1cd0510e2282a60d87d3fdfbef98d026813c5d76027e",
+    "acceptance/clients/jvm-footprint.py": "b85afd586ad6ddf6149afea3388284606822543fbb905807aace2a1282e6b2de",
+    "acceptance/clients/native-host.py": "c35c4fdc74b64103ae021e215b6b3c02f8d62e7c7cfd4bd0717f892f9ebd8c17",
+    "acceptance/clients/native-jvm.md": "592d6e2cb7a6f7031784ca987a41547c34d59f52303e533818b68b84be4fd62c",
+    "acceptance/clients/native_jvm.py": "3a4a74335df33123913e120cbcf3522d56871bfdd7f58d971e58092ab13bcdfd",
+    "acceptance/clients/test_native_jvm.py": "a2251211eb93f948e78e912aed74417a73835e7ea4ee8fa81b613d08137c82d3",
+    "notes/proposed/2026-11-02-sandcrab-lightweight-service.md": "4de68d2ab5cfbc35214e32e1a635ae7f55260570d97ae69ed1600177155181f0"
+  },
+  "rawEvidence": "Every raw attempt is retained outside source control. Canonical CI uploads observations, NMT and GC logs; AOT caches and restricted crash reports stay outside the published evidence.",
+  "limits": "Local smoke outcomes establish instrumentation and lifecycle, not a production saving or SLO. Earlier one-CPU observations are retained separately from the final 150-percent CPU reference. NMT is unavailable in AOT record mode on the tested JDK; cache consumption supplies all required NMT observations."
+}
