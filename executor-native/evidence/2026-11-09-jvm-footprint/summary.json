@@ -1,6 +1,6 @@
 {
-  "scope": "Local collector and AOT lifecycle smoke only; canonical two-order comparison is pending CI",
-  "measurementStatus": "SMOKE_VERIFIED",
+  "scope": "Completed two-order synthetic native JVM comparison and production-artifact AOT verification. No model calls or production load.",
+  "measurementStatus": "COMPLETE",
   "applicationChanges": false,
   "modelCalls": 0,
   "consumerBase": "64e73e4edeba4a136d48436ec5ae80a514c41295",
@@ -25,502 +25,41 @@
   "attempts": [
     {
       "name": "smoke-baseline1",
-      "description": "Original directory-classpath smoke passed; one CPU reference.",
-      "case": {
-        "profile": "baseline",
-        "result": "PASS",
-        "cleanup": "PASS",
-        "applicationStartupMillis": 20251.78046093788,
-        "receiptSha256": "c4db611142309f90578f9df632de5ff255c021af5ebfb04fc4196c02ef873e80",
-        "memory": {
-          "VmRSS": {
-            "minimum": 507203584,
-            "median": 518774784,
-            "p95": 519696384,
-            "maximum": 519819264
-          },
-          "RssAnon": {
-            "minimum": 476438528,
-            "median": 488009728,
-            "p95": 488931328,
-            "maximum": 489054208
-          },
-          "RssFile": {
-            "minimum": 30732288,
-            "median": 30732288,
-            "p95": 30732288,
-            "maximum": 30732288
-          },
-          "RssShmem": {
-            "minimum": 32768,
-            "median": 32768,
-            "p95": 32768,
-            "maximum": 32768
-          },
-          "Threads": {
-            "minimum": 51,
-            "median": 51,
-            "p95": 54,
-            "maximum": 56
-          }
-        },
-        "nativeMemoryObservations": [
-          "nmtBefore",
-          "nmtAfter"
-        ],
-        "load": [
-          {
-            "verdict": "PASS",
-            "afterWarmup": {
-              "calls": 5,
-              "p50": 0.302,
-              "p95": 0.316,
-              "p99": 0.316,
-              "okRate": 1.0,
-              "callsPerSecond": 0.42,
-              "outcomes": {
-                "OK": 5
-              }
-            }
-          }
-        ]
-      }
+      "description": "Original directory-classpath smoke passed; one CPU reference."
     },
     {
       "name": "matrix-smoke1",
       "description": "JAR omitted package directory entries needed by Spring scanning; readiness failed and cleanup passed.",
       "measurementStatus": "INCOMPLETE",
-      "cases": [
-        {
-          "result": "FAIL",
-          "cleanup": "PASS",
-          "receiptSha256": "afe982c3e56decf82cd00eb1c0a4a915a738d937d7b58fc600025f9bdf035858"
-        }
-      ],
       "receiptSha256": "f32dbb9e38f342b0818458e8a59a78468715c027f6e79227d713fc09734f5323"
     },
     {
       "name": "matrix-smoke2",
       "description": "Baseline passed; reusing its port hit TIME_WAIT before AOT fixture startup. The controller stopped with unknown cleanup rather than claiming a complete matrix. No client unit remained active.",
       "measurementStatus": "INCOMPLETE",
-      "cases": [
-        {
-          "profile": "baseline",
-          "result": "PASS",
-          "cleanup": "PASS",
-          "applicationStartupMillis": 19359.340192982927,
-          "receiptSha256": "d8e71f4cef7ceef8f77d566d988154d226cb4ca5df4aae7fbac91c90c8327ece",
-          "memory": {
-            "VmRSS": {
-              "minimum": 524869632,
-              "median": 535826432,
-              "p95": 536760320,
-              "maximum": 536875008
-            },
-            "RssAnon": {
-              "minimum": 494166016,
-              "median": 505122816,
-              "p95": 506056704,
-              "maximum": 506171392
-            },
-            "RssFile": {
-              "minimum": 30670848,
-              "median": 30670848,
-              "p95": 30670848,
-              "maximum": 30670848
-            },
-            "RssShmem": {
-              "minimum": 32768,
-              "median": 32768,
-              "p95": 32768,
-              "maximum": 32768
-            },
-            "Threads": {
-              "minimum": 50,
-              "median": 51,
-              "p95": 54,
-              "maximum": 54
-            }
-          },
-          "nativeMemoryObservations": [
-            "nmtBefore",
-            "nmtDuring",
-            "nmtAfter"
-          ],
-          "load": [
-            {
-              "verdict": "PASS",
-              "afterWarmup": {
-                "calls": 5,
-                "p50": 0.237,
-                "p95": 0.256,
-                "p99": 0.256,
-                "okRate": 1.0,
-                "callsPerSecond": 0.42,
-                "outcomes": {
-                  "OK": 5
-                }
-              }
-            }
-          ]
-        }
-      ],
       "receiptSha256": "a0b2aa2e51e01f05e256cccc67cf16fe330fbac86e383eecfa1a7ede5bc356c6"
     },
     {
       "name": "matrix-smoke3",
       "description": "JAR baseline and compact-header smokes passed; AOT record mode crashed during NMT reporting, tracked by issue 414. Every started fixture confirmed cleanup.",
       "measurementStatus": "COMPLETE",
-      "cases": [
-        {
-          "profile": "aot-training",
-          "result": "FAIL",
-          "cleanup": "PASS",
-          "failureType": "CalledProcessError",
-          "applicationStartupMillis": 21024.46354890708,
-          "receiptSha256": "0faa21eae9d22ff932dc6447b4709dabe1d1dcf6e9fbea94b11020b74bf1c39e"
-        },
-        {
-          "profile": "baseline",
-          "result": "PASS",
-          "cleanup": "PASS",
-          "applicationStartupMillis": 19893.01357208751,
-          "receiptSha256": "6d3267277077cc7d5690a6fc70ad36a7ed777cff236fef56fb2e34c16bc358fc",
-          "memory": {
-            "VmRSS": {
-              "minimum": 529653760,
-              "median": 540098560,
-              "p95": 540794880,
-              "maximum": 540893184
-            },
-            "RssAnon": {
-              "minimum": 498917376,
-              "median": 509362176,
-              "p95": 510058496,
-              "maximum": 510156800
-            },
-            "RssFile": {
-              "minimum": 30703616,
-              "median": 30703616,
-              "p95": 30703616,
-              "maximum": 30703616
-            },
-            "RssShmem": {
-              "minimum": 32768,
-              "median": 32768,
-              "p95": 32768,
-              "maximum": 32768
-            },
-            "Threads": {
-              "minimum": 51,
-              "median": 51,
-              "p95": 54,
-              "maximum": 55
-            }
-          },
-          "nativeMemoryObservations": [
-            "nmtBefore",
-            "nmtDuring",
-            "nmtAfter"
-          ],
-          "load": [
-            {
-              "verdict": "PASS",
-              "afterWarmup": {
-                "calls": 5,
-                "p50": 0.23,
-                "p95": 0.257,
-                "p99": 0.257,
-                "okRate": 1.0,
-                "callsPerSecond": 0.42,
-                "outcomes": {
-                  "OK": 5
-                }
-              }
-            }
-          ]
-        },
-        {
-          "profile": "baseline",
-          "result": "PASS",
-          "cleanup": "PASS",
-          "applicationStartupMillis": 18840.789231006056,
-          "receiptSha256": "cd029c0608fbb06bb5c784c6e8919ff127dd1e652a215b8a1b3c037f2b841a1e",
-          "memory": {
-            "VmRSS": {
-              "minimum": 496680960,
-              "median": 509218816,
-              "p95": 510734336,
-              "maximum": 510853120
-            },
-            "RssAnon": {
-              "minimum": 465989632,
-              "median": 478527488,
-              "p95": 480043008,
-              "maximum": 480161792
-            },
-            "RssFile": {
-              "minimum": 30658560,
-              "median": 30658560,
-              "p95": 30658560,
-              "maximum": 30658560
-            },
-            "RssShmem": {
-              "minimum": 32768,
-              "median": 32768,
-              "p95": 32768,
-              "maximum": 32768
-            },
-            "Threads": {
-              "minimum": 51,
-              "median": 52,
-              "p95": 54,
-              "maximum": 54
-            }
-          },
-          "nativeMemoryObservations": [
-            "nmtBefore",
-            "nmtDuring",
-            "nmtAfter"
-          ],
-          "load": [
-            {
-              "verdict": "PASS",
-              "afterWarmup": {
-                "calls": 5,
-                "p50": 0.299,
-                "p95": 0.344,
-                "p99": 0.344,
-                "okRate": 1.0,
-                "callsPerSecond": 0.42,
-                "outcomes": {
-                  "OK": 5
-                }
-              }
-            }
-          ]
-        },
-        {
-          "profile": "headers",
-          "result": "PASS",
-          "cleanup": "PASS",
-          "applicationStartupMillis": 19889.435488032177,
-          "receiptSha256": "0318401df01a43fe63ff8f766f65b0a34da9e8b8f9eb3a43c23d1e4f9d523251",
-          "memory": {
-            "VmRSS": {
-              "minimum": 530685952,
-              "median": 541523968,
-              "p95": 542392320,
-              "maximum": 542507008
-            },
-            "RssAnon": {
-              "minimum": 500142080,
-              "median": 510980096,
-              "p95": 511848448,
-              "maximum": 511963136
-            },
-            "RssFile": {
-              "minimum": 30511104,
-              "median": 30511104,
-              "p95": 30511104,
-              "maximum": 30511104
-            },
-            "RssShmem": {
-              "minimum": 32768,
-              "median": 32768,
-              "p95": 32768,
-              "maximum": 32768
-            },
-            "Threads": {
-              "minimum": 51,
-              "median": 51,
-              "p95": 54,
-              "maximum": 56
-            }
-          },
-          "nativeMemoryObservations": [
-            "nmtBefore",
-            "nmtDuring",
-            "nmtAfter"
-          ],
-          "load": [
-            {
-              "verdict": "PASS",
-              "afterWarmup": {
-                "calls": 5,
-                "p50": 0.298,
-                "p95": 0.316,
-                "p99": 0.316,
-                "okRate": 1.0,
-                "callsPerSecond": 0.42,
-                "outcomes": {
-                  "OK": 5
-                }
-              }
-            }
-          ]
-        }
-      ],
       "receiptSha256": "fe8c2cbf88c8b5f3613b243092cfceb5a436f3682676c277f314df99ca0e0522"
     },
     {
       "name": "aot-training1",
-      "description": "Second retained AOT record-mode NMT crash identified NMTDCmd in the native stack; cleanup passed.",
-      "case": {
-        "profile": "aot-training",
-        "result": "FAIL",
-        "cleanup": "PASS",
-        "failureType": "FileNotFoundError",
-        "applicationStartupMillis": 23082.914091064595,
-        "receiptSha256": "2840a771fd509c49f2f642f4707c07cc5631dd5a300c960b767c569ea0713410"
-      }
+      "description": "Second retained AOT record-mode NMT crash identified NMTDCmd in the native stack; cleanup passed."
     },
     {
       "name": "aot-training2",
-      "description": "AOT training without unsupported NMT queries and bounded cache assembly passed; training has no NMT category claim.",
-      "case": {
-        "profile": "aot-training",
-        "result": "PASS",
-        "cleanup": "PASS",
-        "applicationStartupMillis": 22082.05382397864,
-        "assembly": {
-          "result": "PASS",
-          "cacheBytes": 137932800,
-          "cacheSha256": "aab9f302e94d8d22bf85761f873c16e290f28f830276bbeda9024ec149ea2f19",
-          "scope": "Verified staged acceptance classes packaged as a JAR; production image adoption requires matching its own application and JDK"
-        },
-        "nmtAvailability": "UNAVAILABLE_IN_AOT_RECORD_MODE: diagnostic crash tracked in issue 414; training resources are observed through process/cgroup counters",
-        "receiptSha256": "ae5bc7071cead9b44557e1263d4c29fbff8977e23fc6c253b9dc857d7522fbf7",
-        "memory": {
-          "VmRSS": {
-            "minimum": 514277376,
-            "median": 520646656,
-            "p95": 521687040,
-            "maximum": 521801728
-          },
-          "RssAnon": {
-            "minimum": 476549120,
-            "median": 482918400,
-            "p95": 483958784,
-            "maximum": 484073472
-          },
-          "RssFile": {
-            "minimum": 37695488,
-            "median": 37695488,
-            "p95": 37695488,
-            "maximum": 37695488
-          },
-          "RssShmem": {
-            "minimum": 32768,
-            "median": 32768,
-            "p95": 32768,
-            "maximum": 32768
-          },
-          "Threads": {
-            "minimum": 50,
-            "median": 51,
-            "p95": 52,
-            "maximum": 52
-          }
-        },
-        "nativeMemoryObservations": [],
-        "load": [
-          {
-            "verdict": "PASS",
-            "afterWarmup": {
-              "calls": 5,
-              "p50": 0.312,
-              "p95": 0.333,
-              "p99": 0.333,
-              "okRate": 1.0,
-              "callsPerSecond": 0.42,
-              "outcomes": {
-                "OK": 5
-              }
-            }
-          }
-        ]
-      }
+      "description": "AOT training without unsupported NMT queries and bounded cache assembly passed; training has no NMT category claim."
     },
     {
       "name": "aot-consume1",
-      "description": "The strict parser rejected the valid readonly field in Shared class space; the process remained alive and cleanup passed.",
-      "case": {
-        "profile": "aot",
-        "result": "FAIL",
-        "cleanup": "PASS",
-        "failureType": "ValueError",
-        "cpuQuotaPercent": 150,
-        "tasksMax": 384,
-        "applicationStartupMillis": 10272.092005005106,
-        "receiptSha256": "b47436d3a8700c9ab96e11d4b6e779013ac680ee8078248ac62a65152c3eb42f"
-      }
+      "description": "The strict parser rejected the valid readonly field in Shared class space; the process remained alive and cleanup passed."
     },
     {
       "name": "aot-consume2",
-      "description": "Cache-required consumption, before/during/after NMT, real MCP outcomes and cleanup passed at the 150 percent CPU / 384 task reference.",
-      "case": {
-        "profile": "aot",
-        "result": "PASS",
-        "cleanup": "PASS",
-        "cpuQuotaPercent": 150,
-        "tasksMax": 384,
-        "applicationStartupMillis": 10747.230431064963,
-        "receiptSha256": "835553a1cf3cdc3fe896a1f8002be349337018d5b880fee4b7e1ea40fea0a181",
-        "memory": {
-          "VmRSS": {
-            "minimum": 426360832,
-            "median": 426713088,
-            "p95": 444026880,
-            "maximum": 444043264
-          },
-          "RssAnon": {
-            "minimum": 375607296,
-            "median": 375959552,
-            "p95": 393273344,
-            "maximum": 393289728
-          },
-          "RssFile": {
-            "minimum": 50688000,
-            "median": 50720768,
-            "p95": 50720768,
-            "maximum": 50720768
-          },
-          "RssShmem": {
-            "minimum": 32768,
-            "median": 32768,
-            "p95": 32768,
-            "maximum": 32768
-          },
-          "Threads": {
-            "minimum": 51,
-            "median": 51,
-            "p95": 55,
-            "maximum": 55
-          }
-        },
-        "nativeMemoryObservations": [
-          "nmtBefore",
-          "nmtDuring",
-          "nmtAfter"
-        ],
-        "load": [
-          {
-            "verdict": "PASS",
-            "afterWarmup": {
-              "calls": 5,
-              "p50": 0.244,
-              "p95": 0.254,
-              "p99": 0.254,
-              "okRate": 1.0,
-              "callsPerSecond": 0.42,
-              "outcomes": {
-                "OK": 5
-              }
-            }
-          }
-        ]
-      }
+      "description": "Cache-required consumption, before/during/after NMT, real MCP outcomes and cleanup passed at the 150 percent CPU / 384 task reference."
     }
   ],
   "issues": [
@@ -551,5 +90,1473 @@
       "result": "PRECHECK_FAIL",
       "reason": "The real cgroup-v2 root on the disposable CI host omits memory.max. The preflight treated it like a bounded namespace root and failed before any measurement. Host reserve and every exposed ancestor limit remain enforced."
     }
-  ]
+  ],
+  "earlierDetailedAggregate": "https://github.com/core607/poketto/blob/7cee9e0eb47987b9fda5e63e95f41d3e900da7e7/executor-native/evidence/2026-11-09-jvm-footprint/summary.json",
+  "canonicalComparison": {
+    "consumerHead": "7cee9e0eb47987b9fda5e63e95f41d3e900da7e7",
+    "protectedArtifactId": 13667065104,
+    "archiveSha256": "81903fcf6f00db63c9517fce09fe9a88e37a029b989c747eba24105b705422bc",
+    "matrixSummarySha256": "406e5705eaf83cbf6b13b1e3f628d0cfed2858de32ad4ceb77d5a91a6f8895c3",
+    "decisionRule": "One mechanism per arm, two reversed-order repetitions. Require private RSS anon median saving >= max(16 MiB, 5%), at least 20 judged calls, success >=99%, p95 <=max(1 s, baseline*1.10), goodput >=90% baseline, zero OOM and confirmed cleanup in both repetitions. Eligible settings still require production artifact and adjacent capability validation.",
+    "boundaries": [
+      "Default Serial GC is recorded by the baseline flags; the GC candidate explicitly selects G1.",
+      "The common classpath JAR contains byte-identical staged classes, verified against the runtime manifest. It enables an AOT comparison without mixing directory versus JAR launch costs.",
+      "Shared JDK/library file cache is not dropped. Per-cgroup file charge can move between retired groups; savings decisions use private RSS anon, not apparent file-charge reductions.",
+      "Every arm has NMT enabled; measurements describe its cost too. NMT committed bytes, process RSS and cgroup memory are different observations.",
+      "AOT training/cache assembly is separately bounded; the cache stays outside evidence artifacts. AOT consumption uses required mode on so silent fallback cannot pass.",
+      "This short synthetic load does not establish production peak capacity or a reduced safe heap limit for every workload."
+    ],
+    "decisions": [
+      {
+        "profile": "headers",
+        "eligibleForDeploymentVerification": false,
+        "repetitions": [
+          {
+            "repetition": 1,
+            "privateResidentBytesSaved": 7839744,
+            "conditions": {
+              "privateResidentSaving": false,
+              "enoughJudgedCalls": true,
+              "successRate": true,
+              "latency": true,
+              "goodput": true,
+              "cleanup": true
+            },
+            "passes": false
+          },
+          {
+            "repetition": 2,
+            "privateResidentBytesSaved": 10260480,
+            "conditions": {
+              "privateResidentSaving": false,
+              "enoughJudgedCalls": true,
+              "successRate": true,
+              "latency": true,
+              "goodput": true,
+              "cleanup": true
+            },
+            "passes": false
+          }
+        ]
+      },
+      {
+        "profile": "heap",
+        "eligibleForDeploymentVerification": false,
+        "repetitions": [
+          {
+            "repetition": 1,
+            "privateResidentBytesSaved": -995328,
+            "conditions": {
+              "privateResidentSaving": false,
+              "enoughJudgedCalls": true,
+              "successRate": true,
+              "latency": true,
+              "goodput": true,
+              "cleanup": true
+            },
+            "passes": false
+          },
+          {
+            "repetition": 2,
+            "privateResidentBytesSaved": 7159808,
+            "conditions": {
+              "privateResidentSaving": false,
+              "enoughJudgedCalls": true,
+              "successRate": true,
+              "latency": true,
+              "goodput": true,
+              "cleanup": true
+            },
+            "passes": false
+          }
+        ]
+      },
+      {
+        "profile": "g1",
+        "eligibleForDeploymentVerification": false,
+        "repetitions": [
+          {
+            "repetition": 1,
+            "passes": false,
+            "reason": "missing or unsuccessful matched arm"
+          },
+          {
+            "repetition": 2,
+            "privateResidentBytesSaved": -180035584,
+            "conditions": {
+              "privateResidentSaving": false,
+              "enoughJudgedCalls": true,
+              "successRate": true,
+              "latency": true,
+              "goodput": true,
+              "cleanup": true
+            },
+            "passes": false
+          }
+        ]
+      },
+      {
+        "profile": "pools",
+        "eligibleForDeploymentVerification": false,
+        "repetitions": [
+          {
+            "repetition": 1,
+            "privateResidentBytesSaved": 1327104,
+            "conditions": {
+              "privateResidentSaving": false,
+              "enoughJudgedCalls": true,
+              "successRate": true,
+              "latency": true,
+              "goodput": true,
+              "cleanup": true
+            },
+            "passes": false
+          },
+          {
+            "repetition": 2,
+            "privateResidentBytesSaved": 5427200,
+            "conditions": {
+              "privateResidentSaving": false,
+              "enoughJudgedCalls": true,
+              "successRate": true,
+              "latency": true,
+              "goodput": true,
+              "cleanup": true
+            },
+            "passes": false
+          }
+        ]
+      },
+      {
+        "profile": "aot",
+        "eligibleForDeploymentVerification": true,
+        "repetitions": [
+          {
+            "repetition": 1,
+            "privateResidentBytesSaved": 47788032,
+            "conditions": {
+              "privateResidentSaving": true,
+              "enoughJudgedCalls": true,
+              "successRate": true,
+              "latency": true,
+              "goodput": true,
+              "cleanup": true
+            },
+            "passes": true
+          },
+          {
+            "repetition": 2,
+            "privateResidentBytesSaved": 46555136,
+            "conditions": {
+              "privateResidentSaving": true,
+              "enoughJudgedCalls": true,
+              "successRate": true,
+              "latency": true,
+              "goodput": true,
+              "cleanup": true
+            },
+            "passes": true
+          }
+        ]
+      }
+    ],
+    "cases": [
+      {
+        "profile": "baseline",
+        "repetition": 0,
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 17451.499239000015,
+        "processMedianBytes": {
+          "VmRSS": 363655168,
+          "RssAnon": 331952128,
+          "RssFile": 31703040,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 331943936,
+          "file": 7548928,
+          "kernel": 3346432
+        },
+        "afterWarmup": [
+          {
+            "calls": 147,
+            "p50": 0.352,
+            "p95": 0.474,
+            "p99": 0.571,
+            "okRate": 1.0,
+            "callsPerSecond": 3.27,
+            "outcomes": {
+              "OK": 147
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 310863872,
+          "nmtDuring": 326661120,
+          "nmtAfter": 322710528
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 128045056,
+          "Class": 14678016,
+          "Thread": 2387968,
+          "Code": 40808448,
+          "GC": 448512,
+          "Compiler": 398336,
+          "Internal": 1629184,
+          "Other": 800768,
+          "Symbol": 18628608,
+          "Native Memory Tracking": 6879232,
+          "Shared class space": 14344192,
+          "Arena Chunk": 11881472,
+          "Tracing": 12288,
+          "Logging": 0,
+          "Module": 133120,
+          "Safepoint": 8192,
+          "Synchronization": 1502208,
+          "Serviceability": 17408,
+          "Metaspace": 84014080,
+          "String Deduplication": 1024,
+          "Object Monitors": 34816,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 17815124,
+            "throttledMicros": 250780,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 25132145,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 8138910,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 16993235,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 58,
+          "sum": 567.229,
+          "p95": 30.864
+        }
+      },
+      {
+        "profile": "aot-training",
+        "repetition": 0,
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 24067.403503999998,
+        "processMedianBytes": {
+          "VmRSS": 372744192,
+          "RssAnon": 333864960,
+          "RssFile": 38879232,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 333864960,
+          "file": 5332992,
+          "kernel": 3375104
+        },
+        "afterWarmup": [
+          {
+            "calls": 150,
+            "p50": 0.338,
+            "p95": 0.475,
+            "p99": 0.578,
+            "okRate": 1.0,
+            "callsPerSecond": 3.33,
+            "outcomes": {
+              "OK": 150
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {},
+        "nmtDuringCategoryCommittedBytes": {},
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 17308750,
+            "throttledMicros": 171487,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 24947472,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 8068700,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 16878773,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 61,
+          "sum": 631.335,
+          "p95": 27.079
+        }
+      },
+      {
+        "profile": "baseline",
+        "repetition": 1,
+        "result": "PERFORMANCE_MISS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 18587.910170000043,
+        "processMedianBytes": {
+          "VmRSS": 368828416,
+          "RssAnon": 336994304,
+          "RssFile": 31834112,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 336994304,
+          "file": 5902336,
+          "kernel": 3321856
+        },
+        "afterWarmup": [
+          {
+            "calls": 146,
+            "p50": 0.356,
+            "p95": 0.65,
+            "p99": 1.019,
+            "okRate": 0.9726,
+            "callsPerSecond": 3.24,
+            "outcomes": {
+              "OK": 142,
+              "EXECUTION_REFUSED:CAPACITY": 1,
+              "EXECUTION_REFUSED:UNAVAILABLE": 3
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 306100224,
+          "nmtDuring": 315503616,
+          "nmtAfter": 323454976
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 127709184,
+          "Class": 14674944,
+          "Thread": 3354624,
+          "Code": 40685568,
+          "GC": 448512,
+          "Compiler": 414720,
+          "Internal": 1627136,
+          "Other": 800768,
+          "Symbol": 18682880,
+          "Native Memory Tracking": 6890496,
+          "Shared class space": 14344192,
+          "Arena Chunk": 4096,
+          "Tracing": 12288,
+          "Logging": 0,
+          "Module": 133120,
+          "Safepoint": 8192,
+          "Synchronization": 1496064,
+          "Serviceability": 17408,
+          "Metaspace": 84146176,
+          "String Deduplication": 1024,
+          "Object Monitors": 41984,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 16790908,
+            "throttledMicros": 133336,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 25099142,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 8231531,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 16867610,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 59,
+          "sum": 577.605,
+          "p95": 38.521
+        }
+      },
+      {
+        "profile": "headers",
+        "repetition": 1,
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 17922.860239999976,
+        "processMedianBytes": {
+          "VmRSS": 360841216,
+          "RssAnon": 329154560,
+          "RssFile": 31686656,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 329154560,
+          "file": 5439488,
+          "kernel": 3313664
+        },
+        "afterWarmup": [
+          {
+            "calls": 148,
+            "p50": 0.361,
+            "p95": 0.491,
+            "p99": 0.586,
+            "okRate": 1.0,
+            "callsPerSecond": 3.29,
+            "outcomes": {
+              "OK": 148
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 298362880,
+          "nmtDuring": 318387200,
+          "nmtAfter": 314859520
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 118812672,
+          "Class": 22343680,
+          "Thread": 3526656,
+          "Code": 40445952,
+          "GC": 415744,
+          "Compiler": 448512,
+          "Internal": 1625088,
+          "Other": 804864,
+          "Symbol": 18619392,
+          "Native Memory Tracking": 6876160,
+          "Shared class space": 15126528,
+          "Arena Chunk": 11521024,
+          "Tracing": 12288,
+          "Logging": 0,
+          "Module": 133120,
+          "Safepoint": 8192,
+          "Synchronization": 1484800,
+          "Serviceability": 17408,
+          "Metaspace": 76100608,
+          "String Deduplication": 1024,
+          "Object Monitors": 55296,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 16728698,
+            "throttledMicros": 111891,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 24783855,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 7989496,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 16794359,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 58,
+          "sum": 562.879,
+          "p95": 35.784
+        }
+      },
+      {
+        "profile": "heap",
+        "repetition": 1,
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 17976.959147,
+        "processMedianBytes": {
+          "VmRSS": 369692672,
+          "RssAnon": 337989632,
+          "RssFile": 31703040,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 337989632,
+          "file": 5419008,
+          "kernel": 3289088
+        },
+        "afterWarmup": [
+          {
+            "calls": 147,
+            "p50": 0.348,
+            "p95": 0.511,
+            "p99": 0.62,
+            "okRate": 0.9932,
+            "callsPerSecond": 3.27,
+            "outcomes": {
+              "OK": 146,
+              "EXECUTION_UNCONFIRMED:": 1
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 305419264,
+          "nmtDuring": 318818304,
+          "nmtAfter": 336334848
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 127836160,
+          "Class": 14692352,
+          "Thread": 2465792,
+          "Code": 40928256,
+          "GC": 444416,
+          "Compiler": 444416,
+          "Internal": 1628160,
+          "Other": 800768,
+          "Symbol": 18622464,
+          "Native Memory Tracking": 6887424,
+          "Shared class space": 14344192,
+          "Arena Chunk": 4116480,
+          "Tracing": 12288,
+          "Logging": 0,
+          "Module": 133120,
+          "Safepoint": 8192,
+          "Synchronization": 1504256,
+          "Serviceability": 17408,
+          "Metaspace": 83884032,
+          "String Deduplication": 1024,
+          "Object Monitors": 36864,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 17084953,
+            "throttledMicros": 177715,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 24595478,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 7799761,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 16795716,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 58,
+          "sum": 563.272,
+          "p95": 26.409
+        }
+      },
+      {
+        "profile": "g1",
+        "repetition": 1,
+        "result": "PERFORMANCE_MISS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 18433.770460000007,
+        "processMedianBytes": {
+          "VmRSS": 553373696,
+          "RssAnon": 521383936,
+          "RssFile": 31989760,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 521383936,
+          "file": 7585792,
+          "kernel": 3944448
+        },
+        "afterWarmup": [
+          {
+            "calls": 132,
+            "p50": 0.341,
+            "p95": 0.46,
+            "p99": 0.572,
+            "okRate": 0.947,
+            "callsPerSecond": 2.93,
+            "outcomes": {
+              "OK": 125,
+              "EXECUTION_REFUSED:UNAVAILABLE": 7
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 514091008,
+          "nmtDuring": 522241024,
+          "nmtAfter": 525984768
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 283115520,
+          "Class": 14621696,
+          "Thread": 9018368,
+          "Code": 41449472,
+          "GC": 44809216,
+          "GCCardSet": 8192,
+          "Compiler": 399360,
+          "Internal": 1669120,
+          "Other": 779264,
+          "Symbol": 18632704,
+          "Native Memory Tracking": 7161856,
+          "Shared class space": 14344192,
+          "Arena Chunk": 611328,
+          "Tracing": 14336,
+          "Logging": 0,
+          "Module": 133120,
+          "Safepoint": 8192,
+          "Synchronization": 1518592,
+          "Serviceability": 17408,
+          "Metaspace": 83881984,
+          "String Deduplication": 1024,
+          "Object Monitors": 36864,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 19804682,
+            "throttledMicros": 274087,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 22767138,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 8604070,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 14163104,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 36,
+          "sum": 293.845,
+          "p95": 25.493
+        }
+      },
+      {
+        "profile": "pools",
+        "repetition": 1,
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 19512.86364300006,
+        "processMedianBytes": {
+          "VmRSS": 367374336,
+          "RssAnon": 335667200,
+          "RssFile": 31707136,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 335667200,
+          "file": 5312512,
+          "kernel": 3211264
+        },
+        "afterWarmup": [
+          {
+            "calls": 148,
+            "p50": 0.342,
+            "p95": 0.453,
+            "p99": 0.516,
+            "okRate": 1.0,
+            "callsPerSecond": 3.29,
+            "outcomes": {
+              "OK": 148
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 311029760,
+          "nmtDuring": 316684288,
+          "nmtAfter": 320025600
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 126914560,
+          "Class": 14673920,
+          "Thread": 2221056,
+          "Code": 40861696,
+          "GC": 444416,
+          "Compiler": 385024,
+          "Internal": 1622016,
+          "Other": 665600,
+          "Symbol": 18627584,
+          "Native Memory Tracking": 6860800,
+          "Shared class space": 14344192,
+          "Arena Chunk": 3461120,
+          "Tracing": 12288,
+          "Logging": 0,
+          "Module": 133120,
+          "Safepoint": 8192,
+          "Synchronization": 1500160,
+          "Serviceability": 17408,
+          "Metaspace": 83885056,
+          "String Deduplication": 1024,
+          "Object Monitors": 36864,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 16529067,
+            "throttledMicros": 186598,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 25081908,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 8211023,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 16870887,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 59,
+          "sum": 607.65,
+          "p95": 31.517
+        }
+      },
+      {
+        "profile": "aot",
+        "repetition": 1,
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 12140.14803300006,
+        "processMedianBytes": {
+          "VmRSS": 341741568,
+          "RssAnon": 289206272,
+          "RssFile": 52535296,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 289206272,
+          "file": 5672960,
+          "kernel": 3248128
+        },
+        "afterWarmup": [
+          {
+            "calls": 149,
+            "p50": 0.331,
+            "p95": 0.451,
+            "p99": 0.505,
+            "okRate": 1.0,
+            "callsPerSecond": 3.31,
+            "outcomes": {
+              "OK": 149
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 281720832,
+          "nmtDuring": 287107072,
+          "nmtAfter": 288498688
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 94781440,
+          "Class": 3230720,
+          "Thread": 2506752,
+          "Code": 33296384,
+          "GC": 323584,
+          "Compiler": 387072,
+          "Internal": 1633280,
+          "Other": 813056,
+          "Symbol": 2387968,
+          "Native Memory Tracking": 2907136,
+          "Shared class space": 127942656,
+          "Arena Chunk": 2413568,
+          "Tracing": 12288,
+          "Logging": 0,
+          "Module": 86016,
+          "Safepoint": 8192,
+          "Synchronization": 1600512,
+          "Serviceability": 17408,
+          "Metaspace": 12730368,
+          "String Deduplication": 1024,
+          "Object Monitors": 18432,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 14277339,
+            "throttledMicros": 191437,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 25535220,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 8320225,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 17214995,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 53,
+          "sum": 328.696,
+          "p95": 15.755
+        }
+      },
+      {
+        "profile": "aot",
+        "repetition": 2,
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 12122.72943100004,
+        "processMedianBytes": {
+          "VmRSS": 350097408,
+          "RssAnon": 297938944,
+          "RssFile": 52158464,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 297938944,
+          "file": 5664768,
+          "kernel": 3264512
+        },
+        "afterWarmup": [
+          {
+            "calls": 150,
+            "p50": 0.322,
+            "p95": 0.458,
+            "p99": 0.657,
+            "okRate": 1.0,
+            "callsPerSecond": 3.33,
+            "outcomes": {
+              "OK": 150
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 283261952,
+          "nmtDuring": 289398784,
+          "nmtAfter": 288664576
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 95043584,
+          "Class": 3236864,
+          "Thread": 2461696,
+          "Code": 33290240,
+          "GC": 323584,
+          "Compiler": 354304,
+          "Internal": 1633280,
+          "Other": 792576,
+          "Symbol": 2390016,
+          "Native Memory Tracking": 2912256,
+          "Shared class space": 127942656,
+          "Arena Chunk": 4444160,
+          "Tracing": 12288,
+          "Logging": 0,
+          "Module": 86016,
+          "Safepoint": 8192,
+          "Synchronization": 1603584,
+          "Serviceability": 17408,
+          "Metaspace": 12816384,
+          "String Deduplication": 1024,
+          "Object Monitors": 19456,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 14515487,
+            "throttledMicros": 245905,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 25194040,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 8232893,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 16961148,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 53,
+          "sum": 299.566,
+          "p95": 12.199
+        }
+      },
+      {
+        "profile": "pools",
+        "repetition": 2,
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 18417.017876000045,
+        "processMedianBytes": {
+          "VmRSS": 370782208,
+          "RssAnon": 339066880,
+          "RssFile": 31715328,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 339066880,
+          "file": 5513216,
+          "kernel": 3256320
+        },
+        "afterWarmup": [
+          {
+            "calls": 148,
+            "p50": 0.35,
+            "p95": 0.492,
+            "p99": 0.535,
+            "okRate": 1.0,
+            "callsPerSecond": 3.29,
+            "outcomes": {
+              "OK": 148
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 317182976,
+          "nmtDuring": 319943680,
+          "nmtAfter": 323977216
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 127291392,
+          "Class": 14683136,
+          "Thread": 3220480,
+          "Code": 41142272,
+          "GC": 448512,
+          "Compiler": 415744,
+          "Internal": 1622016,
+          "Other": 661504,
+          "Symbol": 18636800,
+          "Native Memory Tracking": 6876160,
+          "Shared class space": 14344192,
+          "Arena Chunk": 4936704,
+          "Tracing": 12288,
+          "Logging": 0,
+          "Module": 133120,
+          "Safepoint": 8192,
+          "Synchronization": 1492992,
+          "Serviceability": 17408,
+          "Metaspace": 83946496,
+          "String Deduplication": 1024,
+          "Object Monitors": 43008,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 17594393,
+            "throttledMicros": 270761,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 25467048,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 8394509,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 17072538,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 59,
+          "sum": 586.788,
+          "p95": 45.998
+        }
+      },
+      {
+        "profile": "g1",
+        "repetition": 2,
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 18557.587087,
+        "processMedianBytes": {
+          "VmRSS": 556584960,
+          "RssAnon": 524529664,
+          "RssFile": 32055296,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 524529664,
+          "file": 5439488,
+          "kernel": 3915776
+        },
+        "afterWarmup": [
+          {
+            "calls": 147,
+            "p50": 0.353,
+            "p95": 0.522,
+            "p99": 0.615,
+            "okRate": 1.0,
+            "callsPerSecond": 3.27,
+            "outcomes": {
+              "OK": 147
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 510622720,
+          "nmtDuring": 536481792,
+          "nmtAfter": 538953728
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 283115520,
+          "Class": 14637056,
+          "Thread": 8764416,
+          "Code": 41678848,
+          "GC": 44820480,
+          "GCCardSet": 10240,
+          "Compiler": 400384,
+          "Internal": 1671168,
+          "Other": 792576,
+          "Symbol": 18635776,
+          "Native Memory Tracking": 7178240,
+          "Shared class space": 14344192,
+          "Arena Chunk": 14665728,
+          "Tracing": 14336,
+          "Logging": 0,
+          "Module": 133120,
+          "Safepoint": 8192,
+          "Synchronization": 1528832,
+          "Serviceability": 17408,
+          "Metaspace": 84011008,
+          "String Deduplication": 1024,
+          "Object Monitors": 45056,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 17731707,
+            "throttledMicros": 92135,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 25016126,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 8236434,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 16779692,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 36,
+          "sum": 394.852,
+          "p95": 50.101
+        }
+      },
+      {
+        "profile": "heap",
+        "repetition": 2,
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 17930.246462000014,
+        "processMedianBytes": {
+          "VmRSS": 369033216,
+          "RssAnon": 337334272,
+          "RssFile": 31698944,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 337334272,
+          "file": 6307840,
+          "kernel": 3342336
+        },
+        "afterWarmup": [
+          {
+            "calls": 148,
+            "p50": 0.349,
+            "p95": 0.461,
+            "p99": 0.559,
+            "okRate": 1.0,
+            "callsPerSecond": 3.29,
+            "outcomes": {
+              "OK": 148
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 311940096,
+          "nmtDuring": 328515584,
+          "nmtAfter": 325581824
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 127860736,
+          "Class": 14673920,
+          "Thread": 3485696,
+          "Code": 40501248,
+          "GC": 444416,
+          "Compiler": 444416,
+          "Internal": 1630208,
+          "Other": 825344,
+          "Symbol": 18635776,
+          "Native Memory Tracking": 6889472,
+          "Shared class space": 14344192,
+          "Arena Chunk": 13027328,
+          "Tracing": 12288,
+          "Logging": 0,
+          "Module": 133120,
+          "Safepoint": 8192,
+          "Synchronization": 1513472,
+          "Serviceability": 17408,
+          "Metaspace": 84022272,
+          "String Deduplication": 1024,
+          "Object Monitors": 35840,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 17068704,
+            "throttledMicros": 236515,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 25012920,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 8098490,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 16914430,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 59,
+          "sum": 615.651,
+          "p95": 30.755
+        }
+      },
+      {
+        "profile": "headers",
+        "repetition": 2,
+        "result": "PASS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 17373.32646899995,
+        "processMedianBytes": {
+          "VmRSS": 365924352,
+          "RssAnon": 334233600,
+          "RssFile": 31690752,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 334233600,
+          "file": 5328896,
+          "kernel": 3301376
+        },
+        "afterWarmup": [
+          {
+            "calls": 149,
+            "p50": 0.344,
+            "p95": 0.488,
+            "p99": 0.56,
+            "okRate": 1.0,
+            "callsPerSecond": 3.31,
+            "outcomes": {
+              "OK": 149
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 306447360,
+          "nmtDuring": 320407552,
+          "nmtAfter": 329676800
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 119078912,
+          "Class": 22445056,
+          "Thread": 3440640,
+          "Code": 40978432,
+          "GC": 415744,
+          "Compiler": 448512,
+          "Internal": 1631232,
+          "Other": 800768,
+          "Symbol": 18627584,
+          "Native Memory Tracking": 6904832,
+          "Shared class space": 15126528,
+          "Arena Chunk": 12470272,
+          "Tracing": 12288,
+          "Logging": 0,
+          "Module": 133120,
+          "Safepoint": 8192,
+          "Synchronization": 1508352,
+          "Serviceability": 17408,
+          "Metaspace": 76294144,
+          "String Deduplication": 1024,
+          "Object Monitors": 55296,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 17542748,
+            "throttledMicros": 136472,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 24400988,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 7796326,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 16604662,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 57,
+          "sum": 534.134,
+          "p95": 29.42
+        }
+      },
+      {
+        "profile": "baseline",
+        "repetition": 2,
+        "result": "PERFORMANCE_MISS",
+        "cleanup": "PASS",
+        "applicationStartupMillis": 18449.1867549998,
+        "processMedianBytes": {
+          "VmRSS": 376201216,
+          "RssAnon": 344494080,
+          "RssFile": 31707136,
+          "RssShmem": 0
+        },
+        "applicationMedianBytes": {
+          "anon": 344494080,
+          "file": 6250496,
+          "kernel": 3260416
+        },
+        "afterWarmup": [
+          {
+            "calls": 115,
+            "p50": 0.325,
+            "p95": 0.577,
+            "p99": 15.366,
+            "okRate": 0.8609,
+            "callsPerSecond": 2.56,
+            "outcomes": {
+              "OK": 99,
+              "EXECUTION_REFUSED:CAPACITY": 3,
+              "EXECUTION_REFUSED:UNAVAILABLE": 13
+            }
+          }
+        ],
+        "nmtTotalCommittedBytes": {
+          "nmtBefore": 317408256,
+          "nmtDuring": 314645504,
+          "nmtAfter": 321841152
+        },
+        "nmtDuringCategoryCommittedBytes": {
+          "Java Heap": 128061440,
+          "Class": 14662656,
+          "Thread": 3571712,
+          "Code": 39731200,
+          "GC": 448512,
+          "Compiler": 385024,
+          "Internal": 1624064,
+          "Other": 778240,
+          "Symbol": 18630656,
+          "Native Memory Tracking": 6846464,
+          "Shared class space": 14344192,
+          "Arena Chunk": 103424,
+          "Tracing": 12288,
+          "Logging": 0,
+          "Module": 133120,
+          "Safepoint": 8192,
+          "Synchronization": 1477632,
+          "Serviceability": 17408,
+          "Metaspace": 83760128,
+          "String Deduplication": 1024,
+          "Object Monitors": 37888,
+          "JNI": 9216
+        },
+        "resourceDeltas": {
+          "application": {
+            "cpuMicros": 22016422,
+            "throttledMicros": 115126,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "nativePool": {
+            "cpuMicros": 21503595,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "daemon": {
+            "cpuMicros": 9845022,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          },
+          "workloads": {
+            "cpuMicros": 11658572,
+            "throttledMicros": 0,
+            "oom": 0,
+            "oomKill": 0
+          }
+        },
+        "gcPausesMillis": {
+          "count": 72,
+          "sum": 631.7280000000001,
+          "p95": 45.676
+        }
+      }
+    ],
+    "missedLoadThresholdIssue": "https://github.com/core607/poketto/issues/416",
+    "cache": {
+      "bytes": 140128256,
+      "sha256": "0d8a2882dce4ff7fd633cfc82bd136781df73d97bc3a79568010e9c2e71b8240"
+    }
+  },
+  "productionArtifact": {
+    "consumerBase": "6fd5d7a458c0b94ed9eb2008f2334afd31af24c3",
+    "jre": "eclipse-temurin:26-jre-noble@sha256:c12a27c567c4ce00b0caef14900c1bf2f5e997524c3ec73463ae695352d5f34d",
+    "candidateImageId": "sha256:d5f128ecb48b3f74b4b1729807919e359b681873f65133c73c6a7ad58c09b604",
+    "cacheBytes": 117198848,
+    "training": "PASS after correcting a build-only ICU mount; original failure retained",
+    "requiredCacheMode": "FAIL before Spring startup: java.lang.InternalError in AppClassLoader.<clinit>",
+    "exactTrainingFlagsReplay": "FAIL at the same initialization point",
+    "automaticCacheMode": "FAIL at the same initialization point",
+    "cacheDisabledControl": {
+      "result": "PASS",
+      "httpRequests": 58,
+      "cleanup": "PASS",
+      "scope": "Same production JAR/JRE/image; fresh database migrations, CSRF session writes, policy and anonymous-denial checks. Two-second smoke, no performance claim."
+    },
+    "initialControlAttempt": "Fixture setup failed because an internal Docker network did not publish a host port; cleanup PASS",
+    "rawSha256": {
+      "aot-image-build1.log": "2fbeeb5a1cb91b4712cb82ec7411cfb101a7e83e696dacb05e40f57c558c4926",
+      "aot-image-build2.log": "ab7af4c034427da7f1057bf178fa6d05b537f73f12860b215806499ac42a2109",
+      "aot-image-runtime1/summary.json": "677bc5d43b1c3cc8bb476b38fc4f66b49c886a741e477c910b0946a9a256f679",
+      "aot-image-runtime1/0-failure.log": "823e1c9afdc2ced447a509082195425a17e3c085e92624bfaec35800007b1377",
+      "aot-exact-flags-replay.log": "130bb9c7c3a1f933117f34fed33ab764acf4a75d5ee3fd635af3bd4a3ed88754",
+      "aot-auto-replay.log": "0bdd383fc587c4d634923de71e331eb71d72a1cc6227b609f73bda84b454af00",
+      "aot-image-baseline1/summary.json": "677bc5d43b1c3cc8bb476b38fc4f66b49c886a741e477c910b0946a9a256f679",
+      "aot-image-baseline2/summary.json": "85f4d844a8e504f2e3827cb5650e8a3a53bf302f20090193b73a158861f812be",
+      "aot-prototype/Dockerfile": "f970fa1ae4a958598ce73bbffdc78b2b15615987e66c9c85cc8d84ab8dda057d",
+      "aot-prototype/build-aot-cache.sh": "63023ca65815d63eab16a5e53b3b6478f4a7dcd460b14207c370e31336f7cf2e",
+      "aot-prototype/validate_app_runtime.py": "17e2f74be5b5e38a548254911b6287812bf5efc5b1394f8f9385b43595061070"
+    },
+    "issue": "https://github.com/core607/poketto/issues/417"
+  },
+  "deploymentDecision": {
+    "jvmSettingsChanged": false,
+    "additionalSandboxMemoryBytes": 0,
+    "reason": "Ordinary flags did not meet the predeclared memory rule. AOT met the synthetic rule but failed production-artifact startup; preserve current defaults and track the failure without further tuning in this change."
+  }
 }

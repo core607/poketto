@@ -39,6 +39,15 @@ The cache stays outside published evidence. Its validity depends on the exact
 application, JDK, OS and architecture under the [Java 26 command contract](https://docs.oracle.com/en/java/javase/26/docs/specs/man/java.html).
 A production image must train and verify its own artifact before adoption.
 
+The [completed comparison](../../executor-native/evidence/2026-11-09-jvm-footprint/summary.json)
+retains both orders and all missed thresholds. Compact headers, a smaller heap,
+G1 and smaller pools did not meet the selection rule. AOT met the fixture rule,
+but the production JAR/JRE cache fails during JVM initialization in both required
+and automatic modes ([tracked limitation](https://github.com/core607/poketto/issues/417)).
+Production JVM settings remain unchanged, so this experiment frees no deployed
+memory for sandboxes. Reconsider AOT only after artifact compatibility and affected
+capabilities pass; fixture savings alone do not qualify it.
+
 Run on a disposable root-capable systemd Linux host with Docker, XFS utilities,
 the staged acceptance runtime, the pinned service bundle and prepared tools:
 

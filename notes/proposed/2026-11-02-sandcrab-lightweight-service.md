@@ -329,6 +329,10 @@ report memory freed for sandboxes.
 The [matched JVM comparison](../../acceptance/clients/native-jvm.md) selects candidates
 by measured private residency and successful throughput. Validate a selected
 setting against the deployment artifact and affected capabilities before changing defaults.
+The completed comparison retains the existing JVM defaults: the ordinary flags
+missed its memory-selection threshold, and the eligible AOT cache
+[fails production-artifact startup](https://github.com/core607/poketto/issues/417).
+This experiment therefore credits zero deployed memory to sandboxes.
 
 ## Alternatives
 

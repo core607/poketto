@@ -53,7 +53,10 @@ tasks.register<Sync>("stageGameWorker") {
         include("sandcrab", "bwrap")
         filePermissions { unix("755") }
     }
-    from(verifiedRelease.map { zipTree(it) }) { include("bwrap-notices.txt", "bwrap-source.tar.xz") }
+    from(verifiedRelease.map { zipTree(it) }) {
+        include("LICENSE", "THIRD-PARTY-NOTICES.txt", "rust-library-copyright.html", "THREAT-MODEL.md",
+            "bwrap-notices.txt", "bwrap-source.tar.xz")
+    }
     from(executorServiceSource) {
         include("game-config.example.toml", "sandcrab-games.service", "pokettogames.slice")
     }
