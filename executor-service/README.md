@@ -13,7 +13,8 @@ and executable by SHA-256. Obtain that exact ZIP through the operator's authoriz
 distribution channel. For native acceptance, supply it with
 `-PsandcrabBundle=/prepared/sandcrab.zip`, or place it at
 `GRADLE_USER_HOME/sandcrab/sandcrab-linux-x86_64.zip`. `stageGameWorker` verifies it
-and stages Sandcrab, bubblewrap and the helper's source and notices.
+and stages Sandcrab, bubblewrap, the corresponding licenses and source, and the
+threat model. Missing or empty release materials stop staging.
 
 The application image carries the pin. The [deployment verifier](../deploy/native_repository.py)
 checks the independently installed executable, configuration, process and endpoint
