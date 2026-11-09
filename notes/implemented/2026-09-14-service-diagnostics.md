@@ -26,6 +26,21 @@ Native `repo_exec` uses the tool outcome record and aggregate [executor metrics]
 
 Native cost diagnosis uses the explicitly enabled [JFR phase event](../../deploy/observability/README.md#native-execution-phases). Keeping it separate from always-on outcome records permits a matched replay with recording disabled and keeps measurement overhead visible. Nested phases identify where time is spent; HTTP outcomes and cgroup observations establish success and resource cost. `NativeRepositoryPhaseTests` and the isolated native phase replay pin that boundary without recording command or product identities.
 
+The [native phase replay](../../acceptance/clients/native-phases.md) separates
+consumer request cost from service admission, startup, execution, capture,
+durable acknowledgement and cleanup. Comparisons retain unchanged controls,
+fixed workloads, successful throughput, CPU and I/O pressure, and private versus
+file-backed memory, so shifted costs cannot masquerade as released capacity.
+
+The [JVM comparison](../../acceptance/clients/native-jvm.md) leaves production
+defaults unchanged. Ordinary settings missed its private-memory selection rule.
+AOT qualified in the synthetic fixture but failed production-artifact startup
+([issue 417](https://github.com/core607/poketto/issues/417)); it therefore releases
+zero deployed memory for sandboxes. Artifact compatibility and affected
+capabilities must pass before reconsidering that setting. These are application
+decisions; the [provider](https://github.com/core607/sandcrab/blob/main/notes/implemented/2026-11-02-sandcrab-lightweight-service.md)
+owns sandbox density and runtime trade-offs.
+
 `ProblemResponses` records the status and title of every mapped failure at its one shared construction point.
 
 `AuditRecords` covers the changes that decide who can do what. The request record already names who called which operation and with what status, so these add only what a route cannot say: whether a credential was actually valid, which member or key an operation acted on, and the capabilities a subject holds afterwards. Authentication outcomes, key issue and revocation, invitation issue, revocation and redemption, and membership changes are recorded. A membership record states the capabilities that actually apply, computed the same way authorization computes them, and a deactivation is recorded as a withdrawal rather than as a grant of the permissions that were requested: a record claiming an access the subject does not hold is worse than no record. Each record is written after its transaction commits, and only when that transaction actually changed something. A repeated revocation, a mistyped identifier and another workspace's invitation all leave the link live, so recording a withdrawal for them would retire a link that still works; replaying a consumed invitation changes nothing, so recording it again would overstate how many accounts joined. A membership change that narrows what the subject holds is recorded as a withdrawal even when the member stays active, because that path also revokes their over-scoped keys and a reader filtering for grants must not find it there. They share the logger name `poketto.audit` so the security history can be selected without knowing which class wrote each line, and each carries an action naming what happened so a reader filters on that rather than on a message.

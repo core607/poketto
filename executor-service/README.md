@@ -1,10 +1,10 @@
 # Sandcrab integration
 
-Poketto uses an independently installed Sandcrab service for repository commands
+Poketto uses an independently installed [Sandcrab](https://github.com/core607/sandcrab) service for repository commands
 and a separate service for games. This directory contains consumer configuration,
 tool preparation, the release pin and offline migration support. The native API,
 daemon, SDK conformance, generic evaluations and density benchmarks belong to the
-Sandcrab distribution.
+[Sandcrab distribution](https://github.com/core607/sandcrab/blob/main/README.md).
 
 ## Release
 

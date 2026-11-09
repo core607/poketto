@@ -18,7 +18,7 @@ Every one of these needs an agent or an engineer to stage a host, run the script
 
 The [retained Inspect evidence](../../evals/README.md) records Sandcrab API and
 programming tasks with scripted or budgeted agents. That harness belongs to the
-independent distribution. Product suites and comparison remain proposed here.
+[independent distribution](https://github.com/core607/sandcrab/blob/main/evals/README.md). Product suites and comparison remain proposed here.
 
 ### One entrance, plain cases
 
