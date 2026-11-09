@@ -25,7 +25,11 @@ cleanup() {
     exit 1
   fi
   # Retain the inputs after failures so the operator can reconcile an unfinished fixture.
-  if (( verdict == 0 )); then as_root rm -rf --one-file-system -- "$stage"; fi
+  if (( verdict == 0 )); then
+    as_root rm -rf --one-file-system -- "$stage"
+  else
+    echo "Retained failed JVM inputs at $stage for reconciliation." >&2
+  fi
   exit "$verdict"
 }
 trap cleanup EXIT
