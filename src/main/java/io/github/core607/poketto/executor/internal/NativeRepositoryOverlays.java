@@ -1,6 +1,7 @@
 package io.github.core607.poketto.executor.internal;
 
 import io.github.core607.poketto.content.RepositorySnapshotExports;
+import io.github.core607.poketto.executor.internal.NativeRepositoryPhase.Stage;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -35,13 +36,16 @@ final class NativeRepositoryOverlays {
             Runnable authorize,
             Bundle withBundle,
             Consumer<String> initialize) {
-        catalog.bind(
-                source,
-                client,
-                transfers,
-                publish -> withBundle.read(bundle -> templates.withArchive(server, export, bundle, authorize, publish)),
-                initialize,
-                authorize);
+        try (var phase = NativeRepositoryPhase.start(Stage.TEMPLATE_LOOKUP)) {
+            catalog.bind(
+                    source,
+                    client,
+                    transfers,
+                    publish -> withBundle.read(
+                            bundle -> templates.withArchive(server, export, bundle, authorize, publish)),
+                    initialize,
+                    authorize);
+        }
     }
 
     @FunctionalInterface
@@ -54,36 +58,51 @@ final class NativeRepositoryOverlays {
     }
 
     void restore(AccountCommand held, NativeRepositoryLease lease) {
-        var storage = lease.writer().storage();
-        var upper = storage.upper();
-        if (upper == null) {
-            return;
+        try (var phase = NativeRepositoryPhase.start(Stage.UPPER_RESTORE)) {
+            var storage = lease.writer().storage();
+            var upper = storage.upper();
+            phase.bytes(upper == null ? 0 : upper.bytes());
+            if (upper == null) {
+                return;
+            }
+            String name = ".poketto-upper-" + UUID.randomUUID();
+            try (var archive =
+                    transfers.write(upper.bytes(), lease::authorize, out -> held.copyUpper(out, lease::authorize))) {
+                client.putFile(
+                        lease.session(),
+                        new SandcrabProtocol.FilePut(name, upper.bytes(), upper.sha256()),
+                        archive.path(),
+                        lease::authorize);
+            }
+            String source = RestoreScript.SOURCE.replace("'", "'\"'\"'");
+            lease.setup(
+                    "python3 -I -c '" + source + "' " + name + " " + storage.byteLimit() + " " + storage.inodeLimit());
         }
-        String name = ".poketto-upper-" + UUID.randomUUID();
-        try (var archive =
-                transfers.write(upper.bytes(), lease::authorize, out -> held.copyUpper(out, lease::authorize))) {
-            client.putFile(
-                    lease.session(),
-                    new SandcrabProtocol.FilePut(name, upper.bytes(), upper.sha256()),
-                    archive.path(),
-                    lease::authorize);
-        }
-        String source = RestoreScript.SOURCE.replace("'", "'\"'\"'");
-        lease.setup("python3 -I -c '" + source + "' " + name + " " + storage.byteLimit() + " " + storage.inodeLimit());
     }
 
     void checkpoint(AccountCommand held, NativeRepositoryLease lease) {
         var storage = lease.writer().storage();
-        try (var archive = transfers.capture(
-                Math.min(lease.transferLimit(), storage.byteLimit()),
-                lease::authorize,
-                path -> client.diff(
-                        lease.session(),
-                        Math.min(lease.transferLimit(), storage.byteLimit()),
-                        path,
-                        lease::authorize))) {
-            checkLimits(archive, storage, lease::authorize);
-            held.completeWithUpper(archive, lease::authorize);
+        try (var archive = capture(lease, storage)) {
+            NativeRepositoryPhase.run(Stage.UPPER_VALIDATION, () -> checkLimits(archive, storage, lease::authorize));
+            try (var phase = NativeRepositoryPhase.start(Stage.JOURNAL_COMMIT)) {
+                phase.bytes(archive.size());
+                held.completeWithUpper(archive, lease::authorize);
+            }
+        }
+    }
+
+    private NativeTransferStore.File capture(NativeRepositoryLease lease, AccountCopyRecord.NativeStorage storage) {
+        try (var phase = NativeRepositoryPhase.start(Stage.UPPER_CAPTURE)) {
+            NativeTransferStore.File archive = transfers.capture(
+                    Math.min(lease.transferLimit(), storage.byteLimit()),
+                    lease::authorize,
+                    path -> client.diff(
+                            lease.session(),
+                            Math.min(lease.transferLimit(), storage.byteLimit()),
+                            path,
+                            lease::authorize));
+            phase.bytes(archive.size());
+            return archive;
         }
     }
 

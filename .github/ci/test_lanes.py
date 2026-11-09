@@ -16,7 +16,8 @@ class LaneSelectionTests(unittest.TestCase):
         self.assertEqual({'docs', 'load'}, select('pull_request', ['executor-native/java_native_fixture.py']))
         self.assertEqual({'docs', 'load', 'stack'}, select('pull_request', ['deploy/native_repository.py']))
         for name in ('native-host.py', 'native-load.py', 'native_repository_fixture.py', 'release-gate.py',
-                     'account-http.py', 'games-http.py', 'mcp_http.py'):
+                     'account-http.py', 'games-http.py', 'mcp_http.py', 'native_phases.py',
+                     'native_phase_metrics.py', 'test_native_phases.py'):
             self.assertEqual({'docs', 'load'}, select('pull_request', ['acceptance/clients/' + name]))
         self.assertEqual({'docs', 'load'}, select('pull_request', ['.github/ci/sandcrab-release-check.sh']))
 

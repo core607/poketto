@@ -127,7 +127,7 @@ class NativeRepositoryCopyClaimsTests extends NativeRepositoryTestFixture {
         }
     }
 
-    private NativeRepositoryExecutor executor(int copies, NativeRepositoryExecutor.CommandObserver observer) {
+    private NativeRepositoryExecutor executor(int copies, NativeCommandObserver observer) {
         when(auth.siteGroup(any())).thenReturn(SiteGroup.CREATOR);
         return executor(
                 observer, new ExecutionLimits(4, 2, Map.of(), Map.of(SiteGroup.CREATOR, copies)), System::nanoTime);

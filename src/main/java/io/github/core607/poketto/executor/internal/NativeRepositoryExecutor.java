@@ -5,6 +5,7 @@ import io.github.core607.poketto.auth.AuthRevocation;
 import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.auth.Capability;
 import io.github.core607.poketto.auth.SiteGroup;
+import io.github.core607.poketto.executor.internal.NativeRepositoryPhase.Stage;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
@@ -21,7 +22,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Function;
 import java.util.function.LongSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +39,7 @@ final class NativeRepositoryExecutor implements RepositoryRuntime, AutoCloseable
     private final NativeArtifacts artifacts;
     private final NativeRepositoryPool pool;
     private final NativeRepositoryDisposal disposal;
-    private final CommandObserver observer;
+    private final NativeCommandObserver observer;
     private final AccountOperations operations;
     private final Map<SiteGroup, Integer> quotas;
     private final Semaphore capacity;
@@ -58,7 +58,7 @@ final class NativeRepositoryExecutor implements RepositoryRuntime, AutoCloseable
             NativeRepositoryWorkspace workspaces,
             NativeRepositoryHost host,
             NativeArtifacts artifacts,
-            CommandObserver observer,
+            NativeCommandObserver observer,
             ExecutionLimits limits) {
         this(client, auth, accounts, workspaces, host, artifacts, observer, limits, System::nanoTime);
     }
@@ -70,7 +70,7 @@ final class NativeRepositoryExecutor implements RepositoryRuntime, AutoCloseable
             NativeRepositoryWorkspace workspaces,
             NativeRepositoryHost host,
             NativeArtifacts artifacts,
-            CommandObserver observer,
+            NativeCommandObserver observer,
             ExecutionLimits limits,
             LongSupplier clock) {
         this.client = client;
@@ -116,26 +116,30 @@ final class NativeRepositoryExecutor implements RepositoryRuntime, AutoCloseable
             String command,
             Duration timeout,
             ExecutionCancellation cancellation) {
-        validate(expected, requested, command, timeout);
-        if (cancellation.isCancelled()) {
-            throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.BUSY, false);
-        }
-        var owner = owner(principal, workspace);
-        ExecutionResult completed = null;
-        try (AccountCommand held = admittedCommand(owner, principal, expected, cancellation)) {
-            try {
-                requireCopy(held, expected);
-                completed = executeHeld(principal, held, requested, command, timeout, cancellation);
-                return completed;
-            } catch (RuntimeException failure) {
-                throw AccountCopyFailures.admissionFromJournal(failure, held);
+        try (var phase = NativeRepositoryPhase.start(Stage.REQUEST)) {
+            validate(expected, requested, command, timeout);
+            if (cancellation.isCancelled()) {
+                throw new ExecutionAdmissionException(ExecutionAdmissionException.Reason.BUSY, false);
             }
-        } catch (RetainedCopyException failure) {
-            if (completed == null) {
-                throw failure;
+            AccountCopyRecord.Owner owner =
+                    NativeRepositoryPhase.call(Stage.AUTHORIZATION, () -> owner(principal, workspace));
+            ExecutionResult completed = null;
+            try (AccountCommand held = NativeRepositoryPhase.call(
+                    Stage.COPY_ADMISSION, () -> admittedCommand(owner, principal, expected, cancellation))) {
+                try {
+                    requireCopy(held, expected);
+                    completed = executeHeld(principal, held, requested, command, timeout, cancellation);
+                    return completed;
+                } catch (RuntimeException failure) {
+                    throw AccountCopyFailures.admissionFromJournal(failure, held);
+                }
+            } catch (RetainedCopyException failure) {
+                if (completed == null) {
+                    throw failure;
+                }
+                log.warn("Completed native command journal could not be released", failure);
+                throw new ExecutionUnconfirmedException(completed.copyId(), completed.retention(), true, failure);
             }
-            log.warn("Completed native command journal could not be released", failure);
-            throw new ExecutionUnconfirmedException(completed.copyId(), completed.retention(), true, failure);
         }
     }
 
@@ -261,8 +265,9 @@ final class NativeRepositoryExecutor implements RepositoryRuntime, AutoCloseable
             String command,
             Duration timeout,
             ExecutionCancellation cancellation) {
-        SandcrabProtocol.Info info = reconcile();
-        AccountOperations.Slot account = acquire(principal);
+        SandcrabProtocol.Info info = NativeRepositoryPhase.call(Stage.RUNTIME_RECONCILIATION, this::reconcile);
+        AccountOperations.Slot account =
+                NativeRepositoryPhase.call(Stage.OPERATION_ADMISSION, () -> acquire(principal));
         var running = new NativeRepositoryOperation(principal, held.owner(), account);
         active.put(running.id, running);
         try (var registration = cancellation.onCancel(running::cancel);
@@ -345,8 +350,12 @@ final class NativeRepositoryExecutor implements RepositoryRuntime, AutoCloseable
         held.begin(execution);
         running.attempted = true;
         SandcrabProtocol.Run submitted = submit(lease, held, running, claim, execution, command, timeout);
-        observer.observe(
-                submitted.reference(), timeout.plusSeconds(5), bytes -> host.reply(principal, held, lease, bytes));
+        NativeRepositoryPhase.run(
+                Stage.COMMAND_WAIT,
+                () -> observer.observe(
+                        submitted.reference(),
+                        timeout.plusSeconds(5),
+                        bytes -> host.reply(principal, held, lease, bytes)));
         SandcrabProtocol.Run completed = client.get(submitted.reference());
         if (!completed.terminal()) {
             throw new WorkerUnavailableException();
@@ -580,10 +589,5 @@ final class NativeRepositoryExecutor implements RepositoryRuntime, AutoCloseable
             pool.deferMaintenance();
             log.warn("Native repository maintenance awaits confirmed authority or containment", failure);
         }
-    }
-
-    @FunctionalInterface
-    interface CommandObserver {
-        void observe(SandcrabProtocol.Reference run, Duration timeout, Function<byte[], byte[]> handler);
     }
 }

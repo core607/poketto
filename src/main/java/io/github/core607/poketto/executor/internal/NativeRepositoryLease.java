@@ -1,5 +1,6 @@
 package io.github.core607.poketto.executor.internal;
 
+import io.github.core607.poketto.executor.internal.NativeRepositoryPhase.Stage;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -70,30 +71,32 @@ final class NativeRepositoryLease {
 
     /** Borrows only the runtime; this lease's authorization closure belongs to the current command. */
     boolean resume(SandcrabProtocol.Session expected) {
-        authorize();
-        submitted = true;
-        if (!plan.reference().equals(expected.reference())) {
-            throw new WorkerUnavailableException();
-        }
-        try {
-            session = client.renew(expected, plan.ttlMillis());
-        } catch (SandcrabClient.Rejected refused) {
-            if (GameSandboxJob.missing(refused, "SESSION_NOT_FOUND")) {
-                return false;
+        try (var phase = NativeRepositoryPhase.start(Stage.SESSION_RENEW)) {
+            authorize();
+            submitted = true;
+            if (!plan.reference().equals(expected.reference())) {
+                throw new WorkerUnavailableException();
             }
-            if (refused.code().equals("SESSION_NOT_READY") && inspect().terminal()) {
-                return false;
+            try {
+                session = client.renew(expected, plan.ttlMillis());
+            } catch (SandcrabClient.Rejected refused) {
+                if (GameSandboxJob.missing(refused, "SESSION_NOT_FOUND")) {
+                    return false;
+                }
+                if (refused.code().equals("SESSION_NOT_READY") && inspect().terminal()) {
+                    return false;
+                }
+                throw refused;
             }
-            throw refused;
-        }
-        authorize();
-        if (!session.state().equals("ready")) {
-            if (session.terminal()) {
-                return false;
+            authorize();
+            if (!session.state().equals("ready")) {
+                if (session.terminal()) {
+                    return false;
+                }
+                throw new WorkerUnavailableException();
             }
-            throw new WorkerUnavailableException();
+            return true;
         }
-        return true;
     }
 
     SandcrabProtocol.Session inspect() {
@@ -112,24 +115,28 @@ final class NativeRepositoryLease {
     }
 
     void startChild() {
-        authorize();
-        var ref = new SandcrabProtocol.Reference(UUID.randomUUID().toString(), plan.serverId());
-        child = client.openChild(session, ref);
-        long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
-        while (!child.state().equals("ready")) {
-            if (child.terminal() || child.state().equals("closing")) {
-                throw new WorkerUnavailableException();
+        try (var phase = NativeRepositoryPhase.start(Stage.CHILD_START)) {
+            authorize();
+            var ref = new SandcrabProtocol.Reference(UUID.randomUUID().toString(), plan.serverId());
+            child = client.openChild(session, ref);
+            long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+            while (!child.state().equals("ready")) {
+                if (child.terminal() || child.state().equals("closing")) {
+                    throw new WorkerUnavailableException();
+                }
+                pause(deadline, this::authorize);
+                child = client.session(ref);
             }
-            pause(deadline, this::authorize);
-            child = client.session(ref);
         }
     }
 
     void finishChild() {
-        authorize();
-        close(client, child.reference(), Duration.ofSeconds(15));
-        client.forget(client.session(child.reference()));
-        child = null;
+        try (var phase = NativeRepositoryPhase.start(Stage.CHILD_CONTAINMENT)) {
+            authorize();
+            close(client, child.reference(), Duration.ofSeconds(15));
+            client.forget(client.session(child.reference()));
+            child = null;
+        }
     }
 
     void authorize() {
@@ -140,45 +147,49 @@ final class NativeRepositoryLease {
     }
 
     void open() {
-        authorize();
-        synchronized (this) {
-            if (stopped) {
-                throw new WorkerUnavailableException();
+        try (var phase = NativeRepositoryPhase.start(Stage.SESSION_START)) {
+            authorize();
+            synchronized (this) {
+                if (stopped) {
+                    throw new WorkerUnavailableException();
+                }
+                opening = true;
+                submitted = true;
             }
-            opening = true;
-            submitted = true;
-        }
-        try {
-            session = client.open(plan);
-        } catch (WorkerUnavailableException failure) {
-            submitted = failure.mayHaveExecuted();
-            throw failure;
-        } catch (SandcrabClient.Rejected failure) {
-            submitted = failure.code().equals("ID_CONFLICT");
-            throw failure;
-        } finally {
-            opening = false;
-        }
-        long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
-        while (!session.state().equals("ready")) {
-            if (session.terminal() || session.state().equals("closing")) {
-                throw new WorkerUnavailableException();
+            try {
+                session = client.open(plan);
+            } catch (WorkerUnavailableException failure) {
+                submitted = failure.mayHaveExecuted();
+                throw failure;
+            } catch (SandcrabClient.Rejected failure) {
+                submitted = failure.code().equals("ID_CONFLICT");
+                throw failure;
+            } finally {
+                opening = false;
             }
-            pause(deadline, authorize);
-            session = client.session(plan.reference());
+            long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
+            while (!session.state().equals("ready")) {
+                if (session.terminal() || session.state().equals("closing")) {
+                    throw new WorkerUnavailableException();
+                }
+                pause(deadline, authorize);
+                session = client.session(plan.reference());
+            }
         }
     }
 
     /** App-owned initialization uses the public command API; no Git semantics enter the daemon. */
     void setup(String source) {
-        SandcrabProtocol.Run run = command(UUID.randomUUID(), source, setupTimeout);
-        long deadline = System.nanoTime() + setupTimeout.plusSeconds(5).toNanos();
-        while (!run.terminal()) {
-            pause(deadline, authorize);
-            run = client.get(run.reference());
-        }
-        if (!run.state().equals("succeeded") || !run.result().success()) {
-            throw new WorkerUnavailableException();
+        try (var phase = NativeRepositoryPhase.start(Stage.SETUP_COMMAND)) {
+            SandcrabProtocol.Run run = command(UUID.randomUUID(), source, setupTimeout);
+            long deadline = System.nanoTime() + setupTimeout.plusSeconds(5).toNanos();
+            while (!run.terminal()) {
+                pause(deadline, authorize);
+                run = client.get(run.reference());
+            }
+            if (!run.state().equals("succeeded") || !run.result().success()) {
+                throw new WorkerUnavailableException();
+            }
         }
     }
 
@@ -310,14 +321,16 @@ final class NativeRepositoryLease {
     }
 
     static void close(SandcrabClient client, SandcrabProtocol.Reference reference, Duration timeout) {
-        SandcrabProtocol.Session session = client.session(reference);
-        if (!session.terminal()) {
-            session = client.close(reference);
-        }
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (!session.terminal()) {
-            pause(deadline, () -> {});
-            session = client.session(reference);
+        try (var phase = NativeRepositoryPhase.start(Stage.SESSION_CONTAINMENT)) {
+            SandcrabProtocol.Session session = client.session(reference);
+            if (!session.terminal()) {
+                session = client.close(reference);
+            }
+            long deadline = System.nanoTime() + timeout.toNanos();
+            while (!session.terminal()) {
+                pause(deadline, () -> {});
+                session = client.session(reference);
+            }
         }
     }
 

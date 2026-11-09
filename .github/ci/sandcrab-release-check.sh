@@ -112,3 +112,7 @@ as_root python3 executor-native/native_game_java_probe.py --runtime "$stage/runt
 as_root python3 acceptance/clients/native-load.py --runtime "$stage/account-runtime" \
   --binary build/game-worker/sandcrab --tools "$stage/tools" --java "$stage/jdk/bin/java" \
   --verify-clients --evidence "$stage/results/native-load.json"
+python3 -B -m unittest discover -s acceptance/clients -p test_native_phases.py -v
+as_root python3 -B acceptance/clients/native-host.py --runtime "$stage/account-runtime" \
+  --binary build/game-worker/sandcrab --tools "$stage/tools" --java "$stage/jdk/bin/java" \
+  --agents 1 --port 38190 --phase-evidence "$stage/results/native-phases" --phase-recording

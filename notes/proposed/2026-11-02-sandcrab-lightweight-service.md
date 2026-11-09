@@ -177,6 +177,12 @@ footprint work and closure of the overall plan.
 
 #### D0: execution cost breakdown
 
+The native consumer's [phase replay](../../acceptance/clients/native-phases.md) implements
+this cost collection. Its [comparison summary](../../executor-native/evidence/2026-11-09-native-phase-measurements/summary.json)
+keeps the unchanged application baseline separate from disabled and enabled recording.
+The [diagnostics decision](../implemented/2026-09-14-service-diagnostics.md) owns the
+optional instrumentation boundary. Admission, resource limits and durability remain unchanged.
+
 Measure request admission, template lookup, sandbox and shell startup, upper
 restoration, command execution, change capture, durable acknowledgement and
 cleanup separately. Distinguish a native API call from the consumer's whole

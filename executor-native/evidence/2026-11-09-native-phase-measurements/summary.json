@@ -1,0 +1,3071 @@
+{
+  "schemaVersion": 1,
+  "result": "PASS",
+  "scope": "D0 isolated native consumer phase comparison",
+  "baselineCommit": "1488a1d7e3b91426a2831acb9de3b9258c894fa9",
+  "candidateSourceSha256": {
+    "NativeRepositoryPhase.java": "8d0a504cf296add74ae274b8ca7fd2ff04323c5373ce963dabce37d8eedf050f",
+    "NativeRepositoryExecutor.java": "e46b199128773b2b594e07205e3de747be2e53b74ed4c9ee02f9d8df05ee7f3b",
+    "NativeRepositoryLease.java": "5f076de7788ee1683febe9cb9dae873cce0b41870c571520db1e9f719cfb5f7b",
+    "NativeRepositoryOverlays.java": "0a2e726c1ee3061f923b57a46d93200b318011c1fb04b4d145afecda17eb50b7",
+    "NativeCommitTemplate.java": "b25ae9a5f5a65d3d560be1376b4b168752721097b01ebe151855e37827e2d64b",
+    "AccountCommand.java": "8ae41717e52ade4e7cb8ca969d708fae66b8ee8ffec8ba8bfb23796d3d95b8c5",
+    "SandboxHttp.java": "d04b7f15783ebb669fe5527185ca465c2c5f5ce048d94254c98e192462e0c0e3"
+  },
+  "runningSandcrabSha256": "de7de59f292a067dca7f034ffd971f17dd126e984ac624bb892db808d38853d6",
+  "measurementSourceSha256": {
+    "native-host.py": "944f6d5b37cb9af06bc5fe0f1351573377bea81e2eed64b9b7e4ad312b412eda",
+    "native_phases.py": "3c9626aadf34ea52f22e6d5bd74cb6c3482643a31f8fce30e48e169de0194f7f",
+    "native_phase_metrics.py": "e5f5ce22bbf97c2104aa4aece1e62dba2987cbc9b541af207b77acac4d11709d",
+    "native_repository_fixture.py": "39af3c566bf1d00d97de6701de907d97c855799925e98e9350265e3bdf77a3bd",
+    "mcp_http.py": "bd67e1af7864b80f37ecc6ea80563611f3c00d72ac6d70813fed4bad20a18fda"
+  },
+  "workload": "serial-native-phases-v2",
+  "order": [
+    "base4",
+    "rec4",
+    "dis2",
+    "dis3",
+    "rec5",
+    "base5"
+  ],
+  "receipts": {
+    "base4": {
+      "mode": "baseline",
+      "result": "PASS",
+      "cleanup": "PASS",
+      "requests": 23,
+      "runtimeManifestSha256": "cce9732885c8efe151e521f78bb059c1b6a1dab7b3934d7645019d73dbf0b4de",
+      "driverSha256": "3c9626aadf34ea52f22e6d5bd74cb6c3482643a31f8fce30e48e169de0194f7f",
+      "summarySha256": "d859c16b88ffa3486ba7f5be414595fdfcb377e9b21eb1a37b5525db8fcf5b15",
+      "hostOomDelta": 0
+    },
+    "base5": {
+      "mode": "baseline",
+      "result": "PASS",
+      "cleanup": "PASS",
+      "requests": 23,
+      "runtimeManifestSha256": "cce9732885c8efe151e521f78bb059c1b6a1dab7b3934d7645019d73dbf0b4de",
+      "driverSha256": "3c9626aadf34ea52f22e6d5bd74cb6c3482643a31f8fce30e48e169de0194f7f",
+      "summarySha256": "86f4f9e8298897cb339b13e5821ee32f732e915a6718258e6924bb0d569a75f1",
+      "hostOomDelta": 0
+    },
+    "dis2": {
+      "mode": "disabled",
+      "result": "PASS",
+      "cleanup": "PASS",
+      "requests": 23,
+      "runtimeManifestSha256": "062eeb9032dcc83fc72793edda99530cc2712ff85bdcccb02717691aa009b558",
+      "driverSha256": "3c9626aadf34ea52f22e6d5bd74cb6c3482643a31f8fce30e48e169de0194f7f",
+      "summarySha256": "752d9ea2f4b16fa7b26dd3d9eb43a97b71fb9ac86c992fd37808d50cdc22727a",
+      "hostOomDelta": 0
+    },
+    "dis3": {
+      "mode": "disabled",
+      "result": "PASS",
+      "cleanup": "PASS",
+      "requests": 23,
+      "runtimeManifestSha256": "062eeb9032dcc83fc72793edda99530cc2712ff85bdcccb02717691aa009b558",
+      "driverSha256": "3c9626aadf34ea52f22e6d5bd74cb6c3482643a31f8fce30e48e169de0194f7f",
+      "summarySha256": "378dc60be9f750132aae461477c73684f100b278b49224cb327a5702a5831449",
+      "hostOomDelta": 0
+    },
+    "rec4": {
+      "mode": "recorded",
+      "result": "PASS",
+      "cleanup": "PASS",
+      "requests": 23,
+      "runtimeManifestSha256": "062eeb9032dcc83fc72793edda99530cc2712ff85bdcccb02717691aa009b558",
+      "driverSha256": "3c9626aadf34ea52f22e6d5bd74cb6c3482643a31f8fce30e48e169de0194f7f",
+      "summarySha256": "448f000beea217cc598565166763368f63dc893c954ced0ec59e0caef38868a0",
+      "hostOomDelta": 0
+    },
+    "rec5": {
+      "mode": "recorded",
+      "result": "PASS",
+      "cleanup": "PASS",
+      "requests": 23,
+      "runtimeManifestSha256": "062eeb9032dcc83fc72793edda99530cc2712ff85bdcccb02717691aa009b558",
+      "driverSha256": "3c9626aadf34ea52f22e6d5bd74cb6c3482643a31f8fce30e48e169de0194f7f",
+      "summarySha256": "0c5b347c52fe8e62727e8851d91ac3717c8110fb0e36b1367d4590a289819cde",
+      "hostOomDelta": 0
+    }
+  },
+  "outcomes": {
+    "requests": 138,
+    "successfulCommands": 126,
+    "expectedMissingCopyRefusals": 6,
+    "expectedTimeouts": 6,
+    "unexpectedFailures": 0,
+    "newOomKills": 0
+  },
+  "effectiveCgroupLimits": {
+    "application": {
+      "cpu.max": "100000 100000",
+      "memory.max": "805306368",
+      "memory.swap.max": "0",
+      "pids.max": "256"
+    },
+    "nativePool": {
+      "cpu.max": "200000 100000",
+      "memory.max": "536870912",
+      "memory.swap.max": "0",
+      "pids.max": "256"
+    },
+    "daemon": {
+      "cpu.max": "max 100000",
+      "memory.max": "134217728",
+      "memory.swap.max": "0",
+      "pids.max": "128"
+    },
+    "workloads": {
+      "cpu.max": "max 100000",
+      "memory.max": "max",
+      "memory.swap.max": "max",
+      "pids.max": "max"
+    }
+  },
+  "comparison": {
+    "first-parent": {
+      "baseline": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1629.5078,
+          "p95": 2191.9787,
+          "max": 2191.9787
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "disabled": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1539.6785,
+          "p95": 2102.7939,
+          "max": 2102.7939
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "recorded": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1635.7596,
+          "p95": 2219.1596,
+          "max": 2219.1596
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      }
+    },
+    "warm-empty": {
+      "baseline": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 297.5032,
+          "p95": 380.972,
+          "max": 380.972
+        },
+        "outcomes": {
+          "OK": 10
+        }
+      },
+      "disabled": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 292.9514,
+          "p95": 377.4993,
+          "max": 377.4993
+        },
+        "outcomes": {
+          "OK": 10
+        }
+      },
+      "recorded": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 292.4753,
+          "p95": 390.2666,
+          "max": 390.2666
+        },
+        "outcomes": {
+          "OK": 10
+        }
+      }
+    },
+    "write-65536": {
+      "baseline": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 314.9303,
+          "p95": 345.5874,
+          "max": 345.5874
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "disabled": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 332.5904,
+          "p95": 393.5247,
+          "max": 393.5247
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "recorded": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 330.8454,
+          "p95": 354.8818,
+          "max": 354.8818
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      }
+    },
+    "warm-65536": {
+      "baseline": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 285.1925,
+          "p95": 330.947,
+          "max": 330.947
+        },
+        "outcomes": {
+          "OK": 10
+        }
+      },
+      "disabled": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 277.0139,
+          "p95": 318.4971,
+          "max": 318.4971
+        },
+        "outcomes": {
+          "OK": 10
+        }
+      },
+      "recorded": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 275.5478,
+          "p95": 327.7299,
+          "max": 327.7299
+        },
+        "outcomes": {
+          "OK": 10
+        }
+      }
+    },
+    "write-4194304": {
+      "baseline": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 405.9284,
+          "p95": 455.6418,
+          "max": 455.6418
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "disabled": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 430.0461,
+          "p95": 466.5358,
+          "max": 466.5358
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "recorded": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 447.9565,
+          "p95": 467.4541,
+          "max": 467.4541
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      }
+    },
+    "warm-4194304": {
+      "baseline": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 345.2001,
+          "p95": 406.0703,
+          "max": 406.0703
+        },
+        "outcomes": {
+          "OK": 10
+        }
+      },
+      "disabled": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 352.1516,
+          "p95": 417.9875,
+          "max": 417.9875
+        },
+        "outcomes": {
+          "OK": 10
+        }
+      },
+      "recorded": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 339.5391,
+          "p95": 404.5207,
+          "max": 404.5207
+        },
+        "outcomes": {
+          "OK": 10
+        }
+      }
+    },
+    "missing-copy": {
+      "baseline": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 16.8789,
+          "p95": 16.9865,
+          "max": 16.9865
+        },
+        "outcomes": {
+          "MISSING_COPY": 2
+        }
+      },
+      "disabled": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 35.9851,
+          "p95": 48.9171,
+          "max": 48.9171
+        },
+        "outcomes": {
+          "MISSING_COPY": 2
+        }
+      },
+      "recorded": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 29.7786,
+          "p95": 31.4058,
+          "max": 31.4058
+        },
+        "outcomes": {
+          "MISSING_COPY": 2
+        }
+      }
+    },
+    "restore-upper": {
+      "baseline": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 579.7669,
+          "p95": 660.6291,
+          "max": 660.6291
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "disabled": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 587.3598,
+          "p95": 638.4376,
+          "max": 638.4376
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "recorded": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 588.9093,
+          "p95": 663.3348,
+          "max": 663.3348
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      }
+    },
+    "warm-restored": {
+      "baseline": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 360.024,
+          "p95": 387.781,
+          "max": 387.781
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "disabled": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 372.251,
+          "p95": 392.2232,
+          "max": 392.2232
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "recorded": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 371.3803,
+          "p95": 382.4986,
+          "max": 382.4986
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      }
+    },
+    "timeout": {
+      "baseline": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1311.3625,
+          "p95": 1355.2565,
+          "max": 1355.2565
+        },
+        "outcomes": {
+          "TIMEOUT": 2
+        }
+      },
+      "disabled": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1338.3126,
+          "p95": 1385.1465,
+          "max": 1385.1465
+        },
+        "outcomes": {
+          "TIMEOUT": 2
+        }
+      },
+      "recorded": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1307.073,
+          "p95": 1338.7641,
+          "max": 1338.7641
+        },
+        "outcomes": {
+          "TIMEOUT": 2
+        }
+      }
+    },
+    "warm-after-timeout": {
+      "baseline": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 388.7298,
+          "p95": 399.2253,
+          "max": 399.2253
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "disabled": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 344.5741,
+          "p95": 381.86,
+          "max": 381.86
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      },
+      "recorded": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 327.2115,
+          "p95": 351.4663,
+          "max": 351.4663
+        },
+        "outcomes": {
+          "OK": 2
+        }
+      }
+    }
+  },
+  "recordedPhases": {
+    "first-parent": {
+      "AUTHORIZATION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.7349,
+          "p95": 0.9228,
+          "max": 0.9228
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.3266,
+          "p95": 0.3876,
+          "max": 0.3876
+        },
+        "archiveBytes": null
+      },
+      "CHILD_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 32.6563,
+          "p95": 36.2747,
+          "max": 36.2747
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 3.2438,
+          "p95": 3.4589,
+          "max": 3.4589
+        },
+        "archiveBytes": null
+      },
+      "CHILD_START": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 29.1984,
+          "p95": 29.3176,
+          "max": 29.3176
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 3.0155,
+          "p95": 3.0537,
+          "max": 3.0537
+        },
+        "archiveBytes": null
+      },
+      "COMMAND_WAIT": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 31.927,
+          "p95": 37.5136,
+          "max": 37.5136
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 8.5905,
+          "p95": 8.6312,
+          "max": 8.6312
+        },
+        "archiveBytes": null
+      },
+      "COPY_ADMISSION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 36.567,
+          "p95": 67.5976,
+          "max": 67.5976
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 3.5919,
+          "p95": 3.6923,
+          "max": 3.6923
+        },
+        "archiveBytes": null
+      },
+      "JOURNAL_COMMIT": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 21.815,
+          "p95": 34.4668,
+          "max": 34.4668
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 3.4088,
+          "p95": 3.7526,
+          "max": 3.7526
+        },
+        "archiveBytes": {
+          "samples": 2,
+          "median": 1024.0,
+          "p95": 1024.0,
+          "max": 1024.0
+        }
+      },
+      "JOURNAL_RELEASE": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.0253,
+          "p95": 0.0259,
+          "max": 0.0259
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.0222,
+          "p95": 0.023,
+          "max": 0.023
+        },
+        "archiveBytes": null
+      },
+      "NATIVE_EXCHANGE": {
+        "wallMillis": {
+          "samples": 86,
+          "median": 0.7393,
+          "p95": 59.1342,
+          "max": 1013.2616
+        },
+        "callingThreadCpuMillis": {
+          "samples": 86,
+          "median": 0.5761,
+          "p95": 3.1372,
+          "max": 6.2222
+        },
+        "archiveBytes": null
+      },
+      "OPERATION_ADMISSION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.5933,
+          "p95": 0.7338,
+          "max": 0.7338
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.3102,
+          "p95": 0.3728,
+          "max": 0.3728
+        },
+        "archiveBytes": null
+      },
+      "REQUEST": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1518.023,
+          "p95": 2098.7578,
+          "max": 2098.7578
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 198.6917,
+          "p95": 210.7892,
+          "max": 210.7892
+        },
+        "archiveBytes": null
+      },
+      "RUNTIME_RECONCILIATION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1.3703,
+          "p95": 1.6042,
+          "max": 1.6042
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 1.2321,
+          "p95": 1.4492,
+          "max": 1.4492
+        },
+        "archiveBytes": null
+      },
+      "SESSION_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 4,
+          "median": 28.4006,
+          "p95": 34.7325,
+          "max": 34.7325
+        },
+        "callingThreadCpuMillis": {
+          "samples": 4,
+          "median": 2.2497,
+          "p95": 2.6058,
+          "max": 2.6058
+        },
+        "archiveBytes": null
+      },
+      "SESSION_START": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 28.3882,
+          "p95": 28.4712,
+          "max": 28.4712
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 2.4275,
+          "p95": 2.4318,
+          "max": 2.4318
+        },
+        "archiveBytes": null
+      },
+      "SETUP_COMMAND": {
+        "wallMillis": {
+          "samples": 4,
+          "median": 41.5662,
+          "p95": 81.6923,
+          "max": 81.6923
+        },
+        "callingThreadCpuMillis": {
+          "samples": 4,
+          "median": 2.9218,
+          "p95": 4.5509,
+          "max": 4.5509
+        },
+        "archiveBytes": null
+      },
+      "TEMPLATE_BUILD": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 922.5788,
+          "p95": 1439.8409,
+          "max": 1439.8409
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 49.5451,
+          "p95": 52.9125,
+          "max": 52.9125
+        },
+        "archiveBytes": {
+          "samples": 2,
+          "median": 194304.0,
+          "p95": 194560.0,
+          "max": 194560.0
+        }
+      },
+      "TEMPLATE_LOOKUP": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1103.4801,
+          "p95": 1621.6933,
+          "max": 1621.6933
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 130.5688,
+          "p95": 138.9787,
+          "max": 138.9787
+        },
+        "archiveBytes": null
+      },
+      "UPPER_CAPTURE": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 43.7816,
+          "p95": 63.5383,
+          "max": 63.5383
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 4.2924,
+          "p95": 4.8975,
+          "max": 4.8975
+        },
+        "archiveBytes": {
+          "samples": 2,
+          "median": 1024.0,
+          "p95": 1024.0,
+          "max": 1024.0
+        }
+      },
+      "UPPER_VALIDATION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 4.7789,
+          "p95": 4.8818,
+          "max": 4.8818
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 4.7743,
+          "p95": 4.8774,
+          "max": 4.8774
+        },
+        "archiveBytes": null
+      }
+    },
+    "warm-empty": {
+      "AUTHORIZATION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.3106,
+          "p95": 0.7355,
+          "max": 0.7355
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.1526,
+          "p95": 0.2461,
+          "max": 0.2461
+        },
+        "archiveBytes": null
+      },
+      "CHILD_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 28.3723,
+          "p95": 30.0368,
+          "max": 30.0368
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 2.473,
+          "p95": 2.8382,
+          "max": 2.8382
+        },
+        "archiveBytes": null
+      },
+      "CHILD_START": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 27.3519,
+          "p95": 27.7739,
+          "max": 27.7739
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 1.5178,
+          "p95": 1.9527,
+          "max": 1.9527
+        },
+        "archiveBytes": null
+      },
+      "COMMAND_WAIT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 41.2585,
+          "p95": 51.248,
+          "max": 51.248
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.9901,
+          "p95": 1.2807,
+          "max": 1.2807
+        },
+        "archiveBytes": null
+      },
+      "COPY_ADMISSION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 1.4679,
+          "p95": 43.8695,
+          "max": 43.8695
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 1.4535,
+          "p95": 19.586,
+          "max": 19.586
+        },
+        "archiveBytes": null
+      },
+      "JOURNAL_COMMIT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 10.8598,
+          "p95": 16.1498,
+          "max": 16.1498
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 1.5527,
+          "p95": 2.1112,
+          "max": 2.1112
+        },
+        "archiveBytes": {
+          "samples": 10,
+          "median": 1024.0,
+          "p95": 1024.0,
+          "max": 1024.0
+        }
+      },
+      "JOURNAL_RELEASE": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.0211,
+          "p95": 0.0243,
+          "max": 0.0243
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.0192,
+          "p95": 0.0224,
+          "max": 0.0224
+        },
+        "archiveBytes": null
+      },
+      "NATIVE_EXCHANGE": {
+        "wallMillis": {
+          "samples": 249,
+          "median": 0.5458,
+          "p95": 33.8399,
+          "max": 62.7513
+        },
+        "callingThreadCpuMillis": {
+          "samples": 249,
+          "median": 0.407,
+          "p95": 1.064,
+          "max": 1.6958
+        },
+        "archiveBytes": null
+      },
+      "OPERATION_ADMISSION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.3841,
+          "p95": 0.6903,
+          "max": 0.6903
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.1139,
+          "p95": 0.2912,
+          "max": 0.2912
+        },
+        "archiveBytes": null
+      },
+      "REQUEST": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 273.4166,
+          "p95": 366.4745,
+          "max": 366.4745
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 25.0659,
+          "p95": 48.4357,
+          "max": 48.4357
+        },
+        "archiveBytes": null
+      },
+      "RUNTIME_RECONCILIATION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.6489,
+          "p95": 0.739,
+          "max": 0.739
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.5314,
+          "p95": 0.6218,
+          "max": 0.6218
+        },
+        "archiveBytes": null
+      },
+      "SESSION_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 26.8985,
+          "p95": 27.8049,
+          "max": 27.8049
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 1.4593,
+          "p95": 1.7683,
+          "max": 1.7683
+        },
+        "archiveBytes": null
+      },
+      "SESSION_RENEW": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 1.3181,
+          "p95": 3.5418,
+          "max": 3.5418
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.802,
+          "p95": 2.1658,
+          "max": 2.1658
+        },
+        "archiveBytes": null
+      },
+      "SETUP_COMMAND": {
+        "wallMillis": {
+          "samples": 20,
+          "median": 28.2481,
+          "p95": 80.2298,
+          "max": 83.9291
+        },
+        "callingThreadCpuMillis": {
+          "samples": 20,
+          "median": 2.1804,
+          "p95": 3.4828,
+          "max": 3.9819
+        },
+        "archiveBytes": null
+      },
+      "UPPER_CAPTURE": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 47.3211,
+          "p95": 66.3315,
+          "max": 66.3315
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 2.7933,
+          "p95": 3.28,
+          "max": 3.28
+        },
+        "archiveBytes": {
+          "samples": 10,
+          "median": 1024.0,
+          "p95": 1024.0,
+          "max": 1024.0
+        }
+      },
+      "UPPER_VALIDATION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.0759,
+          "p95": 0.1321,
+          "max": 0.1321
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.0753,
+          "p95": 0.1217,
+          "max": 0.1217
+        },
+        "archiveBytes": null
+      }
+    },
+    "warm-65536": {
+      "AUTHORIZATION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.3074,
+          "p95": 0.5435,
+          "max": 0.5435
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.1223,
+          "p95": 0.161,
+          "max": 0.161
+        },
+        "archiveBytes": null
+      },
+      "CHILD_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 28.0025,
+          "p95": 28.5814,
+          "max": 28.5814
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 2.0229,
+          "p95": 2.2707,
+          "max": 2.2707
+        },
+        "archiveBytes": null
+      },
+      "CHILD_START": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 27.0141,
+          "p95": 27.2398,
+          "max": 27.2398
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 1.168,
+          "p95": 1.4815,
+          "max": 1.4815
+        },
+        "archiveBytes": null
+      },
+      "COMMAND_WAIT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 31.0629,
+          "p95": 41.4836,
+          "max": 41.4836
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.7883,
+          "p95": 1.031,
+          "max": 1.031
+        },
+        "archiveBytes": null
+      },
+      "COPY_ADMISSION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 1.1992,
+          "p95": 1.5143,
+          "max": 1.5143
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 1.1967,
+          "p95": 1.4451,
+          "max": 1.4451
+        },
+        "archiveBytes": null
+      },
+      "JOURNAL_COMMIT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 10.6891,
+          "p95": 15.4797,
+          "max": 15.4797
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 1.5461,
+          "p95": 1.8027,
+          "max": 1.8027
+        },
+        "archiveBytes": {
+          "samples": 10,
+          "median": 69120.0,
+          "p95": 69120.0,
+          "max": 69120.0
+        }
+      },
+      "JOURNAL_RELEASE": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.0223,
+          "p95": 0.0243,
+          "max": 0.0243
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.021,
+          "p95": 0.0229,
+          "max": 0.0229
+        },
+        "archiveBytes": null
+      },
+      "NATIVE_EXCHANGE": {
+        "wallMillis": {
+          "samples": 256,
+          "median": 0.4557,
+          "p95": 30.9945,
+          "max": 62.0731
+        },
+        "callingThreadCpuMillis": {
+          "samples": 256,
+          "median": 0.3178,
+          "p95": 0.8285,
+          "max": 1.9249
+        },
+        "archiveBytes": null
+      },
+      "OPERATION_ADMISSION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.2604,
+          "p95": 0.7125,
+          "max": 0.7125
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.0936,
+          "p95": 0.2157,
+          "max": 0.2157
+        },
+        "archiveBytes": null
+      },
+      "REQUEST": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 260.2379,
+          "p95": 311.2014,
+          "max": 311.2014
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 21.884,
+          "p95": 23.9063,
+          "max": 23.9063
+        },
+        "archiveBytes": null
+      },
+      "RUNTIME_RECONCILIATION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.6111,
+          "p95": 5.3541,
+          "max": 5.3541
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.4347,
+          "p95": 0.5107,
+          "max": 0.5107
+        },
+        "archiveBytes": null
+      },
+      "SESSION_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 26.7506,
+          "p95": 27.1444,
+          "max": 27.1444
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 1.2609,
+          "p95": 1.5451,
+          "max": 1.5451
+        },
+        "archiveBytes": null
+      },
+      "SESSION_RENEW": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 1.1631,
+          "p95": 1.4308,
+          "max": 1.4308
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.6622,
+          "p95": 0.761,
+          "max": 0.761
+        },
+        "archiveBytes": null
+      },
+      "SETUP_COMMAND": {
+        "wallMillis": {
+          "samples": 20,
+          "median": 40.2806,
+          "p95": 80.7921,
+          "max": 81.8071
+        },
+        "callingThreadCpuMillis": {
+          "samples": 20,
+          "median": 1.7738,
+          "p95": 3.549,
+          "max": 3.5818
+        },
+        "archiveBytes": null
+      },
+      "UPPER_CAPTURE": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 46.4839,
+          "p95": 65.2025,
+          "max": 65.2025
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 2.7444,
+          "p95": 3.1974,
+          "max": 3.1974
+        },
+        "archiveBytes": {
+          "samples": 10,
+          "median": 69120.0,
+          "p95": 69120.0,
+          "max": 69120.0
+        }
+      },
+      "UPPER_VALIDATION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 2.0102,
+          "p95": 2.2265,
+          "max": 2.2265
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 1.0208,
+          "p95": 1.3552,
+          "max": 1.3552
+        },
+        "archiveBytes": null
+      }
+    },
+    "warm-4194304": {
+      "AUTHORIZATION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.2488,
+          "p95": 0.2882,
+          "max": 0.2882
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.0928,
+          "p95": 0.1436,
+          "max": 0.1436
+        },
+        "archiveBytes": null
+      },
+      "CHILD_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 27.4146,
+          "p95": 27.8287,
+          "max": 27.8287
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 1.5672,
+          "p95": 1.9972,
+          "max": 1.9972
+        },
+        "archiveBytes": null
+      },
+      "CHILD_START": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 26.7442,
+          "p95": 42.204,
+          "max": 42.204
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.9874,
+          "p95": 1.1081,
+          "max": 1.1081
+        },
+        "archiveBytes": null
+      },
+      "COMMAND_WAIT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 40.9327,
+          "p95": 51.1916,
+          "max": 51.1916
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.6867,
+          "p95": 0.8581,
+          "max": 0.8581
+        },
+        "archiveBytes": null
+      },
+      "COPY_ADMISSION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.9888,
+          "p95": 1.518,
+          "max": 1.518
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.9879,
+          "p95": 1.332,
+          "max": 1.332
+        },
+        "archiveBytes": null
+      },
+      "JOURNAL_COMMIT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 28.1524,
+          "p95": 35.727,
+          "max": 35.727
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 9.1419,
+          "p95": 10.96,
+          "max": 10.96
+        },
+        "archiveBytes": {
+          "samples": 10,
+          "median": 4197888.0,
+          "p95": 4197888.0,
+          "max": 4197888.0
+        }
+      },
+      "JOURNAL_RELEASE": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.0227,
+          "p95": 0.0293,
+          "max": 0.0293
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.0215,
+          "p95": 0.0265,
+          "max": 0.0265
+        },
+        "archiveBytes": null
+      },
+      "NATIVE_EXCHANGE": {
+        "wallMillis": {
+          "samples": 254,
+          "median": 0.3946,
+          "p95": 51.0252,
+          "max": 93.156
+        },
+        "callingThreadCpuMillis": {
+          "samples": 254,
+          "median": 0.2551,
+          "p95": 0.6916,
+          "max": 13.1643
+        },
+        "archiveBytes": null
+      },
+      "OPERATION_ADMISSION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.1921,
+          "p95": 0.2252,
+          "max": 0.2252
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.0797,
+          "p95": 0.0981,
+          "max": 0.0981
+        },
+        "archiveBytes": null
+      },
+      "REQUEST": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 320.1257,
+          "p95": 389.7119,
+          "max": 389.7119
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 43.8023,
+          "p95": 51.2514,
+          "max": 51.2514
+        },
+        "archiveBytes": null
+      },
+      "RUNTIME_RECONCILIATION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 0.4944,
+          "p95": 0.5911,
+          "max": 0.5911
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.3377,
+          "p95": 0.4202,
+          "max": 0.4202
+        },
+        "archiveBytes": null
+      },
+      "SESSION_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 26.3534,
+          "p95": 26.4495,
+          "max": 26.4495
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.953,
+          "p95": 0.9955,
+          "max": 0.9955
+        },
+        "archiveBytes": null
+      },
+      "SESSION_RENEW": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 1.0352,
+          "p95": 1.2043,
+          "max": 1.2043
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 0.5438,
+          "p95": 0.7505,
+          "max": 0.7505
+        },
+        "archiveBytes": null
+      },
+      "SETUP_COMMAND": {
+        "wallMillis": {
+          "samples": 20,
+          "median": 40.1589,
+          "p95": 80.089,
+          "max": 80.11
+        },
+        "callingThreadCpuMillis": {
+          "samples": 20,
+          "median": 1.487,
+          "p95": 2.9378,
+          "max": 3.029
+        },
+        "archiveBytes": null
+      },
+      "UPPER_CAPTURE": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 92.2945,
+          "p95": 115.2461,
+          "max": 115.2461
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 19.8281,
+          "p95": 23.9266,
+          "max": 23.9266
+        },
+        "archiveBytes": {
+          "samples": 10,
+          "median": 4197888.0,
+          "p95": 4197888.0,
+          "max": 4197888.0
+        }
+      },
+      "UPPER_VALIDATION": {
+        "wallMillis": {
+          "samples": 10,
+          "median": 2.5729,
+          "p95": 4.0592,
+          "max": 4.0592
+        },
+        "callingThreadCpuMillis": {
+          "samples": 10,
+          "median": 1.6795,
+          "p95": 2.3364,
+          "max": 2.3364
+        },
+        "archiveBytes": null
+      }
+    },
+    "restore-upper": {
+      "AUTHORIZATION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.3296,
+          "p95": 0.3731,
+          "max": 0.3731
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.096,
+          "p95": 0.1052,
+          "max": 0.1052
+        },
+        "archiveBytes": null
+      },
+      "CHILD_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 27.3778,
+          "p95": 27.421,
+          "max": 27.421
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 1.6593,
+          "p95": 1.719,
+          "max": 1.719
+        },
+        "archiveBytes": null
+      },
+      "CHILD_START": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 27.066,
+          "p95": 27.1392,
+          "max": 27.1392
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 1.1447,
+          "p95": 1.1457,
+          "max": 1.1457
+        },
+        "archiveBytes": null
+      },
+      "COMMAND_WAIT": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 40.9479,
+          "p95": 51.0652,
+          "max": 51.0652
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.5908,
+          "p95": 0.6119,
+          "max": 0.6119
+        },
+        "archiveBytes": null
+      },
+      "COPY_ADMISSION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1.0227,
+          "p95": 1.1066,
+          "max": 1.1066
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 1.0134,
+          "p95": 1.0891,
+          "max": 1.0891
+        },
+        "archiveBytes": null
+      },
+      "JOURNAL_COMMIT": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 27.1872,
+          "p95": 33.1588,
+          "max": 33.1588
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 8.158,
+          "p95": 8.5499,
+          "max": 8.5499
+        },
+        "archiveBytes": {
+          "samples": 2,
+          "median": 4197888.0,
+          "p95": 4197888.0,
+          "max": 4197888.0
+        }
+      },
+      "JOURNAL_RELEASE": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.0214,
+          "p95": 0.0221,
+          "max": 0.0221
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.0202,
+          "p95": 0.0209,
+          "max": 0.0209
+        },
+        "archiveBytes": null
+      },
+      "NATIVE_EXCHANGE": {
+        "wallMillis": {
+          "samples": 66,
+          "median": 0.4026,
+          "p95": 54.6916,
+          "max": 99.0531
+        },
+        "callingThreadCpuMillis": {
+          "samples": 66,
+          "median": 0.2775,
+          "p95": 7.3842,
+          "max": 11.714
+        },
+        "archiveBytes": null
+      },
+      "OPERATION_ADMISSION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.1928,
+          "p95": 0.1929,
+          "max": 0.1929
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.0684,
+          "p95": 0.0713,
+          "max": 0.0713
+        },
+        "archiveBytes": null
+      },
+      "REQUEST": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 571.2032,
+          "p95": 646.3963,
+          "max": 646.3963
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 78.078,
+          "p95": 82.4405,
+          "max": 82.4405
+        },
+        "archiveBytes": null
+      },
+      "RUNTIME_RECONCILIATION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.6061,
+          "p95": 0.6907,
+          "max": 0.6907
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.3566,
+          "p95": 0.3797,
+          "max": 0.3797
+        },
+        "archiveBytes": null
+      },
+      "SESSION_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 26.3175,
+          "p95": 26.3302,
+          "max": 26.3302
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.9856,
+          "p95": 0.9894,
+          "max": 0.9894
+        },
+        "archiveBytes": null
+      },
+      "SESSION_START": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 27.1145,
+          "p95": 27.2372,
+          "max": 27.2372
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 1.1902,
+          "p95": 1.2196,
+          "max": 1.2196
+        },
+        "archiveBytes": null
+      },
+      "SETUP_COMMAND": {
+        "wallMillis": {
+          "samples": 6,
+          "median": 53.1569,
+          "p95": 79.6969,
+          "max": 79.6969
+        },
+        "callingThreadCpuMillis": {
+          "samples": 6,
+          "median": 1.8061,
+          "p95": 2.5046,
+          "max": 2.5046
+        },
+        "archiveBytes": null
+      },
+      "UPPER_CAPTURE": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 91.3066,
+          "p95": 109.7686,
+          "max": 109.7686
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 18.4746,
+          "p95": 19.44,
+          "max": 19.44
+        },
+        "archiveBytes": {
+          "samples": 2,
+          "median": 4197888.0,
+          "p95": 4197888.0,
+          "max": 4197888.0
+        }
+      },
+      "UPPER_RESTORE": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 186.3646,
+          "p95": 212.6608,
+          "max": 212.6608
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 34.1507,
+          "p95": 37.1379,
+          "max": 37.1379
+        },
+        "archiveBytes": {
+          "samples": 2,
+          "median": 4197888.0,
+          "p95": 4197888.0,
+          "max": 4197888.0
+        }
+      },
+      "UPPER_VALIDATION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 2.7566,
+          "p95": 3.2952,
+          "max": 3.2952
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 1.7665,
+          "p95": 2.0074,
+          "max": 2.0074
+        },
+        "archiveBytes": null
+      }
+    },
+    "timeout": {
+      "AUTHORIZATION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.1921,
+          "p95": 0.21,
+          "max": 0.21
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.0567,
+          "p95": 0.0582,
+          "max": 0.0582
+        },
+        "archiveBytes": null
+      },
+      "CHILD_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 2.3853,
+          "p95": 2.4839,
+          "max": 2.4839
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 1.4037,
+          "p95": 1.8753,
+          "max": 1.8753
+        },
+        "archiveBytes": null
+      },
+      "CHILD_START": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 26.4988,
+          "p95": 26.5471,
+          "max": 26.5471
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.8628,
+          "p95": 0.9137,
+          "max": 0.9137
+        },
+        "archiveBytes": null
+      },
+      "COMMAND_WAIT": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1040.3011,
+          "p95": 1040.5394,
+          "max": 1040.5394
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.7087,
+          "p95": 0.7522,
+          "max": 0.7522
+        },
+        "archiveBytes": null
+      },
+      "COPY_ADMISSION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.9246,
+          "p95": 0.9489,
+          "max": 0.9489
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.9219,
+          "p95": 0.9478,
+          "max": 0.9478
+        },
+        "archiveBytes": null
+      },
+      "JOURNAL_COMMIT": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 27.8564,
+          "p95": 32.9134,
+          "max": 32.9134
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 8.8993,
+          "p95": 9.1815,
+          "max": 9.1815
+        },
+        "archiveBytes": {
+          "samples": 2,
+          "median": 4197888.0,
+          "p95": 4197888.0,
+          "max": 4197888.0
+        }
+      },
+      "JOURNAL_RELEASE": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.0224,
+          "p95": 0.0225,
+          "max": 0.0225
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.0211,
+          "p95": 0.0212,
+          "max": 0.0212
+        },
+        "archiveBytes": null
+      },
+      "NATIVE_EXCHANGE": {
+        "wallMillis": {
+          "samples": 46,
+          "median": 0.4075,
+          "p95": 91.4431,
+          "max": 1040.5085
+        },
+        "callingThreadCpuMillis": {
+          "samples": 46,
+          "median": 0.2544,
+          "p95": 0.7868,
+          "max": 11.1791
+        },
+        "archiveBytes": null
+      },
+      "OPERATION_ADMISSION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.1909,
+          "p95": 0.2153,
+          "max": 0.2153
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.055,
+          "p95": 0.0573,
+          "max": 0.0573
+        },
+        "archiveBytes": null
+      },
+      "REQUEST": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 1293.1061,
+          "p95": 1323.7126,
+          "max": 1323.7126
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 41.1955,
+          "p95": 42.674,
+          "max": 42.674
+        },
+        "archiveBytes": null
+      },
+      "RUNTIME_RECONCILIATION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.5322,
+          "p95": 0.5787,
+          "max": 0.5787
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.3646,
+          "p95": 0.4131,
+          "max": 0.4131
+        },
+        "archiveBytes": null
+      },
+      "SESSION_CONTAINMENT": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.7302,
+          "p95": 1.0343,
+          "max": 1.0343
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.31,
+          "p95": 0.3628,
+          "max": 0.3628
+        },
+        "archiveBytes": null
+      },
+      "SESSION_RENEW": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 0.8609,
+          "p95": 0.9407,
+          "max": 0.9407
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 0.4079,
+          "p95": 0.4494,
+          "max": 0.4494
+        },
+        "archiveBytes": null
+      },
+      "SETUP_COMMAND": {
+        "wallMillis": {
+          "samples": 4,
+          "median": 40.1741,
+          "p95": 53.4177,
+          "max": 53.4177
+        },
+        "callingThreadCpuMillis": {
+          "samples": 4,
+          "median": 1.5483,
+          "p95": 2.0117,
+          "max": 2.0117
+        },
+        "archiveBytes": null
+      },
+      "UPPER_CAPTURE": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 91.6554,
+          "p95": 109.2722,
+          "max": 109.2722
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 17.551,
+          "p95": 18.5386,
+          "max": 18.5386
+        },
+        "archiveBytes": {
+          "samples": 2,
+          "median": 4197888.0,
+          "p95": 4197888.0,
+          "max": 4197888.0
+        }
+      },
+      "UPPER_VALIDATION": {
+        "wallMillis": {
+          "samples": 2,
+          "median": 2.0942,
+          "p95": 2.2101,
+          "max": 2.2101
+        },
+        "callingThreadCpuMillis": {
+          "samples": 2,
+          "median": 1.3135,
+          "p95": 1.3806,
+          "max": 1.3806
+        },
+        "archiveBytes": null
+      }
+    }
+  },
+  "recordedResourceDeltas": {
+    "first-parent": {
+      "application": {
+        "cpuUsageMicros": {
+          "samples": 2,
+          "median": 786296.0,
+          "p95": 842797.0,
+          "max": 842797.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 2,
+          "median": 489564.5,
+          "p95": 570104.0,
+          "max": 570104.0
+        },
+        "cpuPressureMicros": {
+          "samples": 2,
+          "median": 142566.5,
+          "p95": 152189.0,
+          "max": 152189.0
+        },
+        "ioPressureMicros": {
+          "samples": 2,
+          "median": 319.5,
+          "p95": 336.0,
+          "max": 336.0
+        },
+        "readBytes": {
+          "samples": 2,
+          "median": 90112.0,
+          "p95": 98304.0,
+          "max": 98304.0
+        },
+        "writtenBytes": {
+          "samples": 2,
+          "median": 686592.0,
+          "p95": 692224.0,
+          "max": 692224.0
+        },
+        "memoryAfter": {
+          "anon": {
+            "samples": 2,
+            "min": 355942400,
+            "median": 374587392.0,
+            "p95": 393232384,
+            "max": 393232384
+          },
+          "file": {
+            "samples": 2,
+            "min": 3670016,
+            "median": 68825088.0,
+            "p95": 133980160,
+            "max": 133980160
+          },
+          "kernel": {
+            "samples": 2,
+            "min": 4173824,
+            "median": 4290560.0,
+            "p95": 4407296,
+            "max": 4407296
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "nativePool": {
+        "cpuUsageMicros": {
+          "samples": 2,
+          "median": 155438.5,
+          "p95": 157116.0,
+          "max": 157116.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 2,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 2,
+          "median": 556.5,
+          "p95": 665.0,
+          "max": 665.0
+        },
+        "ioPressureMicros": {
+          "samples": 2,
+          "median": 2399.5,
+          "p95": 3125.0,
+          "max": 3125.0
+        },
+        "readBytes": {
+          "samples": 2,
+          "median": 8939520.0,
+          "p95": 10465280.0,
+          "max": 10465280.0
+        },
+        "writtenBytes": {
+          "samples": 2,
+          "median": 4288000.0,
+          "p95": 4289536.0,
+          "max": 4289536.0
+        },
+        "memoryAfter": {
+          "anon": {
+            "samples": 2,
+            "min": 884736,
+            "median": 890880.0,
+            "p95": 897024,
+            "max": 897024
+          },
+          "file": {
+            "samples": 2,
+            "min": 6049792,
+            "median": 9267200.0,
+            "p95": 12484608,
+            "max": 12484608
+          },
+          "kernel": {
+            "samples": 2,
+            "min": 2064384,
+            "median": 2308096.0,
+            "p95": 2551808,
+            "max": 2551808
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "daemon": {
+        "cpuUsageMicros": {
+          "samples": 2,
+          "median": 66901.0,
+          "p95": 69184.0,
+          "max": 69184.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 2,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 2,
+          "median": 350.5,
+          "p95": 410.0,
+          "max": 410.0
+        },
+        "ioPressureMicros": {
+          "samples": 2,
+          "median": 223.5,
+          "p95": 363.0,
+          "max": 363.0
+        },
+        "readBytes": null,
+        "writtenBytes": null,
+        "memoryAfter": {
+          "anon": {
+            "samples": 2,
+            "min": 90112,
+            "median": 92160.0,
+            "p95": 94208,
+            "max": 94208
+          },
+          "file": {
+            "samples": 2,
+            "min": 1007616,
+            "median": 1056768.0,
+            "p95": 1105920,
+            "max": 1105920
+          },
+          "kernel": {
+            "samples": 2,
+            "min": 315392,
+            "median": 374784.0,
+            "p95": 434176,
+            "max": 434176
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "workloads": {
+        "cpuUsageMicros": {
+          "samples": 2,
+          "median": 88537.5,
+          "p95": 89143.0,
+          "max": 89143.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 2,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 2,
+          "median": 295.0,
+          "p95": 299.0,
+          "max": 299.0
+        },
+        "ioPressureMicros": {
+          "samples": 2,
+          "median": 2790.0,
+          "p95": 4259.0,
+          "max": 4259.0
+        },
+        "readBytes": null,
+        "writtenBytes": null,
+        "memoryAfter": {
+          "anon": {
+            "samples": 2,
+            "min": 569344,
+            "median": 573440.0,
+            "p95": 577536,
+            "max": 577536
+          },
+          "file": {
+            "samples": 2,
+            "min": 3432448,
+            "median": 6582272.0,
+            "p95": 9732096,
+            "max": 9732096
+          },
+          "kernel": {
+            "samples": 2,
+            "min": 1441792,
+            "median": 1632256.0,
+            "p95": 1822720,
+            "max": 1822720
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      }
+    },
+    "warm-empty": {
+      "application": {
+        "cpuUsageMicros": {
+          "samples": 10,
+          "median": 90828.0,
+          "p95": 211525.0,
+          "max": 211525.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 10,
+          "median": 0.0,
+          "p95": 127071.0,
+          "max": 127071.0
+        },
+        "cpuPressureMicros": {
+          "samples": 10,
+          "median": 109.5,
+          "p95": 31424.0,
+          "max": 31424.0
+        },
+        "ioPressureMicros": {
+          "samples": 10,
+          "median": 46.0,
+          "p95": 102.0,
+          "max": 102.0
+        },
+        "readBytes": {
+          "samples": 10,
+          "median": 16384.0,
+          "p95": 16384.0,
+          "max": 16384.0
+        },
+        "writtenBytes": {
+          "samples": 10,
+          "median": 38144.0,
+          "p95": 48128.0,
+          "max": 48128.0
+        },
+        "memoryAfter": {
+          "anon": {
+            "samples": 10,
+            "min": 358203392,
+            "median": 377280512.0,
+            "p95": 395984896,
+            "max": 395984896
+          },
+          "file": {
+            "samples": 10,
+            "min": 3694592,
+            "median": 68659200.0,
+            "p95": 133718016,
+            "max": 133718016
+          },
+          "kernel": {
+            "samples": 10,
+            "min": 4186112,
+            "median": 4321280.0,
+            "p95": 4456448,
+            "max": 4456448
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "nativePool": {
+        "cpuUsageMicros": {
+          "samples": 10,
+          "median": 48875.5,
+          "p95": 52204.0,
+          "max": 52204.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 10,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 10,
+          "median": 205.5,
+          "p95": 575.0,
+          "max": 575.0
+        },
+        "ioPressureMicros": {
+          "samples": 10,
+          "median": 45.0,
+          "p95": 129.0,
+          "max": 129.0
+        },
+        "readBytes": {
+          "samples": 10,
+          "median": 20480.0,
+          "p95": 237568.0,
+          "max": 237568.0
+        },
+        "writtenBytes": {
+          "samples": 10,
+          "median": 169984.0,
+          "p95": 202240.0,
+          "max": 202240.0
+        },
+        "memoryAfter": {
+          "anon": {
+            "samples": 10,
+            "min": 905216,
+            "median": 911360.0,
+            "p95": 929792,
+            "max": 929792
+          },
+          "file": {
+            "samples": 10,
+            "min": 5292032,
+            "median": 7487488.0,
+            "p95": 11440128,
+            "max": 11440128
+          },
+          "kernel": {
+            "samples": 10,
+            "min": 2449408,
+            "median": 2684928.0,
+            "p95": 3768320,
+            "max": 3768320
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "daemon": {
+        "cpuUsageMicros": {
+          "samples": 10,
+          "median": 19635.5,
+          "p95": 21948.0,
+          "max": 21948.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 10,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 10,
+          "median": 186.0,
+          "p95": 302.0,
+          "max": 302.0
+        },
+        "ioPressureMicros": {
+          "samples": 10,
+          "median": 50.0,
+          "p95": 93.0,
+          "max": 93.0
+        },
+        "readBytes": null,
+        "writtenBytes": null,
+        "memoryAfter": {
+          "anon": {
+            "samples": 10,
+            "min": 110592,
+            "median": 114688.0,
+            "p95": 126976,
+            "max": 126976
+          },
+          "file": {
+            "samples": 10,
+            "min": 1007616,
+            "median": 1056768.0,
+            "p95": 1105920,
+            "max": 1105920
+          },
+          "kernel": {
+            "samples": 10,
+            "min": 417792,
+            "median": 456704.0,
+            "p95": 913408,
+            "max": 913408
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "workloads": {
+        "cpuUsageMicros": {
+          "samples": 10,
+          "median": 29203.5,
+          "p95": 30774.0,
+          "max": 30774.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 10,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 10,
+          "median": 63.0,
+          "p95": 207.0,
+          "max": 207.0
+        },
+        "ioPressureMicros": {
+          "samples": 10,
+          "median": 17.5,
+          "p95": 101.0,
+          "max": 101.0
+        },
+        "readBytes": null,
+        "writtenBytes": null,
+        "memoryAfter": {
+          "anon": {
+            "samples": 10,
+            "min": 569344,
+            "median": 573440.0,
+            "p95": 577536,
+            "max": 577536
+          },
+          "file": {
+            "samples": 10,
+            "min": 2625536,
+            "median": 4626432.0,
+            "p95": 8638464,
+            "max": 8638464
+          },
+          "kernel": {
+            "samples": 10,
+            "min": 1724416,
+            "median": 1929216.0,
+            "p95": 2555904,
+            "max": 2555904
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      }
+    },
+    "warm-4194304": {
+      "application": {
+        "cpuUsageMicros": {
+          "samples": 10,
+          "median": 127098.5,
+          "p95": 171496.0,
+          "max": 171496.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 10,
+          "median": 0.0,
+          "p95": 47685.0,
+          "max": 47685.0
+        },
+        "cpuPressureMicros": {
+          "samples": 10,
+          "median": 203.5,
+          "p95": 22414.0,
+          "max": 22414.0
+        },
+        "ioPressureMicros": {
+          "samples": 10,
+          "median": 45.0,
+          "p95": 95.0,
+          "max": 95.0
+        },
+        "readBytes": {
+          "samples": 10,
+          "median": 12288.0,
+          "p95": 16384.0,
+          "max": 16384.0
+        },
+        "writtenBytes": {
+          "samples": 10,
+          "median": 39936.0,
+          "p95": 41472.0,
+          "max": 41472.0
+        },
+        "memoryAfter": {
+          "anon": {
+            "samples": 10,
+            "min": 362352640,
+            "median": 382187520.0,
+            "p95": 400064512,
+            "max": 400064512
+          },
+          "file": {
+            "samples": 10,
+            "min": 8384512,
+            "median": 73256960.0,
+            "p95": 139784192,
+            "max": 139784192
+          },
+          "kernel": {
+            "samples": 10,
+            "min": 4268032,
+            "median": 4454400.0,
+            "p95": 4644864,
+            "max": 4644864
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "nativePool": {
+        "cpuUsageMicros": {
+          "samples": 10,
+          "median": 55884.0,
+          "p95": 58178.0,
+          "max": 58178.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 10,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 10,
+          "median": 208.0,
+          "p95": 421.0,
+          "max": 421.0
+        },
+        "ioPressureMicros": {
+          "samples": 10,
+          "median": 167.0,
+          "p95": 532.0,
+          "max": 532.0
+        },
+        "readBytes": {
+          "samples": 10,
+          "median": 20480.0,
+          "p95": 4521984.0,
+          "max": 4521984.0
+        },
+        "writtenBytes": {
+          "samples": 10,
+          "median": 8564736.0,
+          "p95": 8582144.0,
+          "max": 8582144.0
+        },
+        "memoryAfter": {
+          "anon": {
+            "samples": 10,
+            "min": 917504,
+            "median": 921600.0,
+            "p95": 929792,
+            "max": 929792
+          },
+          "file": {
+            "samples": 10,
+            "min": 22577152,
+            "median": 32036864.0,
+            "p95": 37720064,
+            "max": 37720064
+          },
+          "kernel": {
+            "samples": 10,
+            "min": 3096576,
+            "median": 3358720.0,
+            "p95": 3674112,
+            "max": 3674112
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "daemon": {
+        "cpuUsageMicros": {
+          "samples": 10,
+          "median": 22381.5,
+          "p95": 24641.0,
+          "max": 24641.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 10,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 10,
+          "median": 191.0,
+          "p95": 362.0,
+          "max": 362.0
+        },
+        "ioPressureMicros": {
+          "samples": 10,
+          "median": 36.0,
+          "p95": 84.0,
+          "max": 84.0
+        },
+        "readBytes": null,
+        "writtenBytes": null,
+        "memoryAfter": {
+          "anon": {
+            "samples": 10,
+            "min": 118784,
+            "median": 126976.0,
+            "p95": 135168,
+            "max": 135168
+          },
+          "file": {
+            "samples": 10,
+            "min": 1007616,
+            "median": 1056768.0,
+            "p95": 1105920,
+            "max": 1105920
+          },
+          "kernel": {
+            "samples": 10,
+            "min": 339968,
+            "median": 374784.0,
+            "p95": 446464,
+            "max": 446464
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "workloads": {
+        "cpuUsageMicros": {
+          "samples": 10,
+          "median": 33208.5,
+          "p95": 35235.0,
+          "max": 35235.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 10,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 10,
+          "median": 72.0,
+          "p95": 169.0,
+          "max": 169.0
+        },
+        "ioPressureMicros": {
+          "samples": 10,
+          "median": 148.0,
+          "p95": 586.0,
+          "max": 586.0
+        },
+        "readBytes": null,
+        "writtenBytes": null,
+        "memoryAfter": {
+          "anon": {
+            "samples": 10,
+            "min": 569344,
+            "median": 573440.0,
+            "p95": 577536,
+            "max": 577536
+          },
+          "file": {
+            "samples": 10,
+            "min": 6320128,
+            "median": 8284160.0,
+            "p95": 10350592,
+            "max": 10350592
+          },
+          "kernel": {
+            "samples": 10,
+            "min": 1904640,
+            "median": 2103296.0,
+            "p95": 2330624,
+            "max": 2330624
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      }
+    },
+    "restore-upper": {
+      "application": {
+        "cpuUsageMicros": {
+          "samples": 2,
+          "median": 264582.0,
+          "p95": 285486.0,
+          "max": 285486.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 2,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 2,
+          "median": 192.5,
+          "p95": 211.0,
+          "max": 211.0
+        },
+        "ioPressureMicros": {
+          "samples": 2,
+          "median": 42.0,
+          "p95": 48.0,
+          "max": 48.0
+        },
+        "readBytes": {
+          "samples": 2,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "writtenBytes": {
+          "samples": 2,
+          "median": 87808.0,
+          "p95": 88064.0,
+          "max": 88064.0
+        },
+        "memoryAfter": {
+          "anon": {
+            "samples": 2,
+            "min": 368205824,
+            "median": 384624640.0,
+            "p95": 401043456,
+            "max": 401043456
+          },
+          "file": {
+            "samples": 2,
+            "min": 8589312,
+            "median": 73236480.0,
+            "p95": 137883648,
+            "max": 137883648
+          },
+          "kernel": {
+            "samples": 2,
+            "min": 4300800,
+            "median": 4478976.0,
+            "p95": 4657152,
+            "max": 4657152
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "nativePool": {
+        "cpuUsageMicros": {
+          "samples": 2,
+          "median": 118221.5,
+          "p95": 119879.0,
+          "max": 119879.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 2,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 2,
+          "median": 287.0,
+          "p95": 370.0,
+          "max": 370.0
+        },
+        "ioPressureMicros": {
+          "samples": 2,
+          "median": 548.5,
+          "p95": 689.0,
+          "max": 689.0
+        },
+        "readBytes": {
+          "samples": 2,
+          "median": 864256.0,
+          "p95": 1482752.0,
+          "max": 1482752.0
+        },
+        "writtenBytes": {
+          "samples": 2,
+          "median": 17168384.0,
+          "p95": 17172992.0,
+          "max": 17172992.0
+        },
+        "memoryAfter": {
+          "anon": {
+            "samples": 2,
+            "min": 1101824,
+            "median": 1101824.0,
+            "p95": 1101824,
+            "max": 1101824
+          },
+          "file": {
+            "samples": 2,
+            "min": 35315712,
+            "median": 36677632.0,
+            "p95": 38039552,
+            "max": 38039552
+          },
+          "kernel": {
+            "samples": 2,
+            "min": 3645440,
+            "median": 3690496.0,
+            "p95": 3735552,
+            "max": 3735552
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "daemon": {
+        "cpuUsageMicros": {
+          "samples": 2,
+          "median": 44747.0,
+          "p95": 45234.0,
+          "max": 45234.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 2,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 2,
+          "median": 251.0,
+          "p95": 282.0,
+          "max": 282.0
+        },
+        "ioPressureMicros": {
+          "samples": 2,
+          "median": 23.0,
+          "p95": 28.0,
+          "max": 28.0
+        },
+        "readBytes": null,
+        "writtenBytes": null,
+        "memoryAfter": {
+          "anon": {
+            "samples": 2,
+            "min": 163840,
+            "median": 165888.0,
+            "p95": 167936,
+            "max": 167936
+          },
+          "file": {
+            "samples": 2,
+            "min": 8192,
+            "median": 10240.0,
+            "p95": 12288,
+            "max": 12288
+          },
+          "kernel": {
+            "samples": 2,
+            "min": 311296,
+            "median": 348160.0,
+            "p95": 385024,
+            "max": 385024
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      },
+      "workloads": {
+        "cpuUsageMicros": {
+          "samples": 2,
+          "median": 73474.5,
+          "p95": 75620.0,
+          "max": 75620.0
+        },
+        "cpuThrottledMicros": {
+          "samples": 2,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "cpuPressureMicros": {
+          "samples": 2,
+          "median": 119.5,
+          "p95": 144.0,
+          "max": 144.0
+        },
+        "ioPressureMicros": {
+          "samples": 2,
+          "median": 786.5,
+          "p95": 862.0,
+          "max": 862.0
+        },
+        "readBytes": null,
+        "writtenBytes": null,
+        "memoryAfter": {
+          "anon": {
+            "samples": 2,
+            "min": 712704,
+            "median": 712704.0,
+            "p95": 712704,
+            "max": 712704
+          },
+          "file": {
+            "samples": 2,
+            "min": 4435968,
+            "median": 5056512.0,
+            "p95": 5677056,
+            "max": 5677056
+          },
+          "kernel": {
+            "samples": 2,
+            "min": 1122304,
+            "median": 1128448.0,
+            "p95": 1134592,
+            "max": 1134592
+          }
+        },
+        "oom": 0,
+        "oomKill": 0
+      }
+    }
+  },
+  "failedSetupAttempts": {
+    "base1": {
+      "result": "FAIL",
+      "reason": "The initial probe referenced a file absent from the synthetic repository.",
+      "cleanup": "PASS"
+    },
+    "rec1": {
+      "result": "FAIL",
+      "reason": "JFR needed an explicit writable output path for the service UID.",
+      "cleanup": "PASS"
+    },
+    "rec2": {
+      "result": "FAIL",
+      "reason": "The immediate port preflight collided with the previous connection lifecycle; no service started.",
+      "cleanup": "NOT_STARTED"
+    },
+    "base3": {
+      "result": "FAIL",
+      "reason": "The delegated daemon leaf has no io.stat; the collector now reports null while requiring pool I/O.",
+      "cleanup": "PASS"
+    }
+  },
+  "preliminaryAttempts": [
+    "base2",
+    "rec3",
+    "dis1"
+  ],
+  "boundaries": [
+    "Synthetic real-auth PostgreSQL HTTP/MCP fixture; no model and no production workload.",
+    "First-parent means a fresh application and session; host page caches are not dropped.",
+    "HTTP wall includes stateless MCP initialization and teardown.",
+    "JFR phases are nested inclusive durations; do not sum them.",
+    "Thread CPU excludes other threads, Sandcrab and the command; -1 means unavailable.",
+    "Archive payload bytes differ from cgroup physical I/O; writeback can outlive a request.",
+    "Throttling counters describe the observed cgroup quotas; per-sandbox quota counters are not sampled.",
+    "Absent delegated io.stat is null, not zero; application and native-pool I/O counters are required.",
+    "Memory snapshots are endpoints, not peaks. PostgreSQL and client overhead are outside these cgroups.",
+    "The native pool contains daemon and workloads; their hierarchical counters must not be added together.",
+    "Five serial repeats describe this fixture; they do not establish a capacity or tail-latency SLO.",
+    "Two order-balanced trials per variant; small observed differences do not establish a speedup or an overhead bound.",
+    "The unmodified application baseline and candidate use the same released daemon and fixture limits.",
+    "Raw local attempts are retained during development; CI stores its focused replay in downstream-results/native-phases.",
+    "The CI replay is a separate run and is not the source of these local comparison numbers."
+  ],
+  "nextWork": [
+    "Measure a reusable toolkit/environment workflow against repeated setup.",
+    "Preserve acknowledgement durability while assessing whole-upper capture costs.",
+    "Evaluate concurrency limits with a mixed workload before changing quotas or admission."
+  ]
+}

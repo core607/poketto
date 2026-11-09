@@ -30,16 +30,40 @@ Containers log under `SYSLOG_IDENTIFIER=poketto-<container>`. The repository and
 use the operator's configured systemd units. Native sandboxes use delegated cgroups inside those
 services. Adapt node exporter's unit selector and the service alert to those unit names.
 
+## Native execution phases
+
+`poketto.NativeRepositoryPhase` is an optional JFR event, disabled by default. Enable it
+explicitly with threshold zero and stack traces disabled. Its fixed phase names cover the
+request, authorization and admission, template lookup/build, parent start/renewal, child
+startup and containment, setup, command wait, upper restore/capture/validation, journal
+commit/release and session containment. Parent reuse skips restoration; each command still
+creates a child and persists the upper before acknowledging success.
+`NATIVE_EXCHANGE` measures one socket exchange and its response reader within these phases,
+separately from consumer polling waits and the whole request. It carries no endpoint or request body.
+
+Events carry a process-local `invocation`, `phase`, `parentPhase` and `depth`. They contain
+no command, path, account, copy or credential. Durations are inclusive and nested; do not
+sum them. A phase completing does not establish a successful request: correlate its time
+window with the actual HTTP/MCP outcome. Background containment can have its own root.
+
+`threadCpuNanos` measures only the calling platform thread, excluding asynchronous work,
+Sandcrab and the executed command. It is `-1` when unavailable, including virtual threads;
+recording never enables JVM-wide thread CPU measurement. `transferredBytes` is the archive
+payload for template creation, restore, capture and journal commit, or `-1` when unknown. It is not physical
+disk I/O. The [isolated replay](../../acceptance/clients/README.md) records real outcomes,
+cgroup CPU, throttling, I/O, pressure and memory alongside these phases and checks recording
+completeness. Compare enabled, disabled and uninstrumented runtimes before attributing costs.
+
 ## Repository read events
 
 `poketto.RepositoryReadResolution` covers read-side main resolution before the reader callback:
 workspace-lock wait, remote-fetch time, and `cacheReused`, `fetchAttempted` and `resolved` flags.
 Reuse can use a known commit or the configured recent-fetch window. Failed attempts retain their
-elapsed time; `resolved` does not claim the subsequent reader succeeded. This JFR event records
-elapsed times and booleans with stack traces disabled; it changes neither admission nor fetch reuse.
+elapsed time; `resolved` does not claim the subsequent reader succeeded.
 
-Native execution uses the tool outcome duration and executor metrics above. Those observations
-do not separate request preparation, startup, command execution and durable acknowledgement.
+This event adds only elapsed times and booleans, with stack traces disabled. It changes neither
+admission nor fetch reuse. Its duration can overlap a native execution phase and must not be
+added to that phase's duration.
 
 ## Running this stack
 

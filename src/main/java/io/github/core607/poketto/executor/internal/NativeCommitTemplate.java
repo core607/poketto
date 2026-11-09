@@ -1,6 +1,7 @@
 package io.github.core607.poketto.executor.internal;
 
 import io.github.core607.poketto.content.RepositorySnapshotExports;
+import io.github.core607.poketto.executor.internal.NativeRepositoryPhase.Stage;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.UUID;
@@ -24,39 +25,42 @@ final class NativeCommitTemplate {
             Path bundle,
             Runnable authorize,
             Consumer<NativeTransferStore.File> publish) {
-        SandcrabProtocol.Profile settings = profiles.offlinePreparation(service);
-        SandcrabProtocol.Profile execution = service.profiles().get(profiles.execution());
-        ProtocolValues.require(
-                execution != null && service.capabilities().contains("templates"),
-                "commit template",
-                "requires a supported native profile");
-        ProtocolValues.require(
-                export.bundleBytes() <= settings.transferBytes(),
-                "commit bundle",
-                "exceeds the profile transfer bound");
-        long archiveLimit = Math.min(settings.transferBytes(), execution.transferBytes());
-        var plan = new SandcrabProtocol.SessionPlan(
-                UUID.randomUUID().toString(),
-                service.serverId(),
-                profiles.preparation(),
-                settings.sessionTtlMillis(),
-                null);
-        try (var builder = new Builder(plan)) {
-            authorize.run();
-            var session = builder.open(authorize);
-            client.putFile(
-                    session,
-                    new SandcrabProtocol.FilePut(
-                            NativeRepositoryLayout.SEED, export.bundleBytes(), export.bundleSha256()),
-                    bundle,
-                    authorize);
-            builder.checkout(session, settings, export.commit(), authorize);
-            try (var tree = transfers.capture(
-                    archiveLimit,
-                    authorize,
-                    path -> client.snapshot(
-                            session, new SandcrabFiles.Plan(".", "tar"), archiveLimit, path, authorize))) {
-                publish.accept(tree);
+        try (var phase = NativeRepositoryPhase.start(Stage.TEMPLATE_BUILD)) {
+            SandcrabProtocol.Profile settings = profiles.offlinePreparation(service);
+            SandcrabProtocol.Profile execution = service.profiles().get(profiles.execution());
+            ProtocolValues.require(
+                    execution != null && service.capabilities().contains("templates"),
+                    "commit template",
+                    "requires a supported native profile");
+            ProtocolValues.require(
+                    export.bundleBytes() <= settings.transferBytes(),
+                    "commit bundle",
+                    "exceeds the profile transfer bound");
+            long archiveLimit = Math.min(settings.transferBytes(), execution.transferBytes());
+            var plan = new SandcrabProtocol.SessionPlan(
+                    UUID.randomUUID().toString(),
+                    service.serverId(),
+                    profiles.preparation(),
+                    settings.sessionTtlMillis(),
+                    null);
+            try (var builder = new Builder(plan)) {
+                authorize.run();
+                var session = builder.open(authorize);
+                client.putFile(
+                        session,
+                        new SandcrabProtocol.FilePut(
+                                NativeRepositoryLayout.SEED, export.bundleBytes(), export.bundleSha256()),
+                        bundle,
+                        authorize);
+                builder.checkout(session, settings, export.commit(), authorize);
+                try (var tree = transfers.capture(
+                        archiveLimit,
+                        authorize,
+                        path -> client.snapshot(
+                                session, new SandcrabFiles.Plan(".", "tar"), archiveLimit, path, authorize))) {
+                    phase.bytes(tree.size());
+                    publish.accept(tree);
+                }
             }
         }
     }
