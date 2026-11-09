@@ -2,6 +2,7 @@ package io.github.core607.poketto.executor.internal;
 
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.content.RepositorySnapshotExports;
+import io.github.core607.poketto.executor.internal.NativeRepositoryPhase.Stage;
 import io.github.core607.poketto.mcp.ExecutionCancellation;
 import io.github.core607.poketto.mcp.RepositoryExecutor.CopyRetention;
 import java.io.IOException;
@@ -360,10 +361,12 @@ final class AccountCommand implements AutoCloseable {
 
     @Override
     public void close() {
-        try {
-            lease.close();
-        } catch (IOException failure) {
-            throw new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE, failure);
+        try (var phase = NativeRepositoryPhase.start(Stage.JOURNAL_RELEASE)) {
+            try {
+                lease.close();
+            } catch (IOException failure) {
+                throw new RetainedCopyException(RetainedCopyException.Reason.UNAVAILABLE, failure);
+            }
         }
     }
 }

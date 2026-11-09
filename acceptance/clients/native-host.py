@@ -40,9 +40,16 @@ def main():
     parser.add_argument('--games', action='store_true')
     parser.add_argument('--agents', type=int, default=4, help='concurrent agents the services admit')
     parser.add_argument('--origin', help='Browser gateway origin; defaults to the API loopback origin')
+    parser.add_argument('--phase-evidence', type=Path, help='Run the fixed serial phase measurement, then clean up')
+    parser.add_argument('--phase-recording', action='store_true', help='Enable only the optional native JFR phases')
     args = parser.parse_args()
     assert os.geteuid() == 0 and 1024 <= args.port <= 65535 and 60 <= args.lifetime_seconds <= 3600
     assert 1 <= args.agents <= 64
+    assert not args.phase_recording or args.phase_evidence, '--phase-recording requires --phase-evidence'
+    if args.phase_evidence:
+        assert not args.games, 'Phase comparisons use only the repository fixture'
+        args.phase_evidence = args.phase_evidence.absolute()
+        args.phase_evidence.mkdir(mode=0o700)
     runtime, binary, tools, java = [p.resolve(strict=True) for p in (args.runtime, args.binary, args.tools, args.java)]
     manifest = verify_runtime(runtime)
     with socket.socket() as port_check:
@@ -124,7 +131,7 @@ def main():
                 '--poketto.games.socket=' + game_settings['gameSocket']])
         run(['systemd-run', '--quiet', '--unit', app_unit, '-p', 'User=' + app_user,
              '-p', 'EnvironmentFile=' + str(app_environment), '-p', 'UMask=0077',
-             '-p', 'MemoryMax=768M', '-p', 'TasksMax=256', '-p', 'CPUQuota=100%',
+             '-p', 'MemoryMax=768M', '-p', 'MemorySwapMax=0', '-p', 'TasksMax=256', '-p', 'CPUQuota=100%',
              '-p', 'RuntimeMaxSec=' + str(args.lifetime_seconds),
              str(java), '-Xmx384m', '-XX:MaxMetaspaceSize=192m', '-Duser.home=' + str(root / 'home'),
              '-Djava.awt.headless=true', '-cp', str(runtime / 'classes') + ':' + str(runtime / 'jars/*'),
@@ -157,9 +164,15 @@ def main():
         receipt = root / 'client.json'
         private_text(receipt, json.dumps({'endpoint': endpoint, 'password': password, 'root': str(root),
                                      'gameJobs': str(game_fixture.runtime / 'jobs') if game_fixture else None}))
-        print(json.dumps({'ready': True, 'root': str(root), 'endpoint': endpoint, 'backend': 'sandcrab-native-v1',
+        ready = {'ready': True, 'root': str(root), 'endpoint': endpoint, 'backend': 'sandcrab-native-v1',
                           'serverId': server_id, 'controllerSha256': sha(Path(__file__)), 'runtimeManifestSha256': manifest,
-                          'binarySha256': sha(repository.binary), 'nativeConfigSha256': sha(repository.config)}), flush=True)
+                          'binarySha256': sha(repository.binary), 'nativeConfigSha256': sha(repository.config)}
+        print(json.dumps(ready), flush=True)
+        if args.phase_evidence:
+            from native_phases import measure
+            measure(root, java, app_unit, repository.unit, pool.name, ready, args.phase_evidence,
+                    args.phase_recording)
+            return
         deadline = time.monotonic() + args.lifetime_seconds
         while not (root / 'stop').exists() and time.monotonic() < deadline:
             assert run(['systemctl', 'is-active', app_unit]) == 'active'
@@ -205,6 +218,9 @@ def main():
             shutil.rmtree(root)
         if not failures:
             attempt('fixture cleanup', remove_root)
+        if args.phase_evidence:
+            from native_phases import finish
+            finish(args.phase_evidence, failures)
         if failures:
             attempt('restrict retained fixture', lambda: root.chmod(0o700))
             print(json.dumps({'cleanup': 'FAILED', 'failures': failures}), flush=True)

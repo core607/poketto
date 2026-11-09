@@ -280,7 +280,7 @@ class NativeRepositoryPublicTests extends NativeRepositoryTestFixture {
                 mock(NativeExportCommands.class));
     }
 
-    private NativeRepositoryExecutor executor(int copies, NativeRepositoryExecutor.CommandObserver observer) {
+    private NativeRepositoryExecutor executor(int copies, NativeCommandObserver observer) {
         return executor(observer, new ExecutionLimits(2, 2, Map.of(), Map.of(SiteGroup.COMMUNITY, copies)), time::get);
     }
 

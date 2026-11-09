@@ -1,5 +1,6 @@
 package io.github.core607.poketto.executor.internal;
 
+import io.github.core607.poketto.executor.internal.NativeRepositoryPhase.Stage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.StandardProtocolFamily;
@@ -83,6 +84,12 @@ final class SandboxHttp {
     }
 
     private <T> T exchange(Request request, Duration timeout, Duration idle, Reader<T> reader, boolean events) {
+        try (var observation = NativeRepositoryPhase.start(Stage.NATIVE_EXCHANGE)) {
+            return send(request, timeout, idle, reader, events);
+        }
+    }
+
+    private <T> T send(Request request, Duration timeout, Duration idle, Reader<T> reader, boolean events) {
         try {
             verifySocket.run();
         } catch (WorkerUnavailableException failure) {

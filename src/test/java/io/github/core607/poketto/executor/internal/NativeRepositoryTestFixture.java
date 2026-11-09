@@ -281,12 +281,11 @@ abstract class NativeRepositoryTestFixture {
         return session;
     }
 
-    NativeRepositoryExecutor executor(NativeRepositoryExecutor.CommandObserver observer) {
+    NativeRepositoryExecutor executor(NativeCommandObserver observer) {
         return executor(observer, new ExecutionLimits(1, 1, Map.of(), Map.of()), System::nanoTime);
     }
 
-    NativeRepositoryExecutor executor(
-            NativeRepositoryExecutor.CommandObserver observer, ExecutionLimits limits, LongSupplier clock) {
+    NativeRepositoryExecutor executor(NativeCommandObserver observer, ExecutionLimits limits, LongSupplier clock) {
         NativeRepositoryHost host = repositoryHost();
         var artifacts = new NativeArtifacts(
                 new NativeTransferStore(root.resolve(UUID.randomUUID().toString()), 16L * 1024 * 1024, 64),

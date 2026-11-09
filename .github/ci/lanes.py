@@ -29,6 +29,8 @@ def select(event, paths):
             lanes.add('load')
         elif path in ('acceptance/clients/native-host.py', 'acceptance/clients/native-load.py',
                       'acceptance/clients/native_repository_fixture.py', 'acceptance/clients/release-gate.py',
+                      'acceptance/clients/native_phases.py', 'acceptance/clients/native_phase_metrics.py',
+                      'acceptance/clients/test_native_phases.py',
                       'acceptance/clients/account-http.py', 'acceptance/clients/games-http.py',
                       'acceptance/clients/mcp_http.py', '.github/ci/sandcrab-release-check.sh'):
             lanes.add('load')
