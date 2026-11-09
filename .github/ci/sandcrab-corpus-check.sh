@@ -37,6 +37,25 @@ cleanup() {
   exit "$verdict"
 }
 trap cleanup EXIT
+as_root python3 - "$stage/results/storage-preparation.json" <<'PY'
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+before = shutil.disk_usage('/var/lib').free
+removed = []
+for name in ('/usr/share/dotnet', '/usr/local/lib/android'):
+    path = Path(name)
+    if path.exists():
+        if path.resolve() != path or not path.is_dir():
+            raise RuntimeError('The hosted runner SDK directory is not canonical: ' + name)
+        subprocess.run(['rm', '-rf', '--one-file-system', '--', name], check=True, timeout=180)
+        removed.append(name)
+Path(sys.argv[1]).write_text(json.dumps({'freeBytesBefore': before,
+    'freeBytesAfter': shutil.disk_usage('/var/lib').free, 'removedUnusedHostedSdks': removed}, indent=2) + '\n')
+PY
 jdk=${JAVA_HOME_26_X64:-${JAVA_HOME:-}}
 if [[ -z "$jdk" || ! -x "$jdk/bin/javac" || ! "$("$jdk/bin/javac" -version)" =~ ^javac\ 26([.+-]|$) ]]; then
   as_root bash executor-native/prepare-jdk.sh "$stage/download"
