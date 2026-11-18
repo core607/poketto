@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
-import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.util.Map;
 import tools.jackson.databind.ObjectMapper;
@@ -12,38 +11,6 @@ import tools.jackson.databind.ObjectMapper;
 /** MCP copy identity inputs and retained-execution outcomes. */
 final class McpCopyAdmission {
     private McpCopyAdmission() {}
-
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    private record CopyReplacement(
-            String code,
-            String reason,
-            boolean executed,
-            boolean recoveryAvailable,
-            boolean newCopyAllowed,
-            String message,
-            String copyId) {}
-
-    static McpSchema.CallToolResult copyReplaced(ObjectMapper json, SessionReplacedException exception) {
-        String message =
-                switch (exception.reason()) {
-                    case MISSING_COPY ->
-                        "Expected copy is unavailable for this account and workspace; this command did not execute. Earlier unsaved work may be lost. Use expectedCopyId=new only to intentionally start fresh; do not replay an uncertain write.";
-                    case DIFFERENT_COPY ->
-                        "Expected copy ID does not match the account working copy; this command did not execute. Use the available copyId only if you intend that copy. Do not assume earlier edits survived or replay an uncertain write.";
-                };
-        var body = new CopyReplacement(
-                "SESSION_REPLACED",
-                exception.reason().name(),
-                false,
-                false,
-                exception.newCopyAllowed(),
-                message,
-                exception.currentCopyId().orElse(null));
-        return McpSchema.CallToolResult.builder()
-                .addTextContent(json.writeValueAsString(body))
-                .isError(true)
-                .build();
-    }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private record AdmissionRefusal(

@@ -19,7 +19,6 @@ import io.github.core607.poketto.content.RepositoryWriteAmbiguousException;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
-import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -175,7 +174,7 @@ final class RepositoryMcpTools {
     private McpStatelessServerFeatures.SyncToolSpecification executeTool() {
         return tool(
                 "repo_exec",
-                "Run shell, Python and Git in your account's isolated copy of this repository. Read the root AGENTS.md and poketto --help first. Edits stay local until poketto save. After media import or link, inspect .poketto/assets.json and apply any returned indexEntry before saving. freshSandbox=true marks a fresh shell. Copy files, including unsaved edits, persist until seven days idle (retention.expiresAt) or repo_discard. SESSION_REPLACED and EXECUTION_REFUSED mean the command did not run. For EXECUTION_UNCONFIRMED, inspect the same copy before another write. Public grants see current publication. PUBLICATION_CHANGED retains the old copy. Use new for a current projection within your quota. poketto status reports the host baseline. Long output and poketto artifact create return handles for get_artifact.",
+                "Run shell, Python and Git in your repository copy. Read AGENTS.md and poketto --help. Each template-backed command starts a fresh shell. Files persist for seven idle days or until repo_discard. Publish edits with poketto save. After media import or link, apply the returned indexEntry to .poketto/assets.json before saving. For EXECUTION_UNCONFIRMED, inspect the same copy and poketto status before another write. A changed public projection requires a new copy. Read long output with get_artifact.",
                 object(
                         Map.of(
                                 "expectedCopyId",
@@ -236,8 +235,6 @@ final class RepositoryMcpTools {
                         return invoke(context, name, arguments, operation);
                     } catch (AuthException | SecurityException exception) {
                         return error("DENIED", "Current workspace capability is required.");
-                    } catch (SessionReplacedException exception) {
-                        return McpCopyAdmission.copyReplaced(json, exception);
                     } catch (ExecutionUnconfirmedException exception) {
                         return McpCopyAdmission.executionUnconfirmed(json, exception);
                     } catch (ExecutionAdmissionException exception) {

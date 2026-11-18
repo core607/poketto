@@ -15,7 +15,6 @@ import io.github.core607.poketto.auth.AuthService;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
 import io.github.core607.poketto.mcp.RepositoryExecutor;
-import io.github.core607.poketto.mcp.SessionReplacedException;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpStatelessServerFeatures;
@@ -143,25 +142,17 @@ class McpCopyIdentityTests {
 
     @Test
     void mismatchIsExplicitButAnUnknownWorkerOutcomeNeverClaimsThatTheCommandDidNotRun() {
-        String old = UUID.randomUUID().toString(), current = UUID.randomUUID().toString();
+        String old = UUID.randomUUID().toString();
         when(executor.execute(
                         any(), any(), eq(new RepositoryExecutor.CopyRequest(old)), any(), anyString(), any(), any()))
-                .thenThrow(new SessionReplacedException(
-                        SessionReplacedException.Reason.DIFFERENT_COPY, Optional.of(current), false))
-                .thenThrow(new SessionReplacedException(
-                        SessionReplacedException.Reason.MISSING_COPY, Optional.empty(), true))
+                .thenThrow(new ExecutionAdmissionException(ExecutionAdmissionException.Reason.MISSING_COPY, false))
                 .thenThrow(new IllegalStateException("private worker detail"));
         var arguments = Map.<String, Object>of("expectedCopyId", old, "command", "poketto save note.md");
-        var mismatch = call(arguments);
-        assertThat(mismatch.isError()).isTrue();
-        assertThat(body(mismatch).path("code").stringValue()).isEqualTo("SESSION_REPLACED");
-        assertThat(body(mismatch).path("executed").booleanValue()).isFalse();
-        assertThat(body(mismatch).path("copyId").stringValue()).isEqualTo(current);
-        var unavailable = body(call(arguments));
-        assertThat(unavailable.has("copyId")).isFalse();
-        assertThat(unavailable.path("code").stringValue()).isEqualTo("SESSION_REPLACED");
-        assertThat(unavailable.path("newCopyAllowed").booleanValue()).isTrue();
-        assertThat(unavailable.path("executed").booleanValue()).isFalse();
+        var missing = body(call(arguments));
+        assertThat(missing.path("code").stringValue()).isEqualTo("EXECUTION_REFUSED");
+        assertThat(missing.path("reason").stringValue()).isEqualTo("MISSING_COPY");
+        assertThat(missing.path("executed").booleanValue()).isFalse();
+        assertThat(missing.has("copyId")).isFalse();
         var unknown = body(call(arguments));
         assertThat(unknown.path("code").stringValue()).isEqualTo("UNAVAILABLE");
         assertThat(unknown.has("executed")).isFalse();

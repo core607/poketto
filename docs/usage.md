@@ -457,7 +457,7 @@ copy, creating it only when absent, or a separate copy while it is busy or recen
 used. Then pass the returned `copyId`, including one returned with
 `EXECUTION_REFUSED`. Reconnecting reattaches a copy, and closing the transport keeps it. Each
 successful operation renews its seven-day idle deadline (`retention.expiresAt`);
-expiry and discard remove local work. `SESSION_REPLACED` and `EXECUTION_REFUSED` mean the command did not run.
+expiry and discard remove local work. `EXECUTION_REFUSED` means the command did not run. An unknown copy has reason `MISSING_COPY`.
 `EXECUTION_UNCONFIRMED` means it may have partly run, including remote writes: do not
 replay it; inspect the same copy with a read-only command,
 `retention.lastInterruptedCommand` and `poketto status`, and use `poketto recover` when
