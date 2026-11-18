@@ -67,12 +67,11 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
             assertThat(retained.original()).isNotNull();
             verify(overlays).bind(any(), any(), any(), any(), any(), any());
             assertThat(commands.getLast()).isEqualTo("printf user-command");
-            assertThat(sessions.get(retained.writer().leaseId().toString()).state())
-                    .isEqualTo("ready");
-            assertThat(sessions.values())
-                    .filteredOn(session -> session.parentSessionId() != null)
-                    .hasSize(1)
-                    .allMatch(SandcrabProtocol.Session::terminal);
+            assertThat(handles.get(retained.copyId()).generation())
+                    .isEqualTo(retained.writer().storage().workspaceGeneration().toString());
+            verify(keyed).submit(any(), any(), any());
+            verify(client, never()).open(any());
+            verify(client, never()).openChild(any(), any());
             verify(client, never()).deleteVolume(any());
         }
     }
@@ -89,8 +88,8 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
             assertThat(after.state()).isEqualTo(before.state());
             verify(exports).create(any(), any(), any());
             verify(client, never()).createVolume(any());
-            verify(client).open(any());
-            verify(client, times(2)).openChild(any(), any());
+            verify(keyed).ensure(any(), any(), any());
+            verify(client, never()).openChild(any(), any());
             assertThat(commands.stream().filter("printf user-command"::equals)).hasSize(2);
         }
     }
@@ -333,7 +332,7 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
                             workspace, principal, MembershipRole.MEMBER, Set.of(Capability.EXECUTE_REPOSITORY)));
             assertThatThrownBy(() -> execute(executor, copy)).isInstanceOf(ExecutionAdmissionException.class);
             assertThat(journal.record(owner)).contains(before);
-            verify(client).open(any());
+            verify(keyed).ensure(any(), any(), any());
         }
     }
 
@@ -375,7 +374,7 @@ class NativeRepositoryExecutorTests extends NativeRepositoryTestFixture {
                     .orElseThrow();
             assertThat(page.bytes()).isEqualTo(stdout.getBytes(StandardCharsets.UTF_8));
             assertThat(result.stdout().getBytes(StandardCharsets.UTF_8)).hasSizeLessThanOrEqualTo(16384);
-            verify(client).open(any());
+            verify(keyed).ensure(any(), any(), any());
         }
     }
 

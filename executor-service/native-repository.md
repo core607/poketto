@@ -25,7 +25,9 @@ of the legacy data before the write pause and import.
 ## New Compose installations
 
 Install the pinned Sandcrab release as a root service with cgroup delegation in a
-dedicated, bounded slice. Set its Unix socket group to the application GID. Install
+dedicated, bounded slice. Enable Sandcrab `[storage]` with a protected store and
+enough volume slots for the retained repository copies. Each template-backed copy
+owns one workspace. Set its Unix socket group to the application GID. Install
 Poketto's [resource-pool checker](../deploy/resource_pool.py) at
 `/usr/local/lib/poketto/resource_pool.py` with root ownership and mode 0644.
 The deployment account needs permission to connect to the socket, for example
@@ -75,11 +77,13 @@ service remains with its operator.
 
 Each template-backed command starts a fresh shell in `/workspace/work/repository`
 with `HOME=/workspace/home` and reports `freshSandbox: true`. Keep work that the next
-command needs in files. Poketto stops the command shell and its descendants before
-capturing the writable layer, including deletions. A command result is acknowledged
-after the account journal durably records the verified archive. A new application
-process can then restore the same copy from that template and archive. A lost
-response requires inspecting the copy and its host receipts before another write.
+command needs in files. Sandcrab opens or resumes the keyed workspace, initializes
+the fresh shell and contains its descendants before returning the result. Poketto
+checks the writable-layer archive, including deletions, against the copy budget
+and commits it to the account journal before acknowledging the command. A healthy
+workspace resumes its own files after either process restarts. When a command
+lost acknowledgement or its workspace disappeared, Poketto restores the last
+acknowledged archive. Inspect the copy and host receipts before another write.
 An imported volume continues to hold its files until explicit disposal or expiry.
 
 ## Repository commands

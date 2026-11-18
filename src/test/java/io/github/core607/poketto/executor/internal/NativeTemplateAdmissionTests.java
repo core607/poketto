@@ -27,31 +27,24 @@ class NativeTemplateAdmissionTests extends NativeRepositoryTestFixture {
     }
 
     @Test
-    void anUnknownSessionAdmissionPreservesThePinnedTemplateWithoutReplayingTheCommand() {
+    void anUnknownWorkspaceCreationKeepsTheTemplateAndNeverStartsTheUserCommand() {
         doAnswer(call -> {
-                    assertThat(journal.record(owner)
-                                    .orElseThrow()
-                                    .writer()
-                                    .storage()
-                                    .templateId())
-                            .hasSize(64);
+                    var pending = journal.record(owner).orElseThrow();
+                    assertThat(pending.phase()).isEqualTo(AccountCopyRecord.Phase.ATTACHING);
+                    assertThat(pending.writer().storage().templateId()).hasSize(64);
                     throw new WorkerUnavailableException();
                 })
-                .when(client)
-                .open(any());
-        var executor = executor((run, timeout, handler) -> {});
-        try {
+                .when(keyed)
+                .ensure(any(), any(), any());
+        try (var executor = executor((run, timeout, handler) -> {})) {
             assertThatThrownBy(() -> execute(executor, "new")).isInstanceOf(ExecutionAdmissionException.class);
             var retained = journal.record(owner).orElseThrow();
-            assertThat(retained.phase()).isEqualTo(AccountCopyRecord.Phase.INITIALIZING);
+            assertThat(retained.writer().storage().workspaceGeneration()).isNull();
             assertThatThrownBy(() -> execute(executor, retained.copyId().toString()))
                     .isInstanceOf(ExecutionAdmissionException.class);
-            assertThat(journal.record(owner)).contains(retained);
-        } finally {
-            assertThatThrownBy(executor::close).isInstanceOf(WorkerUnavailableException.class);
+            assertThat(journal.record(owner).orElseThrow().original()).isEqualTo(retained.original());
+            assertThat(commands).isEmpty();
+            verify(keyed, never()).submit(any(), any(), any());
         }
-        assertThat(commands).isEmpty();
-        verify(client).open(any());
-        verify(client, never()).openChild(any(), any());
     }
 }

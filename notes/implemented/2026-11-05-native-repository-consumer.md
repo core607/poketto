@@ -32,9 +32,11 @@ read-only tools avoids per-copy installation and a second vendored interpreter
 or native-library tree; these workload dependencies do not become daemon dependencies.
 
 A new copy shares an immutable template of its authorized commit and reading
-scope. Each template-backed command uses a fresh shell, and the application records the verified
-writable layer before acknowledging it. Independent application processes recover
-from that journal. An imported volume keeps its binding until disposal or expiry
+scope. Sandcrab owns the keyed workspace, idle lifecycle and fresh command shells.
+Poketto binds its copy to the provider generation. Acknowledgement still requires
+a verified writable-layer archive in the account journal. Only an interrupted
+write or a missing workspace requires reconstructing that acknowledged layer.
+An imported volume keeps its binding until disposal or expiry
 and can reuse its live native lease between commands.
 The [runtime contract](../../executor-service/native-repository.md) owns the
 directory layout, profiles, commands and deployment prerequisites.

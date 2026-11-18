@@ -4,12 +4,15 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.UUID;
 
 /** Snapshot bytes become caller-owned only after complete delivery, authorization and digest verification. */
 final class SandcrabFiles {
@@ -62,13 +65,15 @@ final class SandcrabFiles {
 
     record Snapshot(long bytes, String sha256) {}
 
-    private record Source(String method, String path, byte[] body, String type) {
+    private record Source(String method, String path, byte[] body, String type, String epoch, UUID generation) {
         static Source snapshot(SandcrabProtocol.Session session, Plan plan) {
             return new Source(
                     "POST",
                     "/v1/sessions/" + session.id() + "/snapshot",
                     SandcrabProtocol.write(plan),
-                    plan.format().equals("raw") ? "application/octet-stream" : "application/x-tar");
+                    plan.format().equals("raw") ? "application/octet-stream" : "application/x-tar",
+                    session.serverId(),
+                    null);
         }
     }
 
@@ -76,12 +81,7 @@ final class SandcrabFiles {
         ProtocolValues.inRange(maxBytes, 0, 8 * 1024 * 1024, "in-memory snapshot bound");
         var output = new ByteArrayOutputStream();
         Snapshot snapshot = capture(
-                session,
-                Source.snapshot(session, new Plan(path, "raw")),
-                maxBytes,
-                Duration.ofSeconds(90),
-                authorize,
-                output);
+                Source.snapshot(session, new Plan(path, "raw")), maxBytes, Duration.ofSeconds(90), authorize, output);
         return new Content(output.toByteArray(), snapshot.sha256());
     }
 
@@ -97,25 +97,54 @@ final class SandcrabFiles {
             Path target,
             Duration timeout,
             Runnable authorize) {
-        return download(session, Source.snapshot(session, plan), maxBytes, target, timeout, authorize);
+        return download(Source.snapshot(session, plan), maxBytes, target, timeout, authorize);
     }
 
-    Snapshot diff(SandcrabProtocol.Session parent, long maximum, Path target, Runnable authorize) {
-        var source = new Source("GET", "/v1/sessions/" + parent.id() + "/diff", null, "application/x-tar");
-        return download(parent, source, maximum, target, Duration.ofSeconds(90), authorize);
-    }
-
-    private Snapshot download(
-            SandcrabProtocol.Session session,
-            Source source,
-            long maxBytes,
-            Path target,
-            Duration timeout,
+    void put(
+            String route,
+            java.util.UUID generation,
+            SandcrabProtocol.FilePut expected,
+            Path source,
             Runnable authorize) {
+        authorize.run();
+        String path = route + "/files?path=" + URLEncoder.encode(expected.path(), StandardCharsets.UTF_8)
+                + "&mode=384&replace=false";
+        try (var file = SandcrabClient.openUploadFile(expected.bytes(), source);
+                var input = new SandcrabClient.CheckedSource(file, authorize)) {
+            var receipt = http.stream(
+                    "PUT",
+                    path,
+                    input,
+                    expected.bytes(),
+                    Duration.ofSeconds(90),
+                    generation,
+                    (head, response) ->
+                            SandcrabClient.readResponse(head, response, SandcrabProtocol.FilePut.class, 200));
+            if (!expected.equals(receipt)) {
+                throw new IOException("Native file publication changed its path, length or digest");
+            }
+            authorize.run();
+        } catch (IOException failure) {
+            throw new WorkerUnavailableException(failure);
+        }
+    }
+
+    Snapshot diff(SandcrabWorkspaces.Handle workspace, long maximum, Path target, Runnable authorize) {
+        var source = new Source(
+                "GET",
+                workspace.route() + "/diff",
+                null,
+                "application/x-tar",
+                workspace.serverId(),
+                UUID.fromString(workspace.generation()));
+        return download(source, maximum, target, Duration.ofSeconds(90), authorize);
+    }
+
+    private Snapshot download(Source source, long maxBytes, Path target, Duration timeout, Runnable authorize) {
         try (var pending = new PendingSnapshot(target)) {
             Snapshot snapshot;
             try (OutputStream output = Files.newOutputStream(pending.path)) {
-                snapshot = capture(session, source, maxBytes, timeout, authorize, output);
+                snapshot = capture(source, maxBytes, timeout, authorize, output);
             }
             authorize.run();
             pending.install(target);
@@ -150,13 +179,7 @@ final class SandcrabFiles {
         }
     }
 
-    private Snapshot capture(
-            SandcrabProtocol.Session session,
-            Source source,
-            long maxBytes,
-            Duration timeout,
-            Runnable authorize,
-            OutputStream output) {
+    private Snapshot capture(Source source, long maxBytes, Duration timeout, Runnable authorize, OutputStream output) {
         ProtocolValues.inRange(maxBytes, 0, MAX_BYTES, "snapshot byte bound");
         authorize.run();
         return http.exchange(
@@ -166,9 +189,10 @@ final class SandcrabFiles {
                 source.body(),
                 timeout,
                 Duration.ZERO,
+                source.generation(),
                 (head, input) -> {
                     requireSuccess(head, input);
-                    if (!session.serverId().equals(head.serverId())) {
+                    if (!source.epoch().equals(head.serverId())) {
                         throw new IOException("Native snapshot server epoch differs from its session");
                     }
                     if (!source.type().equals(head.contentType())

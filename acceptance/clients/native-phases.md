@@ -3,8 +3,8 @@
 On the disposable Linux systemd host used by [native HTTP acceptance](README.md), pass
 `native-host.py --phase-evidence NEW_DIRECTORY` with the same `--runtime`, `--binary`,
 `--tools` and `--java` paths. It runs real authenticated MCP calls against a fresh
-application: first parent, five warm reads each with empty, 64 KiB and 4 MiB upper
-content, one missing-copy refusal, upper recovery after restarting only its owned
+application: the first workspace command, five warm reads each with empty, 64 KiB and 4 MiB upper
+content, one missing-copy refusal, reuse of the retained writable layer after restarting its owned
 Sandcrab service, and a one-second command timeout followed by a retained-file check.
 It exits after cleanup. It cannot be combined with `--games`.
 
@@ -16,7 +16,7 @@ executable and synthetic entry point. It never targets another application proce
 
 Run the same replay without recording and with the previous runtime to measure
 instrumentation overhead. Keep resource limits and workload fixed and alternate
-comparison order. First-parent means a fresh application and session; the host page
+comparison order. The first workspace command starts with a fresh application and working copy; the host page
 cache is not dropped. HTTP wall time includes stateless MCP initialization and teardown.
 
 `summary.json` holds aggregate HTTP and nested phase timings, calling-thread CPU,

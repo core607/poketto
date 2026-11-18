@@ -3,8 +3,6 @@ package io.github.core607.poketto.executor.internal;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -86,27 +84,22 @@ final class SandcrabClient {
                 .download(session, plan, maxBytes, target, bounded(timeout, UPLOAD_TIMEOUT), authorize);
     }
 
-    void putFile(SandcrabProtocol.Session session, SandcrabProtocol.FilePut expected, Path source, Runnable authorize) {
-        authorize.run();
-        String path = "/v1/sessions/" + session.id() + "/files?path="
-                + URLEncoder.encode(expected.path(), StandardCharsets.UTF_8) + "&mode=384&replace=false";
-        try (var file = openUploadFile(expected.bytes(), source);
-                var input = new CheckedSource(file, authorize)) {
-            var receipt = http.upload(
-                    path,
-                    input,
-                    expected.bytes(),
-                    UPLOAD_TIMEOUT,
-                    (head, response) -> readResponse(head, response, SandcrabProtocol.FilePut.class, 200));
-            require(expected.equals(receipt), "Native file publication changed its path, length or digest");
-            authorize.run();
-        } catch (IOException failure) {
-            throw new WorkerUnavailableException(failure);
-        }
+    SandcrabWorkspaces workspaces() {
+        return new SandcrabWorkspaces(this);
     }
 
-    SandcrabFiles.Snapshot diff(SandcrabProtocol.Session parent, long maximum, Path target, Runnable authorize) {
-        return new SandcrabFiles(http).diff(parent, maximum, target, authorize);
+    void putFile(SandcrabProtocol.Session session, SandcrabProtocol.FilePut expected, Path source, Runnable authorize) {
+        new SandcrabFiles(http).put("/v1/sessions/" + session.id(), null, expected, source, authorize);
+    }
+
+    void putFile(
+            SandcrabWorkspaces.Handle workspace, SandcrabProtocol.FilePut expected, Path source, Runnable authorize) {
+        new SandcrabFiles(http)
+                .put(workspace.route(), java.util.UUID.fromString(workspace.generation()), expected, source, authorize);
+    }
+
+    SandcrabFiles.Snapshot diff(SandcrabWorkspaces.Handle workspace, long maximum, Path target, Runnable authorize) {
+        return new SandcrabFiles(http).diff(workspace, maximum, target, authorize);
     }
 
     SandcrabProtocol.Session openChild(SandcrabProtocol.Session parent, SandcrabProtocol.Reference child) {
@@ -424,7 +417,7 @@ final class SandcrabClient {
         }
     }
 
-    private static InputStream openUploadFile(long length, Path content) {
+    static InputStream openUploadFile(long length, Path content) {
         try {
             BasicFileAttributes attributes =
                     Files.readAttributes(content, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);

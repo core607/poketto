@@ -63,6 +63,14 @@ max_file_transfers = {min(16, slots)}
 max_connections = {min(256, max(40, 4 * agents + 12))}
 max_event_streams = {min(128, max(16, 2 * agents + 2))}
 
+[storage]
+root = {json.dumps(str(runtime.with_name('workspaces')))}
+pool_bytes = 1073741824
+max_volume_bytes = 33554432
+max_volume_inodes = 4096
+max_volumes = {max(64, 4 * agents)}
+max_records = {max(256, 8 * agents)}
+
 [profiles.repository]
 exec_user = {json.dumps(execution_user)}
 tools = {json.dumps(str(tools))}
@@ -87,6 +95,9 @@ class RepositorySandbox:
         self.unit = 'poketto-client-' + token + '-repository'
         self.resource_slice = resource_slice
         self.runtime = disk / 'sandcrab'
+        store = self.runtime.with_name('workspaces')
+        store.mkdir(mode=0o755)
+        (store/'data').mkdir(mode=0o755)
         self.socket = self.runtime / 'control.sock'
         self.programs = root / 'sandbox-programs'
         self.programs.mkdir(mode=0o755)
@@ -117,7 +128,7 @@ class RepositorySandbox:
                                        user=self.account.pw_uid, group=self.account.pw_gid, extra_groups=[], timeout=5)
                 if check.returncode == 0:
                     info = json.loads(check.stdout)
-                    assert {'sessions', 'templates', 'files', 'uploads', 'calls'} <= set(info['capabilities'])
+                    assert {'workspaces', 'sessions', 'templates', 'files', 'uploads', 'calls'} <= set(info['capabilities'])
                     assert info['profiles']['repository']['hostCalls'] and info['profiles']['repository']['network'] == 'none'
                     return info['serverId']
             time.sleep(.1)

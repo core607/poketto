@@ -22,7 +22,12 @@ final class AccountCopyTransitions {
         if (current != null) {
             var prior = current.writer().storage();
             var target = next.writer().storage();
-            if (prior != null && !prior.equals(target)) {
+            boolean bindingWorkspace = next.phase() == AccountCopyRecord.Phase.ATTACHING
+                    && target != null
+                    && prior != null
+                    && target.templateId() != null
+                    && prior.equals(target.generation(prior.workspaceGeneration()));
+            if (prior != null && !prior.equals(target) && !bindingWorkspace) {
                 ProtocolValues.require(
                         target != null
                                 && (target.volumeId() != null || target.upper() != null)

@@ -65,21 +65,17 @@ def validate_phases(cases):
     for case in cases:
         phases = {item['phase']: item for item in case['phases']}
         if case['case'] == 'missing-copy':
-            assert not {'CHILD_START', 'COMMAND_WAIT', 'UPPER_CAPTURE'} & phases.keys()
+            assert not {'WORKSPACE_ATTACHMENT', 'COMMAND_WAIT', 'UPPER_CAPTURE'} & phases.keys()
             continue
-        assert {'AUTHORIZATION', 'COPY_ADMISSION', 'OPERATION_ADMISSION', 'CHILD_START', 'SETUP_COMMAND', 'NATIVE_EXCHANGE',
-                'COMMAND_WAIT', 'CHILD_CONTAINMENT', 'UPPER_CAPTURE', 'UPPER_VALIDATION',
-                'JOURNAL_COMMIT', 'JOURNAL_RELEASE'} <= phases.keys(), 'A successful request lacks required phases'
+        assert {'AUTHORIZATION', 'COPY_ADMISSION', 'OPERATION_ADMISSION', 'WORKSPACE_ATTACHMENT', 'NATIVE_EXCHANGE',
+                'COMMAND_WAIT', 'UPPER_CAPTURE', 'UPPER_VALIDATION', 'JOURNAL_COMMIT',
+                'JOURNAL_RELEASE'} <= phases.keys(), 'A successful request lacks required phases'
         assert phases['UPPER_CAPTURE']['transferredBytes'] == phases['JOURNAL_COMMIT']['transferredBytes'] > 0
-        if case['case'] == 'first-parent':
-            assert {'TEMPLATE_BUILD', 'SESSION_START'} <= phases.keys()
+        assert not {'SESSION_RENEW', 'SESSION_START', 'UPPER_RESTORE'} & phases.keys()
+        if case['case'] == 'first-workspace':
             assert phases['TEMPLATE_BUILD']['transferredBytes'] > 0
-        elif case['case'] == 'restore-upper':
-            assert {'UPPER_RESTORE', 'SESSION_START'} <= phases.keys()
-            assert phases['UPPER_RESTORE']['transferredBytes'] >= 4194304
         else:
-            assert 'SESSION_RENEW' in phases
-            assert not {'UPPER_RESTORE', 'TEMPLATE_BUILD', 'SESSION_START'} & phases.keys()
+            assert 'TEMPLATE_BUILD' not in phases
 
 
 def measure(root, java, application_unit, repository_unit, resource_slice, ready, evidence, recording):
@@ -159,7 +155,7 @@ def measure(root, java, application_unit, repository_unit, resource_slice, ready
         if recording:
             recorder = Recording(root, java, application_unit, evidence)
             recorder.start()
-        execute('first-parent', 'test -f public/index.md')
+        execute('first-workspace', 'test -f public/index.md')
         for _ in range(5):
             execute('warm-empty', 'test -f public/index.md')
         retained(65536)
@@ -172,8 +168,8 @@ def measure(root, java, application_unit, repository_unit, resource_slice, ready
             assert time.monotonic() < deadline, 'Owned native service did not reopen its socket'
             time.sleep(.05)
         summary['daemonRestartWallNanos'] = time.monotonic_ns() - started
-        execute('restore-upper', 'test "$(wc -c < private/phase.bin)" -eq 4194304')
-        execute('warm-restored', 'test "$(wc -c < private/phase.bin)" -eq 4194304')
+        execute('resume-after-restart', 'test "$(wc -c < private/phase.bin)" -eq 4194304')
+        execute('warm-after-restart', 'test "$(wc -c < private/phase.bin)" -eq 4194304')
         execute('timeout', 'sleep 5', timeout=1)
         execute('warm-after-timeout', 'test "$(wc -c < private/phase.bin)" -eq 4194304')
         if recorder:

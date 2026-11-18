@@ -54,21 +54,21 @@ class NativeRepositoryLifecycleTests extends NativeRepositoryTestFixture {
     }
 
     @Test
-    void monitoringCountsWarmReuseAndConfirmedReleaseWithoutIdentityLabels() {
+    void monitoringCountsOperationsWithoutCountingProviderOwnedIdleShells() {
         try (var executor = executor((run, timeout, handler) -> {
             assertThat(gauge(meters, "operations.active")).isEqualTo(1);
-            assertThat(gauge(meters, "sessions.active")).isEqualTo(1);
+            assertThat(gauge(meters, "sessions.active")).isZero();
         })) {
             executor.bindMetrics(meters);
             String copy = execute(executor, "new").copyId();
             execute(executor, copy);
             assertThat(gauge(meters, "operations.active")).isZero();
-            assertThat(gauge(meters, "sessions.active")).isEqualTo(1);
-            assertThat(counter(meters, "sessions.created")).isEqualTo(1);
+            assertThat(gauge(meters, "sessions.active")).isZero();
+            assertThat(counter(meters, "sessions.created")).isZero();
             assertThat(counter(meters, "sessions.released")).isZero();
             executor.close();
             assertThat(gauge(meters, "sessions.active")).isZero();
-            assertThat(counter(meters, "sessions.released")).isEqualTo(1);
+            assertThat(counter(meters, "sessions.released")).isZero();
             assertThat(new ExecutorHealthIndicator(Optional.of(executor))
                             .health()
                             .getStatus()
@@ -81,7 +81,7 @@ class NativeRepositoryLifecycleTests extends NativeRepositoryTestFixture {
     }
 
     @Test
-    void unconfirmedContainmentKeepsBothOperationAndSessionChargedUntilReconciled() {
+    void unconfirmedContainmentKeepsTheOperationChargedUntilReconciled() {
         try (var executor = executor((run, timeout, handler) -> {
             closeFails.set(true);
             throw new WorkerUnavailableException();
@@ -89,14 +89,45 @@ class NativeRepositoryLifecycleTests extends NativeRepositoryTestFixture {
             executor.bindMetrics(meters);
             assertThatThrownBy(() -> execute(executor, "new")).isInstanceOf(ExecutionUnconfirmedException.class);
             assertThat(gauge(meters, "operations.active")).isEqualTo(1);
-            assertThat(gauge(meters, "sessions.active")).isEqualTo(1);
+            assertThat(gauge(meters, "sessions.active")).isZero();
             assertThat(counter(meters, "sessions.released")).isZero();
             closeFails.set(false);
             executor.reconcile();
             assertThat(gauge(meters, "operations.active")).isZero();
             assertThat(gauge(meters, "sessions.active")).isZero();
-            assertThat(counter(meters, "sessions.released")).isEqualTo(1);
+            assertThat(counter(meters, "sessions.released")).isZero();
             assertThat(journal.record(owner)).isPresent();
+        }
+    }
+
+    @Test
+    void evenIndependentWorkspaceCommandsRespectTheConfiguredSessionAdmissionBudget() throws Exception {
+        var entered = new CountDownLatch(1);
+        var finish = new CountDownLatch(1);
+        try (var executor = executor(
+                        (run, timeout, handler) -> {
+                            entered.countDown();
+                            try {
+                                finish.await(5, TimeUnit.SECONDS);
+                            } catch (InterruptedException interrupted) {
+                                throw new AssertionError(interrupted);
+                            }
+                        },
+                        new ExecutionLimits(1, 4, Map.of(), Map.of()),
+                        System::nanoTime);
+                var requests = Executors.newVirtualThreadPerTaskExecutor()) {
+            var first = requests.submit(() -> execute(executor, "new"));
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+            try {
+                assertThatThrownBy(() -> execute(executor, "new"))
+                        .isInstanceOfSatisfying(
+                                ExecutionAdmissionException.class,
+                                error -> assertThat(error.reason())
+                                        .isEqualTo(ExecutionAdmissionException.Reason.CAPACITY));
+            } finally {
+                finish.countDown();
+            }
+            assertThat(first.get(5, TimeUnit.SECONDS).exitCode()).isZero();
         }
     }
 

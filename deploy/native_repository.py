@@ -170,7 +170,7 @@ class NativeRepository:
         builder = environment.get("POKETTO_EXECUTOR_TEMPLATE_PROFILE", profile)
         selected = live["profiles"].get(profile, {})
         if (live.get("apiVersion") != 1 or str(uuid.UUID(live["serverId"])) != live["serverId"]
-                or not {"sessions", "templates", "files", "uploads", "calls"} <= set(live["capabilities"])
+                or not {"workspaces", "sessions", "templates", "files", "uploads", "calls"} <= set(live["capabilities"])
                 or selected.get("hostCalls") is not True or selected.get("network") != "none"):
             raise DeploymentError("the native API does not offer the selected offline repository profile")
         if live["profiles"].get(builder, {}).get("network") != "none":

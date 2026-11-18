@@ -12,6 +12,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.UUID;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,9 +49,21 @@ final class SandboxHttp {
             Duration timeout,
             Duration idle,
             Reader<T> reader) {
+        return exchange(method, path, contentType, body, timeout, idle, null, reader);
+    }
+
+    <T> T exchange(
+            String method,
+            String path,
+            String contentType,
+            byte[] body,
+            Duration timeout,
+            Duration idle,
+            UUID workspaceGeneration,
+            Reader<T> reader) {
         byte[] bytes = body == null ? new byte[0] : body;
         require(bytes.length <= MAX_REQUEST_BYTES);
-        ByteBuffer header = requestHead(method, path, contentType, bytes.length);
+        ByteBuffer header = requestHead(method, path, contentType, bytes.length, null, workspaceGeneration);
         var packet = ByteBuffer.allocate(header.remaining() + bytes.length)
                 .put(header)
                 .put(bytes)
@@ -65,9 +78,21 @@ final class SandboxHttp {
     }
 
     <T> T stream(String method, String path, InputStream body, long length, Duration timeout, Reader<T> reader) {
+        return stream(method, path, body, length, timeout, null, reader);
+    }
+
+    <T> T stream(
+            String method,
+            String path,
+            InputStream body,
+            long length,
+            Duration timeout,
+            UUID generation,
+            Reader<T> reader) {
         require(method.equals("PUT") || method.equals("POST"));
         require(length >= 0 && length <= MAX_UPLOAD_BYTES);
-        var request = new StreamRequest(requestHead(method, path, "application/octet-stream", length), body, length);
+        var request = new StreamRequest(
+                requestHead(method, path, "application/octet-stream", length, null, generation), body, length);
         return exchange(request, timeout, Duration.ZERO, reader);
     }
 
@@ -195,6 +220,11 @@ final class SandboxHttp {
     }
 
     private static ByteBuffer requestHead(String method, String path, String contentType, long length, String after) {
+        return requestHead(method, path, contentType, length, after, null);
+    }
+
+    private static ByteBuffer requestHead(
+            String method, String path, String contentType, long length, String after, UUID workspaceGeneration) {
         require(method.matches("GET|POST|PUT|DELETE"));
         require(path.startsWith("/") && path.chars().allMatch(c -> c > 32 && c < 127));
         require(contentType.equals("application/json") || contentType.equals("application/octet-stream"));
@@ -203,6 +233,9 @@ final class SandboxHttp {
                                 ? "Content-Type: " + contentType + "\r\nContent-Length: " + length + "\r\n"
                                 : "")
                         + (after == null ? "" : "Last-Event-ID: " + after + "\r\n")
+                        + (workspaceGeneration == null
+                                ? ""
+                                : "X-Sandcrab-Workspace-Generation: " + workspaceGeneration + "\r\n")
                         + "Connection: close\r\n\r\n")
                 .getBytes(StandardCharsets.US_ASCII);
         require(head.length <= MAX_HEAD);

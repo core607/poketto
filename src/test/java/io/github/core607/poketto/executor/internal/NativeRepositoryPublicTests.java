@@ -159,13 +159,15 @@ class NativeRepositoryPublicTests extends NativeRepositoryTestFixture {
     }
 
     @Test
-    void withdrawnPublicationContainsAnIdleWarmRootWithoutAnotherCommand() throws Exception {
+    void withdrawnPublicationRefusesTheRetainedWorkspaceWithoutStartingACommand() throws Exception {
         try (NativeRepositoryExecutor executor = executor(2, (run, timeout, handler) -> {})) {
             execute(executor, "new");
             AccountCopyRecord previous = journal.record(owner).orElseThrow();
             publication.withdraw();
             time.addAndGet(Duration.ofSeconds(41).toNanos());
-            awaitContainment(previous);
+            assertThatThrownBy(() -> execute(executor, previous.copyId().toString()))
+                    .isInstanceOf(ContentRepositoryException.class);
+            assertThat(commands).containsExactly("printf user-command");
             assertThat(journal.record(owner)).contains(previous);
             assertThatThrownBy(() -> execute(executor, "new")).isInstanceOf(ContentRepositoryException.class);
             assertThat(journal.store().copiesOf(account, workspace.value())).isEqualTo(1);
@@ -175,6 +177,7 @@ class NativeRepositoryPublicTests extends NativeRepositoryTestFixture {
 
     @Test
     void withdrawalDuringACommandContainsTheRootAndSuppressesItsOutput() throws Exception {
+        holdCommand = true;
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         try (NativeRepositoryExecutor executor = executor(2, (run, timeout, handler) -> {
@@ -205,6 +208,7 @@ class NativeRepositoryPublicTests extends NativeRepositoryTestFixture {
 
     @Test
     void revocationEventContainsABusyRootWithoutWaitingForAnotherRequest() throws Exception {
+        holdCommand = true;
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         try (NativeRepositoryExecutor executor = executor(2, (run, timeout, handler) -> {
@@ -217,8 +221,7 @@ class NativeRepositoryPublicTests extends NativeRepositoryTestFixture {
             AccountCopyRecord previous = journal.record(owner).orElseThrow();
             revoked.set(true);
             executor.revoked(new AuthRevocation(workspace, Set.of(), Set.of(principal.subjectId())));
-            assertThat(sessions.get(previous.writer().leaseId().toString()).terminal())
-                    .isTrue();
+            assertThat(runs.get(previous.executionId().toString()).state()).isEqualTo("cancelled");
             release.countDown();
             assertThatThrownBy(() -> pending.get(5, TimeUnit.SECONDS))
                     .hasCauseInstanceOf(ExecutionUnconfirmedException.class);
@@ -254,6 +257,7 @@ class NativeRepositoryPublicTests extends NativeRepositoryTestFixture {
         byte[] listing = """
                 {"operation":"media_list","arguments":{"prefix":"","offset":0,"limit":100,"indexVersion":null,"commit":null}}
                 """.getBytes(StandardCharsets.UTF_8);
+        holdCommand = true;
         var firstPage = new AtomicBoolean();
         try (NativeRepositoryExecutor executor = executor(2, (run, timeout, handler) -> {
             byte[] response = handler.apply(listing);
@@ -264,7 +268,7 @@ class NativeRepositoryPublicTests extends NativeRepositoryTestFixture {
         })) {
             assertThatThrownBy(() -> execute(executor, "new")).isInstanceOf(ExecutionUnconfirmedException.class);
             assertThat(firstPage).isTrue();
-            assertThat(sessions.values()).allMatch(SandcrabProtocol.Session::terminal);
+            assertThat(runs.values()).allMatch(run -> run.state().equals("cancelled"));
         }
     }
 
@@ -300,11 +304,10 @@ class NativeRepositoryPublicTests extends NativeRepositoryTestFixture {
 
     private void awaitContainment(AccountCopyRecord record) throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
-        while (!sessions.get(record.writer().leaseId().toString()).terminal() && System.nanoTime() < deadline) {
+        while (!runs.get(record.executionId().toString()).terminal() && System.nanoTime() < deadline) {
             Thread.sleep(10);
         }
-        assertThat(sessions.get(record.writer().leaseId().toString()).terminal())
-                .isTrue();
+        assertThat(runs.get(record.executionId().toString()).state()).isEqualTo("cancelled");
     }
 
     private static void await(CountDownLatch latch) {

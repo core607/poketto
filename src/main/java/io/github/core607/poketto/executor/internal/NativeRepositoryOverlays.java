@@ -69,7 +69,7 @@ final class NativeRepositoryOverlays {
             try (var archive =
                     transfers.write(upper.bytes(), lease::authorize, out -> held.copyUpper(out, lease::authorize))) {
                 client.putFile(
-                        lease.session(),
+                        lease.workspace(),
                         new SandcrabProtocol.FilePut(name, upper.bytes(), upper.sha256()),
                         archive.path(),
                         lease::authorize);
@@ -97,7 +97,7 @@ final class NativeRepositoryOverlays {
                     Math.min(lease.transferLimit(), storage.byteLimit()),
                     lease::authorize,
                     path -> client.diff(
-                            lease.session(),
+                            lease.workspace(),
                             Math.min(lease.transferLimit(), storage.byteLimit()),
                             path,
                             lease::authorize));
