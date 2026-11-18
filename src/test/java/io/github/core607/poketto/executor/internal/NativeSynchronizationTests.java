@@ -19,6 +19,20 @@ import tools.jackson.databind.JsonNode;
 
 class NativeSynchronizationTests extends NativePlanFixture {
     @Test
+    void anUnfinishedSignedWorkerSyncSurvivesReopenAndPreventsNewWork() {
+        var saved = SelectedFileSaves.State.restore(state.get());
+        var pending = new PendingWorkspaceSync(saved.baseCommit, List.of("private/secret.md"), 0, List.of(), null);
+        saved.sync = pending;
+        state.set(SandcrabProtocol.read(SandcrabProtocol.write(saved.snapshot()), RetainedSaveState.class));
+
+        assertThat(call("recover", Map.of()).path("code").stringValue()).isEqualTo("RECOVERY_REQUIRED");
+        assertThat(call("sync_prepare", new BridgeArguments.Sync()).path("ok").booleanValue())
+                .isFalse();
+        assertThat(state.get().sync()).isEqualTo(pending);
+        assertThat(state.get().nativePlan()).isNull();
+    }
+
+    @Test
     void aBlockedStagingDirectoryRetainsTheSamePlanForPreparationAfterRepair() {
         changeRemote("private/secret.md", "remote candidate");
         when(lease.runMaintenance(any())).thenReturn(20, 0);

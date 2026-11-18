@@ -189,8 +189,7 @@ final class NativeRepositoryWorkspace {
                                 new SelectedFileSaves.State(export.commit()).snapshot(),
                                 projection,
                                 sink -> saves.visitOriginal(
-                                        principal, workspace, export.commit(), accounts.traversalLimits(), sink),
-                                AccountCopyRecord.Phase.INITIALIZING);
+                                        principal, workspace, export.commit(), accounts.traversalLimits(), sink));
                         ready.set(lease);
                     });
             var lease = Objects.requireNonNull(ready.get());

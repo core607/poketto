@@ -44,6 +44,6 @@ The application owns the Git installation helper; the generic service supplies i
 
 ## Verification
 
-`RetainedBaselineFilesTests`, `RetainedFileBaselineTests` and `WorkspaceSynchronizationTests` cover restoration. `AccountFileBaselinesTests` checks digest naming, unchanged and superseded versions and rejection of another copy's bytes. The [native workspace probe](../../executor-native/overlay_copy_probe.py) checks selected saves and recovery under Git index contention. The [baseline-state evidence](../../acceptance/clients/evidence/2026-09-15-baseline-state.json) records earlier consecutive saves through authenticated HTTP/MCP.
+`RetainedBaselineFilesTests`, `RetainedFileBaselineTests` and `NativeSynchronizationTests` cover restoration. `AccountFileBaselinesTests` checks digest naming, unchanged and superseded versions and rejection of another copy's bytes. The [native workspace probe](../../executor-native/overlay_copy_probe.py) checks selected saves and recovery under Git index contention. The [baseline-state evidence](../../acceptance/clients/evidence/2026-09-15-baseline-state.json) records earlier consecutive saves through authenticated HTTP/MCP.
 
 Related: [account working copies](2026-09-14-account-working-copies.md) owns account identity, disk quotas and expiry; [CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns selected remote saves and publication boundaries.

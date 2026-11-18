@@ -28,6 +28,6 @@ Keeping per-path synchronization misses unknown additions. Resetting the worktre
 
 ## Evidence and related decisions
 
-`WorkspaceSynchronizationTests` and `WorkspaceSyncInputsTests` pin the shared inventory and reconciliation rules. `NativeSynchronizationTests` pins explicit acceptance, retained candidates and resumable preparation. The [native workspace probe](../../executor-native/overlay_copy_probe.py) exercises preparation and acceptance with the released service. The [earlier workspace sync evidence](../../acceptance/clients/evidence/2026-09-15-workspace-sync.json) remains evidence for the retired signed-worker installation path.
+`WorkspaceSyncInputsTests` pins the shared inventory. `NativeSynchronizationTests` covers reconciliation, explicit acceptance, retained candidates and resumable preparation. The [native workspace probe](../../executor-native/overlay_copy_probe.py) exercises preparation and acceptance with the released service. The [earlier workspace sync evidence](../../acceptance/clients/evidence/2026-09-15-workspace-sync.json) remains evidence for the retired signed-worker installation path.
 
 [Mutable working copy baselines](2026-09-15-mutable-working-copy-baselines.md) own the runtime baseline state and HEAD/index advancement. [Account working copies](2026-09-14-account-working-copies.md) own account identity, disk quotas and expiry. [CodeAct content and media](2026-09-09-codeact-content-and-media.md) owns selected remote saves and publication boundaries.

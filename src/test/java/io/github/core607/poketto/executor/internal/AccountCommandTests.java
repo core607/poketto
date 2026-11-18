@@ -30,8 +30,7 @@ class AccountCommandTests {
                     writer,
                     new SelectedFileSaves.State("a".repeat(40)).snapshot(),
                     null,
-                    consumer -> {},
-                    AccountCopyRecord.Phase.INITIALIZING);
+                    consumer -> {});
         }
         journal.afterWrite(writes::add);
     }

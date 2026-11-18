@@ -30,13 +30,7 @@ public final class NativeMigrationJournalProbe {
                 String base = args.length == 5 ? args[4] : "b".repeat(40);
                 var writer = new AccountCopyRecord.Writer(
                         UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
-                held.initialize(
-                        copy,
-                        writer,
-                        seed(original, base),
-                        null,
-                        sink -> sink.accept(original(original)),
-                        AccountCopyRecord.Phase.INITIALIZING);
+                held.initialize(copy, writer, seed(original, base), null, sink -> sink.accept(original(original)));
                 held.bind(writer);
                 held.begin(UUID.randomUUID());
                 held.bind(writer);

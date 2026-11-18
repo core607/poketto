@@ -83,10 +83,6 @@ record AccountCopyRecord(
             return new Owner(accountId, workspaceId, fullRead, Objects.requireNonNull(copyId));
         }
 
-        Owner withoutFork() {
-            return new Owner(accountId, workspaceId, fullRead);
-        }
-
         /** The ID a new copy of this owner receives: a fork's is fixed by its address. */
         UUID newCopyId() {
             return fork == null ? UUID.randomUUID() : fork;
@@ -185,12 +181,7 @@ record AccountCopyRecord(
         }
     }
 
-    /**
-     * {@code REFRESHING} marks a clean public copy whose publication changed: its files are
-     * disposable, and the next admission discards them and rebuilds the copy under the same ID from
-     * current publication. It stays set until the rebuilt copy's first lease is ready, so an
-     * interruption anywhere in the rebuild resumes it instead of losing the copy ID.
-     */
+    /** REFRESHING identifies an unfinished signed-worker rebuild in a retained journal. */
     enum Phase {
         INITIALIZING,
         ATTACHING,

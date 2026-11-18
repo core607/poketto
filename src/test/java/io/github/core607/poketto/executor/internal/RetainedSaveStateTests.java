@@ -44,10 +44,8 @@ class RetainedSaveStateTests {
         assertThat(restored.attempt.orElseThrow().commit()).isEqualTo(CANDIDATE);
         assertThat(restored.attempt.orElseThrow().object()).containsExactly(0, 1, 2, -1);
         assertThat(JSON.<JsonNode>valueToTree(restored.lastSave)).isEqualTo(JSON.valueToTree(state.lastSave));
-        state.acknowledgeMove(
-                CANDIDATE,
-                Set.of("untouched.md"),
-                Map.of("untouched.md", RetainedFileBaseline.saved(CANDIDATE, "updated")));
+        assertThatThrownBy(() -> snapshot.baselines().put("untouched.md", CANDIDATE))
+                .isInstanceOf(UnsupportedOperationException.class);
         assertThat(restored.baseline("untouched.md")).isEqualTo(ORIGINAL);
         assertThat(snapshot.baselines()).containsOnlyKeys("changed.md");
     }
@@ -65,7 +63,7 @@ class RetainedSaveStateTests {
                 RetainedFileBaseline.saved(CANDIDATE, null),
                 "to.md",
                 RetainedFileBaseline.saved(CANDIDATE, "moved"));
-        state.lastSave = BridgeReplies.succeeded(new BridgeReplies.MoveSkipped(ADVANCED, true, false, true));
+        state.lastSave = BridgeReplies.succeeded(legacySkippedMove());
         var snapshot = state.snapshot();
         payload[0] = 99;
 
@@ -87,9 +85,20 @@ class RetainedSaveStateTests {
                 new BridgeReplies.Absent(),
                 BridgeReplies.failed("REPOSITORY_CONFLICT", "Local work retained"),
                 BridgeReplies.succeeded(new BridgeReplies.SaveResult(ADVANCED, true, false, List.of("a.md"), true)),
-                BridgeReplies.succeeded(new BridgeReplies.MoveInstalled(ADVANCED, true, true, true, "a.md", "b.md")),
-                BridgeReplies.succeededWithMessage(
-                        new BridgeReplies.MoveSkipped(ADVANCED, true, false, true), "Local files are unchanged"));
+                BridgeReplies.succeeded(Map.of(
+                        "commit",
+                        ADVANCED,
+                        "committed",
+                        true,
+                        "snapshotUpdated",
+                        true,
+                        "worktreeUpdated",
+                        true,
+                        "source",
+                        "a.md",
+                        "destination",
+                        "b.md")),
+                BridgeReplies.succeededWithMessage(legacySkippedMove(), "Local files are unchanged"));
         for (var receipt : receipts) {
             var state = stateWithIndependentBaselines();
             state.lastSave = receipt;
@@ -282,11 +291,14 @@ class RetainedSaveStateTests {
                 .hasMessageContaining("tracked path commit");
     }
 
+    private static Map<String, Object> legacySkippedMove() {
+        return Map.of(
+                "commit", ADVANCED, "committed", true, "worktreeUpdated", false, "localInstallationSkipped", true);
+    }
+
     private static SelectedFileSaves.State stateWithIndependentBaselines() {
-        var state = new SelectedFileSaves.State(ORIGINAL);
-        state.acknowledgeMove(
-                ADVANCED, Set.of("changed.md"), Map.of("changed.md", RetainedFileBaseline.saved(ADVANCED, "changed")));
-        return state;
+        return SelectedFileSaves.State.restore(RetainedJournalFixture.withFile(
+                ORIGINAL, "changed.md", RetainedFileBaseline.saved(ADVANCED, "changed")));
     }
 
     private static RepositoryPatch patch(String base) {

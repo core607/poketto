@@ -321,12 +321,7 @@ abstract class NativeRepositoryTestFixture {
             var writer = new AccountCopyRecord.Writer(
                     UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
             held.initialize(
-                    UUID.randomUUID(),
-                    writer,
-                    new SelectedFileSaves.State(commit).snapshot(),
-                    null,
-                    sink -> {},
-                    AccountCopyRecord.Phase.INITIALIZING);
+                    UUID.randomUUID(), writer, new SelectedFileSaves.State(commit).snapshot(), null, sink -> {});
             held.bind(writer);
         }
         return journal.record(owner).orElseThrow();

@@ -8,9 +8,7 @@ import io.github.core607.poketto.content.RepositoryDiagnostic;
 import io.github.core607.poketto.content.RepositoryFile;
 import io.github.core607.poketto.workspace.WorkspaceId;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -99,16 +97,13 @@ class RetainedFileBaselineTests {
     }
 
     @Test
-    void retainedStateRequiresEveryAdvancedPathAndChecksDiagnosticBinding() {
-        var state = new SelectedFileSaves.State("b".repeat(40));
-        assertThatThrownBy(() -> state.acknowledgeMove(COMMIT, Set.of("one.bin"), Map.of()))
-                .hasMessageContaining("must cover affected paths");
+    void aRetainedJournalRejectsDiagnosticsFromAnotherPath() {
         var nonText = new RetainedFileBaseline(
                 COMMIT,
                 new RetainedFileBaseline.NonText(Optional.empty()),
                 List.of(new RepositoryDiagnostic("other.bin", "MANAGED_MEDIA", "indexed")),
                 false);
-        assertThatThrownBy(() -> state.acknowledgeMove(COMMIT, Set.of("one.bin"), Map.of("one.bin", nonText)))
+        assertThatThrownBy(() -> RetainedJournalFixture.withFile(COMMIT, "one.bin", nonText))
                 .hasMessageContaining("file path");
     }
 }
