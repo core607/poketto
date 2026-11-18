@@ -5,7 +5,6 @@ import io.github.core607.poketto.content.ContentRepositoryException;
 import io.github.core607.poketto.content.RepositoryEmptyException;
 import io.github.core607.poketto.mcp.ExecutionAdmissionException;
 import io.github.core607.poketto.mcp.ExecutionUnconfirmedException;
-import io.github.core607.poketto.mcp.SessionReplacedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +33,6 @@ final class AccountCopyFailures {
                 || failure instanceof AuthException
                 || failure instanceof SecurityException
                 || failure instanceof IllegalArgumentException
-                || failure instanceof SessionReplacedException
                 || failure instanceof ContentRepositoryException
                 || failure instanceof RepositoryEmptyException) {
             return failure;

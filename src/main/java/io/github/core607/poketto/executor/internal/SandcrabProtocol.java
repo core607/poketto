@@ -361,7 +361,7 @@ final class SandcrabProtocol {
             parentSessionId = optionalUuid(parentSessionId, "parent session ID");
             templateId = templateId == null ? null : ProtocolValues.hex(templateId, 64, "workspace template");
             require(
-                    !(templateId != null && volumeId != null) && !Boolean.TRUE.equals(rootfs),
+                    !Boolean.TRUE.equals(rootfs),
                     "native workspace",
                     "must use a workspace mount with its declared base");
         }
@@ -486,7 +486,19 @@ final class SandcrabProtocol {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    record Run(String id, String serverId, String profile, String state, Result result, String sessionId) {
+    record Run(
+            String id,
+            String serverId,
+            String profile,
+            String state,
+            Result result,
+            String sessionId,
+            String workspaceGeneration,
+            Boolean freshShell) {
+        Run(String id, String serverId, String profile, String state, Result result, String sessionId) {
+            this(id, serverId, profile, state, result, sessionId, null, null);
+        }
+
         Run {
             id = ProtocolValues.uuid(id, "run ID");
             serverId = ProtocolValues.uuid(serverId, "run epoch");
@@ -518,7 +530,7 @@ final class SandcrabProtocol {
 
     record Result(Integer exitCode, String stdout, String stderr, Boolean truncated, String code, Boolean executed) {
         Result {
-            if (code == null) {
+            if (code == null || "SHELL_INIT_FAILED".equals(code)) {
                 require(executed == null, "run output", "must not also claim a refusal");
                 Objects.requireNonNull(exitCode, "run exit code must be present");
                 Objects.requireNonNull(truncated, "run truncation flag must be present");

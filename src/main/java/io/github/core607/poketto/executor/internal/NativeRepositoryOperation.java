@@ -14,6 +14,9 @@ final class NativeRepositoryOperation {
     final AccountOperations.Slot account;
     volatile NativeRepositoryLease lease;
     volatile NativeRepositoryPool.Claim claim;
+    volatile boolean managed;
+    volatile AccountCopyRecord authorizedCopy;
+    volatile long authorityCheck;
     volatile boolean attempted;
     volatile boolean finished;
     volatile boolean operationComplete;
@@ -27,14 +30,29 @@ final class NativeRepositoryOperation {
         this.account = account;
     }
 
+    void checkGrant(NativeRepositoryWorkspace workspaces, long now) {
+        var record = authorizedCopy;
+        if (!managed || finished || cancelled || record == null || now - authorityCheck < 0) {
+            return;
+        }
+        authorityCheck = now + java.time.Duration.ofSeconds(30).toNanos();
+        try {
+            workspaces.authorize(principal, owner, record);
+        } catch (RuntimeException inaccessible) {
+            cancel();
+        }
+    }
+
     void cancel() {
         cancelled = true;
-        if (claim != null) {
-            try {
+        try {
+            if (managed && lease != null && !operationComplete) {
+                operationComplete = lease.cancelWorkspace();
+            } else if (claim != null) {
                 claim.invalidate();
-            } catch (WorkerUnavailableException | SandcrabClient.Rejected failure) {
-                log.warn("Native repository containment remains unconfirmed", failure);
             }
+        } catch (WorkerUnavailableException | SandcrabClient.Rejected failure) {
+            log.warn("Native repository containment remains unconfirmed", failure);
         }
     }
 }

@@ -125,7 +125,19 @@ record AccountCopyRecord(
             long inodeLimit,
             String templateId,
             Upper upper,
-            String gitCommit) {
+            String gitCommit,
+            UUID workspaceGeneration) {
+        NativeStorage(
+                UUID volumeId,
+                String profile,
+                long byteLimit,
+                long inodeLimit,
+                String templateId,
+                Upper upper,
+                String gitCommit) {
+            this(volumeId, profile, byteLimit, inodeLimit, templateId, upper, gitCommit, null);
+        }
+
         NativeStorage(UUID volumeId, String profile, long byteLimit, long inodeLimit, String templateId, Upper upper) {
             this(volumeId, profile, byteLimit, inodeLimit, templateId, upper, null);
         }
@@ -143,6 +155,10 @@ record AccountCopyRecord(
                     upper == null || (templateId != null && upper.bytes() <= byteLimit),
                     "overlay checkpoint",
                     "must fit its template-backed copy");
+            ProtocolValues.require(
+                    workspaceGeneration == null || templateId != null,
+                    "workspace generation",
+                    "requires a template-backed copy");
             requireLimits(profile, byteLimit, inodeLimit);
         }
 
@@ -154,7 +170,13 @@ record AccountCopyRecord(
         }
 
         NativeStorage checkpoint(Upper change, String commit) {
-            return new NativeStorage(volumeId, profile, byteLimit, inodeLimit, templateId, change, commit);
+            return new NativeStorage(
+                    volumeId, profile, byteLimit, inodeLimit, templateId, change, commit, workspaceGeneration);
+        }
+
+        NativeStorage generation(UUID generation) {
+            return new NativeStorage(
+                    volumeId, profile, byteLimit, inodeLimit, templateId, upper, gitCommit, generation);
         }
 
         void requireVolume(SandcrabVolume volume) {

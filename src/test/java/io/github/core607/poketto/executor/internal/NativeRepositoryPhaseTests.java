@@ -31,21 +31,18 @@ class NativeRepositoryPhaseTests extends NativeRepositoryTestFixture {
             recording.stop();
             recording.dump(output);
             assertThat(journal.record(owner).orElseThrow().phase()).isEqualTo(AccountCopyRecord.Phase.READY);
-            verify(client).open(any());
+            verify(keyed).ensure(any(), any(), any());
         }
         List<RecordedEvent> events = phases(output);
         Map<Long, List<RecordedEvent>> groups =
                 events.stream().collect(Collectors.groupingBy(event -> event.getLong("invocation")));
         assertThat(groups).hasSize(2);
         assertThat(events)
-                .filteredOn(event -> name(event).equals("SESSION_START"))
-                .hasSize(1);
-        assertThat(events)
-                .filteredOn(event -> name(event).equals("SESSION_RENEW"))
-                .hasSize(1);
-        assertThat(events)
-                .filteredOn(event -> name(event).equals("CHILD_START"))
+                .filteredOn(event -> name(event).equals("WORKSPACE_ATTACHMENT"))
                 .hasSize(2);
+        assertThat(events)
+                .noneMatch(event -> java.util.Set.of("SESSION_START", "SESSION_RENEW", "SETUP_COMMAND")
+                        .contains(name(event)));
         groups.values().forEach(group -> {
             RecordedEvent request = group.stream()
                     .filter(event -> name(event).equals("REQUEST"))

@@ -38,6 +38,8 @@ abstract class NativeRepositoryTestFixture {
     Path root;
 
     final SandcrabClient client = mock(SandcrabClient.class);
+    final SandcrabWorkspaces keyed = mock(SandcrabWorkspaces.class);
+    final Map<UUID, SandcrabWorkspaces.Handle> handles = new ConcurrentHashMap<>();
     final NativeRepositoryOverlays overlays = mock(NativeRepositoryOverlays.class);
     final AuthService auth = mock(AuthService.class);
     final AuthPrincipal principal = mock(AuthPrincipal.class);
@@ -54,6 +56,8 @@ abstract class NativeRepositoryTestFixture {
     final Map<String, SandcrabProtocol.Upload> uploads = new ConcurrentHashMap<>();
     final List<String> commands = new CopyOnWriteArrayList<>();
     final AtomicBoolean closeFails = new AtomicBoolean();
+    final List<String> initializations = new CopyOnWriteArrayList<>();
+    boolean holdCommand;
     String stdout = "output";
     String runState = "succeeded";
     int exitCode;
@@ -76,11 +80,71 @@ abstract class NativeRepositoryTestFixture {
                 .thenReturn(new SandcrabProtocol.Info(
                         1,
                         epoch,
-                        Set.of("runs", "sessions", "volumes", "files", "uploads", "calls", "templates"),
+                        Set.of("runs", "sessions", "volumes", "files", "uploads", "calls", "templates", "workspaces"),
                         Map.of(
                                 "repository",
                                 new SandcrabProtocol.Profile(60_000, 65536, "none", 120_000, 8_388_608, true)),
                         new SandcrabProtocol.Storage(true)));
+        when(client.workspaces()).thenReturn(keyed);
+        when(keyed.find(any())).thenAnswer(call -> Optional.ofNullable(handles.get((UUID) call.getArgument(0))));
+        when(keyed.ensure(any(), any(), any())).thenAnswer(call -> {
+            UUID copy = call.getArgument(0);
+            AccountCopyRecord.NativeStorage storage = call.getArgument(1);
+            ((Runnable) call.getArgument(2)).run();
+            return handles.computeIfAbsent(
+                    copy,
+                    id -> new SandcrabWorkspaces.Handle(
+                            UUID.randomUUID().toString(),
+                            SandcrabWorkspaces.key(id),
+                            UUID.randomUUID().toString(),
+                            epoch,
+                            storage.profile(),
+                            storage.templateId(),
+                            "ready",
+                            0));
+        });
+        doAnswer(call -> {
+                    SandcrabWorkspaces.Handle handle = call.getArgument(0);
+                    ((Runnable) call.getArgument(1)).run();
+                    handles.values().removeIf(value -> value.generation().equals(handle.generation()));
+                    return null;
+                })
+                .when(keyed)
+                .remove(any(), any());
+        when(keyed.submit(any(), any(), any())).thenAnswer(call -> {
+            SandcrabWorkspaces.Handle handle = call.getArgument(0);
+            SandcrabProtocol.CommandPlan command = call.getArgument(1);
+            if (refuseNextCommand.compareAndSet(true, false)) {
+                throw new SandcrabClient.Rejected(429, "RESULT_CAPACITY");
+            }
+            commands.add(command.command());
+            initializations.add(call.getArgument(2));
+            var parent = sessions.compute(
+                    handle.id(),
+                    (id, prior) -> new SandcrabProtocol.Session(
+                            id,
+                            epoch,
+                            handle.profile(),
+                            "ready",
+                            System.currentTimeMillis() + 120000,
+                            null,
+                            handle.id(),
+                            null,
+                            null,
+                            handle.templateId(),
+                            false));
+            var run = new SandcrabProtocol.Run(
+                    command.id(),
+                    epoch,
+                    handle.profile(),
+                    holdCommand ? "running" : runState,
+                    holdCommand ? null : new SandcrabProtocol.Result(exitCode, stdout, "", false, null, null),
+                    parent.id(),
+                    handle.generation(),
+                    true);
+            runs.put(run.id(), run);
+            return run;
+        });
         when(exports.create(any(), any(), any()))
                 .thenReturn(new RepositorySnapshotExports.Export(UUID.randomUUID(), commit, "b".repeat(64), 100));
         doAnswer(call -> {
@@ -219,7 +283,30 @@ abstract class NativeRepositoryTestFixture {
             runs.put(run.id(), run);
             return run;
         });
-        when(client.get(any())).thenAnswer(call -> runs.get(((SandcrabProtocol.Reference) call.getArgument(0)).id()));
+        when(client.get(any())).thenAnswer(call -> {
+            if (closeFails.get()) {
+                throw new WorkerUnavailableException();
+            }
+            var result = runs.get(((SandcrabProtocol.Reference) call.getArgument(0)).id());
+            if (result == null) {
+                throw new SandcrabClient.Rejected(404, "RUN_NOT_FOUND");
+            }
+            return result;
+        });
+        when(client.cancel(any())).thenAnswer(call -> {
+            var reference = (SandcrabProtocol.Reference) call.getArgument(0);
+            return runs.computeIfPresent(
+                    reference.id(),
+                    (id, run) -> new SandcrabProtocol.Run(
+                            id,
+                            epoch,
+                            run.profile(),
+                            "cancelled",
+                            new SandcrabProtocol.Result(null, null, null, null, "CANCELLED", null),
+                            run.sessionId(),
+                            run.workspaceGeneration(),
+                            run.freshShell()));
+        });
         when(client.register(any(), any())).thenAnswer(call -> upload(call.getArgument(1)));
         when(client.register(any(), any(), any())).thenAnswer(call -> upload(call.getArgument(1)));
         when(client.send(any(), any(Path.class))).thenAnswer(call -> upload(call.getArgument(0)));

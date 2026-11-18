@@ -23,12 +23,16 @@ class NativeRepositoryLayoutTests extends NativeRepositoryTestFixture {
             String attach = "/bin/rm -f -- /workspace/.poketto-git-baseline.bundle"
                     + " && export HOME=/workspace/home && cd /workspace/work/repository";
             String copy = execute(executor, "new").copyId();
-            assertThat(commands).contains(attach);
+            assertThat(initializations)
+                    .allSatisfy(source ->
+                            assertThat(source).startsWith(attach + " && ").contains("poketto-cli."));
             assertThat(commands).noneMatch(command -> command.contains("git clone"));
             sessions.values().forEach(session -> client.close(session.reference()));
-            commands.clear();
+            initializations.clear();
             execute(executor, copy);
-            assertThat(commands).contains(attach);
+            assertThat(initializations)
+                    .allSatisfy(source ->
+                            assertThat(source).startsWith(attach + " && ").contains("poketto-cli."));
         }
     }
 

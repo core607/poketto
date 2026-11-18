@@ -176,7 +176,7 @@ Markdown 元数据可选，未修改的源码字节保持原样。默认路由�
 
 请求体上限为 128 KiB（超出时在工具执行前返回 413），命令上限 16,384 字符。拒绝结果包含 `code` 和 `reason`。详见 [MCP 请求准入移除](../notes/implemented/2026-09-15-mcp-request-admission-removal.md)。
 
-`repo_exec` 必须携带 `expectedCopyId`：使用 `"new"` 打开账号的默认副本，仅在不存在时创建；后续调用传回成功或拒绝响应中的 `copyId`。默认副本正在运行命令或刚被使用过时，`"new"` 会在账号的副本配额内另开一份副本。重连自动接回副本，关闭连接会保留副本。每次成功操作把闲置期限延长为七天（`retention.expiresAt`）；到期或丢弃会删除本地工作。`SESSION_REPLACED` 和 `EXECUTION_REFUSED` 表示命令未执行；`EXECUTION_UNCONFIRMED` 表示命令可能已部分完成，包括远端写入：不要重复执行，先用只读命令、`retention.lastInterruptedCommand` 和 `poketto status` 检查同一副本，远端保存待确认时再使用 `poketto recover`。详见[副本身份契约](../executor-service/native-repository.md#working-copies)。
+`repo_exec` 必须携带 `expectedCopyId`：使用 `"new"` 打开账号的默认副本，仅在不存在时创建；后续调用传回成功或拒绝响应中的 `copyId`。默认副本正在运行命令或刚被使用过时，`"new"` 会在账号的副本配额内另开一份副本。重连自动接回副本，关闭连接会保留副本。每次成功操作把闲置期限延长为七天（`retention.expiresAt`）；到期或丢弃会删除本地工作。`EXECUTION_REFUSED` 表示命令未执行。查不到副本时，原因是 `MISSING_COPY`。 `EXECUTION_UNCONFIRMED` 表示命令可能已部分完成，包括远端写入：不要重复执行，先用只读命令、`retention.lastInterruptedCommand` 和 `poketto status` 检查同一副本，远端保存待确认时再使用 `poketto recover`。详见[副本身份契约](../executor-service/native-repository.md#working-copies)。
 
 新的模板副本每条命令都启动新 shell，并返回 `freshSandbox: true`。把后续命令需要的状态写入文件。成功捕获后，可写层会记录到账户日志，供新的应用进程恢复。导入的旧副本继续使用其卷，直到丢弃或到期。
 

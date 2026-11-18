@@ -112,7 +112,8 @@ def exercise(socket, args, area, receipt):
     check('missing-local-prerequisite-recovered-with-a-full-bundle-and-one-save')
     assert not list(area.rglob('*.upper-*')) and not list(area.rglob('*.account'))
     for collection in ('runs', 'sessions'):
-        assert api(socket, args, 'GET', collection)[1]['ids'] == []
+        remaining = api(socket, args, 'GET', collection)[1]['ids']
+        assert not remaining, (collection, [(item, api(socket, args, 'GET', collection+'/'+item)[1].get('state')) for item in remaining])
     assert [entry['id'] for entry in api(socket, args, 'GET', 'templates')[1]['templates']] == [foreign['id']]
     assert api(socket, args, 'DELETE', 'templates/' + foreign['id']) == (200, {'deleted': True})
     check('journal-and-native-inventories-empty-after-preserving-the-unrelated-template')
@@ -208,21 +209,21 @@ network = "none"
         else:
             profiles = profile('repository', 16*1024**2, 4*1024**2, True)
         cfg.write_text(service_config + profiles)
+        data = storage / 'data'
+        data.mkdir(parents=True, mode=0o755)
         if volumes:
-            data = storage / 'data'
-            data.mkdir(parents=True)
             mount_pool(root / 'volumes.xfs', data)
             mounted.append(data)
-            with cfg.open('a') as config:
-                config.write(f'''
+        with cfg.open('a') as config:
+            config.write(f'''
 [storage]
 root = "{storage}"
-require_quota = true
+require_quota = {str(volumes).lower()}
 pool_bytes = 536870912
 max_volume_bytes = 8388608
-max_volume_inodes = 256
-max_volumes = 4
-max_records = 12
+max_volume_inodes = {256 if volumes else 2048}
+max_volumes = {4 if volumes else 8}
+max_records = {12 if volumes else 32}
 ''')
         cfg.chmod(0o600)
         started = True

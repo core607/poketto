@@ -20,7 +20,9 @@ final class NativeRepositoryLease {
     private final List<SandcrabProtocol.Reference> commands = new ArrayList<>();
     private final List<SandcrabProtocol.Reference> uploads = new ArrayList<>();
     private SandcrabProtocol.Session session;
-    private SandcrabProtocol.Session child;
+    private SandcrabWorkspaces.Handle workspace;
+    private volatile SandcrabProtocol.Reference parent;
+    private SandcrabProtocol.Reference activeRun;
     private volatile boolean opening;
     private volatile boolean submitted;
     private volatile boolean contained;
@@ -58,7 +60,25 @@ final class NativeRepositoryLease {
     }
 
     SandcrabProtocol.Session session() {
+        if (session == null && parent != null) {
+            var resolved = client.session(parent);
+            if (!storage.profile().equals(resolved.profile())
+                    || !Objects.equals(storage.templateId(), resolved.templateId())
+                    || resolved.parentSessionId() != null
+                    || !Objects.equals(workspace.id(), resolved.volumeId())) {
+                throw new WorkerUnavailableException();
+            }
+            session = resolved;
+        }
         return session;
+    }
+
+    void workspace(SandcrabWorkspaces.Handle value) {
+        workspace = value;
+    }
+
+    SandcrabWorkspaces.Handle workspace() {
+        return Objects.requireNonNull(workspace);
     }
 
     SandcrabProtocol.SessionPlan plan() {
@@ -110,35 +130,6 @@ final class NativeRepositoryLease {
         return current;
     }
 
-    boolean overlay() {
-        return storage.templateId() != null;
-    }
-
-    void startChild() {
-        try (var phase = NativeRepositoryPhase.start(Stage.CHILD_START)) {
-            authorize();
-            var ref = new SandcrabProtocol.Reference(UUID.randomUUID().toString(), plan.serverId());
-            child = client.openChild(session, ref);
-            long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
-            while (!child.state().equals("ready")) {
-                if (child.terminal() || child.state().equals("closing")) {
-                    throw new WorkerUnavailableException();
-                }
-                pause(deadline, this::authorize);
-                child = client.session(ref);
-            }
-        }
-    }
-
-    void finishChild() {
-        try (var phase = NativeRepositoryPhase.start(Stage.CHILD_CONTAINMENT)) {
-            authorize();
-            close(client, child.reference(), Duration.ofSeconds(15));
-            client.forget(client.session(child.reference()));
-            child = null;
-        }
-    }
-
     void authorize() {
         if (stopped) {
             throw new WorkerUnavailableException();
@@ -181,7 +172,7 @@ final class NativeRepositoryLease {
     /** App-owned initialization uses the public command API; no Git semantics enter the daemon. */
     void setup(String source) {
         try (var phase = NativeRepositoryPhase.start(Stage.SETUP_COMMAND)) {
-            SandcrabProtocol.Run run = command(UUID.randomUUID(), source, setupTimeout);
+            SandcrabProtocol.Run run = submit(UUID.randomUUID(), source, setupTimeout, null);
             long deadline = System.nanoTime() + setupTimeout.plusSeconds(5).toNanos();
             while (!run.terminal()) {
                 pause(deadline, authorize);
@@ -194,19 +185,67 @@ final class NativeRepositoryLease {
     }
 
     SandcrabProtocol.Run command(UUID id, String source, Duration timeout) {
+        return submit(
+                id,
+                source,
+                timeout,
+                workspace == null ? null : NativeRepositoryLayout.attach() + " && " + NativeRepositoryCli.install());
+    }
+
+    private synchronized SandcrabProtocol.Run submit(UUID id, String source, Duration timeout, String initialization) {
         authorize();
         var command = new SandcrabProtocol.CommandPlan(
                 id.toString(), plan.serverId(), source, timeout.toMillis(), outputLimit);
         commands.add(command.reference());
         commandDeadline = System.nanoTime() + timeout.toNanos();
         try {
-            return client.command(child == null ? session : child, command);
+            if (workspace == null) {
+                return client.command(session, command);
+            }
+            activeRun = command.reference();
+            SandcrabProtocol.Run run = client.workspaces().submit(workspace, command, initialization);
+            parent = new SandcrabProtocol.Reference(run.sessionId(), workspace.serverId());
+            session = null;
+            return run;
         } catch (SandcrabClient.Rejected refused) {
             if (!refused.code().equals("ID_CONFLICT")) {
+                activeRun = null;
                 commands.remove(command.reference());
             }
             throw refused;
         }
+    }
+
+    synchronized boolean cancelWorkspace() {
+        stopped = true;
+        if (activeRun != null) {
+            SandcrabProtocol.Run run;
+            try {
+                run = client.get(activeRun);
+            } catch (SandcrabClient.Rejected missing) {
+                if (!GameSandboxJob.missing(missing, "RUN_NOT_FOUND")) {
+                    throw missing;
+                }
+                // A delayed request can still arrive. Retiring its generation fences it before returning capacity.
+                try {
+                    client.workspaces().remove(workspace, () -> {});
+                } catch (SandcrabClient.Rejected gone) {
+                    if (!GameSandboxJob.missing(gone, "WORKSPACE_NOT_FOUND")
+                            && !(gone.status() == 409 && gone.code().equals("WORKSPACE_CHANGED"))) {
+                        throw gone;
+                    }
+                }
+                return true;
+            }
+            if (!Objects.equals(run.workspaceGeneration(), workspace.generation())) {
+                throw new WorkerUnavailableException();
+            }
+            if (!run.terminal()) {
+                run = client.cancel(activeRun);
+            }
+            return run.terminal();
+        }
+        return true;
     }
 
     boolean outOfTime(Duration margin) {
@@ -269,12 +308,13 @@ final class NativeRepositoryLease {
     }
 
     /** Forgetting follows the durable account acknowledgement and confirmed containment. */
-    void releaseReceipts(boolean retainSession) {
+    void releaseReceipts(boolean retainSession, SandcrabProtocol.Run completed) {
         if (!retainSession && !contained) {
             throw new WorkerUnavailableException();
         }
         for (SandcrabProtocol.Reference command : commands) {
-            SandcrabProtocol.Run result = client.get(command);
+            SandcrabProtocol.Run result =
+                    completed != null && command.equals(completed.reference()) ? completed : client.get(command);
             if (!result.terminal()) {
                 throw new WorkerUnavailableException();
             }
@@ -301,7 +341,7 @@ final class NativeRepositoryLease {
         var transfer = new SandcrabProtocol.UploadPlan(
                 UUID.randomUUID().toString(),
                 plan.serverId(),
-                plan.id(),
+                session().id(),
                 path,
                 "raw",
                 file.size(),
@@ -309,7 +349,7 @@ final class NativeRepositoryLease {
                 false,
                 0600);
         uploads.add(transfer.reference());
-        client.register(session, transfer, remaining());
+        client.register(session(), transfer, remaining());
         authorize();
         SandcrabProtocol.Upload result = client.send(transfer, file.path(), remaining(), () -> {
             authorize();

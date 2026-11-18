@@ -40,7 +40,7 @@ class NativeDeploymentTests(unittest.TestCase):
         for name in ("STAGING_DIRECTORY", "TRANSFERS_DIRECTORY", "COPIES_METADATA_ROOT"):
             self.environment["POKETTO_EXECUTOR_" + name] = "/data/" + name.lower()
         self.info = {"apiVersion": 1, "serverId": "11111111-2222-4333-8444-555555555555",
-                     "capabilities": ["sessions", "templates", "files", "uploads", "calls"],
+                     "capabilities": ["workspaces", "sessions", "templates", "files", "uploads", "calls"],
                      "profiles": {"repository": {"network": "none", "hostCalls": True}}}
         self.service = NativeRepository(self.config, self.command)
 
@@ -72,6 +72,10 @@ class NativeDeploymentTests(unittest.TestCase):
 
     def test_preflight_rejects_wrong_release_config_and_network_profile(self):
         with patch.object(self.service, "process", return_value=(os.getpid(), "start")):
+            self.info["capabilities"].remove("workspaces")
+            with self.assertRaisesRegex(DeploymentError, "offline repository profile"):
+                self.inspect()
+            self.info["capabilities"].append("workspaces")
             self.info["profiles"]["repository"]["network"] = "proxy"
             with self.assertRaisesRegex(DeploymentError, "offline repository profile"):
                 self.inspect()

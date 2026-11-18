@@ -107,6 +107,7 @@ final class NativeRepositoryDisposal implements AutoCloseable {
         authorize.run();
         pool.closeCopy(record.copyId());
         if (record.writer().storage().templateId() != null) {
+            workspaces.removeWorkspace(record, authorize);
             authorize.run();
             held.remove();
             removed.accept(record.copyId());

@@ -54,10 +54,11 @@ The browser image budget is unchanged. Image admission failure returns a tool er
 with `reason: IMAGE_MEMORY_BUSY`; it does not block text calls through a global
 request slot.
 
-Existing bounds retain distinct meanings. `poketto.executor.max-sessions` defaults
-to four active execution leases. Command admission separately permits four concurrent
-commands site-wide, bounds each account's commands by its site group, and serializes
-access to one copy. The MCP transport keeps no protocol sessions and no per-session
+Repository command concurrency is capped by both `poketto.executor.max-sessions`
+and the site operation budget. Each account also has its site-group command bound;
+one copy admits one writer at a time. Imported volumes use the application session
+pool. Sandcrab owns idle shells for keyed workspaces and charges them to its native
+sandbox limit. The MCP transport keeps no protocol sessions and no per-session
 call limit. Command deadlines and permission boundaries remain unchanged.
 
 Refusal results expose `code` and `reason`, and `McpToolOutcomes` records both without

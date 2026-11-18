@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,14 +34,14 @@ class NativeRepositoryReuseTests extends NativeRepositoryTestFixture {
             assertThat(next.exitCode()).isEqualTo(7);
             assertThat(first.freshSandbox()).isTrue();
             assertThat(next.freshSandbox()).isTrue();
-            verify(client).open(any());
-            verify(client, times(2)).openChild(any(), any());
+            verify(keyed).ensure(any(), any(), any());
+            verify(client, never()).openChild(any(), any());
             assertThat(commands.stream().filter("printf user-command"::equals)).hasSize(2);
         }
     }
 
     @Test
-    void changingGrantContainsTheIdleRuntimeBeforeReattachingTheSameStorage() {
+    void changingGrantBindsTheSameGenerationWithFreshAuthorization() {
         try (var executor = executor((run, timeout, handler) -> {})) {
             String copy = execute(executor, "new").copyId();
             AccountCopyRecord before = journal.record(owner).orElseThrow();
@@ -62,22 +63,23 @@ class NativeRepositoryReuseTests extends NativeRepositoryTestFixture {
             assertThat(after.writer().storage()).isEqualTo(before.writer().storage());
             assertThat(after.original()).isEqualTo(before.original());
             assertThat(after.state()).isEqualTo(before.state());
-            assertThat(sessions.get(before.writer().leaseId().toString()).terminal())
-                    .isTrue();
-            verify(client, times(2)).open(any());
+            assertThat(after.writer().storage().workspaceGeneration())
+                    .isEqualTo(before.writer().storage().workspaceGeneration());
+            verify(client, never()).open(any());
         }
     }
 
     @Test
-    void revocationContainsIdleSessionsAsWellAsInflightCommands() {
+    void anIdleWorkspaceHoldsNoApplicationCommandOrReusableGrant() {
         try (var executor = executor((run, timeout, handler) -> {})) {
-            execute(executor, "new");
-            assertThat(sessions.values())
-                    .filteredOn(session -> session.parentSessionId() == null)
-                    .hasSize(1)
-                    .allMatch(session -> session.state().equals("ready"));
+            String copy = execute(executor, "new").copyId();
             executor.revoked(new AuthRevocation(workspace, Set.of(account), Set.of()));
-            assertThat(sessions.values()).allMatch(SandcrabProtocol.Session::terminal);
+            when(auth.authorize(any(), any(), any(io.github.core607.poketto.auth.Capability[].class)))
+                    .thenThrow(new io.github.core607.poketto.auth.AuthException(
+                            io.github.core607.poketto.auth.AuthException.Code.DENIED));
+            assertThatThrownBy(() -> execute(executor, copy))
+                    .isInstanceOf(io.github.core607.poketto.auth.AuthException.class);
+            verify(keyed, times(1)).submit(any(), any(), any());
             assertThat(journal.record(owner).orElseThrow().phase()).isEqualTo(AccountCopyRecord.Phase.READY);
         }
     }
@@ -95,7 +97,7 @@ class NativeRepositoryReuseTests extends NativeRepositoryTestFixture {
             assertThat(journal.record(owner).orElseThrow().phase()).isEqualTo(AccountCopyRecord.Phase.READY);
             assertThat(journal.record(owner).orElseThrow().executionId()).isNull();
             assertThat(execute(executor, copy).freshSandbox()).isTrue();
-            verify(client).open(any());
+            verify(keyed).ensure(any(), any(), any());
             assertThat(commands.stream().filter("printf user-command"::equals)).hasSize(2);
         }
     }
@@ -104,27 +106,67 @@ class NativeRepositoryReuseTests extends NativeRepositoryTestFixture {
     void anExpiredWarmRuntimeIsReplacedBeforeSubmittingTheRequestedCommandOnce() {
         try (var executor = executor((run, timeout, handler) -> {})) {
             String copy = execute(executor, "new").copyId();
-            AccountCopyRecord before = journal.record(owner).orElseThrow();
-            SandcrabProtocol.Session previous =
-                    sessions.get(before.writer().leaseId().toString());
-            sessions.put(
-                    previous.id(),
-                    new SandcrabProtocol.Session(
-                            previous.id(),
-                            previous.serverId(),
-                            previous.profile(),
-                            "expired",
-                            previous.expiresAtMillis(),
-                            null,
-                            previous.volumeId(),
-                            null,
-                            previous.parentSessionId(),
-                            previous.templateId(),
-                            false));
+            sessions.clear();
             assertThat(execute(executor, copy).freshSandbox()).isTrue();
-            verify(client, times(2)).open(any());
+            verify(client, never()).open(any());
             verify(exports).create(any(), any(), any());
             assertThat(commands.stream().filter("printf user-command"::equals)).hasSize(2);
+        }
+    }
+
+    @Test
+    void aDifferentGenerationAtTheSameKeyCannotRunOrDisposeTheReplacement() {
+        try (var executor = executor((run, timeout, handler) -> {})) {
+            String id = execute(executor, "new").copyId();
+            UUID copy = UUID.fromString(id);
+            var first = handles.get(copy);
+            handles.put(
+                    copy,
+                    new SandcrabWorkspaces.Handle(
+                            first.id(),
+                            first.key(),
+                            UUID.randomUUID().toString(),
+                            epoch,
+                            first.profile(),
+                            first.templateId(),
+                            "ready",
+                            first.submissionWindow()));
+            assertThatThrownBy(() -> execute(executor, id)).isInstanceOf(ExecutionAdmissionException.class);
+            assertThatThrownBy(() -> executor.discard(
+                            principal, workspace, new RepositoryExecutor.DiscardRequest(id), cancellation))
+                    .isInstanceOf(ExecutionAdmissionException.class);
+            assertThat(commands).containsExactly("printf user-command");
+            verify(keyed, never()).remove(any(), any());
+            assertThat(journal.record(owner)).isPresent();
+        }
+    }
+
+    @Test
+    void aFailedControllerInitializationRetainsBoundedDiagnostics() {
+        var failure = new SandcrabProtocol.Result(1, "", "setup failed", false, "SHELL_INIT_FAILED", null);
+        assertThat(failure.success()).isFalse();
+        assertThat(failure.stderr()).isEqualTo("setup failed");
+        assertThatThrownBy(() -> new SandcrabProtocol.Result(1, "", "output", false, "RESULT_CAPACITY", null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void anUnobservedCommandIsFencedBeforeTheSameCopyAcceptsAnotherWrite() {
+        var loseReceipt = new java.util.concurrent.atomic.AtomicBoolean(true);
+        try (var executor = executor((ref, timeout, handler) -> {
+            if (loseReceipt.getAndSet(false)) {
+                runs.remove(ref.id());
+                throw new WorkerUnavailableException();
+            }
+        })) {
+            assertThatThrownBy(() -> execute(executor, "new"))
+                    .isInstanceOf(io.github.core607.poketto.mcp.ExecutionUnconfirmedException.class);
+            var record = journal.record(owner).orElseThrow();
+            assertThat(handles).doesNotContainKey(record.copyId());
+            assertThat(execute(executor, record.copyId().toString()).retention().lastInterruptedCommand())
+                    .isEqualTo(record.executionId());
+            assertThat(commands).containsExactly("printf user-command", "printf user-command");
+            verify(keyed).remove(any(), any());
         }
     }
 
@@ -139,10 +181,11 @@ class NativeRepositoryReuseTests extends NativeRepositoryTestFixture {
         RuntimeException refusal = capacity
                 ? new SandcrabClient.Rejected(429, "SESSION_CAPACITY")
                 : new WorkerUnavailableException(new java.io.IOException("connection refused before send"), false);
+        var known = handles.get(before.copyId());
         org.mockito.Mockito.doThrow(refusal)
-                .doAnswer(call -> admitSession(call.getArgument(0)))
-                .when(client)
-                .open(any());
+                .doReturn(Optional.of(known))
+                .when(keyed)
+                .find(before.copyId());
         try (var resumed = executor((run, timeout, handler) -> {})) {
             assertThatThrownBy(() -> execute(resumed, copy)).isInstanceOf(ExecutionAdmissionException.class);
             var retained = journal.record(owner).orElseThrow();
@@ -162,31 +205,28 @@ class NativeRepositoryReuseTests extends NativeRepositoryTestFixture {
     }
 
     @Test
-    void lostAttachResponseCannotPublishAReadyJournalOrInferContainmentFromMissingSession() {
+    void lostWorkspaceCreationRetainsTheOriginalAndNeverSubmitsAUserCommand() {
         String copy;
         try (var first = executor((run, timeout, handler) -> {})) {
             copy = execute(first, "new").copyId();
         }
         AccountCopyRecord before = journal.record(owner).orElseThrow();
+        handles.clear();
         doAnswer(call -> {
                     assertThat(journal.record(owner).orElseThrow().phase())
                             .isEqualTo(AccountCopyRecord.Phase.ATTACHING);
                     throw new WorkerUnavailableException();
                 })
-                .when(client)
-                .open(any());
+                .when(keyed)
+                .ensure(any(), any(), any());
         try (var resumed = executor((run, timeout, handler) -> {})) {
             assertThatThrownBy(() -> execute(resumed, copy)).isInstanceOf(ExecutionAdmissionException.class);
             AccountCopyRecord pending = journal.record(owner).orElseThrow();
             assertThat(pending.phase()).isEqualTo(AccountCopyRecord.Phase.ATTACHING);
             assertThat(pending.original()).isEqualTo(before.original());
             assertThat(pending.state()).isEqualTo(before.state());
-            assertThatThrownBy(() -> workspaces().fence(pending, client.info()))
-                    .isInstanceOf(SandcrabClient.Rejected.class);
-            SandcrabProtocol.Info previous = client.info();
-            when(client.info())
-                    .thenReturn(new SandcrabProtocol.Info(
-                            1, UUID.randomUUID().toString(), previous.capabilities(), previous.profiles()));
+            assertThat(pending.writer().storage().workspaceGeneration()).isNull();
+            assertThat(commands).containsExactly("printf user-command");
             resumed.reconcile();
         }
     }

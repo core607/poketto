@@ -24,11 +24,11 @@ class McpToolOutcomeTests {
     @Test
     void aRefusalIsRecordedWithTheCodeTheCallerReceived(CapturedOutput output) {
         McpSchema.CallToolResult result = McpToolOutcomes.recorded(
-                json, "repo_exec", () -> refusal(Map.of("code", "SESSION_REPLACED", "reason", "MISSING_COPY")));
+                json, "repo_exec", () -> refusal(Map.of("code", "EXECUTION_REFUSED", "reason", "MISSING_COPY")));
 
         assertThat(result.isError()).isTrue();
         assertThat(output).contains("mcp tool");
-        assertThat(output).contains("SESSION_REPLACED", "reason=MISSING_COPY");
+        assertThat(output).contains("EXECUTION_REFUSED", "reason=MISSING_COPY");
         assertThat(output).contains("repo_exec");
     }
 
