@@ -182,10 +182,6 @@ record NativeRepositoryPlan(
             ProtocolValues.require(prepared || candidate == null, "unprepared file", "must not claim a candidate");
         }
 
-        String originalIdentity() {
-            return original == null ? "absent" : original.sha256();
-        }
-
         String candidateIdentity() {
             return candidate == null ? "absent" : candidate.sha256();
         }

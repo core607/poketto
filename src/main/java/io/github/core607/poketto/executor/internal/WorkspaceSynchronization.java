@@ -11,73 +11,13 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.BooleanSupplier;
 
-/** Serial local reconciliation. Each exact installation is journaled before the worker can apply it. */
+/** Computes a candidate from the retained baseline, captured working file and remote revision. */
 final class WorkspaceSynchronization {
-    interface Files {
-        Local read(String path);
-
-        boolean install(PendingWorkspaceSync.File file);
-    }
-
-    record Local(String sha256, String text, boolean unsafe) {}
-
     private final SelectedFileSaves saves;
 
     WorkspaceSynchronization(SelectedFileSaves saves) {
         this.saves = saves;
-    }
-
-    /**
-     * Runs until every path is reconciled, or until {@code outOfTime} reports that the command's
-     * time is spent. Each run reconciles at least one path, so repeated runs always finish.
-     */
-    BridgeReplies.Reply run(
-            AuthPrincipal actor,
-            WorkspaceId workspace,
-            SelectedFileSaves.State state,
-            BooleanSupplier outOfTime,
-            Files files) {
-        WorkspaceSyncInputs inputs = saves.prepareWorkspaceSync(actor, workspace, state);
-        if (state.sync == null) {
-            List<String> paths = ordered(inputs);
-            state.retainSync(new PendingWorkspaceSync(inputs.remoteCommit(), paths, 0, List.of(), null));
-        }
-        SelectedFileSaves.State progress = state.copy();
-        boolean planned = false;
-        while (progress.sync.next() < progress.sync.paths().size()) {
-            if (progress.sync.current() == null) {
-                if (planned && outOfTime.getAsBoolean()) {
-                    state.install(progress);
-                    return BridgeReplies.failedWith(
-                            "SYNC_INCOMPLETE",
-                            progress(state.sync),
-                            "Command time ran out; progress is retained. Run poketto sync again to continue, or give repo_exec a larger timeoutSeconds.");
-                }
-                planned = true;
-                String path = progress.sync.paths().get(progress.sync.next());
-                PendingWorkspaceSync.File selected = plan(actor, workspace, progress, inputs, path, files);
-                progress.sync = progress.sync.prepared(selected);
-            }
-            PendingWorkspaceSync.File selected = progress.sync.current();
-            if (selected.install()) {
-                state.install(progress);
-                if (!files.install(selected)) {
-                    return BridgeReplies.failedWith(
-                            "LOCAL_SYNC_PENDING",
-                            progress(state.sync),
-                            "The local file changed. Its contents are preserved; recover this synchronization or release it with poketto recover --skip-local.");
-                }
-            }
-            progress.advanceSyncFile();
-        }
-        state.install(progress);
-        return state.finishSync(false);
-    }
-
-    static BridgeReplies.WorkspaceSyncResult progress(PendingWorkspaceSync pending) {
-        return BridgeReplies.workspaceSyncResult(pending, false);
     }
 
     static List<String> ordered(WorkspaceSyncInputs inputs) {
@@ -120,7 +60,7 @@ final class WorkspaceSynchronization {
             SelectedFileSaves.State state,
             WorkspaceSyncInputs inputs,
             String path,
-            Files files) {
+            NativePlanIo.Captured local) {
         RepositoryFile base = inputs.baseline().getOrDefault(path, absent(workspace, state.baseline(path), path));
         RepositoryFile remote = inputs.remote().getOrDefault(path, absent(workspace, inputs.remoteCommit(), path));
         if (base.equals(remote)) {
@@ -135,10 +75,6 @@ final class WorkspaceSynchronization {
         }
         if (unchanged(before, after)) {
             return unchanged(path, baseline, false);
-        }
-        Local local = files.read(path);
-        if (local.unsafe()) {
-            return unchanged(path, baseline, true);
         }
         if (Objects.equals(local.sha256(), after.sha256())) {
             return unchanged(path, baseline, false);

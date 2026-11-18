@@ -3,12 +3,11 @@ package io.github.core607.poketto.executor.internal;
 import io.github.core607.poketto.content.RepositoryPaths;
 import io.github.core607.poketto.content.RepositorySyncEntry;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 
-/** One fixed remote revision and the exact next local installation, retained before changing files. */
+/** Retained signed-worker synchronization. An unfinished record keeps native adoption deferred. */
 record PendingWorkspaceSync(String commit, List<String> paths, int next, List<String> conflicts, File current) {
     PendingWorkspaceSync {
         commit = ProtocolValues.hex(commit, 40, "synchronization commit");
@@ -26,19 +25,6 @@ record PendingWorkspaceSync(String commit, List<String> paths, int next, List<St
             ProtocolValues.require(current.path().equals(paths.get(next)), "sync installation", "must match next path");
             ProtocolValues.require(current.baseline().commit().equals(commit), "sync baseline", "must match remote");
         }
-    }
-
-    PendingWorkspaceSync prepared(File file) {
-        return new PendingWorkspaceSync(commit, paths, next, conflicts, file);
-    }
-
-    PendingWorkspaceSync advanced() {
-        Objects.requireNonNull(current, "synchronization installation must be present");
-        var found = new ArrayList<>(conflicts);
-        if (current.conflict()) {
-            found.add(current.path());
-        }
-        return new PendingWorkspaceSync(commit, paths, next + 1, found, null);
     }
 
     record File(

@@ -1,7 +1,6 @@
 package io.github.core607.poketto.executor.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.core607.poketto.content.RepositorySnapshotExports;
@@ -21,11 +20,16 @@ class AccountCopyTransitionTests {
     private final long expiry = System.currentTimeMillis() + 60_000;
 
     @Test
-    void onlyARefreshingPublicCopyIsRepinnedToANewProjectionInOneWrite() {
+    void aPublicCopyKeepsItsOriginalProjectionInEveryPhase() {
         var refreshing = record(0, AccountCopyRecord.Phase.REFRESHING, FIRST);
-        assertThatCode(() -> AccountCopyTransitions.requireTransition(
+        assertThatThrownBy(() -> AccountCopyTransitions.requireTransition(
+                        owner, refreshing, record(1, AccountCopyRecord.Phase.REFRESHING, FIRST), expiry))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("public projection");
+        assertThatThrownBy(() -> AccountCopyTransitions.requireTransition(
                         owner, refreshing, record(1, AccountCopyRecord.Phase.REFRESHING, SECOND), expiry))
-                .doesNotThrowAnyException();
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("pinned");
 
         var ready = record(0, AccountCopyRecord.Phase.READY, FIRST);
         for (var next : new AccountCopyRecord[] {
@@ -44,6 +48,24 @@ class AccountCopyTransitionTests {
                         owner, discarding, record(1, AccountCopyRecord.Phase.REFRESHING, SECOND), expiry))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("executable again");
+    }
+
+    @Test
+    void anUnfinishedSignedWorkerRefreshCanBeDiscardedWithItsOriginalBinding() {
+        var prior = record(0, AccountCopyRecord.Phase.REFRESHING, FIRST);
+        var disposal = new AccountCopyRecord(
+                owner,
+                copy,
+                1,
+                expiry,
+                prior.writer(),
+                AccountCopyRecord.Phase.DISCARDING,
+                null,
+                null,
+                prior.state(),
+                prior.publicExport(),
+                prior.original());
+        AccountCopyTransitions.requireTransition(owner, prior, disposal, expiry);
     }
 
     private AccountCopyRecord record(long revision, AccountCopyRecord.Phase phase, String commit) {

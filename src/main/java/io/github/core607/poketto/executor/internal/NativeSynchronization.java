@@ -23,7 +23,6 @@ final class NativeSynchronization {
     BridgeReplies.Reply prepare(
             AuthPrincipal actor, AccountCommand held, NativeRepositoryLease lease, BooleanSupplier outOfTime) {
         SelectedFileSaves.State state = held.state();
-        requireAvailable(state);
         var workspace = new WorkspaceId(held.owner().workspaceId());
         WorkspaceSyncInputs inputs = saves.prepareWorkspaceSync(actor, workspace, state);
         if (state.nativePlan == null) {
@@ -79,20 +78,7 @@ final class NativeSynchronization {
             String path) {
         UUID plan = state.nativePlan.id();
         NativePlanIo.Captured original = files.capture(held, lease, plan, path);
-        PendingWorkspaceSync.File selected =
-                merge.plan(actor, workspace, state, inputs, path, new WorkspaceSynchronization.Files() {
-                    @Override
-                    public WorkspaceSynchronization.Local read(String selectedPath) {
-                        ProtocolValues.require(
-                                path.equals(selectedPath), "sync capture", "must match its planned path");
-                        return original.local();
-                    }
-
-                    @Override
-                    public boolean install(PendingWorkspaceSync.File ignored) {
-                        throw new IllegalStateException("Preparation never installs a working file");
-                    }
-                });
+        PendingWorkspaceSync.File selected = merge.plan(actor, workspace, state, inputs, path, original);
         NativePlanFile candidate = files.candidate(actor, workspace, held, lease, plan, selected, original);
         lease.authorize();
         state.retainPlan(state.nativePlan.withFile(
@@ -131,16 +117,5 @@ final class NativeSynchronization {
         ProtocolValues.require(
                 plan.kind() == NativeRepositoryPlan.Kind.SYNC, "synchronization plan", "must not be a move");
         return plan;
-    }
-
-    private static void requireAvailable(SelectedFileSaves.State state) {
-        ProtocolValues.require(
-                !state.uncertain && state.move == null && state.sync == null,
-                "synchronization preparation",
-                "requires reconciliation of the pending write");
-        ProtocolValues.require(
-                state.nativePlan == null || state.nativePlan.kind() == NativeRepositoryPlan.Kind.SYNC,
-                "synchronization preparation",
-                "must not replace a move plan");
     }
 }

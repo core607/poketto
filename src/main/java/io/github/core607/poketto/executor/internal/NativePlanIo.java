@@ -27,8 +27,8 @@ final class NativePlanIo {
     }
 
     record Captured(NativePlanFile file, String text) {
-        WorkspaceSynchronization.Local local() {
-            return new WorkspaceSynchronization.Local(file == null ? null : file.sha256(), text, false);
+        String sha256() {
+            return file == null ? null : file.sha256();
         }
     }
 

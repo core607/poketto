@@ -148,25 +148,6 @@ final class BridgeArguments {
         return new ArtifactRemove(string(exactly(arguments, ArtifactRemove.class), "artifactId"));
     }
 
-    /**
-     * A recovery takes nothing, or the single flag that releases a confirmed move. The flag is
-     * accepted only when set: an explicit {@code false} is a request the client never sends and is
-     * refused rather than silently read as its own default.
-     */
-    static boolean recoverSkipsLocal(JsonNode arguments) {
-        JsonNode fields = object(arguments, "recover");
-        require(
-                Set.copyOf(fields.propertyNames()).stream().allMatch("skipLocal"::equals),
-                "recover",
-                "takes only skipLocal");
-        if (fields.isEmpty()) {
-            return false;
-        }
-        JsonNode flag = fields.path("skipLocal");
-        require(flag.isBoolean() && flag.booleanValue(), "skipLocal", "must be true when present");
-        return true;
-    }
-
     static Move move(JsonNode arguments) {
         var fields = exactly(arguments, Move.class);
         return new Move(string(fields, "source"), string(fields, "destination"));

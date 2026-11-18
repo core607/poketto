@@ -56,8 +56,7 @@ A public key receives the publication-derived namespace. An external harness rem
 - Withdrawal is not instantaneous for bytes already in flight; the guarantee is that no further output is returned after the check fails.
 - The projection rejects, rather than partially serves, a workspace whose routes collide or nest or whose size exceeds its bounds.
 - A changed publication fences its old copy until disposal or expiry, including a copy without local edits. Its owner requests a new copy for current publication.
-- An interruption at any point of a rebuild leaves a `REFRESHING` record under the same ID, and the next request resumes it; a `REFRESHING` copy is collected only after its idle expiry.
-- A tool that writes a cache under `$HOME` during ordinary use makes the copy count as not clean; the user then discards it explicitly.
+- A retained `REFRESHING` record identifies an unfinished signed-worker rebuild. Native commands refuse to resume it.
 
 ## Implementation and acceptance
 

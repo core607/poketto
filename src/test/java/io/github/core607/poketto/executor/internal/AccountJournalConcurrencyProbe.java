@@ -16,8 +16,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -162,11 +160,9 @@ record AccountJournalConcurrencyProbe(Path root) {
 
     private static AccountCopyRecord record(
             AccountCopyStore store, AccountCopyRecord.Owner owner, UUID copy, long revision) {
-        var state = new SelectedFileSaves.State("a".repeat(40));
-        state.acknowledgeMove(
-                "a".repeat(40),
-                Set.of("private/draft.md"),
-                Map.of("private/draft.md", RetainedFileBaseline.saved("a".repeat(40), "version " + revision)));
+        String commit = "a".repeat(40);
+        var state = RetainedJournalFixture.withFile(
+                commit, "private/draft.md", RetainedFileBaseline.saved(commit, "version " + revision));
         return new AccountCopyRecord(
                 owner,
                 copy,
@@ -177,7 +173,7 @@ record AccountJournalConcurrencyProbe(Path root) {
                 AccountCopyRecord.Phase.INITIALIZING,
                 null,
                 null,
-                state.snapshot(),
+                state,
                 null,
                 null);
     }

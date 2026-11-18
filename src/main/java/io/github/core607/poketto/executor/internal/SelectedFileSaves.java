@@ -67,11 +67,20 @@ final class SelectedFileSaves {
     }
 
     WorkspaceSyncInputs prepareWorkspaceSync(AuthPrincipal actor, WorkspaceId workspace, State state) {
+        ProtocolValues.require(
+                !state.uncertain && state.move == null && state.sync == null,
+                "synchronization preparation",
+                "requires reconciliation of the pending write");
+        ProtocolValues.require(
+                state.nativePlan == null || state.nativePlan.kind() == NativeRepositoryPlan.Kind.SYNC,
+                "synchronization preparation",
+                "must not replace a move plan");
         auth.authorize(actor, workspace, Capability.READ_PRIVATE);
-        if (state.uncertain || state.move != null) {
-            throw new IllegalArgumentException("recover the pending write before synchronizing");
-        }
-        String remoteCommit = syncCommit(actor, workspace, state);
+        String remoteCommit = state.nativePlan == null
+                ? reader.currentCommit(actor, workspace)
+                        .orElseThrow(() ->
+                                new IllegalArgumentException("synchronization requires an existing remote commit"))
+                : state.nativePlan.remoteCommit();
         var limits = new RepositoryBaselineLimits(
                 WorkspaceSyncInputs.MAX_PATHS, WorkspaceSyncInputs.MAX_TEXT_BYTES, Duration.ofSeconds(20));
         var inputs = new WorkspaceSyncInputs.Collector(state.baseCommit, remoteCommit);
@@ -90,21 +99,6 @@ final class SelectedFileSaves {
         reader.visitBaseline(actor, workspace, remoteCommit, limits, inputs::remote);
         WorkspaceSyncInputs result = inputs.finish();
         return auth.withAuthorization(actor, workspace, Set.of(Capability.READ_PRIVATE), () -> result);
-    }
-
-    private String syncCommit(AuthPrincipal actor, WorkspaceId workspace, State state) {
-        if (state.nativePlan != null) {
-            ProtocolValues.require(
-                    state.nativePlan.kind() == NativeRepositoryPlan.Kind.SYNC,
-                    "synchronization",
-                    "must not replace a pending move plan");
-            return state.nativePlan.remoteCommit();
-        }
-        return state.sync == null
-                ? reader.currentCommit(actor, workspace)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException("synchronization requires an existing remote commit"))
-                : state.sync.commit();
     }
 
     BridgeReplies.Reply save(
@@ -411,38 +405,6 @@ final class SelectedFileSaves {
             install(proposed);
         }
 
-        void retainSync(PendingWorkspaceSync pendingSync) {
-            State proposed = copy();
-            proposed.sync = pendingSync;
-            install(proposed);
-        }
-
-        /** Stages acknowledged progress on a private state copy before its next durable installation. */
-        void advanceSyncFile() {
-            PendingWorkspaceSync pendingSync = Objects.requireNonNull(sync, "pending sync must be present");
-            PendingWorkspaceSync.File file = Objects.requireNonNull(pendingSync.current(), "sync file must be present");
-            requireTracking(List.of(file.path()));
-            fileBaselines.put(file.path(), file.baseline());
-            sync = pendingSync.advanced();
-        }
-
-        BridgeReplies.Reply finishSync(boolean skipped) {
-            PendingWorkspaceSync pendingSync = Objects.requireNonNull(sync, "pending sync must be present");
-            State proposed = copy();
-            proposed.sync = null;
-            if (!skipped) {
-                proposed.baseCommit = pendingSync.commit();
-            }
-            var result = BridgeReplies.workspaceSyncResult(pendingSync, skipped);
-            BridgeReplies.Reply reply = BridgeReplies.outcome(
-                    skipped || pendingSync.conflicts().isEmpty(),
-                    skipped ? "SYNC_RELEASED" : pendingSync.conflicts().isEmpty() ? "SYNCHRONIZED" : "MERGE_CONFLICT",
-                    result);
-            proposed.lastSave = reply;
-            install(proposed);
-            return reply;
-        }
-
         void acknowledgeImport(BridgeReplies.ImportReceipt receipt) {
             State proposed = copy();
             proposed.lastImport = Objects.requireNonNull(receipt, "import receipt must be present");
@@ -452,19 +414,6 @@ final class SelectedFileSaves {
         String baseline(String path) {
             RetainedFileBaseline file = fileBaselines.get(path);
             return file == null ? originalCommit : file.commit();
-        }
-
-        void acknowledgeMove(String commit, Set<String> paths, Map<String, RetainedFileBaseline> retainedFiles) {
-            requireTracking(paths);
-            ProtocolValues.require(retainedFiles.keySet().equals(paths), "move baselines", "must cover affected paths");
-            retainedFiles.forEach((path, file) -> {
-                file.requirePath(path);
-                ProtocolValues.require(
-                        file.commit().equals(commit), "move baseline", "must match the acknowledged commit");
-            });
-            fileBaselines.putAll(retainedFiles);
-            baseCommit = commit;
-            move = null;
         }
 
         void requireTracking(Collection<String> paths) {

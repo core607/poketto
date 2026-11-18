@@ -6,7 +6,6 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonValue;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -21,36 +20,6 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code nextOffset} as an explicit null, because the CLI reads that null as end of listing.
  */
 final class BridgeReplies {
-
-    record WorkspaceSyncResult(
-            String commit,
-            int completedPaths,
-            int totalPaths,
-            int conflictCount,
-            List<String> conflicts,
-            boolean conflictsTruncated,
-            boolean released) {}
-
-    static WorkspaceSyncResult workspaceSyncResult(PendingWorkspaceSync pending, boolean released) {
-        var sample = new ArrayList<String>();
-        int bytes = 0;
-        for (String path : pending.conflicts()) {
-            int length = path.getBytes(StandardCharsets.UTF_8).length;
-            if (sample.size() == 64 || bytes + length > 16384) {
-                break;
-            }
-            sample.add(path);
-            bytes += length;
-        }
-        return new WorkspaceSyncResult(
-                pending.commit(),
-                pending.next(),
-                pending.paths().size(),
-                pending.conflicts().size(),
-                List.copyOf(sample),
-                sample.size() != pending.conflicts().size(),
-                released);
-    }
 
     private BridgeReplies() {}
 
@@ -143,14 +112,6 @@ final class BridgeReplies {
         return new Reply(true, null, result, null, null, null, null, message);
     }
 
-    /**
-     * A synchronization always returns its merged file; whether that counts as success is the
-     * caller's decision, so the outcome and the code travel together.
-     */
-    static Reply outcome(boolean ok, String code, Object result) {
-        return new Reply(ok, code, result, null, null, null, null, null);
-    }
-
     static Reply artifact(Object artifact) {
         return new Reply(true, null, null, artifact, null, null, null, null);
     }
@@ -190,24 +151,6 @@ final class BridgeReplies {
 
     /** Nothing was retained to recover, so the command succeeds without touching the repository. */
     record Recovery(boolean recoveryNeeded) {}
-
-    record MoveInstalled(
-            String commit,
-            boolean committed,
-            boolean snapshotUpdated,
-            boolean worktreeUpdated,
-            String source,
-            String destination) {}
-
-    record MoveSkipped(String commit, boolean committed, boolean worktreeUpdated, boolean localInstallationSkipped) {}
-
-    /**
-     * A move whose local installation has not finished. The commit is null until the remote write
-     * is confirmed and stays in the frame as null, because its absence would read as "no move".
-     */
-    record MovePending(boolean committed, String commit, boolean worktreeUpdated, String source, String destination) {}
-
-    record LocalEditResult(String path, boolean saved) {}
 
     /** An original written into the worktree. The commit is absent for a listing of unsaved work. */
     @JsonInclude(JsonInclude.Include.NON_NULL)

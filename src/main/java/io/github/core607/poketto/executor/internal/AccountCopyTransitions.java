@@ -38,16 +38,8 @@ final class AccountCopyTransitions {
                             || next.phase() == AccountCopyRecord.Phase.DISCARDING,
                     "discarded copy",
                     "must not become executable again");
-            // Only a public copy's rebuild re-pins its commit and projection, in one write from
-            // REFRESHING to REFRESHING, so the copy ID never leaves the journal.
-            boolean rebuilt = !owner.fullRead()
-                    && current.phase() == AccountCopyRecord.Phase.REFRESHING
-                    && next.phase() == AccountCopyRecord.Phase.REFRESHING;
             ProtocolValues.require(
-                    rebuilt
-                            || current.state()
-                                    .originalCommit()
-                                    .equals(next.state().originalCommit()),
+                    current.state().originalCommit().equals(next.state().originalCommit()),
                     "original commit",
                     "must remain pinned");
             ProtocolValues.require(
@@ -55,7 +47,7 @@ final class AccountCopyTransitions {
                     "original archive",
                     "must remain immutable");
             ProtocolValues.require(
-                    rebuilt || Objects.equals(current.publicExport(), next.publicExport()),
+                    Objects.equals(current.publicExport(), next.publicExport()),
                     "public projection",
                     "must remain pinned");
             ProtocolValues.require(next.expiresAt() >= current.expiresAt(), "copy expiry", "must not move backwards");

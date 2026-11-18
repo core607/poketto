@@ -54,10 +54,11 @@ class BridgeReplyShapeTests {
                 .contains("\"nextOffset\":2");
     }
 
-    /** A move that is not yet acknowledged reports a null commit; dropping it would read as no move. */
     @Test
-    void aPendingMoveKeepsItsUnknownCommit() {
-        var pending = new BridgeReplies.MovePending(false, null, false, "a", "b");
-        assertThat(JSON.writeValueAsString(pending)).contains("\"commit\":null");
+    void aRetainedMoveReceiptKeepsItsExplicitlyUnknownCommit() {
+        String pending =
+                "{\"ok\":false,\"result\":{\"committed\":false,\"commit\":null,\"source\":\"a\",\"destination\":\"b\"}}";
+        var receipt = JSON.readValue(pending, BridgeReplies.RestoredReceipt.class);
+        assertThat(JSON.readTree(JSON.writeValueAsBytes(receipt))).isEqualTo(JSON.readTree(pending));
     }
 }
