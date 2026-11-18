@@ -2,7 +2,6 @@
 .gradle
 build
 **/target
-executor-service/bin
 **/node_modules
 **/.next
 **/.env

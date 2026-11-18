@@ -12,8 +12,7 @@ def is_core(path):
         return False
     if parts and parts[0] == "executor-native":
         return False
-    if (name.startswith("test_") or name in {"run_tests.py", "conftest.py", "pytest.ini", "tox.ini",
-                                            "native_probe.py", "resource_pool_probe.py"}
+    if (name.startswith("test_") or name in {"run_tests.py", "conftest.py", "pytest.ini", "tox.ini"}
             or ".test." in name or ".spec." in name or name.startswith(("vitest.config.", "jest.config.", "playwright.config."))
             or ".tests" in name):
         return False

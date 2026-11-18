@@ -6,7 +6,7 @@ from lanes import FULL, select
 class LaneSelectionTests(unittest.TestCase):
     def test_push_unknown_and_empty_changes_keep_all_checks(self):
         for event, paths in [('push', ['README.md']), ('pull_request', []),
-                             ('pull_request', ['executor-service/worker.py', 'src/main/a.java'])]:
+                             ('pull_request', ['executor-service/native_pool.py', 'src/main/a.java'])]:
             with self.subTest(event=event, paths=paths):
                 self.assertEqual(FULL, select(event, paths))
 
@@ -35,4 +35,4 @@ class LaneSelectionTests(unittest.TestCase):
             self.assertEqual({'docs', 'retrieval-lab'}, select('pull_request', [path]))
 
     def test_move_out_of_unknown_surface_still_requires_its_original_checks(self):
-        self.assertEqual(FULL, select('pull_request', ['frontend/app.ts', 'executor-service/rust/sandcrab/new.rs']))
+        self.assertEqual(FULL, select('pull_request', ['frontend/app.ts', 'executor-service/game-config.example.toml']))
