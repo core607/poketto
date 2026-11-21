@@ -58,11 +58,12 @@ const spaces = (total: number) =>
 
 test("the account menu offers the studio only to creators or members of a space", async (t) => {
   const f = await fixture(t, "https://site.example/");
-  const { AccountEntrance } = await import("../components/site-chrome");
+  const { SiteBar } = await import("../components/site-chrome");
   for (const [group, total, studio] of [
     ["VIEWER", 0, false],
     ["COMMUNITY", 2, true],
     ["CREATOR", 0, true],
+    ["ADMINISTRATOR", 0, true],
   ] as const) {
     const requests: string[] = [];
     globalThis.fetch = async (input) => {
@@ -79,9 +80,17 @@ test("the account menu offers the studio only to creators or members of a space"
       assert.equal(path, "/api/auth/workspaces?offset=0&limit=1");
       return spaces(total);
     };
-    await f.act(async () => f.root.render(<AccountEntrance key={group} />));
+    await f.act(async () => f.root.render(<SiteBar key={group} />));
     const links = [...f.container.querySelectorAll("a")].map((link) =>
       link.getAttribute("href"),
+    );
+    const mayAsk = group === "CREATOR" || group === "ADMINISTRATOR";
+    assert.equal(
+      !!f.container.querySelector(
+        'nav a[href="/search"] + a[aria-label="问AI"][href="/ask"]',
+      ),
+      mayAsk,
+      group,
     );
     assert.equal(links.includes("/admin"), studio, group);
     assert.ok(links.includes("/account"), group);
@@ -90,7 +99,7 @@ test("the account menu offers the studio only to creators or members of a space"
     assert.equal(
       requests.filter((path) => path !== "/api/auth/creator-application")
         .length,
-      group === "CREATOR" ? 1 : 2,
+      mayAsk ? 1 : 2,
       group,
     );
   }
@@ -98,9 +107,10 @@ test("the account menu offers the studio only to creators or members of a space"
 
 test("the sign-in link brings a reader back to the page they were reading", async (t) => {
   const f = await fixture(t, "https://site.example/s/notes/read/page?q=1");
-  const { AccountEntrance } = await import("../components/site-chrome");
+  const { SiteBar } = await import("../components/site-chrome");
   globalThis.fetch = async () => new Response(null, { status: 401 });
-  await f.act(async () => f.root.render(<AccountEntrance />));
+  await f.act(async () => f.root.render(<SiteBar />));
+  assert.equal(f.container.querySelector('a[href="/ask"]'), null);
   const link = f.container.querySelector("a.btn-primary");
   assert.equal(link?.textContent, "登录");
   assert.ok(link?.getAttribute("href")?.startsWith("/admin?next="));

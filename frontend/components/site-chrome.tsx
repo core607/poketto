@@ -12,7 +12,8 @@ import { ThemeSwitch } from "./theme-switch";
 import { CreatorDecisionNotice } from "./creator-application";
 
 export function SiteBar() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/";
+  const session = useSiteSession();
   const discovering = pathname === "/" || pathname.startsWith("/s/");
   return (
     <header className="site-bar">
@@ -33,8 +34,19 @@ export function SiteBar() {
             <Icon name="search" />
             <span className="nav-label">搜索</span>
           </a>
+          {session.state === "signed-in" &&
+            canCreateSpaces(session.profile.account.group) && (
+              <a
+                href="/ask"
+                aria-label="问AI"
+                aria-current={pathname === "/ask" ? "page" : undefined}
+              >
+                <Icon name="message" />
+                <span className="nav-label">问AI</span>
+              </a>
+            )}
         </nav>
-        <AccountEntrance />
+        <AccountEntrance session={session} pathname={pathname} />
       </div>
     </header>
   );
@@ -42,17 +54,17 @@ export function SiteBar() {
 
 type Session =
   | { state: "checking" }
-  | { state: "anonymous" }
+  | { state: "anonymous"; failed: boolean }
   | { state: "signed-in"; profile: AccountProfile; studio: boolean };
 
-export function AccountEntrance() {
-  const pathname = usePathname() ?? "/";
+function useSiteSession() {
   const [session, setSession] = useState<Session>({ state: "checking" });
-  const [failed, setFailed] = useState(false);
-  const menu = useRef<HTMLDetailsElement>(null);
+
   useEffect(() => {
-    let active = true;
-    const load = () =>
+    let generation = 0;
+    const load = () => {
+      const request = ++generation;
+      setSession({ state: "checking" });
       void api<AccountProfile>("/api/auth/account")
         .then(async (profile) => {
           // The studio is offered to accounts that can create spaces or already have one.
@@ -63,23 +75,36 @@ export function AccountEntrance() {
             )
               .then((page) => page.total > 0)
               .catch(() => true));
-          if (!active) return;
+          if (request !== generation) return;
           setSession({ state: "signed-in", profile, studio });
-          setFailed(false);
         })
         .catch((error) => {
-          if (!active) return;
-          setSession({ state: "anonymous" });
-          setFailed(!(error instanceof ApiError && error.status === 401));
+          if (request !== generation) return;
+          setSession({
+            state: "anonymous",
+            failed: !(error instanceof ApiError && error.status === 401),
+          });
         });
+    };
     load();
     // Sign-in dialogs elsewhere on the page announce a new session.
     window.addEventListener("poketto:session", load);
     return () => {
-      active = false;
+      generation++;
       window.removeEventListener("poketto:session", load);
     };
   }, []);
+  return session;
+}
+
+function AccountEntrance({
+  session,
+  pathname,
+}: {
+  session: Session;
+  pathname: string;
+}) {
+  const menu = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
     const close = (event: MouseEvent) => {
       if (menu.current?.open && !menu.current.contains(event.target as Node))
@@ -118,7 +143,7 @@ export function AccountEntrance() {
   if (session.state === "anonymous")
     return (
       <div className="bar-actions">
-        {failed && (
+        {session.failed && (
           <span className="muted hide-narrow" role="status">
             账号状态暂时不可用
           </span>

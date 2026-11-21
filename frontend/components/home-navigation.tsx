@@ -15,7 +15,6 @@ export function HomeNavigation({ following = false }: { following?: boolean }) {
         <Icon name="bookmark" />
         收藏
       </a>
-      <a href="/ask">许愿井</a>
     </nav>
   );
 }
