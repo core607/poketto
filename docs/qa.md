@@ -1,6 +1,6 @@
 # Creator questions
 
-Open **许愿井** on the home navigation, or visit `/ask`. Current creators and
+Open **问AI** beside search in the top navigation, or visit `/ask`. Current creators and
 administrators can ask about public articles. Anonymous readers and other account
 groups cannot call the question API. Model configuration enables normal operation;
 there is no separate paid-access activation step.
